@@ -153,6 +153,13 @@ function managePage(res, m) {
     '<h2>Master token (optional)</h2>' + (m.master.added
       ? `<p>Added${m.master.expiresAt ? ', runs out ' + h(when(m.master.expiresAt)) : ', never runs out'}. It unlocks what normal sign-in cannot (notifications, packages, gists, organization settings).</p>` +
         (m.master.unlocks?.length ? '<div id="master-unlocks">' + m.master.unlocks.map((u) => `<div class="row"><span>${h(u.area)}</span><span class="tag">${u.unlocked ? 'unlocked' : 'locked — tick “' + h(u.needs) + '”'}</span></div>`).join('') + '</div>' : '') +
+        (m.master.actAs ? '<h3>Act as me</h3>' +
+          `<p id="act-as-state">GitHub shows: <strong>${m.master.actAs.on && !m.master.actAs.expired && !m.master.actAs.rejected ? 'you' + (m.master.actAs.login ? ' (' + h(m.master.actAs.login) + ')' : '') : 'the Robinson GitHub MCP app'}</strong>${m.master.actAs.expired ? ' <small>(your master token ran out; add a new one)</small>' : m.master.actAs.rejected ? ' <small>(GitHub rejected your master token; add a new one)</small>' : ''}</p>` +
+          act('act_as_me', m.master.actAs.on ? 'Act as me: turn off' : 'Act as me: turn on', { value: m.master.actAs.on ? 'off' : 'on', plain: true, id: 'act-as-me' }) +
+          '<p><small>When on, GitHub records you as the one who made each change. Checks that only an app may post, and changes to branches with rules, still come from the app.</small></p>' +
+          `<p id="rule-override-state">Allow overriding branch rules: <strong>${m.master.actAs.ruleOverride ? 'on' : 'off'}</strong></p>` +
+          act('rule_override', m.master.actAs.ruleOverride ? 'Allow overriding branch rules: turn off' : 'Allow overriding branch rules: turn on', { value: m.master.actAs.ruleOverride ? 'off' : 'on', plain: true, id: 'rule-override' }) +
+          '<p><small>When on, your assistant can skip a branch\'s rules for one change at a time, only when it asks to, shows you which rules, and you confirm. GitHub still decides whether you may.</small></p>' : '') +
         act('master', 'Replace or remove it', { plain: true })
       : '<p>Unlocks what normal sign-in cannot: notifications, packages, gists, organization settings and more. It has the power of your whole GitHub login, so only add it if you want that.</p>' + act('master', 'Add my master token')) +
     '<h2>Extra places (uses your master token)</h2>' + (m.master.added

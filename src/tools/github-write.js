@@ -2,7 +2,16 @@
 // plain refusal that the write layer reports as `rejected`, and the owner/repo slug.
 import { githubFor } from '../github/client.js';
 
-export const octo = (ctx, owner, cred = 'I') => githubFor(ctx, { owner, cred });
+// GOD-6: a change the person asked to send as themselves, skipping a branch's rules on purpose, uses the wrapper below: every
+// request it makes carries `robinsonAs: 'me'`, which the client honours only for a connection acting as the person.
+const asMe = (octokit) => ({
+  request: (route, params = {}) => octokit.request(route, { ...params, request: { ...params.request, robinsonAs: 'me' } }),
+  graphql: (query, variables = {}) => octokit.graphql(query, { ...variables, request: { robinsonAs: 'me' } })
+});
+export const octo = async (ctx, owner, cred = 'I') => {
+  const octokit = await githubFor(ctx, { owner, cred });
+  return ctx.forceMe === true ? asMe(octokit) : octokit;
+};
 export const slug = (owner, repo) => `${owner}/${repo}`;
 export const ownerOf = (args, ctx) => String(args.owner ?? ctx.connection.default_account);
 /** An error GitHub-style (status 4xx), so the write layer treats it as "definitely not done". */

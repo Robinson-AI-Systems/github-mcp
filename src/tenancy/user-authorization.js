@@ -305,10 +305,24 @@ export function createTenantScopedCredentials({ base, directory, tenant, db,
     },
     /** Nonsecret summary for github_whoami. Never the token. */
     async masterStatus(){
+      // GOD-6: also the person's numeric GitHub id (`subject`, the key of every per-person setting) and the saved login.
+      // An expired token says so (`expired`), so the connection can fall back to the app with a reason.
       try{
         const m=await currentMaster();
-        return {enrolled:true,scopes:m.scopes,expires_at:m.expiresAt};
-      }catch{ return {enrolled:false}; }
+        const subject=await directory.getPilotVerifiedSubject(tenant.tenantId,tenant.identityId);
+        const login=await db.getSetting('master_login.'+subject).catch(()=>null);
+        return {enrolled:true,scopes:m.scopes,expires_at:m.expiresAt,subject,login:typeof login==='string'&&login?login:null};
+      }catch{
+        try{
+          const subject=await directory.getPilotVerifiedSubject(tenant.tenantId,tenant.identityId);
+          const row=await directory.getPilotOptionalCredential({tenantId:tenant.tenantId,
+            identityId:tenant.identityId,accountLogin:MASTER_HANDLE,kind:'M'});
+          const at=row?.expires_at?new Date(row.expires_at):null;
+          if(row&&at&&Number.isFinite(at.getTime())&&at.getTime()<=now()&&typeof subject==='string'&&String(row.actor_id)===subject)
+            return {enrolled:false,expired:true,expires_at:at.toISOString(),subject};
+        }catch{ /* not expired, just absent */ }
+        return {enrolled:false};
+      }
     },
     async token(args={}) {
       const cred=args.cred??'I';

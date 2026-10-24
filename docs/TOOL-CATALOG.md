@@ -37,7 +37,7 @@ Card(s): A-5, B-2, B-3, B-8, C-1, C-2, R-1, O-1, X-1. Meta-tools, connection and
 
 | Tool | What it does | Safety | Origin | Cred | Audience | Profile | Card |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| `github_whoami` | Which GitHub accounts this connection can use, mode (PREVIEW/PRODUCTION), profile, credential types present, API version, rate budget left, spend limit; for public sign-ins also the My connection page link | — | N | I | B,O,Op | R | A-5 built #13 |
+| `github_whoami` | Which GitHub accounts this connection can use, mode (PREVIEW/PRODUCTION), profile, credential types present, API version, rate budget left, who calls act as (`acting_as`: you or the app), spend limit; for public sign-ins also the My connection page link | — | N | I | B,O,Op | R | A-5 built #13 |
 | `github_master_token_link` | Private one-use link (10 minutes) to add or remove your optional master token, with plain steps; no reconnecting | — | N | — | B,O,Op | R | PUB-6 built |
 | `github_credential_revoke` | Private one-use link (10 minutes) to cancel leaked GitHub tokens on a protected page; takes no token and returns none | — | N | — | B,O,Op | R | GOD-4 |
 | `github_list_accounts` | Accounts (orgs and users) connected to the server: app installation, repo selection, user authorization, optional classic token, production on/off | — | N | I | O | R | A-5 built #13 |
@@ -145,7 +145,7 @@ Card(s): E-1, E-2.
 | `github_pr_close` | Close without merging (head branch kept) | C | C | I | B | E | E-1 (built #40) |
 | `github_pr_update_branch` | Bring the PR branch up to date with its base (expected head SHA checked) | P | C | I | B | E | E-1 (built #40) |
 | `github_pr_merge` | Merge at an exact head SHA; refuses unless every required check is green at that SHA; production base needs a production connection | C·Prod* | F | I | B | E | E-2 (built #46) |
-| `github_pr_merge_async` | Same as `github_pr_merge` using GitHub's asynchronous merge (returns merged / failed / pending); `bypass_rules` is always refused | C·Prod* | N | I | B | E | E-2 (built #46) |
+| `github_pr_merge_async` | Same as `github_pr_merge` using GitHub's asynchronous merge (returns merged / failed / pending); `bypass_rules` only with GOD-6's `overrideRules` (reason, preview, confirm, as you) | C·Prod* | N | I | B | E | E-2 (built #46) |
 | `github_pr_set_auto_merge` | Turn auto-merge on (merges when GitHub's rules pass) or off (GraphQL) | C·Prod* | N | I | B | E | E-2 (built #46) |
 | `github_pr_list_stacks` | Pull request stacks in a repo, or one stack with its PRs in order | — | N | I | B | R | E-2 built #48 |
 | `github_pr_stack_manage` | Create a stack, add PRs to it, or unstack PRs | P | N | I | B | E | E-2 built #48 |
@@ -661,7 +661,7 @@ How `github_api_write` and `github_graphql_write` stay safe (`docs/designs/BATCH
   B-2/B-4. **An unlisted operation that creates, deletes, transfers, invites, enables, assigns seats or changes
   settings is treated as production + access-widening until classified** — the safe default.
 - **Hand-built tools win**: if a hand-built tool covers the operation, the universal tool refuses and names it.
-- **Never** `bypass_rules`, never a secret value in a request (secret endpoints are refused; use `github_secret_set`), never
+- **Never** `bypass_rules` (except GOD-6's deliberate `overrideRules` on the merge and file-write tools), never a secret value in a request (secret endpoints are refused; use `github_secret_set`), never
   a raw credential in a result.
 - **What the universal tools cannot do (Y-1, stated plainly).** They act only on accounts this connection owns (a
   person or organization that is not enrolled is refused; following, starring and reading other accounts are Y-3).

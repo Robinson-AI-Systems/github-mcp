@@ -65,7 +65,7 @@ export async function enrollMasterCredential({
       pilotRevision:tenant.pilotRevision,accessEnc,operation:'GET /user',resource:'user/'+subject,
       scopes,expiresAt,expectedFingerprint});
     if(!stored) throw denied();
-    return Object.freeze({status:'read-observed-at-enrollment',kind:'M',scopes,expiresAt:expiresAt?expiresAt.toISOString():null});
+    return Object.freeze({status:'read-observed-at-enrollment',kind:'M',scopes,expiresAt:expiresAt?expiresAt.toISOString():null,login:typeof who.login==='string'?who.login:null});
   }catch{ throw denied(); }
 }
 

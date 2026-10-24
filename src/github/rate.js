@@ -67,7 +67,9 @@ export async function assertNotBlocked(db, account, resource) {
 }
 
 export function rateLimited(account, resource, until) {
+  // GOD-6: a request made as the person is counted against the person's own GitHub allowance, kept under the key "~me:<id>".
+  const who = String(account).startsWith('~me:') ? 'your own GitHub login' : account;
   return new GithubClientError('rate_limited',
-    `GitHub asked us to slow down for ${account} (${resource} limit). Try again after ${formatDenver(until)}.`,
+    `GitHub asked us to slow down for ${who} (${resource} limit). Try again after ${formatDenver(until)}.`,
     { reason: 'github_limit', resource, reset_at: until.toISOString(), reset_display: formatDenver(until) });
 }

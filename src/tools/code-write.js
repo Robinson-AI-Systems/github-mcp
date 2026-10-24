@@ -8,6 +8,7 @@ import { OUTSIDE_PROJECT } from './protect-guard.js';
 import { missing, octo, ownerOf, refusal, slug } from './github-write.js';
 import { notifyOutsiders } from './people-guard.js';
 import { productionReason } from './production-guard.js';
+import { overridable } from './rule-override.js';
 
 const OWNER = { type: 'string', maxLength: 39, description: 'GitHub account (default: the connection\'s default account)' };
 const REPO = { type: 'string', minLength: 1, maxLength: 100 };
@@ -39,7 +40,7 @@ const changedSince = (args, before, path) => {
 const FILE_PROPS = { owner: OWNER, repo: REPO, branch: BRANCH, path: { type: 'string', minLength: 1, maxLength: 1000, description: 'File path inside the repository' }, message: MESSAGE,
   expectedSha: { type: 'string', minLength: 7, maxLength: 40, description: 'The file version shown in the preview; the change is refused if the file has changed since' }, ...OUTSIDE_PROJECT };
 
-const contentPutFile = defineGithubWrite({
+const contentPutFile = defineGithubWrite(overridable({
   name: 'github_content_put_file', area: 'content', audience: ['B'],
   description: 'Create or update one file with a commit on a named branch; refused if the file changed since your preview.',
   properties: { ...FILE_PROPS, content: { type: 'string', maxLength: MAX_FILE_CHARS, description: 'The new text of the file' } },
@@ -67,9 +68,9 @@ const contentPutFile = defineGithubWrite({
     return previous !== null && previous.length <= MAX_INVERSE_CHARS ? { tool: 'github_content_put_file', args: { owner: target.owner, repo: target.repo, branch: args.branch, path, message: `Undo: restore ${path}`, content: previous } } : null;
   },
   present: ({ after }) => ({ path: after?.path, sha: after?.sha, size: after?.size })
-});
+}, { branchOf: (args) => args.branch }));
 
-const contentDeleteFile = defineGithubWrite({
+const contentDeleteFile = defineGithubWrite(overridable({
   name: 'github_content_delete_file', area: 'content', audience: ['B'],
   description: 'Delete one file with a commit on a named branch; refused if the file changed since your preview.',
   properties: FILE_PROPS,
@@ -92,7 +93,7 @@ const contentDeleteFile = defineGithubWrite({
     return previous !== null && previous.length <= MAX_INVERSE_CHARS ? { tool: 'github_content_put_file', args: { owner: target.owner, repo: target.repo, branch: args.branch, path: cleanPath(args.path), message: `Undo: restore ${cleanPath(args.path)}`, content: previous } } : null;
   },
   present: () => ({ deleted: true })
-});
+}, { branchOf: (args) => args.branch }));
 
 // ---- several files in one commit ----
 const COMMIT = 'mutation($input: CreateCommitOnBranchInput!) { createCommitOnBranch(input: $input) { commit { oid url } } }';
@@ -116,7 +117,7 @@ function checkFiles(files) {
 
 const headOf = (ctx, target, branch) => missing(async () => (await (await octo(ctx, target.owner)).request('GET /repos/{owner}/{repo}/branches/{branch}', { owner: target.owner, repo: target.repo, branch })).data.commit.sha);
 
-const contentPushFiles = defineGithubWrite({
+const contentPushFiles = defineGithubWrite(overridable({
   name: 'github_content_push_files', area: 'content', audience: ['B'],
   description: 'Commit several file changes at once on a named branch, signed by GitHub; refused if the branch moved since your preview.',
   properties: { owner: OWNER, repo: REPO, branch: BRANCH, message: MESSAGE, files: { type: 'array', items: FILE_ITEM, minItems: 1, maxItems: MAX_FILES },
@@ -147,7 +148,7 @@ const contentPushFiles = defineGithubWrite({
   readAfter: ({ args, ctx, target }) => headOf(ctx, target, args.branch),
   verify: ({ before, after, response }) => !!after && after !== before && after === response?.data?.createCommitOnBranch?.commit?.oid,
   present: ({ response }) => ({ commit: response?.data?.createCommitOnBranch?.commit?.oid, url: response?.data?.createCommitOnBranch?.commit?.url })
-});
+}, { branchOf: (args) => args.branch }));
 
 // ---- comment on a commit ----
 const commitComment = defineGithubWrite({
@@ -176,7 +177,7 @@ const UPDATE_REFS = 'mutation($input: UpdateRefsInput!) { updateRefs(input: $inp
 const fullRef = (ref) => (String(ref).startsWith('refs/') ? String(ref) : `refs/${ref}`);
 const nameOf = (full) => full.replace(/^refs\/(heads|tags)\//, '');
 
-const gitUpdateRef = defineGithubWrite({
+const gitUpdateRef = defineGithubWrite(overridable({
   name: 'github_git_update_ref', area: 'git', audience: ['B'],
   description: 'Move a branch or tag to another commit, only if it still points where you saw it. Force moves need force: true.',
   properties: { owner: OWNER, repo: REPO, ref: { type: 'string', minLength: 1, maxLength: 250, description: 'heads/<branch> or tags/<tag>' }, sha: { type: 'string', minLength: 40, maxLength: 40, description: 'The commit to move it to' },
@@ -214,7 +215,7 @@ const gitUpdateRef = defineGithubWrite({
   verify: ({ args, after }) => after === args.sha,
   inverse: ({ args, before, target }) => ({ tool: 'github_git_update_ref', args: { owner: target.owner, repo: target.repo, ref: args.ref, sha: before.current, expectedSha: args.sha, force: true } }),
   present: ({ args, after }) => ({ ref: args.ref, now_at: after })
-});
+}, { branchOf: (_args, target) => (target.kind === 'tag' ? null : target.ref) }));
 
 const all = [contentPutFile, contentDeleteFile, contentPushFiles, commitComment, gitUpdateRef];
 export const tools = all.map((d) => d.tool);

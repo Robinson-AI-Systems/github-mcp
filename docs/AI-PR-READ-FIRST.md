@@ -35,7 +35,9 @@ honored. A blocking item that is not honored is fixed in the same PR, never defe
    No tool, argument, pass or profile can turn it on alone. (End users of the public sign-in, PUB-6: changes are on by default for accounts the signed-in person is verified to own or administer, confirmed by their Approve tap, with Read-only as the optional choice there and on My connection; see `docs/DECISIONS.md` 2026-10-23.)
 10. Merges happen only at an exact `expectedHeadSha` with every required check green at that SHA (`src/github/ci-state.js`);
     merge commits by default. `bypass_rules` is never sent by any tool, including `github_api_write` and
-    `github_graphql_write` (a test greps the fake-GitHub request log).
+    `github_graphql_write`, except GOD-6's deliberate override (`overrideRules` with a reason, previewed, confirmed, sent as the
+    person on GitHub's background merge; GitHub decides whether that person may). A test greps the fake-GitHub request log and
+    allows exactly that one request. Agents building this project never set `overrideRules` on Chris's real repositories.
 11. Read-modify-write settings (branch protection, rulesets, environments, Actions settings) send the full merged object
     and compare every key on read-back; nothing the caller did not name may change (audit G2/G3).
 

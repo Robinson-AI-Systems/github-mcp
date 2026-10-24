@@ -14,6 +14,7 @@ import { isToolVisible } from '../core/registry.js';
 import { passRefusal } from '../rtc/pass-scope.js';
 import { shapeResult, redact, containsCredential } from './util.js';
 import {optionalConsentChallenge,OptionalConsentRequired} from '../tenancy/optional-challenge.js';
+import { actingAsFor, createActorLog } from '../github/act-as.js';
 
 const fail = (text) => ({ isError: true, content: [{ type: 'text', text: redact(text) }] });
 const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -66,7 +67,11 @@ async function readReply({ tool, args, raw, connection, db, mode }) {
 }
 
 export function createDispatch({ env = process.env, now = Date.now, fetch = globalThis.fetch, credentials = null, gates = null, sleep = undefined } = {}) {
-  return async function dispatch({ registry, name, args, connection, db }) {
+  return async function dispatch({ registry, name, args, connection, db, actor = null, actAsCache = null }) {
+    // GOD-6: one log of "who acted" per top-level call; a workflow's nested calls share it, so its result covers them.
+    const topLevel = actor === null;
+    const actorLog = actor ?? createActorLog();
+    const cache = actAsCache ?? {};
     const tool = registry.tools.find((t) => t.name === name);
     const handler = tool && Object.hasOwn(registry.handlers, name) ? registry.handlers[name] : null;
     const isWrite = tool?.writes === true && tool.writeContract === 'defineWrite-v1';
@@ -84,8 +89,8 @@ export function createDispatch({ env = process.env, now = Date.now, fetch = glob
       const challenge=await optionalConsentChallenge({
         name,args:args??{},connection,credentials,env});
       if(challenge)return challenge;
-      const callTool = (innerName, innerArgs) => dispatch({ registry, name: innerName, args: innerArgs, connection, db });
-      result = await handler(args ?? {}, { connection, db, env, now, fetch, credentials, ...(sleep ? { sleep } : {}), ...(isWrite ? { gates } : {}), ...(tool.usesRegistry ? { registry, callTool } : {}) });
+      const callTool = (innerName, innerArgs) => dispatch({ registry, name: innerName, args: innerArgs, connection, db, actor: actorLog, actAsCache: cache });
+      result = await handler(args ?? {}, { connection, db, env, now, fetch, credentials, actor: actorLog, actAsCache: cache, ...(sleep ? { sleep } : {}), ...(isWrite ? { gates } : {}), ...(tool.usesRegistry ? { registry, callTool } : {}) });
     } catch (error) {
       if(error instanceof OptionalConsentRequired)return error.reply;
       const response=fail(error instanceof TypeError ? error.message : 'That tool could not complete right now. Nothing was changed.');
@@ -110,6 +115,11 @@ export function createDispatch({ env = process.env, now = Date.now, fetch = glob
     } else {
       shaped = await readReply({ tool, args, raw: result, connection, db, mode });
       if (shaped.isError) return shaped;
+    }
+    if (topLevel && !shaped.isError && isObject(shaped.structuredContent) && actorLog.summary()) {
+      const said = await actingAsFor({ connection, db, env, now, fetch, credentials, actAsCache: cache }, actorLog.summary());
+      const body = { ...shaped.structuredContent, ...said };
+      shaped = { ...shaped, structuredContent: body, content: [{ type: 'text', text: JSON.stringify(body) }] };
     }
     if (containsCredential(JSON.stringify(shaped))) return fail('The result was withheld because it looked like it contained a credential.');
     return shaped;

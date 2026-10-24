@@ -214,7 +214,7 @@ export function defineWrite(spec) {
       const rejected = classifyError(failure) === 'rejected';
       let text;
       try { text = explain(failure, { args, ctx, target: tgt }); } catch { text = 'The change was not completed.'; }
-      await ctx.db.finishChange(claim.id, { summary: `${rejected ? 'REJECTED' : 'UNCERTAIN'}: ${line}`, confirmed: false, releaseKey: rejected }).catch(() => {});
+      await ctx.db.finishChange(claim.id, { summary: `${rejected ? 'REJECTED' : 'UNCERTAIN'}: ${line}`, confirmed: false, releaseKey: rejected, actedAs: ctx.actor?.summary?.()?.as ?? null }).catch(() => {});
       return out({ done: false, status: rejected ? 'rejected' : 'uncertain', requestKey: key, error: text,
         ...(rejected ? {} : { warning: 'GitHub may or may not have applied this. Check the current state before trying again.' }) }, true);
     }
@@ -227,7 +227,7 @@ export function defineWrite(spec) {
     let inv = null;
     try { inv = confirmed ? inverse({ args, ctx, target: tgt, before, after, response }) : null; } catch { inv = null; }
     const githubRequestId = response?.headers?.['x-github-request-id'] ?? null;
-    await ctx.db.finishChange(claim.id, { summary: confirmed ? line : `UNCONFIRMED: ${line}`, after, confirmed, githubRequestId, inverse: inv }).catch(() => {});
+    await ctx.db.finishChange(claim.id, { summary: confirmed ? line : `UNCONFIRMED: ${line}`, after, confirmed, githubRequestId, inverse: inv, actedAs: ctx.actor?.summary?.()?.as ?? null }).catch(() => {});
     let shaped;
     try { shaped = present({ args, ctx, target: tgt, before, after, response }); } catch { shaped = null; }
     return out({ done: confirmed, status: confirmed ? 'applied' : 'unconfirmed', confirmed, requestKey: key, logged: { id: claim.id }, summary: line, ...(shaped !== null && shaped !== undefined ? { result: shaped } : {}),

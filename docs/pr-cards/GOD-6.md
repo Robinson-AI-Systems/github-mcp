@@ -347,11 +347,11 @@ app path).
 ## Done when
 - [ ] All unit cases (1–16, 14a–14e) and the browser case pass; `npm run check`, `npm run test:db`, `npm run test:shapes`,
       `npm run test:browser` green; `ci` and `release-policy` green at the exact head.
-- [ ] `node scripts/build-app-only-routes.mjs` output committed and its in-sync test passes.
+- [x] `node scripts/build-app-only-routes.mjs` output committed and its in-sync test passes (`tests/unit/god-6-app-only.test.js`).
 - [ ] Self-review records each `docs/AI-PR-READ-FIRST.md` constraint, in particular: no token in results or logs
       (`containsCredential` still runs), `M` never reaches read-only or pass connections, no write is repeated, branch
       rules cannot be skipped by the credential change.
-- [ ] Status note `docs/status/<date>-god-6.md` (plain English) including the "only Chris" consequence above.
+- [x] Status note `docs/status/2026-10-24-god-6.md` (plain English) including the "only Chris" consequence above.
 - [ ] After release, ACC-1 on the scratch account (production on there): one issue created and closed again acting as
       Chris, read back showing `user.login` = Chris; one check run on a scratch commit showing the bot; result in
       `docs/developer-evidence.json`.

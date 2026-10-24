@@ -11,7 +11,7 @@ import { DEFAULT_PROJECTS, validateProjectProfile, storedProject, containsRepo }
 function changeViewOf(r) {
   return structuredClone({ id: r.id, at: r.at, summary: r.summary, confirmed: r.confirmed, after: r.after ?? null, githubRequestId: r.githubRequestId ?? null,
     tool: r.tool, account: r.account, repo: r.repo, mode: r.mode, production: r.production, dryRun: r.dryRun, requestKey: r.requestKey,
-    notifies: r.notifies ?? [], spendCents: r.spendCents ?? null, inverse: r.inverse ?? null, before: r.before ?? null });
+    notifies: r.notifies ?? [], spendCents: r.spendCents ?? null, inverse: r.inverse ?? null, before: r.before ?? null, actedAs: r.actedAs ?? null });
 }
 
 const withoutOptionalProof=(r,kind)=>{
@@ -607,10 +607,10 @@ export function createFakeDb({ clock = Date.now } = {}) {
       changes.push(row);
       return { claimed: true, id: row.id };
     },
-    async finishChange(id, { summary, before, after, confirmed, githubRequestId = null, inverse = null, releaseKey = false }) {
+    async finishChange(id, { summary, before, after, confirmed, githubRequestId = null, inverse = null, releaseKey = false, actedAs = null }) {
       const row = changes.find((r) => r.id === id);
       if (!row) return false;
-      Object.assign(row, { summary, confirmed, githubRequestId, github_request_id: githubRequestId, after: after === undefined ? null : structuredClone(after), inverse: inverse ? structuredClone(inverse) : null });
+      Object.assign(row, { summary, actedAs: ['you', 'app', 'mixed'].includes(actedAs) ? actedAs : null, confirmed, githubRequestId, github_request_id: githubRequestId, after: after === undefined ? null : structuredClone(after), inverse: inverse ? structuredClone(inverse) : null });
       if (before !== undefined) row.before = structuredClone(before);
       if (releaseKey === true) row.requestKey = null;
       return true;

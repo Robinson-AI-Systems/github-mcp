@@ -294,6 +294,17 @@ describe('My connection', () => {
     expect(await b.page.textContent('#master-unlocks')).toContain('Gists');
     expect(await b.page.textContent('#master-unlocks')).toContain('unlocked');
     await fitsScreen(b.page);
+    // GOD-6: with a master token the page shows who GitHub will record, and the switch works
+    await b.page.waitForSelector('#act-as-me');
+    expect(await b.page.textContent('#act-as-state')).toContain('you');
+    await b.page.click('#act-as-me');
+    await b.page.waitForSelector('.notice');
+    await b.page.waitForSelector('#act-as-me');
+    expect(await b.page.textContent('#act-as-state')).toContain('Robinson GitHub MCP app');
+    await b.page.click('#act-as-me');
+    await b.page.waitForSelector('.notice');
+    expect(await b.page.textContent('#act-as-state')).toContain('you');
+    await fitsScreen(b.page);
     await b.page.click('[id^=disconnect-]');
     await b.page.waitForSelector('.notice');
     const gone = await world.call({ method: 'POST', path: '/api/mcp', headers: { authorization: 'Bearer ' + tokens.access_token,

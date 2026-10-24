@@ -144,11 +144,19 @@ export function createPrivateOptionalEnrollment({
     let status;
     if(action==='save'){
       if(isMaster){
-        await enrollMasterCredential({directory:scope.directory,tenant:scope.tenant,bearer:value,
+        const enrolled=await enrollMasterCredential({directory:scope.directory,tenant:scope.tenant,bearer:value,
           expectedFingerprint:flow.expectedFingerprint,env,fetchImpl});
         const savedMaster=await scope.directory.getPilotOptionalCredential({
           tenantId:flow.tenantId,identityId:flow.identityId,accountLogin:MASTER_HANDLE,kind:'M'});
         if(!currentMasterReadback({row:savedMaster,subject}))throw denied();
+        // GOD-6: remember who this token is (for "acted as <login>") and forget any earlier "GitHub rejected it" mark, so
+        // a new token puts the connection back on "act as me" without any other step. Bookkeeping never fails the save.
+        try{
+          if(typeof scope.db?.setSetting==='function'){
+            if(enrolled?.login)await scope.db.setSetting('master_login.'+subject,enrolled.login);
+            await scope.db.setSetting('master_rejected_at.'+subject,'');
+          }
+        }catch{ /* the token is saved; the next call reads the login from GitHub */ }
       }else{
         await enrollVerifiedPilotOptionalCredential({
           directory:scope.directory,db:scope.db,tenant:scope.tenant,

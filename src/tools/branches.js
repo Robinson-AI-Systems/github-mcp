@@ -10,6 +10,7 @@ import { missing, octo, ownerOf, refusal, slug } from './github-write.js';
 import { plain, readerFor } from './github-read.js';
 import { matchesAny, productionReason } from './production-guard.js';
 
+import { overridable } from './rule-override.js';
 const OWNER = { type: 'string', maxLength: 39, description: 'GitHub account (default: the connection\'s default account)' };
 const REPO = { type: 'string', minLength: 1, maxLength: 100 };
 const NAME = { type: 'string', minLength: 1, maxLength: 250 };
@@ -151,7 +152,7 @@ async function cleanupEvidence(args,ctx,target,sha){
   if(open.capped||open.items.length)throw refusal('Open PR inventory is incomplete or still uses the cleanup branch.');
 }
 
-const branchDelete = defineGithubWrite({
+const branchDelete = defineGithubWrite(overridable({
   name: 'github_branch_delete', area: 'branch', audience: ['B'],
   description: 'Delete a nondefault branch; protected branches require production approval.',
   properties: { owner: OWNER, repo: REPO, branch: NAME, expectedHeadSha: {type:'string',pattern:'^[a-f0-9]{40}$'}, cleanupPrNumber: {type:'integer',minimum:1}, ...OUTSIDE_PROJECT },
@@ -181,9 +182,9 @@ const branchDelete = defineGithubWrite({
   verify: ({ after }) => after === 'gone',
   inverse: ({ args, before, target }) => ({ tool: 'github_branch_create', args: { owner: target.owner, repo: target.repo, branch: args.branch, from: before.sha } }),
   present: ({ args }) => ({ deleted: args.branch })
-});
+}, { branchOf: (args) => args.branch }));
 
-const branchMerge = defineGithubWrite({
+const branchMerge = defineGithubWrite(overridable({
   name: 'github_branch_merge', area: 'branch', audience: ['B'],
   description: 'Merge one branch into another directly, without a pull request.',
   properties: { owner: OWNER, repo: REPO, base: { ...NAME, description: 'The branch that receives the merge' }, head: { ...NAME, description: 'The branch (or commit) to merge in' }, commit_message: { type: 'string', maxLength: 2000 }, ...OUTSIDE_PROJECT },
@@ -202,7 +203,7 @@ const branchMerge = defineGithubWrite({
   readAfter: async ({ args, ctx, target, response }) => ({ sha: await refSha(ctx, target.owner, target.repo, `heads/${args.base}`), merged: response?.status === 201 ? response.data?.sha : null, nothing: response?.status === 204 }),
   verify: ({ after }) => after.nothing || (after.merged !== null && after.sha === after.merged),
   present: ({ after }) => (after.nothing ? { result: 'nothing to merge: the base already contains the head' } : { merge_commit: after.merged })
-});
+}, { branchOf: (args) => args.base }));
 
 // ---- tags (always production) ----
 const tagCreate = defineGithubWrite({

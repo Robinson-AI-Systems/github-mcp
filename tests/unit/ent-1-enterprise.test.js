@@ -150,7 +150,7 @@ describe('ENT-1 reads (request shapes, master token on every call)', () => {
     w.gh.when('GET /enterprises/{enterprise}/actions/cache/storage-limit').reply(200, { max_cache_size_gb: 10 });
     w.gh.when('GET /enterprises/{enterprise}/actions/oidc/customization/properties/repo').reply(200, [{ custom_property_name: 'team', inclusion_source: 'enterprise' }]);
     const out = parse(await call(w, 'github_enterprise_actions_settings', { enterprise: SLUG }));
-    expect(out).toEqual({ cache_retention_days: 14, cache_storage_gb: 10, oidc_custom_properties: [{ name: 'team', source: 'enterprise' }] });
+    expect(out).toEqual({ acting_as: 'Robinson GitHub MCP app', cache_retention_days: 14, cache_storage_gb: 10, oidc_custom_properties: [{ name: 'team', source: 'enterprise' }] });
     expect(w.gh.invalid).toEqual([]);
   });
 });

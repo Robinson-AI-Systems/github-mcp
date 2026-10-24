@@ -5,8 +5,10 @@ import { Octokit } from '@octokit/core';
 import { paginateRest } from '@octokit/plugin-paginate-rest';
 import { retry } from '@octokit/plugin-retry';
 import { throttling } from '@octokit/plugin-throttling';
-import { GithubClientError } from './errors.js';
+import { GithubClientError, formatDenver } from './errors.js';
 import { assertNotBlocked, rateLimited, recordRate, resourceFor, takeWriteSlot } from './rate.js';
+import { actAsFor, forgetActAs, mustUseAppForBranch } from './act-as.js';
+import { isAppOnly } from './app-only.js';
 
 /** The GitHub REST API version sent on every request. Moving it is its own card (BATCH-A A7). */
 export const GITHUB_API_VERSION = '2026-03-10';
@@ -83,7 +85,7 @@ function resolveAccount(connection, owner) {
  *   `credentials.token({ account, cred, scope })` returns the token string (A-5 supplies it).
  * @param {{ owner?: string, cred?: 'I'|'U'|'K'|'P', scope?: object }} target the account to act as and the credential kind
  */
-export async function credentialFor(ctx, { owner, cred = 'I', scope } = {}) {
+export async function credentialFor(ctx, { owner, cred = 'I', scope, forceApp = false } = {}) {
   if (!CREDENTIAL_KINDS.includes(cred)) throw new TypeError(`Unknown credential kind "${cred}".`);
   // GOD-5: an "extra place" is an account the person added with their master token (no App installed there). Whatever the tool
   // asked for, the credential IS the master token, so every master-token refusal below applies to it unchanged.
@@ -108,11 +110,33 @@ export async function credentialFor(ctx, { owner, cred = 'I', scope } = {}) {
   const narrowed = passRepos ? { ...(scope ?? {}), repositories: asked.length ? asked : passRepos } : scope;
   if (cred === 'P' && (passRepos || narrowed?.permissions || narrowed?.repositories?.length))
     throw new GithubClientError('outside_scope', 'Package tokens cannot be narrowed to repository or permission-limited passes.');
-  const token = await ctx.credentials?.token({ account, cred, scope: narrowed, profile: ctx.connection?.profile });
-  if (typeof token !== 'string' || !token) {
-    throw new GithubClientError('no_credentials', extraPlace ? 'This extra place needs your master token.' : `No GitHub credential is set up for ${account}. Open the setup page to add one.`, { account });
+  const fetchBot = async () => {
+    const token = await ctx.credentials?.token({ account, cred, scope: narrowed, profile: ctx.connection?.profile });
+    if (typeof token !== 'string' || !token) {
+      throw new GithubClientError('no_credentials', extraPlace ? 'This extra place needs your master token.' : `No GitHub credential is set up for ${account}. Open the setup page to add one.`, { account });
+    }
+    return token;
+  };
+  // GOD-6 "Act as me": with a master token and the switch on, the person's own token makes the call and GitHub records the
+  // person. The app's token is then read only if a request really needs it (`botToken`). Never for extra places (already M),
+  // read-only connections, passes or narrowed scopes: `actAsFor` refuses those.
+  let personal = null; let note = null;
+  if (!extraPlace && !forceApp) {
+    const me = await actAsFor(ctx, { cred, scope });
+    if (me.on) {
+      try {
+        const mine = await ctx.credentials.token({ account, cred: 'M', profile: ctx.connection?.profile });
+        if (typeof mine === 'string' && mine) personal = { token: mine, subject: me.subject, login: me.login };
+        else note = 'your master token could not be read; using the app';
+      } catch { note = 'your master token could not be read; using the app'; }
+    } else if (me.reason && !me.quiet) note = me.reason;
   }
-  return { account, token, place: extraPlace };
+  if (personal) {
+    let bot = null;
+    return { account, token: null, place: null, personal, note, botToken: () => (bot ??= fetchBot()) };
+  }
+  const token = await fetchBot();
+  return { account, token, place: extraPlace, personal: null, note, botToken: async () => token };
 }
 
 /**
@@ -145,7 +169,7 @@ export function exactIntegers(value) {
 }
 
 export async function githubFor(ctx, { owner, cred = 'I', scope } = {}) {
-  const { account, token, place } = await credentialFor(ctx, { owner, cred: cred, scope });
+  const { account, token, place, personal, botToken, note: startNote } = await credentialFor(ctx, { owner, cred: cred, scope });
   if (place) cred = 'M';
   const now = ctx.now ?? Date.now;
   const deadline = now() + (ctx.budgetMs ?? DEFAULT_BUDGET_MS);
@@ -153,7 +177,9 @@ export async function githubFor(ctx, { owner, cred = 'I', scope } = {}) {
   const baseValue = ctx.retryAfterBaseValue ?? 1000;
 
   const octokit = new CompositeOctokit({
-    auth: token,
+    // With "act as me" there is no single token: every request names its own (below), so a request that only the app may
+    // make still gets the app's.
+    ...(personal ? {} : { auth: token }),
     userAgent: USER_AGENT,
     request: ctx.fetch ? { fetch: ctx.fetch } : {},
     throttle: {
@@ -172,44 +198,96 @@ export async function githubFor(ctx, { owner, cred = 'I', scope } = {}) {
     const method = String(rawMethod || 'GET').toUpperCase();
     const write = isWrite(method, { ...options, url });
     if (place) assertPlaceRequest(place, account, method, url, write);
-    // Classic package credentials never authorize arbitrary REST, GraphQL or foreign accounts.
-    // Validate the expanded URL BEFORE any request or rate/write side effect.
-    if ((cred==='K'||cred==='P'||cred==='M') &&
-        typeof ctx.credentials?.authorizeOptionalRequest==='function')
-      await ctx.credentials.authorizeOptionalRequest({account,kind:cred,method,url});
-    else if (cred === 'P') await assertPackageRequest(ctx, account, method, url);
-    const resource = resourceFor(method, url);
-    options.headers = { ...options.headers, 'x-github-api-version': GITHUB_API_VERSION };
-    await assertNotBlocked(ctx.db, account, resource);
-    if (write) {
-      options.request = { ...options.request, retries: 0 }; // a write is never replayed after an error (A8)
-      await takeWriteSlot(ctx.db, `${account}:${cred}`, { sleep: ctx.sleep });
-    }
+    const forced = options.request?.robinsonAs; // 'app' | 'me': set only by this module and the deliberate rule override
+    const query = options.query ?? options.body?.query;
     const parsedUrl = new URL(url, 'https://api.github.com');
-    const urlKey = !write && options.request?.etag ? parsedUrl.pathname + parsedUrl.search : null;
-    let cached = null;
-    if (urlKey) {
-      cached = await ctx.db.getEtag(account, urlKey);
-      if (cached) options.headers = { ...options.headers, 'if-none-match': cached.etag };
-    }
-    let response;
-    try {
-      response = await request(options);
-    } catch (error) {
-      if (error?.status === 304 && cached) {
-        return { status: 200, url, headers: error.response?.headers ?? {}, data: cached.body, notModified: true };
+    const resource = resourceFor(method, url);
+    // Reads made to decide which credential to use (branch rules, the pull request's base branch).
+    const readWith = (as) => (route, params) => octokit.request(route, { ...params, request: { robinsonAs: as } });
+
+    // ---- Which credential makes THIS request? (GOD-6) ----
+    let asMe = false; let note = startNote;
+    if (personal) {
+      if (forced === 'me') asMe = true;
+      else if (forced !== 'app' && !isAppOnly(method, url, query)) {
+        const need = write ? await mustUseAppForBranch({ method, pathname: parsedUrl.pathname, options, query, owner: account, repo: parsedUrl.pathname.split('/')[3], read: readWith('app') }) : null;
+        if (need) note = need.note; else asMe = true;
       }
-      throw await asRateLimited(ctx, account, resource, error);
+      if (asMe && forced !== 'me') {
+        const state = await ctx.db.getRateState(`~me:${personal.subject}`, resource).catch(() => null);
+        if (state?.blocked_until) { asMe = false; note = `your own GitHub allowance is used up until ${formatDenver(new Date(state.blocked_until))}`; }
+      }
+    } else if (forced === 'me' && !place && cred !== 'M') {
+      throw new GithubClientError('no_credentials', 'Only your own GitHub login can skip branch rules; add your master token and turn Act as me on.', { account });
+    } else if (place && write && forced !== 'me' && forced !== 'app') {
+      // An extra place has no app. A change to a branch that has rules is not made by an admin's token on its own: the person
+      // must ask to override on purpose. (Tags, releases and similar keep working exactly as in GOD-5.)
+      const need = await mustUseAppForBranch({ method, pathname: parsedUrl.pathname, options, query, owner: account, repo: parsedUrl.pathname.split('/')[3], read: readWith('me') });
+      if (need && !need.always) throw new GithubClientError('outside_scope', `Branch rules apply to ${need.branch ?? 'this branch'}, and only the app may write there, but the app is not installed on ${account}. Ask to override the rules on purpose if you are allowed to.`, { account });
     }
-    // Octokit returns integers beyond 2^53 as BigInt (webhook delivery IDs are now that large). A BigInt cannot be saved to the
-    // change journal or sent as JSON, so every one becomes its exact decimal text here, before anything else sees it.
-    response.data = exactIntegers(response.data);
+
+    const attempt = async (useMe, why) => {
+      const actual = useMe ? 'M' : cred;
+      const rateKey = personal && useMe ? `~me:${personal.subject}` : account;
+      // Classic package credentials never authorize arbitrary REST, GraphQL or foreign accounts.
+      // Validate the expanded URL BEFORE any request or rate/write side effect.
+      if ((actual === 'K' || actual === 'P' || actual === 'M') && typeof ctx.credentials?.authorizeOptionalRequest === 'function')
+        await ctx.credentials.authorizeOptionalRequest({ account, kind: actual, method, url });
+      else if (actual === 'P') await assertPackageRequest(ctx, account, method, url);
+      // The wrapped `request` is already bound to `options`, so the object itself must be changed (a copy would be ignored).
+      const sent = options;
+      sent.headers = { ...sent.headers, 'x-github-api-version': GITHUB_API_VERSION };
+      delete sent.headers['if-none-match']; // an earlier attempt's cache validator belongs to that credential only
+      if (personal) sent.headers.authorization = `token ${useMe ? personal.token : await botToken()}`;
+      await assertNotBlocked(ctx.db, rateKey, resource);
+      if (write) {
+        sent.request = { ...sent.request, retries: 0 }; // a write is never replayed after an error (A8)
+        await takeWriteSlot(ctx.db, `${account}:${actual}`, { sleep: ctx.sleep });
+      }
+      const urlKey = !write && sent.request?.etag ? parsedUrl.pathname + parsedUrl.search : null;
+      let cached = null;
+      if (urlKey) {
+        cached = await ctx.db.getEtag(rateKey, urlKey);
+        if (cached) sent.headers = { ...sent.headers, 'if-none-match': cached.etag };
+      }
+      const noteActor = () => ctx.actor?.record?.({ as: useMe ? 'you' : 'app', note: why ?? null, viaUser: !useMe && cred === 'U' });
+      let response;
+      try {
+        response = await request(sent);
+      } catch (error) {
+        if (error?.status === 304 && cached) { noteActor(); return { status: 200, url, headers: error.response?.headers ?? {}, data: cached.body, notModified: true }; }
+        if (write) noteActor(); // a change may have been sent: it is on the record as made by this credential
+        throw await asRateLimited(ctx, rateKey, resource, error);
+      }
+      // Octokit returns integers beyond 2^53 as BigInt (webhook delivery IDs are now that large). A BigInt cannot be saved to the
+      // change journal or sent as JSON, so every one becomes its exact decimal text here, before anything else sees it.
+      response.data = exactIntegers(response.data);
+      noteActor();
+      try {
+        await recordRate(ctx.db, rateKey, response.headers, { status: response.status, fallbackResource: resource, now });
+        const etag = response.headers?.etag;
+        if (urlKey && etag) await ctx.db.putEtag(rateKey, urlKey, etag, response.data);
+      } catch { /* bookkeeping must never turn a completed GitHub call into a failure */ }
+      return response;
+    };
+
     try {
-      await recordRate(ctx.db, account, response.headers, { status: response.status, fallbackResource: resource, now });
-      const etag = response.headers?.etag;
-      if (urlKey && etag) await ctx.db.putEtag(account, urlKey, etag, response.data);
-    } catch { /* bookkeeping must never turn a completed GitHub call into a failure */ }
-    return response;
+      return await attempt(asMe, note);
+    } catch (error) {
+      if (!(asMe && personal && forced !== 'me' && Number.isInteger(error?.status))) throw error;
+      const status = error.status;
+      if (status === 401) {
+        // GitHub no longer accepts the token. Remember it (so the next call goes straight to the app, with no loop), and never
+        // repeat a change: a read is answered once by the app; a write says nothing was changed.
+        try { await ctx.db.setSetting(`master_rejected_at.${personal.subject}`, new Date(now()).toISOString()); forgetActAs(ctx); } catch { /* the next 401 saves it again */ }
+        if (!write) return await attempt(false, 'GitHub rejected your master token; this answer came from the app');
+        throw new GithubClientError('no_credentials', 'GitHub rejected your master token, so nothing was changed. Calls now use the app. Run it again, or add a new master token on My connection.', { account });
+      }
+      if (!write && (status === 403 || status === 404)) return await attempt(false, 'your master token could not read this; the app did');
+      if (write && status === 403 && error.response?.headers?.['x-github-sso'])
+        throw Object.assign(new Error('Authorize your master token for SSO on GitHub, or turn Act as me off.'), { status: 403, safeMessage: true });
+      throw error;
+    }
   });
   return octokit;
 }

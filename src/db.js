@@ -127,7 +127,7 @@ export function normalizeChange(c = {}) {
 export function changeView(row) {
   return { id: Number(row.id), at: row.at, summary: row.summary, confirmed: row.confirmed, after: row.after ?? null, githubRequestId: row.github_request_id ?? null,
     ...(row.tool ? { tool: row.tool, account: row.account, repo: row.repo, mode: row.mode, production: row.production, dryRun: row.dry_run, requestKey: row.request_key,
-      notifies: row.notifies ?? [], spendCents: row.spend_cents == null ? null : Number(row.spend_cents), inverse: row.inverse ?? null, before: row.before ?? null } : {}) };
+      notifies: row.notifies ?? [], spendCents: row.spend_cents == null ? null : Number(row.spend_cents), inverse: row.inverse ?? null, before: row.before ?? null, actedAs: row.acted_as ?? null } : {}) };
 }
 
 export function createDb(sql = productionSql()) {
@@ -327,6 +327,8 @@ export function createDb(sql = productionSql()) {
         inverse JSONB,
         undone_by BIGINT
       )`;
+      // GOD-6: who GitHub recorded as acting ('you' = the person's own token, 'app', 'mixed'); null before this existed.
+      await sql`ALTER TABLE change_log ADD COLUMN IF NOT EXISTS acted_as TEXT`;
       await sql`CREATE INDEX IF NOT EXISTS change_log_request_key ON change_log (request_key, at)`;
       // One real (non-preview) write per request key, enforced by the database so two instances cannot both claim it (B-1).
       await sql`CREATE UNIQUE INDEX IF NOT EXISTS change_log_request_once ON change_log (request_key) WHERE dry_run = FALSE AND request_key IS NOT NULL`;
@@ -1392,8 +1394,8 @@ export function createDb(sql = productionSql()) {
     },
 
     /** Completes a claimed row once GitHub answered and the read-back was compared. `releaseKey` frees the request key after a definitive rejection so a corrected retry is not mistaken for a replay. */
-    async finishChange(id, { summary, before, after, confirmed, githubRequestId = null, inverse = null, releaseKey = false }) {
-      const rows = await sql`UPDATE change_log SET summary = ${summary}, before = COALESCE(${before === undefined ? null : JSON.stringify(before)}::jsonb, before),
+    async finishChange(id, { summary, before, after, confirmed, githubRequestId = null, inverse = null, releaseKey = false, actedAs = null }) {
+      const rows = await sql`UPDATE change_log SET summary = ${summary}, acted_as = ${['you', 'app', 'mixed'].includes(actedAs) ? actedAs : null}, before = COALESCE(${before === undefined ? null : JSON.stringify(before)}::jsonb, before),
           after = ${after === undefined ? null : JSON.stringify(after)}::jsonb, confirmed = ${confirmed}, github_request_id = ${githubRequestId},
           inverse = ${inverse ? JSON.stringify(inverse) : null}::jsonb, request_key = CASE WHEN ${releaseKey === true} THEN NULL ELSE request_key END
         WHERE id = ${id} RETURNING id`;

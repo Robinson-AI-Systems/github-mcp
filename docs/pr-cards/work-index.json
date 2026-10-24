@@ -2090,7 +2090,7 @@
         "GOD-5"
       ],
       "card": "docs/pr-cards/GOD-6.md",
-      "status": "APPROVED",
+      "status": "IN_PROGRESS",
       "migration": "additive change_log column acted_as; per-person settings act_as_me, master_login, master_rejected_at",
       "budget": 0,
       "units": [

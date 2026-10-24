@@ -423,14 +423,25 @@ export function createPublicConnect({ env = process.env, fetchImpl = fetch, root
       .map((c) => ({ clientId: c.client_id, name: c.client_name ?? 'An app', readOnly: c.profile === 'read_only', canChange: c.profile !== 'read_only' && c.mode === 'production',
         accounts: c.accounts }));
     const master = await directory().getPilotOptionalCredential({ tenantId, identityId, accountLogin: MASTER_HANDLE, kind: 'M' }).catch(() => null);
+    // GOD-6: "Act as me" and "Allow overriding branch rules" are per person (their GitHub id), never per tenant.
+    let actAs = null;
+    if (master) {
+      const subject = await directory().getPilotVerifiedSubject(tenantId, identityId).catch(() => null);
+      if (/^[1-9][0-9]{0,18}$/.test(String(subject))) {
+        const read = (key) => db.getSetting(`${key}.${subject}`).catch(() => null);
+        const expired = master.expires_at && new Date(master.expires_at).getTime() <= Date.now();
+        actAs = { login: (await read('master_login')) || null, on: (await read('act_as_me')) !== 'off', ruleOverride: (await read('rule_override')) !== 'off',
+          rejected: !!(await read('master_rejected_at')), expired: !!expired };
+      }
+    }
     return { handle, signedInAs, accounts, places, connections, offers: offers ?? [], timeZone: (await db.getSetting(ZONE_SETTING)) ?? 'UTC',
-      master: master ? { added: true, expiresAt: master.expires_at ?? null, unlocks: masterUnlocks(master.scopes ?? []) } : { added: false, unlocks: [] }, notice };
+      master: master ? { added: true, expiresAt: master.expires_at ?? null, unlocks: masterUnlocks(master.scopes ?? []), actAs } : { added: false, unlocks: [] }, notice };
   }
   /** One action on My connection. Every action uses up the page's handle and returns a fresh page (or somewhere to go). */
   async function manageAction({ handle, action, value }) {
     active();
     if (!STATE.test(String(handle ?? '')) ||
-        !['refresh', 'read_only', 'allow_changes', 'time_zone', 'disconnect', 'add', 'master', 'add_place', 'place_changes', 'remove_place'].includes(action)) throw refused('r33');
+        !['refresh', 'read_only', 'allow_changes', 'time_zone', 'disconnect', 'add', 'master', 'add_place', 'place_changes', 'remove_place', 'act_as_me', 'rule_override'].includes(action)) throw refused('r33');
     const flow = await directory().consumePublicFlow(sha(handle), 'god');
     if (!flow || flow.purpose !== 'manage' || !flow.tenantId || !flow.identityId || !flow.accountLogin) throw refused('r34');
     const { db, dir, tenant } = await scopeOf(flow);
@@ -469,6 +480,15 @@ export function createPublicConnect({ env = process.env, fetchImpl = fetch, root
         codeChallenge: random(32), tier: 'standard', purpose: 'master', tenantId: flow.tenantId, identityId: flow.identityId,
         ttlSeconds: 600, maxOpen: limits.maxOpenFlows, maxOpenPerClient: limits.maxOpenPerBuiltIn })) throw busy();
       return { go: active() + '/api/tenant/optional?master_link=' + link };
+    }
+    if (action === 'act_as_me' || action === 'rule_override') {
+      if (!['on', 'off'].includes(String(value))) throw refused('r41');
+      const subject = await dir.getPilotVerifiedSubject(flow.tenantId, flow.identityId);
+      if (!/^[1-9][0-9]{0,18}$/.test(String(subject))) throw refused('r42');
+      await db.setSetting(`${action}.${subject}`, value);
+      return { manage: await view(action === 'act_as_me'
+        ? (value === 'on' ? 'Done. GitHub will record you as the one who makes each change.' : 'Done. GitHub will show the Robinson GitHub MCP app for each change.')
+        : (value === 'on' ? 'Done. Your assistant may ask to skip a branch\'s rules for one change, and you confirm each one.' : 'Done. Branch rules can no longer be skipped for you.')) };
     }
     if (action === 'add_place') return { manage: await view(await addPlace({ db, dir, tenant, value })) };
     if (action === 'place_changes') {

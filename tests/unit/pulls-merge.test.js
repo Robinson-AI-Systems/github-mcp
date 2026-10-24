@@ -161,11 +161,12 @@ describe('merging (E-2a)', () => {
   });
 });
 
-describe('rules are never bypassed', () => {
-  it('no source file sends the bypass option (only comments and refusals may name it)', () => {
+describe('rules are bypassed only on purpose (GOD-6)', () => {
+  it('exactly one source line sends the bypass option: the deliberate override merge in pulls-merge.js', () => {
     const hits = [];
     const walk = (dir) => { for (const name of readdirSync(dir)) { const path = `${dir}/${name}`; if (statSync(path).isDirectory()) walk(path); else if (path.endsWith('.js')) readFileSync(path, 'utf8').split('\n').forEach((line, i) => { if (/bypass_rules/.test(line) && !/^\s*(\/\/|\*|\/\*)/.test(line)) hits.push(`${path}:${i + 1}`); }); } };
     walk('src');
-    expect(hits).toEqual([]);
+    expect(hits).toHaveLength(1);
+    expect(hits[0]).toMatch(/^src\/tools\/pulls-merge\.js:\d+$/);
   });
 });
