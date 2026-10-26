@@ -8,7 +8,7 @@ const ROUTE = (t) => ({owner:t.owner,repo:t.repo});
 const SHA = /^[a-f0-9]{40}$/i;
 const eq=(a,b)=>String(a??'').toLowerCase()===String(b??'').toLowerCase();
 const deny=(why)=>{throw refusal(why);};
-async function inspect(args,ctx,target){
+async function inspect(args,ctx,target,requirePending=false){
   if(!SHA.test(String(args.expectedHeadSha??'')))deny('A reviewed exact 40-character PR head is required.');
   const gh=await octo(ctx,target.owner,'U'),p=ROUTE(target);
   const repository=await missing(async()=>(await gh.request('GET /repos/{owner}/{repo}',p)).data);
@@ -20,13 +20,14 @@ async function inspect(args,ctx,target){
       (pr.base?.repo?.full_name && !eq(pr.base.repo.full_name,slug(target.owner,target.repo))))
     deny('Pull request changed, closed, or is not from a public external fork.');
   const run=await missing(async()=>(await gh.request('GET /repos/{owner}/{repo}/actions/runs/{run_id}',{...p,run_id:args.runId})).data);
-  if(!run || run.id!==args.runId || run.event!=='pull_request' || run.status!=='completed' ||
-      run.conclusion!=='action_required' || !eq(run.head_sha,args.expectedHeadSha) ||
+  if(!run || run.id!==args.runId || run.event!=='pull_request' || !eq(run.head_sha,args.expectedHeadSha) ||
       (run.head_repository?.full_name && !eq(run.head_repository.full_name,pr.head.repo.full_name)) ||
       (run.repository?.full_name && !eq(run.repository.full_name,slug(target.owner,target.repo))) ||
       (run.actor?.login && pr.user?.login && !eq(run.actor.login,pr.user.login)) ||
       (Array.isArray(run.pull_requests)&&run.pull_requests.length>0&&!run.pull_requests.some(x=>x.number===args.prNumber)))
-    deny('Run is not approval-pending for this exact open fork PR head.');
+    deny('Run does not belong to this exact open fork PR head.');
+  if(requirePending && (run.status!=='completed' || run.conclusion!=='action_required'))
+    deny('Run already advanced or is no longer awaiting approval; no fresh approval may be sent.');
   if(!/^\.github\/workflows\/[^/]+\.(?:yml|yaml)$/.test(String(run.path??'')))
     deny('Run workflow file could not be verified.');
   if(!Number.isInteger(pr.changed_files)||pr.changed_files<0||pr.changed_files>99)
@@ -62,7 +63,7 @@ const def=defineGithubWrite({
     ' at exact head '+args.expectedHeadSha+', run '+args.runId+' ('+before.run.path+
     ') in '+slug(target.owner,target.repo)+'. Does not merge, bypass checks or deploy.',
   apply:async({args,ctx,target})=>{
-    await inspect(args,ctx,target); // fresh check after consent; no stale approval
+    await inspect(args,ctx,target,true); // require still-pending run at mutation time; journal replays remain possible
     return (await octo(ctx,target.owner,'U')).request('POST /repos/{owner}/{repo}/actions/runs/{run_id}/approve',
       {...ROUTE(target),run_id:args.runId});
   },

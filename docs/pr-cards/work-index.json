@@ -2185,6 +2185,21 @@
       "pr": [
         408
       ]
+    },
+    {
+      "id": "FORK-CI-1",
+      "title": "Owner-authorized first-time contributor PR workflow approval with exact-head review and cost guards",
+      "batch": "G",
+      "design": "docs/pr-cards/FORK-CI-1.md",
+      "dependencies": ["G-1"],
+      "card": "docs/pr-cards/FORK-CI-1.md",
+      "status": "IN_PROGRESS",
+      "migration": "none",
+      "budget": 0,
+      "units": ["FORK-CI-1"],
+      "readiness": "READY",
+      "ownerInputs": [],
+      "pr": [409]
     }
   ],
   "gatewayBoundary": {

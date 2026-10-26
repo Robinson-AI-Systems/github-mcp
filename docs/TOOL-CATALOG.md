@@ -222,7 +222,7 @@ Card(s): F-3.
 | `github_project_set_items` | Edit field values on up to 40 items of an organization project in one call; stops at the first failure and says what was done | C | N | I | Op | E | PAR-1 built |
 | `github_search_github` | Search code, issues, pull requests, commits, repositories or users with GitHub's search syntax (type chosen by argument); text from strangers and every commit message is marked `untrusted`; find organizations with type users and `type:org` in the query | — | C | I | B,Op | R | F-3 built #177 |
 
-## Actions: workflows, runs, jobs and logs (`github_actions_*`) — 12
+## Actions: workflows, runs, jobs and logs (`github_actions_*`) — 13
 
 Card(s): G-1.
 
@@ -236,7 +236,7 @@ Card(s): G-1.
 | `github_actions_get_job_log` | A job's log: failed steps first, tail lines, error lines; never a raw base64 dump | — | F | I | B,Op | R | G-1 built #39 |
 | `github_actions_get_run_logs_summary` | Download a run's log archive server-side and return failing steps, error lines and annotations | — | F | I | B,Op | R | G-1 built #39 |
 | `github_actions_rerun` | Re-run a whole run, only its failed jobs, or one job | P·Prod* | C | I | B,Op | E | G-1 built #41 |
-| `github_actions_approve_fork_run` | Approve one reviewed public fork PR CI run, without bypassing checks | C·Prod* | C | U | B,Op | F | FORK-CI-1 approved |
+| `github_actions_approve_fork_run` | Approve one reviewed public fork PR CI run, without bypassing checks | C·Prod* | N | U | B,Op | F | FORK-CI-1 |
 | `github_actions_cancel_run` | Cancel a run (force-cancel needs confirm) | P | C | I | B,Op | E | G-1 built #41 |
 | `github_actions_delete_run` | Delete a run, or only its logs | C·D | C | I | Op | F | G-1 built #41 |
 | `github_actions_list_pending_deployments` | Runs waiting for an environment approval | — | N | I | Op | R | G-1 built #39 |
@@ -853,7 +853,7 @@ Card(s): PAR-1. Code Quality findings come from GitHub's own analysis (not marke
 
 ## Totals
 
-**Totals:** 474 tools: 468 hand-built + 6 universal (`github_api_*`, `github_graphql_*`), plus guided settings for every
+**Totals:** 475 tools: 469 hand-built + 6 universal (`github_api_*`, `github_graphql_*`), plus guided settings for every
 dashboard-only owner setting. By profile (lowest profile that has the tool): read_only 158, everyday adds 83
 (everyday lists 240), full adds 113 (full lists 396). In compact mode (`docs/designs/BATCH-C.md`) an agent
 loads only about 25 tools up front (meta-tools, whoami, universal search, workflows) and reaches the rest through
@@ -870,7 +870,7 @@ loads only about 25 tools up front (meta-tools, whoami, universal search, workfl
 | Issues | 15 |
 | Labels and milestones | 7 |
 | Discussions, projects and search | 11 |
-| Actions: workflows, runs, jobs and logs | 12 |
+| Actions: workflows, runs, jobs and logs | 13 |
 | Checks, statuses, artifacts and caches | 10 |
 | Secrets and variables | 7 |
 | Environments and deployments | 10 |
@@ -904,7 +904,7 @@ loads only about 25 tools up front (meta-tools, whoami, universal search, workfl
 | GitHub Enterprise | 13 |
 | Master-token families: Copilot Spaces, Classroom, Marketplace and more | 17 |
 | Code quality and GitHub help | 4 |
-| **Total** | **474** |
+| **Total** | **475** |
 
 <!-- #108: experimental RTC HTTPS reader bridges only server/meta read tools using existing guarded dispatch; RTC 1 certification is not claimed. -->
 

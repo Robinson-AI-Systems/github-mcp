@@ -15,6 +15,23 @@ beforeAll(async () => {
 afterAll(async () => { await closeIsolatedSchema(); });
 beforeEach(async () => { await rawQuery('TRUNCATE oauth_clients, oauth_codes, oauth_tokens, login_attempts, gh_accounts'); });
 
+describe('FORK-CI-1 durable approval request claims in real PostgreSQL', () => {
+  it('allows one concurrent claim and replays a confirmed duplicate without a second provider operation', async () => {
+    const requestKey = 'rmcp_fork_ci_postgres_claim_20261026';
+    const change = { account: 'example-org', repo: 'hello', mode: 'preview', connection: 'owner-client',
+      tool: 'github_actions_approve_fork_run', target: 'example-org/hello run 9',
+      summary: 'Approve reviewed fork PR #23 run #9', requestKey };
+    const claims = await Promise.all(Array.from({ length: 8 }, () => db.claimChange(change)));
+    const winners = claims.filter((x) => x.claimed);
+    expect(winners).toHaveLength(1);
+    expect(claims.filter((x) => !x.claimed)).toHaveLength(7);
+    await db.finishChange(winners[0].id, { summary: change.summary, confirmed: true, after: { run_id: 9 } });
+    expect(await db.claimChange(change)).toMatchObject({ claimed: false, existing: { confirmed: true } });
+    const rows = await rawQuery('SELECT count(*)::int AS n FROM change_log WHERE request_key = $1', [requestKey]);
+    expect(rows[0].n).toBe(1);
+  });
+});
+
 runOAuthContract('isolated PostgreSQL', async () => ({
   ...db,
   async seedAccounts(list) {

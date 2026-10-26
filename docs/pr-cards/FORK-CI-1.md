@@ -10,6 +10,13 @@
 4. Keep current `ci` and `release-policy` required **green at exact PR head for merging**, and the scheduled `live` release as-is. Approval never runs production deployment and never waives GitHub's own permission/approval checks.
 5. Update the tool catalog, owner-facing guidance, status and decision note. Verify the existing catalog/PR-only inventory and no migration/credential handling is required. Run the full repo checks once on the finished branch and merge only after exact-head CI/review permits.
 
+## Drift check — 2026-10-26
+
+- The existing `pr-only` allow-list already permits rerun/dispatch/cancel but not a fork run approval; add just the new reviewed tool, not a generic allow-all.
+- The GitHub-pinned `actions/approve-workflow-run` endpoint accepts a GitHub App user token with Actions write, with 201 on provider acceptance. Its approval does **not** satisfy CI checks or skip reviews.
+- The write dispatcher currently performs provider `read` before journal replay, so a successful run can have advanced to `queued` when the same request arrives. Keep exact PR/run/head validation on read; require `action_required` again immediately before the POST, so a prior journal replay works but an unrelated already-approved run cannot be approved again.
+- `docs/TOOL-CATALOG.md` section and total counts, registry test, work index and index-validator acceptance list need a synchronized update.
+
 ## Delivery boundary
 
 This is a tool capability change, not approval of any particular untrusted fork run. The owner explicitly authorized approvals for #402 and #403; after a checked release, separately confirm the exact runs and act only where GitHub still presents them as approval-pending. No GitHub branch protection, repository access, Vercel release or spending setting may be weakened. No direct writes to main.
