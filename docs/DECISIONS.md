@@ -558,6 +558,10 @@ before a paid or unknown-price action, and a cap or pass limit a user chooses fo
 free users (calls per day, changes per hour) are about running cost to the service, not user spending, and stay as built;
 what free users get after monetization is undecided and is not a task. Nobody adds a default spend cap without a new owner decision.
 
+## 2026-10-26 — external contributor suggestions are maintainer-owned
+
+Owner authorized independent assessment and adoption of David2024patton's PRs, including writing corrections ourselves and closing incorporated or declined suggestions with courtesy. Original fork branches are not trusted automatically or responsible for repairs. CONTRIB-1 adopts #402 honest-preview wording, #403 Windows portability and LF handling, and #404 nosniff plus RFC 9116 security.txt. The proposed two-year HSTS includeSubDomains is NOT adopted without complete TLS host inventory. CI, merge and scheduled live release gates remain unchanged; security-sensitive #399, #400, #401 and #405 need separate behavior-first review and tested fixes.
+
 ## 2026-10-26 — reviewed public-fork workflow execution without bypassing CI
 
 The owner clarified that protected-resource guards prevent unintended changes and deployment costs, rather than permanently blocking explicit owner approval. FORK-CI-1 introduces a strictly bounded `pull_request` Actions run approval tied to an open public fork PR, exact head SHA and run, with delegated user credentials, confirmation, fresh provider recheck, durable replay and separate CI merge gates. This does not automatically merge a PR or deploy; `locked` protections and universal API restrictions remain unchanged. See `docs/pr-cards/FORK-CI-1.md`.
