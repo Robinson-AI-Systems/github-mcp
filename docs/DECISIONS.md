@@ -1,5 +1,8 @@
 ## 2026-10-23 — finish plan written (batch FIN), not built yet
 
+2026-10-26 OWNER DECISION: Safeguards prevent accidents and surprise deployment expense, not deliberate owner-authorized PR actions. A reviewed first-time fork run may start GitHub's existing checks with exact PR/head/run and owner confirmation; this never bypasses CI or merges. See docs/pr-cards/FORK-CI-1.md.
+
+
 Chris asked for every remaining piece to be designed and planned so a lesser model (Sol 5.6, light/medium effort) can
 implement it, without building it yet. Written: `docs/designs/FINISH-PLAN.md` plus READY cards GOD-2, GOD-3, ENT-1,
 ACC-1, GOD-4, GQL-1, GOD-5, HARD-1 and `docs/pr-cards/SOL-GUIDE.md`. Decisions inside the cards: personal-account tools

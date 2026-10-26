@@ -1,5 +1,8 @@
 # Owner guide — what you can ask for
 
+FORK-CI-1: To start checks on a reviewed public fork PR, the signed-in full-profile owner uses github_actions_approve_fork_run with exact PR number, run ID and reviewed head SHA and confirms it. This enables GitHub CI only; merging still requires green ci and release-policy. Cannot run until this change is merged and released.
+
+
 Plain-English things to say to Claude once each part is built. Each line names the batch that delivered it; all of these are built now (live acceptance varies per line; see STATUS). This file is updated as features ship. Anything that touches your real `main` branches, releases,
 settings, access or spending always shows you a preview and waits for your OK.
 

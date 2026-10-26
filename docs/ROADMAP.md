@@ -1,5 +1,8 @@
 # ROADMAP — ideas not being built now
 
+Approved 2026-10-26: FORK-CI-1 adds first-time contributor workflow approval inside the reviewed PR conveyor, without weakening owner protected-resource settings, GitHub checks or production release cadence.
+
+
 ## Owner-approved completion expansion (2026-10-18): PUBLIC-SCALE, NOT PUBLISHED
 
 The owner explicitly requires GitHub MCP to support **both mobile and desktop** and to be **architected and verified for potential permitted multi-user scale**, while **all plugins and public enrollment stay PRIVATE** until production readiness and a separate owner publication decision. This is a binding completion requirement, not permission to expose the existing global-admin single-owner setup to outside users. The indexed APPROVED (PUB-1..PUB-4) and publication-BLOCKED (PUB-5) security-first architecture and ordered PUB-1 through PUB-5 workstreams are in [PUBLIC-SCALE](designs/PUBLIC-SCALE.md). Before any implementation, write full PUB cards/acceptance into the work index and commit the prescribed plan, preserve all existing 57 original acceptance rows and developer $0/release policies. This cross-product expansion does not make original source-only tests or the new design a real-world acceptance pass. Neither the desktop direct plugin nor the Sites mobile candidate has passed dual-device acceptance.

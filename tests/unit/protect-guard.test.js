@@ -38,7 +38,7 @@ describe('the starting list (IN-08)', () => {
 describe('pr-only', () => {
   const server = repo('github-mcp');
   it('allows the pull-request routine away from production', () => {
-    for (const name of ['github_branch_create', 'github_content_put_file', 'github_pr_create', 'github_review_create', 'github_issue_comment', 'github_check_create_run', 'github_actions_rerun']) {
+    for (const name of ['github_branch_create', 'github_content_put_file', 'github_pr_create', 'github_review_create', 'github_issue_comment', 'github_check_create_run', 'github_actions_rerun', 'github_actions_approve_fork_run']) {
       expect(verdict(name, server)).toBeNull();
     }
   });

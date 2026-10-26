@@ -27,7 +27,7 @@ export const PR_ONLY_TOOLS = Object.freeze(new Set([
   'github_issue_create', 'github_issue_update', 'github_issue_lock', 'github_issue_comment', 'github_issue_edit_comment', 'github_issue_set_labels',
   'github_issue_set_assignees', 'github_issue_set_sub_issue', 'github_issue_set_dependency', 'github_issue_react', 'github_commit_comment',
   'github_label_save', 'github_label_delete', 'github_label_sync',
-  'github_actions_rerun', 'github_actions_dispatch', 'github_actions_cancel_run', 'github_check_create_run', 'github_check_update_run', 'github_status_create',
+  'github_actions_rerun', 'github_actions_dispatch', 'github_actions_cancel_run', 'github_actions_approve_fork_run', 'github_check_create_run', 'github_check_update_run', 'github_status_create',
   'github_workflow_open_pr', 'github_workflow_review_threads', 'github_workflow_rerun_failed_ci', 'github_workflow_cleanup_branches'
 ]));
 

@@ -236,6 +236,7 @@ Card(s): G-1.
 | `github_actions_get_job_log` | A job's log: failed steps first, tail lines, error lines; never a raw base64 dump | — | F | I | B,Op | R | G-1 built #39 |
 | `github_actions_get_run_logs_summary` | Download a run's log archive server-side and return failing steps, error lines and annotations | — | F | I | B,Op | R | G-1 built #39 |
 | `github_actions_rerun` | Re-run a whole run, only its failed jobs, or one job | P·Prod* | C | I | B,Op | E | G-1 built #41 |
+| `github_actions_approve_fork_run` | Approve one reviewed public fork PR CI run, without bypassing checks | C·Prod* | C | U | B,Op | F | FORK-CI-1 approved |
 | `github_actions_cancel_run` | Cancel a run (force-cancel needs confirm) | P | C | I | B,Op | E | G-1 built #41 |
 | `github_actions_delete_run` | Delete a run, or only its logs | C·D | C | I | Op | F | G-1 built #41 |
 | `github_actions_list_pending_deployments` | Runs waiting for an environment approval | — | N | I | Op | R | G-1 built #39 |
