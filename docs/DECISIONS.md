@@ -1,7 +1,8 @@
+## 2026-10-26 — licensing status and independent contribution decisions
+
+Owner asked for a clearly stated policy so outside contributors can continue submitting PRs without automatic adoption. The existing absence of an open-source license means default rights remain reserved. LICENSE documents that position, preserving third-party rights and granting no new software reuse license. CONTRIBUTING explains owner-controlled, tested review. A genuinely new open-source or commercial license would require a separate owner decision. GitHub Free for organizations cannot enforce protected branches/rulesets on a private repository; Team or higher would be needed to retain mandatory CI enforcement. Evaluation of private visibility does not approve switching it or changing collaborator access and Actions budgets.
+
 ## 2026-10-23 — finish plan written (batch FIN), not built yet
-
-2026-10-26 OWNER DECISION: Safeguards prevent accidents and surprise deployment expense, not deliberate owner-authorized PR actions. A reviewed first-time fork run may start GitHub's existing checks with exact PR/head/run and owner confirmation; this never bypasses CI or merges. See docs/pr-cards/FORK-CI-1.md.
-
 
 Chris asked for every remaining piece to be designed and planned so a lesser model (Sol 5.6, light/medium effort) can
 implement it, without building it yet. Written: `docs/designs/FINISH-PLAN.md` plus READY cards GOD-2, GOD-3, ENT-1,
@@ -556,3 +557,7 @@ refusal of a paid action on cost grounds for end users. Users still get the hone
 before a paid or unknown-price action, and a cap or pass limit a user chooses for themselves still works. Usage limits for
 free users (calls per day, changes per hour) are about running cost to the service, not user spending, and stay as built;
 what free users get after monetization is undecided and is not a task. Nobody adds a default spend cap without a new owner decision.
+
+## 2026-10-26 — reviewed public-fork workflow execution without bypassing CI
+
+The owner clarified that protected-resource guards prevent unintended changes and deployment costs, rather than permanently blocking explicit owner approval. FORK-CI-1 introduces a strictly bounded `pull_request` Actions run approval tied to an open public fork PR, exact head SHA and run, with delegated user credentials, confirmation, fresh provider recheck, durable replay and separate CI merge gates. This does not automatically merge a PR or deploy; `locked` protections and universal API restrictions remain unchanged. See `docs/pr-cards/FORK-CI-1.md`.

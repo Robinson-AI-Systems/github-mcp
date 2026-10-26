@@ -1,7 +1,6 @@
 # ROADMAP — ideas not being built now
 
-Approved 2026-10-26: FORK-CI-1 adds first-time contributor workflow approval inside the reviewed PR conveyor, without weakening owner protected-resource settings, GitHub checks or production release cadence.
-
+**Private-repository proposal (2026-10-26; decision pending):** GitHub Free organization with 2,000 included private Actions minutes/month; GitHub billed API reports 36,527 organization-wide Linux minutes so far in October while public, $0 actual charges and a $0 Actions overage-prevention budget. These org-wide figures cannot be attributed entirely to this repo and are not a new monthly forecast. IMPORTANT: GitHub Free for organizations only supports branch protections/rulesets on public repos; private required-check enforcement needs GitHub Team or higher. Before making `github-mcp` private, choose a plan that preserves enforced required checks, estimate its steady-state CI separately, arrange David2024patton's new private contributor access, and understand that his existing public fork remains public and detached. No privacy, spending or access change is in this PR.
 
 ## Owner-approved completion expansion (2026-10-18): PUBLIC-SCALE, NOT PUBLISHED
 
@@ -154,3 +153,5 @@ Extend the PUB-6 tenant-authenticated public connector with OAuth public-client 
 ## 2026-10-26 — PAR-2, Muse-reported missing parity (approved, PR in progress)
 
 The owner asked for dedicated readers for org issue types and issue fields and on-demand secret checks. The read endpoints exist already and are used by write tools; this adds discoverable bounded reads. The official GitHub MCP's `run_secret_scanning` is **remote-service only**, not in the public REST API. Our server-side file scanner covers selected already-hosted GitHub files with redacted, bounded common-token patterns. It cannot scan local/uncommitted edits, replace GitHub Secret Protection, provide GitHub's private detection coverage or create GitHub alerts; no new paid provider settings. See `docs/pr-cards/PAR-2.md` and `docs/status/2026-10-26-par-2.md`.
+
+**FORK-CI-1 (owner-approved 2026-10-26):** A dedicated checked operation for first-time public-fork `pull_request` Actions approval in the guarded PR conveyor. This only starts required checks; it does not bypass `ci` or `release-policy`, merge, or deploy. The implementation, acceptance and risk boundaries live in `docs/pr-cards/FORK-CI-1.md`.
