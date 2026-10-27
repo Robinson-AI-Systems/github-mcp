@@ -18,9 +18,15 @@ async function factsFor(ctx, subject) {
   const holder = ctx.actAsCache;
   if (holder?.facts?.subject === subject) return holder.facts;
   const read = async (key) => (typeof ctx.db?.getSetting === 'function' ? ctx.db.getSetting(key).catch(() => null) : null);
-  const rate = typeof ctx.db?.getRateState === 'function' ? await ctx.db.getRateState(`~me:${subject}`, 'core').catch(() => null) : null;
-  const facts = { subject, act: await read(`act_as_me.${subject}`), rejected: await read(`master_rejected_at.${subject}`),
-    override: await read(`rule_override.${subject}`), rate };
+  // Independent, read-only evidence may overlap. None of these selects grants
+  // extra authority; a fresh provider request still enforces actual credentials.
+  const [rate, act, rejected, override] = await Promise.all([
+    typeof ctx.db?.getRateState === 'function' ? ctx.db.getRateState(`~me:${subject}`, 'core').catch(() => null) : null,
+    read(`act_as_me.${subject}`),
+    read(`master_rejected_at.${subject}`),
+    read(`rule_override.${subject}`)
+  ]);
+  const facts = { subject, act, rejected, override, rate };
   if (holder) holder.facts = facts;
   return facts;
 }
@@ -32,10 +38,14 @@ export function forgetActAs(ctx) { if (ctx?.actAsCache) ctx.actAsCache.facts = n
  * @returns {Promise<{ on: true, subject: string, login: string|null, scopes: string[] } | { on: false, reason: string|null }>}
  *   `reason` is shown to the person when the app is used although they added a master token; null when God mode is simply off.
  */
-export async function actAsFor(ctx, { cred = 'I', scope } = {}) {
+export async function actAsFor(ctx, { cred = 'I', scope, masterStatus = undefined } = {}) {
   if (cred !== 'I' && cred !== 'U') return off();
-  if (typeof ctx.credentials?.masterStatus !== 'function') return off();
-  const status = await ctx.credentials.masterStatus().catch(() => null);
+  if (masterStatus === undefined && typeof ctx.credentials?.masterStatus !== 'function') return off();
+  // A caller that just obtained masterStatus in this SAME tool invocation can
+  // reuse that evidence, never across requests or after token changes.
+  const status = masterStatus === undefined
+    ? await ctx.credentials.masterStatus().catch(() => null)
+    : masterStatus;
   if (status?.expired === true) return off(`your master token expired on ${dayOf(status.expires_at)}; add a new one on My connection`);
   if (status?.enrolled !== true || !status.subject) return off();
   if (ctx.connection?.profile === 'read_only') return off('read-only connections always use the app', true);
