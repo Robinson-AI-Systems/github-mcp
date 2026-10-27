@@ -66,7 +66,7 @@ Card(s): A-5, B-2, B-3, B-8, C-1, C-2, R-1, O-1, X-1. Meta-tools, connection and
 | `github_describe_tool` | Full instructions and arguments for one tool | — | N | — | B,O,Op | R | C-2 built #26 |
 | `github_call` | Run any tool in the profile by name, through the same guards | as the tool | N | — | B,O,Op | R | C-2 built #26 |
 | `github_batch` | Up to 10 read calls in one round trip | — | N | — | B,O,Op | R | C-2 built #26 |
-| `github_get_result` | Page through a big result kept on the server behind a handle | — | N | — | B,O,Op | R | C-1 built #25; RTC scoped single read #148 |
+| `github_get_result` | Page through kept results; explicit `byteOffset`/`byteLength` returns up to 32 KiB of original retained file bytes as base64 | — | N | — | B,O,Op | R | C-1 built #25; RTC scoped single read #148 |
 | `github_create_pass` | Make a short-lived preview pass for the HTTPS API and Robinson's Toolkit (read-only unless changes are allowed; $0; no access changes; shown once on the setup page) | C | N | — | O | F | R-1 built #225 |
 | `github_where_is_setting` | Structured steps (link, numbered actions, expected result, read-back check) for any GitHub setting with no API | — | N | — | O | R | B-8 built #24 |
 | `github_admin_overview` | Bounded owner/org security review, true optional user-selected MCP spend cap (legacy default $0 is uncapped), actual verified monthly GitHub billed usage or unreadable, enrolled U personal identity, explicit plan/permission gaps | — | N | I,U | O | R | O-1 built #197/#224; current provider-read correction |
