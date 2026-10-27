@@ -5,6 +5,7 @@ import { defineRead } from './define-read.js';
 import { globToRegExp } from './production-guard.js';
 import { githubDownloadPage, safeGithubDownloadRedirect } from './safe-download-link.js';
 import { plain, readerFor } from './github-read.js';
+import { containsCredential } from './util.js';
 
 const OWNER = { type: 'string', maxLength: 39, description: 'GitHub account (default: the connection\'s default account)' };
 const REPO = { type: 'string', minLength: 1, maxLength: 100 };
@@ -55,6 +56,10 @@ export const contentGet = defineRead({
     }
     const buffer = Buffer.from(data.content, 'base64');
     if (args.byteOffset !== undefined || args.byteLength !== undefined) {
+      // Check the entire decoded file before splitting/encoding: checking the
+      // requested window alone could leak a token split across two windows.
+      if (containsCredential(buffer.toString('utf8')))
+        throw new TypeError('Byte-exact retrieval is not available for a file containing credential-shaped content.');
       const at = args.byteOffset ?? 0;
       if (at > buffer.length) throw new TypeError('byteOffset exceeds the file size.');
       const chunk = buffer.subarray(at, at + (args.byteLength ?? 32768));
