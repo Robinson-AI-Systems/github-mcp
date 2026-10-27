@@ -183,6 +183,23 @@ async function getResult(args, ctx) {
   const owner = ctx.connection.client_id ?? ctx.connection.pass_id;
   const row = owner ? await ctx.db.getResult(args.handle, String(owner)) : null;
   if (!row) throw new RetainedResultNotFound();
+  // Byte windows are explicit, complete file retrieval. The retained content
+  // has already passed shaping and belongs only to this authenticated connection.
+  if (args.byteOffset !== undefined || args.byteLength !== undefined) {
+    if (args.page !== undefined || args.pageSize !== undefined || args.offset !== undefined || args.fields?.length)
+      throw new TypeError('A byte window cannot be combined with pages, character offset or fields.');
+    if (row.body?.type !== 'file' || typeof row.body.content !== 'string')
+      throw new TypeError('Byte windows are available for retained file content only.');
+    const original = Buffer.from(row.body.content, 'utf8');
+    const offset = args.byteOffset ?? 0;
+    if (offset > original.length) throw new TypeError('byteOffset exceeds the retained file size.');
+    const bytes = original.subarray(offset, offset + (args.byteLength ?? 32768));
+    return { handle: args.handle, path: row.body.path, sha: row.body.sha,
+      type: 'file', encoding: 'base64', content_base64: bytes.toString('base64'),
+      byte_offset: offset, byte_length: bytes.length, total_bytes: original.length,
+      next_byte_offset: offset + bytes.length, complete: offset + bytes.length === original.length,
+      expires: when(row.expires_at) };
+  }
   // A page that would not fit gets a smaller page size (halved until it does); page_info says which size was used, so paging stays consistent.
   const keep = { alsoKeep: ['untrusted', 'page_info'], twins: ['_local', '_display'] };
   const listName = listKeyOf(row.body) === '' ? 'items' : listKeyOf(row.body);
@@ -277,14 +294,16 @@ const readTools = [
   },
   {
     name: 'github_get_result',
-    area: 'server', audience: ['B', 'O', 'Op'], compact: true,
+    area: 'server', audience: ['B', 'O', 'Op'], compact: true, byteWindow: true,
     description: 'Read the rest of a big result kept behind a handle (res_…): a page at a time, only some fields, or more of a long text. Kept 24 hours.',
     inputSchema: {
       type: 'object',
       properties: {
         handle: { type: 'string', pattern: '^res_[A-Za-z0-9_-]{20,64}$', maxLength: 70 }, page: { type: 'integer', minimum: 1, maximum: 100000 },
         pageSize: { type: 'integer', minimum: 1, maximum: RULES.maxPageSize, description: `Default ${RULES.pageSize}` }, fields: FIELDS,
-        offset: { type: 'integer', minimum: 0, maximum: 100000000, description: 'Start long text this many characters in' }
+        offset: { type: 'integer', minimum: 0, maximum: 100000000, description: 'Start long text this many characters in' },
+        byteOffset: { type: 'integer', minimum: 0, description: 'Exact byte offset of retained file content (zero-based)' },
+        byteLength: { type: 'integer', minimum: 1, maximum: 32768, description: 'Exact bytes to read, up to 32768 (default 32768)' }
       },
       required: ['handle'],
       additionalProperties: false
