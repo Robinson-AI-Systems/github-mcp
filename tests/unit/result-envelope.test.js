@@ -49,6 +49,30 @@ describe('large tool-result dual-channel cost (#428)', () => {
       structuredContent: { text: 'a'.repeat(4000) } };
     expect(deduplicateLargeEnvelope(unmatched)).toBe(unmatched);
   });
+  it('keeps complete structured output for a delegated-write workflow', async () => {
+    const db = createFakeDb();
+    await db.initSchema();
+    const largeText = 'workflow-draft '.repeat(400);
+    const workflow = { tools: [{
+      name: 'github_test_delegated_write_workflow', description: 'Synthetic write-capable workflow.',
+      passthrough: true, usesRegistry: true, delegatedWrites: ['github_test_writer'],
+      annotations: { readOnlyHint: false },
+      inputSchema: { type: 'object', properties: {} }
+    }], handlers: {
+      github_test_delegated_write_workflow: async () =>
+        envelope({ status: 'preview', draft: largeText, appNeedsText: largeText })
+    } };
+    const registry = mergeNamespaces([workflow]);
+    const connection = { client_id: 'c', profile: 'full', mode: 'preview',
+      default_account: 'example-org', accounts: ['example-org'] };
+    const result = await createDispatch({})({
+      registry, name: 'github_test_delegated_write_workflow', args: {}, connection, db
+    });
+    expect(result.isError).not.toBe(true);
+    expect(result.structuredContent.draft).toBe(largeText);
+    expect(result.structuredContent.appNeedsText).toBe(largeText);
+    expect(result.structuredContent).not.toHaveProperty('full_payload_location');
+  });
   it('deduplicates only outer replies, retaining full structured values inside delegated calls', async () => {
     const db = createFakeDb();
     await db.initSchema();
