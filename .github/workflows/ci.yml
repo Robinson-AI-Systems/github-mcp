@@ -26,9 +26,19 @@ jobs:
           node-version: 24
       - run: npm ci
       # secret scan, docs check, index validation, catalog count, lint, write-safety, token budgets, core imports
-      - run: npm run check
+      - run: CI_TIMING_FILE=.ci-timing/phase.jsonl node scripts/ci-phase.mjs --budget-seconds 30 -- npm run check
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      - name: Verify complete browser spec coverage
+        run: node scripts/browser-shards.mjs --check
+      - name: Retain CI duration evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: ci-timing-check
+          path: .ci-timing/phase.jsonl
+          if-no-files-found: error
+          retention-days: 14
 
   unit:
     name: unit (${{ matrix.shard }}/3)
@@ -52,8 +62,15 @@ jobs:
       - if: steps.scope.outputs.code == 'true'
         run: npm ci
       - if: steps.scope.outputs.code == 'true'
-        run: node scripts/ci-phase.mjs --budget-seconds 180 -- npm test -- --shard=${{ matrix.shard }}/3
-
+        run: CI_PHASE_LABEL=unit-${{ matrix.shard }} CI_TIMING_FILE=.ci-timing/phase.jsonl node scripts/ci-phase.mjs --budget-seconds 30 -- npm test -- --shard=${{ matrix.shard }}/3
+      - name: Retain CI duration evidence
+        if: always() && steps.scope.outputs.code == 'true'
+        uses: actions/upload-artifact@v6
+        with:
+          name: ci-timing-unit-${{ matrix.shard }}
+          path: .ci-timing/phase.jsonl
+          if-no-files-found: error
+          retention-days: 14
   db:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -86,10 +103,17 @@ jobs:
       - if: steps.scope.outputs.code == 'true'
         run: npm ci
       - if: steps.scope.outputs.code == 'true'
-        run: node scripts/ci-phase.mjs --budget-seconds 180 -- npm run test:db
+        run: CI_TIMING_FILE=.ci-timing/phase.jsonl node scripts/ci-phase.mjs --budget-seconds 30 -- npm run test:db
         env:
           TEST_DATABASE_URL: postgresql://postgres:ci-only-not-a-secret@127.0.0.1:5432/postgres
-
+      - name: Retain CI duration evidence
+        if: always() && steps.scope.outputs.code == 'true'
+        uses: actions/upload-artifact@v6
+        with:
+          name: ci-timing-db
+          path: .ci-timing/phase.jsonl
+          if-no-files-found: error
+          retention-days: 14
   shapes:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -107,8 +131,15 @@ jobs:
       - if: steps.scope.outputs.code == 'true'
         run: npm ci
       - if: steps.scope.outputs.code == 'true'
-        run: node scripts/ci-phase.mjs --budget-seconds 180 -- npm run test:shapes
-
+        run: CI_TIMING_FILE=.ci-timing/phase.jsonl node scripts/ci-phase.mjs --budget-seconds 30 -- npm run test:shapes
+      - name: Retain CI duration evidence
+        if: always() && steps.scope.outputs.code == 'true'
+        uses: actions/upload-artifact@v6
+        with:
+          name: ci-timing-shapes
+          path: .ci-timing/phase.jsonl
+          if-no-files-found: error
+          retention-days: 14
   rtc:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -128,9 +159,17 @@ jobs:
       # Upstream Hub RTC 1 runner pinned and executed against reference + our restricted HTTP adapter.
       # A deliberately non-certified manifest remains an explicit failed probe, never a pass.
       - if: steps.scope.outputs.code == 'true'
-        run: node scripts/ci-phase.mjs --budget-seconds 180 -- npm run test:rtc
-
+        run: CI_TIMING_FILE=.ci-timing/phase.jsonl node scripts/ci-phase.mjs --budget-seconds 30 -- npm run test:rtc
+      - name: Retain CI duration evidence
+        if: always() && steps.scope.outputs.code == 'true'
+        uses: actions/upload-artifact@v6
+        with:
+          name: ci-timing-rtc
+          path: .ci-timing/phase.jsonl
+          if-no-files-found: error
+          retention-days: 14
   browser:
+    name: browser (${{ matrix.shard }})
     # Real browsers (Chromium as an Android phone and desktop, WebKit as an iPhone) walk the whole sign-in and the
     # "My connection" page against the real server code, a fake GitHub and a fake app. No network service is contacted.
     runs-on: ubuntu-latest
@@ -140,7 +179,13 @@ jobs:
     container:
       image: mcr.microsoft.com/playwright:v1.64.1-noble
       options: --init --ipc=host
-    timeout-minutes: 10
+    # Three minutes is a hard runner safety cap. Thirty seconds is a soft
+    # execution target and passing overruns must not fail.
+    timeout-minutes: 3
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [sign-in, home-page, fair-use]
     services:
       postgres:
         image: postgres:17.11-bookworm
@@ -170,7 +215,7 @@ jobs:
       # Browser engines and OS dependencies are baked into the pinned Playwright
       # CI image; REQUIRE_ALL_BROWSERS still makes missing engines fail the job.
       - if: steps.scope.outputs.code == 'true'
-        run: node scripts/ci-phase.mjs --budget-seconds 180 -- npm run test:browser
+        run: CI_TIMING_FILE=.ci-timing/phase.jsonl node scripts/ci-phase.mjs --budget-seconds 30 -- node scripts/browser-shards.mjs ${{ matrix.shard }}
         env:
           # In a GitHub job container, the throwaway PostgreSQL service is
           # available on Docker's isolated "postgres" service hostname.
@@ -178,7 +223,15 @@ jobs:
           PGPASSWORD: ci-only-not-a-secret
           TEST_DATABASE_URL: postgresql://postgres@postgres:5432/postgres
           REQUIRE_ALL_BROWSERS: '1'
-
+          CI_PHASE_LABEL: browser-${{ matrix.shard }}
+      - name: Retain CI duration evidence
+        if: always() && steps.scope.outputs.code == 'true'
+        uses: actions/upload-artifact@v6
+        with:
+          name: ci-timing-browser-${{ matrix.shard }}
+          path: .ci-timing/phase.jsonl
+          if-no-files-found: error
+          retention-days: 14
   ci:
     if: always()
     needs: [check, unit, db, shapes, rtc, browser]

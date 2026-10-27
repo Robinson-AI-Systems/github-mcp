@@ -3,7 +3,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-export const policy = {"gate": "ci", "parallel": ["check", "unit", "db", "shapes", "rtc", "browser"], "matrices": {"unit": 2}, "maxTimeouts": {"check": 10, "unit": 10, "db": 10, "shapes": 10, "rtc": 10, "browser": 10, "ci": 5}, "timedJobs": ["unit", "db", "shapes", "rtc", "browser"]};
+export const policy = {"gate": "ci", "parallel": ["check", "unit", "db", "shapes", "rtc", "browser"], "matrices": {"unit": 2, "browser": 3}, "maxTimeouts": {"check": 10, "unit": 10, "db": 10, "shapes": 10, "rtc": 10, "browser": 3, "ci": 5}, "timedJobs": ["unit", "db", "shapes", "rtc", "browser"]};
 
 export function checkLayout(source, expected = policy) {
   const body = source.split(/^jobs:\s*$/m)[1];
@@ -30,9 +30,22 @@ export function checkLayout(source, expected = policy) {
     for (const dep of dependencies(block)) if (!jobs.has(dep)) throw Error('Unknown dependency: ' + dep);
   }
   for (const match of source.matchAll(/ci-phase\.mjs --budget-seconds (\d+)/g))
-    if (Number(match[1]) > 180) throw Error('CI feedback budget increased; profile/split instead.');
+    if (Number(match[1]) > 30) throw Error('CI feedback target increased beyond 30 seconds; profile/split instead.');
   for (const id of expected.timedJobs ?? [])
     if (!/ci-phase\.mjs --budget-seconds \d+ -- /.test(jobs.get(id) ?? '')) throw Error('Missing measured CI phase budget: ' + id);
+  if (!jobs.get('check')?.includes('name: ci-timing-check'))
+    throw Error('Missing mandatory check timing artifact.');
+    const browser = jobs.get('browser') ?? '';
+  if (!/shard:\s*\[sign-in, home-page, fair-use\]/.test(browser))
+    throw Error('Required browser shards missing; reconcile the exact file manifest.');
+  if (!browser.includes('scripts/browser-shards.mjs') ||
+      !jobs.get('check')?.includes('scripts/browser-shards.mjs --check'))
+    throw Error('Missing mandatory browser spec coverage check.');
+  for (const [id, block] of jobs) {
+    if (id === expected.gate) continue;
+    if (!block.includes('actions/upload-artifact@v6') || !block.includes('ci-timing-'))
+      throw Error('Missing durable CI timing artifact: ' + id);
+  }
   const gate = jobs.get(expected.gate);
   if (!gate || !/^    if:\s*always\(\)\s*$/m.test(gate)) throw Error('Required aggregate must run even after failure.');
   const required = [...jobs.keys()].filter(id => id !== expected.gate);

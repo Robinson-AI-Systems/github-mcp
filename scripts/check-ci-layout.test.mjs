@@ -20,11 +20,20 @@ test('timeout increases and removed aggregate result checks cannot hide slow/mis
  const missing=source().replaceAll('needs.'+id+'.result','needs.'+id+'.ignored');
  assert.throws(()=>checkLayout(missing),/inspect result/);
  assert.throws(()=>checkLayout(source().replaceAll('scripts/ci-phase.mjs','scripts/untimed.mjs')),/Missing measured/);
- assert.throws(()=>checkLayout(source().replaceAll('--budget-seconds 180','--budget-seconds 181')),/feedback budget increased/);
+ assert.throws(()=>checkLayout(source().replaceAll('--budget-seconds 30','--budget-seconds 31')),/feedback target increased/);
 });
 test('sharded cohorts cannot silently become one serial runner',()=>{
  for(const [id] of Object.entries(policy.matrices??{})){
   const changed=source().replace(new RegExp('(  '+id+':\\n[\\s\\S]*?strategy:\\n)'), '$1      max-parallel: 1\n');
   assert.throws(()=>checkLayout(changed),/collapse or serialize/);
  }
+});
+
+test('browser shard coverage, 3-minute watchdog and durable timing are required',()=>{
+ const src=source();
+ assert.match(src,/shard:\s*\[sign-in, home-page, fair-use\]/);
+ assert.throws(()=>checkLayout(src.replace('timeout-minutes: 3','timeout-minutes: 4')),/timeout/);
+ assert.throws(()=>checkLayout(src.replace('scripts/browser-shards.mjs --check','scripts/untested.mjs --check')),/coverage/);
+ assert.throws(()=>checkLayout(src.replace('ci-timing-check','missing-timing-check')),/timing artifact/);
+ assert.throws(()=>checkLayout(src.replace('shard: [sign-in, home-page, fair-use]','shard: [sign-in, fair-use]')),/browser/);
 });

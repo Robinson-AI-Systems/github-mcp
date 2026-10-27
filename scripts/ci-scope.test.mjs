@@ -24,7 +24,7 @@ test('every timed CI job has the scope step and gates its heavy steps on it', ()
     const block = jobs.find((b) => b.startsWith(id + ':'));
     assert.ok(block, id);
     assert.match(block, /id: scope/, id + ' has the scope step');
-    assert.match(block, /if: steps\.scope\.outputs\.code == 'true'\n\s+run: node scripts\/ci-phase\.mjs/, id + ' gates its test step');
+    assert.match(block, /if: steps\.scope\.outputs\.code == 'true'\n\s+run: [^\n]*node scripts\/ci-phase\.mjs/, id + ' gates its test step');
   }
   assert.doesNotMatch(ci.split(/^  check:\s*$/m)[1].split(/^  [a-z]+:\s*$/m)[0], /id: scope/, 'check always runs in full');
 });
