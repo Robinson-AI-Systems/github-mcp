@@ -32,6 +32,14 @@ describe('large tool-result dual-channel cost (#428)', () => {
     expect(packed.structuredContent).not.toHaveProperty('arguments');
     expect(full(packed)).toEqual(body);
   });
+  it('rebuilds a complete RTC value from the same single public JSON copy', () => {
+    const data = { name: 'github_pr_get', body: 'changed-file'.repeat(300), number: 12 };
+    const packed = deduplicateLargeEnvelope(envelope(data));
+    expect(completeDispatchResult(packed)).toEqual(data);
+    expect(completeDispatchResult(envelope({ status: 'ok' }))).toEqual({ status: 'ok' });
+    expect(() => completeDispatchResult({ structuredContent: packed.structuredContent,
+      content: [] })).toThrow(/Incomplete/);
+  });
   it('retains the small-result compatibility contract and never alters errors or unrelated text', () => {
     const small = envelope({ status: 'ok', count: 3 });
     expect(deduplicateLargeEnvelope(small)).toBe(small);
