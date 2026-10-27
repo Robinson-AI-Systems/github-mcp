@@ -101,6 +101,37 @@ describe('github_whoami', () => {
   });
 });
 
+
+describe('C-8 whoami independent-read scheduling',()=>{
+  it('overlaps two account-rate lookups with master authority evidence and performs no duplicate personal-rate read',async()=>{
+    const t=await build({mode:'production',profile:'full'});
+    const getRate=t.db.getRateState.bind(t.db);
+    let inFlight=0, peak=0;
+    const rateKeys=[];
+    t.db.getRateState=async(account,resource)=>{
+      inFlight++; peak=Math.max(peak,inFlight);rateKeys.push(account+':'+resource);
+      try {
+        await new Promise(resolve=>setTimeout(resolve,20));
+        return await getRate(account,resource);
+      } finally { inFlight--; }
+    };
+    let statusReads=0;
+    const run=createDispatch({env:ENV,credentials:{masterStatus:async()=>{
+      statusReads++;
+      await new Promise(resolve=>setTimeout(resolve,20));
+      return {enrolled:true,subject:'123',login:'fixture-actor',scopes:['repo'],expires_at:null};
+    }}});
+    const out=data(await run({registry,name:'github_whoami',args:{detail:'full'},connection:t.connection,db:t.db}));
+    expect(out.accounts.map(a=>a.login)).toEqual(['example-org','example-user']);
+    expect(out.accounts[0].rate_core.remaining).toBe(4321);
+    expect(out.acting_as).toMatchObject({mode:'you',login:'fixture-actor'});
+    expect(statusReads).toBe(1);
+    expect(peak).toBeGreaterThanOrEqual(2);
+    expect(rateKeys.filter(k=>k==='~me:123:core')).toHaveLength(1);
+    expect(rateKeys).toHaveLength(3);
+  });
+});
+
 describe('github_list_accounts', () => {
   it('lists setup state per account without leaking anything', async () => {
     const t = await build();

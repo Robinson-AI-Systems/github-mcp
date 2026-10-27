@@ -1,5 +1,9 @@
 # ROADMAP — ideas not being built now
 
+## 2026-10-27 — C-8 simple-call critical-path latency (implementation in review)
+
+Owner feedback credits C-3..C-6 for dramatically less PR/CI rework but finds simple custom MCP requests slower than official GitHub. A small alternating, uncontrolled identity-read sample reproduced the direction, not the original exact timings. C-8 targets `github_whoami` duplicate/serial DB reads and the synchronous per-provider-request tenant telemetry SQL upsert, preserving real account authentication, per-tenant event counts, bounded rates, user authority, journaling, and per-request durability. Test the selected code with artificial delayed IO and real disposable PostgreSQL tenant isolation, then pass full exact-head CI, review and scheduled release. Only after live independently matches the new SHA may actual client response timing be reported as an observed improvement. Card: [C-8](pr-cards/C-8.md).
+
 ## 2026-10-27 — PAR-4 enterprise permission parity (engineering PR)
 
 A concrete MCP-only veto was found: enterprise coding-agent policy mutations were advertised as universal REST alternatives in `src/tools/enterprise-write.js`, while `assertUniversalAuthority` rejected every `/enterprises/` route unconditionally. PAR-4 repairs only pinned `/enterprises/{enterprise}/...` routes with explicit `cred:M` and provider-verified, master-token ADMIN membership and scopes. Curated enterprise operations remain specialized; unknown-cost writes retain confirmation and user-selected caps. If GitHub has no matching GET, a provider-accepted write reports *unconfirmed* rather than inventing independent readback. Source merge, provider acceptance and daily live release are separate checkpoints (card: [PAR-4](pr-cards/PAR-4.md)).

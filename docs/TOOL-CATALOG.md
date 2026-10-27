@@ -47,7 +47,7 @@ Card(s): A-5, B-2, B-3, B-8, C-1, C-2, R-1, O-1, X-1. Meta-tools, connection and
 
 | Tool | What it does | Safety | Origin | Cred | Audience | Profile | Card |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| `github_whoami` | Which GitHub accounts this connection can use, mode (PREVIEW/PRODUCTION), profile, credential types present, API version, rate budget left, who calls act as (`acting_as`: you or the app), spend limit; for public sign-ins also the My connection page link | — | N | I | B,O,Op | R | A-5 built #13 |
+| `github_whoami` | Which GitHub accounts this connection can use, mode (PREVIEW/PRODUCTION), profile, credential types present, API version, rate budget left (read concurrently), who calls act as (`acting_as`: you or the app), spend limit; for public sign-ins also the My connection page link | — | N | I | B,O,Op | R | A-5 built #13 |
 | `github_master_token_link` | Private one-use link (10 minutes) to add or remove your optional master token, with plain steps; no reconnecting | — | N | — | B,O,Op | R | PUB-6 built |
 | `github_credential_revoke` | Private one-use link (10 minutes) to cancel leaked GitHub tokens on a protected page; takes no token and returns none | — | N | — | B,O,Op | R | GOD-4 |
 | `github_list_accounts` | Accounts (orgs and users) connected to the server: app installation, repo selection, user authorization, optional classic token, production on/off | — | N | I | O | R | A-5 built #13 |
@@ -931,3 +931,6 @@ Package credential routing: G-6 personal metadata/version/lifecycle tools use th
 O-1 personal-status read uses genuine enrolled U for GET /user, checks exact stored identity and exposes only id/login plus optional 2FA/plan. Missing/revoked/foreign U remains unreadable, never replaced by I. Omitted personal settings remain unknown; this is not a full personal security review or completion of guided browser controls.
 
 B-5 provider permission hints: only explicit read/write/admin entries are eligible. Permissionless boolean metadata and the known unselectable organization_packages key never become approval instructions. Genuine entries are compared conditionally with actual grants, target access and supported token types; an integration refusal alone does not prove missing owner consent. HTTP/request details and actual denial are retained.
+
+
+**C-8 request-path latency (source-only until checked release):** `github_whoami` concurrently reads independent enrolled account rate evidence, obtains master-token status once per request and reuses the personal rate lookup. The authenticated tenant MCP provider wrapper buffers coarse, anonymous provider outcome/latency events per HTTP request, then awaits one tenant-isolated PostgreSQL upsert in route cleanup instead of one telemetry write after **every** GitHub HTTP response. It does not cache GitHub checks or permissions, change login/admission controls, skip telemetry, or alter the response/result/guard contract. Synthetic benchmarks are not production latency evidence. See `docs/pr-cards/C-8.md`.

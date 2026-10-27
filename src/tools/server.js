@@ -57,9 +57,16 @@ function masterExpiry(iso, now = Date.now()) {
     ...(days <= REMIND_DAYS ? { reminder: `Your master token runs out in ${days} day${days === 1 ? '' : 's'}. To keep it working, create a new one: ask for github_master_token_link and follow the steps (the new one replaces this one).` } : {}) };
 }
 async function whoami(args, ctx) {
-  const rows = await visibleAccounts(ctx);
+  // One independent master-status read per tool call; never cache credentials
+  // between requests. Account inventory and master state are independent.
+  const [rows, master] = await Promise.all([
+    visibleAccounts(ctx),
+    typeof ctx.credentials?.masterStatus === 'function'
+      ? ctx.credentials.masterStatus().catch(() => ({ enrolled: false }))
+      : null
+  ]);
   const accounts = [];
-  for (const row of rows) {
+  const accountEntry = async (row) => {
     const rate = await ctx.db.getRateState(row.login, 'core');
     const entry = {
       login: row.login, label: row.label, type: row.account_type, is_default: row.login.toLowerCase() === ctx.connection.default_account.toLowerCase(),
@@ -70,14 +77,21 @@ async function whoami(args, ctx) {
       rate_core: rate ? { remaining: rate.remaining, resets_at: when(rate.reset_at), blocked_until: when(rate.blocked_until) } : { remaining: null, note: 'No call made yet' }
     };
     if (args.detail === 'full') Object.assign(entry, { setup: installationLabel(row), repository_selection: row.repository_selection ?? null, user_login: row.user_login ?? null, plan: row.plan_name ?? null });
-    accounts.push(entry);
+    return entry;
+  };
+  // Account rate queries and the personal Act-as-me preference are unrelated
+  // reads. Preserve deterministic account ordering; never fan out unboundedly.
+  const mePromise = actAsFor(ctx, { cred: 'I', masterStatus: master });
+  for (let i = 0; i < rows.length; i += 10) {
+    accounts.push(...await Promise.all(rows.slice(i, i + 10).map(accountEntry)));
   }
-  // GOD-1: the master token, if this person added one. Only whether it is there, its permission names and when it
-  // expires. Never the token itself.
-  const master = typeof ctx.credentials?.masterStatus === 'function' ? await ctx.credentials.masterStatus().catch(() => ({ enrolled: false })) : null;
-  // GOD-6: who GitHub records for this connection's calls, why the app is used when it is, and the person's own allowance.
-  const me = await actAsFor(ctx, { cred: 'I' });
-  const mine = me.on ? await ctx.db.getRateState(`~me:${me.subject}`, 'core').catch(() => null) : null;
+  const me = await mePromise;
+  // factsFor already obtained the personal-rate state when deciding whether
+  // the personal token may act. Do not issue the identical SQL read twice.
+  const facts = ctx.actAsCache?.facts;
+  const mine = me.on
+    ? facts?.subject === me.subject ? facts.rate : await ctx.db.getRateState(`~me:${me.subject}`, 'core').catch(() => null)
+    : null;
   const acting_as = me.on
     ? { mode: 'you', login: me.login ?? (await loginFor(ctx, me.subject)), personal_rate: mine ? { remaining: mine.remaining, resets_at: when(mine.reset_at) } : { remaining: null, note: 'No call made yet' } }
     : { mode: 'app', login: null, ...(me.reason ? { reason: me.reason } : {}) };

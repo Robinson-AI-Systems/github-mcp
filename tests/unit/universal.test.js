@@ -415,7 +415,7 @@ describe('PAR-4 verified enterprise authority in universal REST',()=>{
   }
   it('does not invent an enterprise-wide veto while preserving the pinned route and master-only choice',async()=>{
     const op=restOperation(policy);
-    expect(()=>assertUniversalAuthority(op,{enterprise:slug},{policy_state:'enabled'})).not.toThrow();
+    expect(()=>assertUniversalAuthority(op,{enterprise:slug},{policy_state:'enabled_for_selected_orgs'})).not.toThrow();
     const w=await makeWorld({mode:'production',profile:'full'});
     const refused=parse(await dispatch(w,'github_api_write',{...args,cred:'I',confirm:true}));
     expect(refused.status).toBe('refused');
@@ -448,6 +448,17 @@ describe('PAR-4 verified enterprise authority in universal REST',()=>{
     const retried=parse(await dispatch(w,'github_api_write',{...args,confirm:true}));
     expect(retried.status).toBe('replayed');
     expect(w.gh.calls.filter(c=>c.route===policy)).toHaveLength(1);
+  });
+  it('reads a pinned enterprise REST setting only after proof of current admin status and read scope',async()=>{
+    const route='GET /enterprises/{enterprise}/actions/cache/storage-limit';
+    const w=setMaster(await makeWorld({mode:'production',profile:'full'}),{scopes:['read:enterprise']});
+    w.gh.when(route).reply(200,{max_cache_size_gb:50});
+    const out=await dispatch(w,'github_api_read',{operation:route,params:{enterprise:slug},cred:'M'});
+    expect(out.isError).not.toBe(true);
+    expect(parse(out)).toMatchObject({status:200,data:{max_cache_size_gb:50}});
+    expect(w.gh.calls.filter(c=>c.route===route)).toHaveLength(1);
+    expect(w.gh.calls.filter(c=>c.route==='POST /graphql')).toHaveLength(1);
+    expect(w.gh.invalid).toEqual([]);
   });
   it('refuses the master token on read-only connections and delegated passes',async()=>{
     const readOnly=setMaster(await makeWorld({mode:'preview',profile:'read_only'}));
