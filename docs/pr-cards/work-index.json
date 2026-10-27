@@ -2344,11 +2344,33 @@
         "PAR-2"
       ],
       "card": "docs/pr-cards/PAR-4.md",
-      "status": "IN_PROGRESS",
+      "status": "MERGED",
       "migration": "none",
       "budget": 0,
       "units": [
         "PAR-4"
+      ],
+      "readiness": "READY",
+      "ownerInputs": [],
+      "pr": [
+        423
+      ]
+    },
+    {
+      "id": "C-8",
+      "title": "Reduce authenticated simple-read latency with parallel identity evidence and buffered exact tenant telemetry",
+      "batch": "C",
+      "design": "docs/designs/BATCH-C.md",
+      "dependencies": [
+        "C-5",
+        "C-6"
+      ],
+      "card": "docs/pr-cards/C-8.md",
+      "status": "IN_PROGRESS",
+      "migration": "none",
+      "budget": 0,
+      "units": [
+        "C-8"
       ],
       "readiness": "READY",
       "ownerInputs": []
