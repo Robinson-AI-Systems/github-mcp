@@ -11,6 +11,64 @@ import { createDb } from '../db.js';
 import { createTenantScopedCredentials } from './user-authorization.js';
 import { withTenantStorageLimits, withTenantProviderMetrics, createTenantMetricBuffer } from './runtime-limits.js';
 
+
+/** Per-request live checks: independently query membership/pilot and Marketplace together. */
+export async function readTenantMcpEligibility(directory, claim) {
+  const [authorized, marketplace] = await Promise.all([
+    directory.authorizedPilotIdentity(claim.tenantId, claim.identityId),
+    directory.marketplaceBinding(claim.tenantId)
+  ]);
+  return { authorized, marketplace };
+}
+
+/** Reuse the just-verified live proof for the SAME tenant and identity only. */
+export function checkedTenantMcpDirectory(directory, claim, authorized, marketplace) {
+  if (!authorized || authorized.tenantId !== claim.tenantId ||
+      authorized.identityId !== claim.identityId ||
+      authorized.membershipRevision !== claim.membershipRevision ||
+      authorized.pilotRevision !== claim.pilotRevision)
+    throw new Error('Tenant authorization evidence does not match this bearer.');
+  const membership = Object.freeze({
+    tenantId: authorized.tenantId, namespace: authorized.namespace,
+    role: authorized.role, membershipRevision: authorized.membershipRevision
+  });
+  return {
+    ...directory,
+    authorized: async (tenantId, identityId) =>
+      tenantId === claim.tenantId && identityId === claim.identityId ? membership : null,
+    marketplaceBinding: async tenantId => {
+      if (tenantId !== claim.tenantId) throw new Error('Foreign tenant marketplace lookup.');
+      return marketplace;
+    }
+  };
+}
+
+/** The same bearer was validated already in this HTTP request; never cache across requests. */
+export function requestScopedVerifiedAccess(db, token, record) {
+  if (typeof db?.getAccessToken !== 'function' ||
+      typeof token !== 'string' || !token || !record ||
+      typeof record.client_id !== 'string')
+    throw new TypeError('Request-bound access requires a verified token and grant.');
+  return { ...db, getAccessToken: async candidate =>
+    candidate === token ? record : db.getAccessToken(candidate) };
+}
+
+/** The max-ten authorized accounts can be checked concurrently; every one must still be live. */
+export async function tenantMcpAccountsLive(db, accounts, mode, env) {
+  if (!Array.isArray(accounts) || !accounts.length || accounts.length > 10 ||
+      accounts.some(login => typeof login !== 'string' || !login)) return false;
+  const rows = await Promise.all(accounts.map(login => db.getAccount(login)));
+  return rows.every(account => account?.credential_kind === 'master' || (
+    account && account.credential_kind === 'app' &&
+    account.installation_status === 'active' &&
+    Number.isSafeInteger(account.installation_id) && account.installation_id > 0 &&
+    Number.isSafeInteger(account.app_id) &&
+    account.app_id === Number(env.GITHUB_PILOT_APP_ID) &&
+    (mode !== 'production' ||
+      (env.VERCEL_ENV === 'production' && account.production_enabled === true))
+  ));
+}
+
 export const isPrivateTenantBearer = (authorization) =>
   typeof authorization === 'string' &&
   /^[Bb][Ee][Aa][Rr][Ee][Rr][ \t]+(?:tac|trf|tcl)_/.test(authorization);
@@ -27,15 +85,15 @@ export async function resolvePrivateTenantMcpBearer({
   if (!claim || !env.DATABASE_URL) return null;
   try {
     const directory = createTenantDirectory(rootSqlFactory(env.DATABASE_URL));
-    const authorized = await directory.authorizedPilotIdentity(claim.tenantId, claim.identityId);
-    const marketplace = await directory.marketplaceBinding(claim.tenantId);
+    const { authorized, marketplace } = await readTenantMcpEligibility(directory, claim);
     if (marketplace && !marketplace.active) return null;
     if (!authorized || authorized.tenantId !== claim.tenantId ||
         authorized.identityId !== claim.identityId ||
         authorized.membershipRevision !== claim.membershipRevision ||
         authorized.pilotRevision !== claim.pilotRevision) return null;
     const { db, tenant, sql } = await openAuthorizedTenantDb({
-      directory, tenantId: claim.tenantId, verifiedIdentityId: claim.identityId,
+      directory: checkedTenantMcpDirectory(directory, claim, authorized, marketplace),
+      tenantId: claim.tenantId, verifiedIdentityId: claim.identityId,
       connectionString: env.DATABASE_URL, sqlFactory: tenantSqlFactory
     });
     if (tenant.namespace !== authorized.namespace ||
@@ -50,7 +108,10 @@ export async function resolvePrivateTenantMcpBearer({
     // accounts; every one is validated below. Signed (tcl_) clients keep the exact single-account rule.
     const isPublic = typeof grant?.client_id === 'string' && isPublicClientId(grant.client_id);
     if (isPublic) {
-      if (!await directory.getPublicClient(grant.client_id) || !await db.getOAuthClient(grant.client_id)) return null;
+      const [registered, mirrored] = await Promise.all([
+        directory.getPublicClient(grant.client_id), db.getOAuthClient(grant.client_id)
+      ]);
+      if (!registered || !mirrored) return null;
     } else {
       const client = grant?.client_id &&
         verifyTenantCredential(grant.client_id, 'tcl', env);
@@ -63,19 +124,7 @@ export async function resolvePrivateTenantMcpBearer({
     if (!Array.isArray(grant.accounts) || !grant.accounts.length || grant.accounts.length > 10 ||
         !grant.accounts.includes(selectedAccount) ||
         (!isPublic && (grant.accounts.length !== 1 || grant.accounts[0] !== selectedAccount))) return null;
-    for (const login of grant.accounts) {
-      const account = await db.getAccount(login);
-      // GOD-5: an extra place (master token) has no installation; it only needs to still exist. Its own gate and the master
-      // token checks decide every request, so a place switched back to read-only never breaks the rest of the connection.
-      if (account?.credential_kind === 'master') continue;
-      if (!account || account.credential_kind !== 'app' ||
-          account.installation_status !== 'active' ||
-          !Number.isSafeInteger(account.installation_id) || account.installation_id <= 0 ||
-          !Number.isSafeInteger(account.app_id) ||
-          account.app_id !== Number(env.GITHUB_PILOT_APP_ID) ||
-          (grant.mode === 'production' &&
-            (env.VERCEL_ENV !== 'production' || account.production_enabled !== true))) return null;
-    }
+    if (!await tenantMcpAccountsLive(db, grant.accounts, grant.mode, env)) return null;
     // Keep transport events in this tenant's validated SQL namespace. Metrics
     // contain no URL, GitHub subject, repository, token or exception text.
     const providerMetrics=createTenantMetricBuffer(sql);
@@ -99,6 +148,7 @@ export async function resolvePrivateTenantMcpBearer({
     }
     return { db: withTenantStorageLimits(db,sql,grant.client_id), credentials,
       sql, providerMetrics, clientId: grant.client_id,
+      verifiedAccess: { token: value, record: grant },
       marketplaceAccountId: marketplace?.accountId ?? null,
       tenant: Object.freeze({ ...authorized }) };
   } catch {
