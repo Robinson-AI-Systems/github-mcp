@@ -54,7 +54,7 @@ export function defineRead({ name, description, area, audience, compact, guidanc
     name, description, ...(area ? { area } : {}), ...(audience ? { audience: Object.freeze([...audience]) } : {}), ...(compact ? { compact: true } : {}), ...(guidance ? { guidance } : {}),
     readContract: 'defineRead-v1', results: Object.freeze({ summaryType: summaryType ?? null }),
     ...(byteWindow ? { byteWindow: true } : {}),
-    ...(aliasEntries.length ? { aliases: Object.freeze(Object.fromEntries(Object.entries(aliases).map(([k, v]) => [k, Object.freeze([...v])]))) } : {}),
+    ...(aliasEntries.length ? { aliases: Object.freeze(Object.fromEntries(Object.entries(aliases).map(([k, v]) => [k, Object.freeze([...v])]))), canonicalRequired: Object.freeze([...required]) } : {}),
     inputSchema: {
       type: 'object',
       properties: { ...properties, ...aliasProperties, ...(summaryType ? { detail: DETAIL_PROPERTY } : {}), fields: FIELDS_PROPERTY },
