@@ -78,6 +78,7 @@ describe('canonical read aliases', () => {
       const result = data(await w.run('github_describe_tool', { name }));
       expect(result.arguments.properties).toHaveProperty(canonical);
       expect(result.arguments.properties).not.toHaveProperty(alias);
+      if (name !== 'github_commit_list') expect(result.arguments.required).toContain('number');
       expect(result.accepted_aliases[canonical]).toContain(alias);
       const registered = registry.tools.find(t => t.name === name);
       expect(registered.inputSchema.properties).toHaveProperty(alias);
