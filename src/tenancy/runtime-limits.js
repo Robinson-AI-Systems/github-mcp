@@ -249,11 +249,51 @@ export async function recordTenantMetric(sql, { event, outcome, durationMs }) {
   if (Math.random() < 1/128) await purgeExpiredTenantRuntime(sql).catch(()=>{});
 }
 
+/**
+ * C-8: a bounded, per-HTTP-request counter. The GitHub response never waits
+ * on a telemetry upsert; the caller awaits one tenant-scoped flush in its
+ * request-finally, including error/refusal responses. Never keep this globally
+ * or attach user-provided paths, URLs, subjects, bodies or exception text.
+ */
+export function createTenantMetricBuffer(sql, { now = Date.now } = {}) {
+  if (typeof sql !== 'function' || typeof now !== 'function')
+    throw new TypeError('Tenant metric buffer needs a scoped SQL function and clock.');
+  const counts = new Map();
+  return {
+    record({ event, outcome, durationMs }) {
+      if (!allowedEvents.has(event) || !allowedOutcomes.has(outcome) ||
+          !Number.isFinite(durationMs) || durationMs < 0)
+        throw new TypeError('Tenant metric must use fixed nonsecret fields.');
+      const hour = new Date(Math.floor(now() / 3600000) * 3600000).toISOString();
+      const latency_bucket = bucketFor(durationMs);
+      const key = [hour,event,outcome,latency_bucket].join('|');
+      const old = counts.get(key);
+      counts.set(key, { hour, event, outcome, latency_bucket, count: (old?.count ?? 0) + 1 });
+    },
+    async flush() {
+      if (counts.size === 0) return 0;
+      const records = [...counts.values()];
+      counts.clear();
+      // Bound the data to a small number of category/bucket/hour
+      // combinations. One query preserves every individual event's count.
+      await sql`INSERT INTO gh_tenant_runtime_metrics(hour,event,outcome,latency_bucket,count)
+        SELECT item.hour::timestamptz,item.event,item.outcome,item.latency_bucket,item.count
+        FROM jsonb_to_recordset(${JSON.stringify(records)}::jsonb)
+          AS item(hour text,event text,outcome text,latency_bucket text,count bigint)
+        ON CONFLICT (hour,event,outcome,latency_bucket) DO UPDATE
+          SET count=gh_tenant_runtime_metrics.count+EXCLUDED.count`;
+      if (Math.random() < 1/128) await purgeExpiredTenantRuntime(sql).catch(() => {});
+      return records.reduce((total,row) => total + row.count, 0);
+    }
+  };
+}
+
 /** Observe provider transport success/refusal/failure WITHOUT recording URLs,
  * GitHub IDs, authorization headers, response bodies or exception text.
  * Telemetry problems never alter a provider's returned result/error. */
-export function withTenantProviderMetrics(sql, fetchImpl) {
-  if (typeof sql !== 'function' || typeof fetchImpl !== 'function')
+export function withTenantProviderMetrics(sql, fetchImpl, { buffer = null } = {}) {
+  if (typeof sql !== 'function' || typeof fetchImpl !== 'function' ||
+      (buffer !== null && typeof buffer.record !== 'function'))
     throw new TypeError('Private provider transport requires a tenant database and fetch.');
   return async (...args) => {
     const started=Date.now();
@@ -263,8 +303,15 @@ export function withTenantProviderMetrics(sql, fetchImpl) {
       outcome=response?.ok===true ? 'ok' : 'refused';
       return response;
     } finally {
-      await recordTenantMetric(sql,{event:'provider',outcome,
-        durationMs:Math.max(0,Date.now()-started)}).catch(()=>{});
+      const metric={event:'provider',outcome,durationMs:Math.max(0,Date.now()-started)};
+      if (buffer) {
+        // A request-scoped buffer has no DB await on the GitHub critical path.
+        try { buffer.record(metric); } catch { /* telemetry never changes the provider result */ }
+      } else {
+        // Existing OAuth/other consumers keep synchronous persistence unless
+        // they also have a request-finally that can guarantee a flush.
+        await recordTenantMetric(sql,metric).catch(()=>{});
+      }
     }
   };
 }
