@@ -48,8 +48,8 @@ describe('github_search_tools', () => {
 describe('github_describe_tool', () => {
   it('keeps a large schema once in text and preserves a compact describe summary', async () => {
     const w = await world();
-    const props = Object.fromEntries(Array.from({ length: 40 }, (_, i) =>
-      ['option_' + i, { type: 'string', description: 'Detailed option semantics '.repeat(10) }]));
+    const props = Object.fromEntries(Array.from({ length: 14 }, (_, i) =>
+      ['option_' + i, { type: 'string', description: 'Detailed option semantics '.repeat(5) }]));
     const candidate = defineRead({ name: 'github_fixture_schema_large', description: 'Fixture for a large schema.',
       properties: props, handler: async () => ({ ready: true }) });
     const reg = mergeNamespaces([meta, { tools: [candidate.tool], handlers: {
@@ -58,7 +58,7 @@ describe('github_describe_tool', () => {
     expect(response.isError).not.toBe(true);
     expect(response.structuredContent).not.toHaveProperty('arguments');
     expect(response.structuredContent.full_payload_location).toBe('content[0].text');
-    expect(data(response).arguments.properties).toHaveProperty('option_39');
+    expect(data(response).arguments.properties).toHaveProperty('option_13');
     expect(Buffer.byteLength(JSON.stringify(response))).toBeLessThan(
       Buffer.byteLength(JSON.stringify({ ...response, structuredContent: data(response) })) * 0.75);
   });
