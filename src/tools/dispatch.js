@@ -151,7 +151,10 @@ export function createDispatch({ env = process.env, now = Date.now, fetch = glob
     if (containsCredential(JSON.stringify(shaped))) return fail('The result was withheld because it looked like it contained a credential.');
     // Only public/top-level replies get compact metadata. Keep full JSON for
     // nested tool calls and output-schema declarations required by clients.
-    return topLevel && !isWrite && !tool.outputSchema ? deduplicateLargeEnvelope(shaped) : shaped;
+    // Workflows with delegated mutations also use RTC writeReply, which has
+    // no companion text field. Their full structured status must survive.
+    return topLevel && !isWrite && !tool.delegatedWrites?.length && !tool.outputSchema
+      ? deduplicateLargeEnvelope(shaped) : shaped;
   }
   return dispatch;
 }
