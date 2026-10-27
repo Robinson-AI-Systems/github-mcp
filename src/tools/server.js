@@ -190,6 +190,10 @@ async function getResult(args, ctx) {
       throw new TypeError('A byte window cannot be combined with pages, character offset or fields.');
     if (row.body?.type !== 'file' || typeof row.body.content !== 'string')
       throw new TypeError('Byte windows are available for retained file content only.');
+    // Shaping can redact a token before this file is retained. Never return
+    // altered bytes as though they were the original complete source.
+    if (row.body.content.includes('[hidden]'))
+      throw new TypeError('This retained file contains redacted text, so byte-exact retrieval is unavailable.');
     const original = Buffer.from(row.body.content, 'utf8');
     const offset = args.byteOffset ?? 0;
     if (offset > original.length) throw new TypeError('byteOffset exceeds the retained file size.');
@@ -295,7 +299,7 @@ const readTools = [
   {
     name: 'github_get_result',
     area: 'server', audience: ['B', 'O', 'Op'], compact: true, byteWindow: true,
-    description: 'Read the rest of a big result kept behind a handle (res_…): a page at a time, only some fields, or more of a long text. Kept 24 hours.',
+    description: 'Resume a kept result by page, fields, text offset or exact file bytes. Retained 24 hours.',
     inputSchema: {
       type: 'object',
       properties: {
