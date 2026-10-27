@@ -44,8 +44,17 @@ export function listedDescription(tool) {
   return !prefix || tool.description.startsWith(prefix) ? tool.description : `${prefix}${tool.description}`;
 }
 
-/** What a client is told about one tool. */
-export const listedTool = (tool) => ({ name: tool.name, description: listedDescription(tool), inputSchema: tool.inputSchema, ...(tool.annotations ? { annotations: tool.annotations } : {}) });
+/** A compact listing saves context, not capability. Full schema guidance remains in describe_tool. */
+export const listedTool = (tool, { compact = false } = {}) => {
+  let inputSchema = tool.inputSchema;
+  if (compact && tool.writes !== true && inputSchema?.properties) {
+    inputSchema = { ...inputSchema, properties: Object.fromEntries(Object.entries(inputSchema.properties)
+      .map(([name, value]) => [name, typeof value.description === 'string' && value.description.length > 36
+        ? { ...value, description: value.description.slice(0, 33).trimEnd() + '…' } : value])) };
+  }
+  return { name: tool.name, description: listedDescription(tool), inputSchema,
+    ...(tool.annotations ? { annotations: tool.annotations } : {}) };
+};
 
 /**
  * The tools a connection is shown. `catalog`: every tool its profile may see. `compact`: only tools marked `compact` (the meta-tools,
