@@ -1,5 +1,9 @@
 # ROADMAP — ideas not being built now
 
+## 2026-10-27 — Coding-agent MCP usability backlog (#427–#436)
+
+Owner approved the ten reported real-world improvements and requested implementation in priority order, with issues closed **only after their own acceptance tests pass and the implementing PR is merged**. Avoid one PR per issue where shared code and tests justify a bundle. **C-10 / #427 is active** (exact 25 KB file bytes in no more than two calls, preserved compact defaults); #430 shares the underlying retrieval service and can be grouped when safe. Other issues: **P0** #428 duplicate text/structuredContent payload and #429 parameter aliases; **P1** #430 repository snapshot archive handle, #431 guarded sequential write batch (separate mutation boundary), #432 failing CI diagnostics, #433 merge-arming introspection; **P2** #434 versioned manifest, #435 scoped rate-limit metadata, #436 universal field selectors. Respect user authority and genuine GitHub permissions while keeping compact summaries as defaults and complete, authenticated retrieval available on request. Close issues as part of merge closeout, with evidence; don't confuse branch code with verified completion.
+
 ## 2026-10-27 — CI-FAST-1 30-second warn-only feedback and parallel browser verification
 
 Owner authorized a 30-second *soft* feedback target without punishing slow-but-passing tests. Required browser specs will be partitioned into independent Postgres-backed CI jobs, with one-to-one coverage checks. Store per-job measured durations and overrun notices in GitHub Actions summaries and 14-day artifacts. Actual failed tests, hard timeouts and the aggregate exact-head gate remain mandatory. End-to-end 30-second pipeline feedback remains aspirational and measured separately. [CI-FAST-1](pr-cards/CI-FAST-1.md).
