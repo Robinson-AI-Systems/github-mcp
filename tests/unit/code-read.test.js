@@ -101,6 +101,31 @@ describe('content reads (D-2)', () => {
       expect((await run(w, 'github_content_get', { ...R, path: 'long.txt', ...options })).result.isError).toBe(true);
     }
   });
+  it('rejects whole-file credential shapes before base64 encoding even across byte windows', async () => {
+    const w = await world();
+    const token = 'ghp_FAKEonly_in_fake_tests_never_real_1234';
+    const original = Buffer.from('q'.repeat(16370) + token + 'q'.repeat(10000));
+    w.gh.when('GET /repos/{owner}/{repo}/contents/{path}').reply(200,
+      fileBody({ content: original.toString('base64'), size: original.length }));
+    // The byte window is far away from the token. Scanning the requested
+    // subarray alone would incorrectly pass and allow credential exfiltration
+    // by joining several otherwise innocent-looking chunks.
+    const direct = await run(w, 'github_content_get', {
+      ...R, path: 'has-token.bin', byteOffset: 20000, byteLength: 200
+    });
+    expect(direct.result.isError).toBe(true);
+    expect(direct.result.content[0].text).toContain('credential-shaped');
+    expect(JSON.stringify(direct.result)).not.toContain(token);
+    const first = await run(w, 'github_content_get', { ...R, path: 'has-token.bin' });
+    expect(first.body.kept_result.handle).toMatch(/^res_/);
+    expect(first.body.content).toContain('[hidden]');
+    const retained = await run(w, 'github_get_result', {
+      handle: first.body.kept_result.handle, byteOffset: 0, byteLength: 32768
+    });
+    expect(retained.result.isError).toBe(true);
+    expect(retained.result.content[0].text).toContain('redacted');
+    expect(JSON.stringify(retained.result)).not.toContain(token);
+  });
   it('kept file bytes are isolated to the connection, and invalid selectors are refused', async () => {
     const w = await world();
     const original = 'k'.repeat(25000);
