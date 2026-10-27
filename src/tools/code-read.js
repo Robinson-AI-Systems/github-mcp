@@ -29,15 +29,20 @@ export function looksBinary(buffer) {
 }
 
 export const contentGet = defineRead({
-  name: 'github_content_get', area: 'content', audience: ['B', 'Op'],
+  name: 'github_content_get', area: 'content', audience: ['B', 'Op'], byteWindow: true,
   description: 'Read a file\'s text (long text is cut and kept behind a handle) or list a directory, at any branch, tag or commit.',
   properties: { owner: OWNER, repo: REPO, path: { type: 'string', maxLength: 1000, description: 'File or directory path; empty or / for the top level' }, ref: { ...REF, description: 'Branch, tag or commit (default: the default branch)' },
-    startLine: { type: 'integer', minimum: 1 }, endLine: { type: 'integer', minimum: 1 } },
+    startLine: { type: 'integer', minimum: 1 }, endLine: { type: 'integer', minimum: 1 },
+    byteOffset: { type: 'integer', minimum: 0, description: 'Start byte (zero-based). Returns exact base64 bytes, not characters.' },
+    byteLength: { type: 'integer', minimum: 1, maximum: 32768, description: 'Read at most this many bytes (up to 32768); defaults to 32768 when byteOffset is given.' } },
   required: ['repo'],
   handler: (args, ctx) => plain(async () => {
     if ((args.startLine === undefined) !== (args.endLine === undefined) ||
         (args.startLine !== undefined && (args.endLine < args.startLine || args.endLine - args.startLine >= 100)))
       throw new TypeError('Supply both startLine and endLine, covering at most 100 lines.');
+    if ((args.byteOffset !== undefined || args.byteLength !== undefined) &&
+        (args.startLine !== undefined || args.endLine !== undefined))
+      throw new TypeError('Byte ranges cannot be combined with line ranges.');
     const { owner, octokit } = await readerFor(args, ctx);
     const path = String(args.path ?? '').replace(/^\/+|\/+$/g, '');
     const query = { owner, repo: args.repo, path, ...(args.ref ? { ref: args.ref } : {}) };
@@ -49,6 +54,14 @@ export const contentGet = defineRead({
       return { ...base, content: null, note: `This file is ${data.size} bytes, too large to read through the contents API. Use github_content_get_archive_link or open the link.`, download_url: data.download_url };
     }
     const buffer = Buffer.from(data.content, 'base64');
+    if (args.byteOffset !== undefined || args.byteLength !== undefined) {
+      const at = args.byteOffset ?? 0;
+      if (at > buffer.length) throw new TypeError('byteOffset exceeds the file size.');
+      const chunk = buffer.subarray(at, at + (args.byteLength ?? 32768));
+      return { ...base, encoding: 'base64', content_base64: chunk.toString('base64'),
+        byte_offset: at, byte_length: chunk.length, total_bytes: buffer.length,
+        next_byte_offset: at + chunk.length, complete: at + chunk.length === buffer.length };
+    }
     if (looksBinary(buffer)) return { ...base, binary: true, content: null, note: 'This is a binary file, so its content is not shown.', download_url: data.download_url };
     const text = buffer.toString('utf8');
     if (args.startLine !== undefined) {
