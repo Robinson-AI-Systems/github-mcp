@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { deduplicateLargeEnvelope } from '../../src/core/result-envelope.js';
+import { completeDispatchResult } from '../../src/rtc/http.js';
 import { createDispatch } from '../../src/tools/dispatch.js';
 import { mergeNamespaces } from '../../src/core/registry.js';
 import { defineRead } from '../../src/tools/define-read.js';
