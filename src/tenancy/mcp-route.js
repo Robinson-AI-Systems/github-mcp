@@ -9,7 +9,7 @@ import { isPublicClientId } from './public-code.js';
 import { createCredentials } from '../github/credentials.js';
 import { createDb } from '../db.js';
 import { createTenantScopedCredentials } from './user-authorization.js';
-import { withTenantStorageLimits, withTenantProviderMetrics } from './runtime-limits.js';
+import { withTenantStorageLimits, withTenantProviderMetrics, createTenantMetricBuffer } from './runtime-limits.js';
 
 export const isPrivateTenantBearer = (authorization) =>
   typeof authorization === 'string' &&
@@ -78,7 +78,8 @@ export async function resolvePrivateTenantMcpBearer({
     }
     // Keep transport events in this tenant's validated SQL namespace. Metrics
     // contain no URL, GitHub subject, repository, token or exception text.
-    const meteredFetch=withTenantProviderMetrics(sql,fetchImpl);
+    const providerMetrics=createTenantMetricBuffer(sql);
+    const meteredFetch=withTenantProviderMetrics(sql,fetchImpl,{buffer:providerMetrics});
     // HARD-1: the App's sealed keys come from the one shared (root) copy, so a replaced key reaches every person at once.
     const base = createCredentials({ db, env, fetch: meteredFetch, rootApps: createDb(rootSqlFactory(env.DATABASE_URL)) });
     let credentials = createTenantScopedCredentials({
@@ -97,7 +98,7 @@ export async function resolvePrivateTenantMcpBearer({
       credentials = wrapped;
     }
     return { db: withTenantStorageLimits(db,sql,grant.client_id), credentials,
-      sql, clientId: grant.client_id,
+      sql, providerMetrics, clientId: grant.client_id,
       marketplaceAccountId: marketplace?.accountId ?? null,
       tenant: Object.freeze({ ...authorized }) };
   } catch {
