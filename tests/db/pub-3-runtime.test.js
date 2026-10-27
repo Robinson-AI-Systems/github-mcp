@@ -6,7 +6,7 @@ import { purgeRevokedTenantArtifacts } from '../../src/tenancy/incident-cleanup.
 import { createTenantDirectory, initializeProvisionedTenant,
   tenantConnectionString, tenantSchemaName } from '../../src/tenancy/directory.js';
 import { claimTenantBudget, admitTenantMcp, admitTenantOAuth,
-  recordTenantMetric, purgeExpiredTenantRuntime, withTenantStorageLimits,
+  recordTenantMetric, createTenantMetricBuffer, withTenantProviderMetrics, purgeExpiredTenantRuntime, withTenantStorageLimits,
   readTenantRuntimePolicy, saveTenantRuntimePolicy,
   reserveTenantStorage, releaseTenantStorage,
   TenantCapacityError, TENANT_RUNTIME_LIMITS } from '../../src/tenancy/runtime-limits.js';
@@ -259,6 +259,56 @@ describe('PUB-3 tenant capacity with REAL PostgreSQL',()=>{
     expect(await sqlB`SELECT count(*)::integer AS n FROM gh_tenant_runtime_metrics`)
       .toEqual([{n:0}]);
   });
+  it('C-8 coalesces every provider outcome and MCP event into one awaited per-tenant SQL flush',async()=>{
+    let writesA=0,writesB=0;
+    const trackedA=(parts,...values)=>{writesA++;return sqlA(parts,...values);};
+    const trackedB=(parts,...values)=>{writesB++;return sqlB(parts,...values);};
+    const metricsA=createTenantMetricBuffer(trackedA);
+    const metricsB=createTenantMetricBuffer(trackedB);
+    const ok=async()=>new Response(null,{status:200});
+    const rejected=async()=>new Response(null,{status:403});
+    const failed=async()=>{throw new Error('fixture connection failed');};
+    const fetchA=withTenantProviderMetrics(trackedA,ok,{buffer:metricsA});
+    const fetchB=withTenantProviderMetrics(trackedB,ok,{buffer:metricsB});
+    expect((await fetchA()).status).toBe(200);
+    expect((await fetchA()).status).toBe(200);
+    expect((await withTenantProviderMetrics(trackedA,rejected,{buffer:metricsA})()).status).toBe(403);
+    await expect(withTenantProviderMetrics(trackedA,failed,{buffer:metricsA})())
+      .rejects.toThrow('fixture connection failed');
+    expect((await fetchB()).status).toBe(200);
+    // A normal provider response is returned without waiting on ANY metric SQL.
+    expect(writesA).toBe(0);
+    expect(writesB).toBe(0);
+    metricsA.record({event:'mcp',outcome:'ok',durationMs:22});
+    metricsB.record({event:'mcp',outcome:'refused',durationMs:201});
+    expect(()=>metricsA.record({event:'fixture-private-repository/token',
+      outcome:'ok',durationMs:10})).toThrow();
+    const [countA,countB]=await Promise.all([metricsA.flush(),metricsB.flush()]);
+    expect([countA,countB]).toEqual([5,2]);
+    expect([writesA,writesB]).toEqual([1,1]);
+    expect(await metricsA.flush()).toBe(0);
+    expect(writesA).toBe(1);
+    const rowsA=await sqlA`SELECT event,outcome,sum(count)::integer AS n
+      FROM gh_tenant_runtime_metrics GROUP BY event,outcome ORDER BY event,outcome`;
+    expect(rowsA).toEqual([
+      {event:'mcp',outcome:'ok',n:1},
+      {event:'provider',outcome:'error',n:1},
+      {event:'provider',outcome:'ok',n:2},
+      {event:'provider',outcome:'refused',n:1}
+    ]);
+    const rowsB=await sqlB`SELECT event,outcome,sum(count)::integer AS n
+      FROM gh_tenant_runtime_metrics GROUP BY event,outcome ORDER BY event,outcome`;
+    expect(rowsB).toEqual([
+      {event:'mcp',outcome:'refused',n:1},
+      {event:'provider',outcome:'ok',n:1}
+    ]);
+    const noSql=()=>Promise.reject(new Error('fixture telemetry DB failure'));
+    const broken=createTenantMetricBuffer(noSql);
+    const answer=await withTenantProviderMetrics(noSql,ok,{buffer:broken})();
+    expect(answer.status).toBe(200);
+    await expect(broken.flush()).rejects.toThrow('fixture telemetry DB failure');
+  });
+
   it('persists independently configurable private owner capacity per tenant without affecting any other tenant',async()=>{
     const originalB=await readTenantRuntimePolicy(sqlB);
     expect(originalB.mcpClientPerMinute).toBe(TENANT_RUNTIME_LIMITS.mcpClientPerMinute);
