@@ -160,8 +160,18 @@ if (directNames.size !== COMPACT_DEVELOPER_TOOLS.length ||
 }
 // Do not mutate the frozen read/write declarations. This only sets listing metadata;
 // actual calls still reach the exact same guarded handlers and per-profile checks.
+const conciseReadSchema = (schema) => schema?.properties
+  ? { ...schema, properties: Object.fromEntries(Object.entries(schema.properties).map(([key, spec]) =>
+    [key, typeof spec.description === 'string' && spec.description.length > 18
+      ? { ...spec, description: spec.description.slice(0, 15).trimEnd() + '…' } : spec])) }
+  : schema;
 export const registry = {
   ...baseRegistry,
-  tools: baseRegistry.tools.map(tool => directNames.has(tool.name)
-    ? Object.freeze({ ...tool, compact: true }) : tool)
+  tools: baseRegistry.tools.map(tool => {
+    const compact = directNames.has(tool.name) || tool.compact === true;
+    if (!compact) return tool;
+    return Object.freeze({ ...tool, compact: true,
+      ...(tool.writes !== true && tool.inputSchema?.properties
+        ? { compactSchema: conciseReadSchema(tool.inputSchema) } : {}) });
+  })
 };
