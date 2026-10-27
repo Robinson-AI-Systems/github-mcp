@@ -146,7 +146,7 @@ export const contentCheckCodeowners = defineRead({
 });
 
 export const commitList = defineRead({
-  name: 'github_commit_list', area: 'commit', audience: ['B', 'Op'],
+  name: 'github_commit_list', area: 'commit', audience: ['B', 'Op'], aliases: { ref: ['branch'] },
   description: 'Commits on a branch (or touching a path), optionally by author or date range; newest first.',
   properties: { owner: OWNER, repo: REPO, ref: { ...REF, description: 'Branch, tag or commit to start from (default branch)' }, path: { type: 'string', maxLength: 1000 }, author: { type: 'string', maxLength: 100, description: 'GitHub login or email' },
     since: { type: 'string', maxLength: 40, description: 'ISO date/time' }, until: { type: 'string', maxLength: 40 }, max: { type: 'integer', minimum: 1, maximum: 200, description: 'Default 30' } },
