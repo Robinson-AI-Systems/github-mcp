@@ -49,8 +49,8 @@ export const listedTool = (tool, { compact = false } = {}) => {
   let inputSchema = tool.inputSchema;
   if (compact && tool.writes !== true && inputSchema?.properties) {
     inputSchema = { ...inputSchema, properties: Object.fromEntries(Object.entries(inputSchema.properties)
-      .map(([name, value]) => [name, typeof value.description === 'string' && value.description.length > 36
-        ? { ...value, description: value.description.slice(0, 33).trimEnd() + '…' } : value])) };
+      .map(([name, value]) => [name, typeof value.description === 'string' && value.description.length > 18
+        ? { ...value, description: value.description.slice(0, 15).trimEnd() + '…' } : value])) };
   }
   return { name: tool.name, description: listedDescription(tool), inputSchema,
     ...(tool.annotations ? { annotations: tool.annotations } : {}) };
