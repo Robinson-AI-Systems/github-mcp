@@ -10,7 +10,9 @@ const fileBody = (extra = {}) => ({ type: 'file', name: 'a.md', path: 'docs/a.md
 async function run(world, name, args) {
   const dispatch = createDispatch({ credentials: world.credentials, gates: [], fetch: world.gh.fetch, now: world.ctx.now, sleep: async () => {} });
   const result = await dispatch({ registry, name, args, connection: world.connection, db: world.db });
-  return { result, body: result.isError ? null : (result.structuredContent ?? parse(result)) };
+  const body = result.structuredContent?.full_payload_location === 'content[0].text'
+    ? JSON.parse(result.content[0].text) : (result.structuredContent ?? parse(result));
+  return { result, body: result.isError ? null : body };
 }
 const world = () => makeWorld({ profile: 'read_only' });
 
