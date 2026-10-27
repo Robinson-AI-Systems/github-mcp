@@ -63,6 +63,7 @@ Card(s): A-5, B-2, B-3, B-8, C-1, C-2, R-1, O-1, X-1. Meta-tools, connection and
 | `github_recent_changes` | What was changed through this server (filter by repo, tool, account, date; previews hidden unless asked) | — | N | — | O,Op | R | B-8 built #23 |
 | `github_undo_change` | Undo one change-log entry when it has a clean opposite; says plainly when it does not | C | N | I | Op | E | X-1 built #224 |
 | `github_search_tools` | Find tools by plain words (and audience); one line each with safety marks | — | N | — | B,O,Op | R | C-2 built #26 |
+| `github_tool_manifest` | Stable profile-scoped direct-tool names, interface versions and change hashes | — | N | — | B,O,Op | R | C-11 #434 |
 | `github_describe_tool` | Full instructions and arguments for one tool | — | N | — | B,O,Op | R | C-2 built #26 |
 | `github_call` | Run any tool in the profile by name, through the same guards | as the tool | N | — | B,O,Op | R | C-2 built #26 |
 | `github_batch` | Up to 10 read calls in one round trip | — | N | — | B,O,Op | R | C-2 built #26 |
