@@ -19,3 +19,7 @@
 ## Boundaries
 
 No skipped/quarantined tests, lowered assertions, orphaned files, skipped DB/browser engine, bypass of merged/required checks, expensive services, secrets, extra runtime permissions, or writes to `main`/`live`. A hard timeout or failed test remains a failure, even when the warning target is permissive.
+
+## Implementation evidence and exact-head gates
+
+The source implementation has mandatory per-file browser shard inventory checks and a 30-second warn-only timer for every main CI verification phase. Passing phases above their target still exit success; failures, SIGTERM and watchdog timeouts remain red. Required timing evidence is uploaded as 14-day JSONL Actions artifacts and written to the job summary. Three browser matrix jobs have separate disposable PostgreSQL services and a 3-minute hard runner timeout; aggregate `ci` still requires all shards. All outcomes remain **PENDING CI and review** until exact-head checks and captured artifact evidence are inspected. Entire hosted pipeline under 30 seconds cannot be promised from browser runtime measurements alone.

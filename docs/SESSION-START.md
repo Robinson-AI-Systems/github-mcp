@@ -190,15 +190,19 @@ assertions, skip checks and read-only/no-secret rules. The CI layout guard rejec
 accidental family chains, missing aggregate inputs, collapsed/serialized matrices
 and missing/increased job timeouts. Do not add `needs` merely to save an install.
 
-Timed root test/build phases use `scripts/ci-phase.mjs` with a 180-second feedback
-budget and emit measured timing. Command failure or budget excess fails; normal
-job timeouts remain separate safety bounds, not desired feedback durations. When
-a phase grows, inspect code/fixture/runner timing and fix demonstrated slowdown or
-split independent test files/cohorts into parallel jobs/shards while proving full
-coverage and isolation. Do not raise the budget/timeout, skip assertions, loosen
-performance thresholds or rerun blindly. A measured runner anomaly can use the
-existing controlled same-head rerun policy, retaining the original failure. Compare
-critical-path wall time (parallel jobs overlap), not a sum of all runner minutes.
+**Owner decision 2026-10-27: passing tests never fail just for a slow phase.**
+Use `scripts/ci-phase.mjs` with a **30-second soft target** for each test/check
+phase. Preserve measured timing/result in an Actions job summary and a 14-day
+retained per-job JSONL artifact; emit a GitHub warning on a passing overrun.
+Passing beyond 30 seconds remains green and must not trigger a timing-only
+retry. Actual test failures, signals, hard watchdog and hard job timeouts
+**still fail**. Three independent browser jobs have separate throwaway Postgres
+services, a maximum 3-minute hard job timeout, and a mandatory exact file
+assignment check. When warnings recur across runs, rebalance isolated browser
+files or other test cohorts without dropping assertions. Compare total end-to-end
+critical-path CI wall time separately from the test execution phases, since
+hosted runner startup and image pulls are variable. A 30-second entire green
+CI run is an aspirational goal, not an invented SLA.
 
 ### First-pass validation and review
 

@@ -1,5 +1,10 @@
 # ROADMAP — ideas not being built now
 
+## 2026-10-27 — CI-FAST-1 30-second warn-only feedback and parallel browser verification
+
+Owner authorized a 30-second *soft* feedback target without punishing slow-but-passing tests. Required browser specs will be partitioned into independent Postgres-backed CI jobs, with one-to-one coverage checks. Store per-job measured durations and overrun notices in GitHub Actions summaries and 14-day artifacts. Actual failed tests, hard timeouts and the aggregate exact-head gate remain mandatory. End-to-end 30-second pipeline feedback remains aspirational and measured separately. [CI-FAST-1](pr-cards/CI-FAST-1.md).
+
+
 ## 2026-10-27 — C-9 authenticated MCP hot-path speedup
 
 Owner requested competitive latency after a same-file client sample measured 302–513 ms official versus 1,879–2,022 ms through this MCP. The C-9 PR reuses fresh membership/pilot/marketplace and bearer validation **only inside the same HTTP request**, overlaps independent client/account reads, and preserves all write/tenant guards. No cross-request cache or new spend. Baseline is directional, not a controlled provider benchmark; deployment and real-speed improvement are unverified. See [C-9](pr-cards/C-9.md).
