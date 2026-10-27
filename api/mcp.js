@@ -4,7 +4,7 @@ import { createGithubPolicy } from '../src/oauth/policy.js';
 import { createDispatch } from '../src/tools/dispatch.js';
 import { createGates } from '../src/tools/gates.js';
 import { getSecretsRuntime } from '../src/runtime.js';
-import { isPrivateTenantBearer, resolvePrivateTenantMcpBearer } from '../src/tenancy/mcp-route.js';
+import { isPrivateTenantBearer, resolvePrivateTenantMcpBearer, requestScopedVerifiedAccess } from '../src/tenancy/mcp-route.js';
 import { serverInfo } from '../src/brand/brand.js';
 import { publicOrigin } from '../src/core/http.js';
 import { loadZone, withTimeZone } from '../src/core/time-zone.js';
@@ -35,7 +35,12 @@ export async function handleMcp(req, res, { marketplaceAccountId = null } = {}) 
       res.setHeader('WWW-Authenticate', 'Bearer error="invalid_token"');
       return res.status(401).json({ error: 'invalid_token' });
     }
-    const { db, credentials } = context;
+    const credentials = context.credentials;
+    // The private route already verified the SAME bearer row; avoid repeating
+    // its SQL SELECT/last-used UPDATE when the MCP core parses this request.
+    const db = tenantRoute
+      ? requestScopedVerifiedAccess(context.db, context.verifiedAccess.token, context.verifiedAccess.record)
+      : context.db;
     if (tenantRoute) {
       tenantSql = context.sql;
       providerMetrics = context.providerMetrics ?? null;

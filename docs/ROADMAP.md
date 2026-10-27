@@ -1,5 +1,10 @@
 # ROADMAP — ideas not being built now
 
+## 2026-10-27 — C-9 authenticated MCP hot-path speedup
+
+Owner requested competitive latency after a same-file client sample measured 302–513 ms official versus 1,879–2,022 ms through this MCP. The C-9 PR reuses fresh membership/pilot/marketplace and bearer validation **only inside the same HTTP request**, overlaps independent client/account reads, and preserves all write/tenant guards. No cross-request cache or new spend. Baseline is directional, not a controlled provider benchmark; deployment and real-speed improvement are unverified. See [C-9](pr-cards/C-9.md).
+
+
 ## 2026-10-27 — C-8 simple-call critical-path latency (implementation in review)
 
 Owner feedback credits C-3..C-6 for dramatically less PR/CI rework but finds simple custom MCP requests slower than official GitHub. A small alternating, uncontrolled identity-read sample reproduced the direction, not the original exact timings. C-8 targets `github_whoami` duplicate/serial DB reads and the synchronous per-provider-request tenant telemetry SQL upsert, preserving real account authentication, per-tenant event counts, bounded rates, user authority, journaling, and per-request durability. Test the selected code with artificial delayed IO and real disposable PostgreSQL tenant isolation, then pass full exact-head CI, review and scheduled release. Only after live independently matches the new SHA may actual client response timing be reported as an observed improvement. Card: [C-8](pr-cards/C-8.md).

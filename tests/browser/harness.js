@@ -56,7 +56,13 @@ export function fakeNeon() {
 /** A brand-new database on the throwaway server, dropped afterwards. */
 export async function freshDatabase(baseUrl) {
   const url = new URL(baseUrl);
-  if (!['localhost', '127.0.0.1', '::1', '[::1]'].includes(url.hostname)) throw new Error('Refusing non-local PostgreSQL.');
+  // A GitHub Actions *job container* connects to its disposable postgres
+  // service by the Docker service hostname (not localhost). Never accept an
+  // arbitrary remote DB address, including in CI.
+  const localhost = ['localhost', '127.0.0.1', '::1', '[::1]'].includes(url.hostname);
+  const actionsService = process.env.GITHUB_ACTIONS === 'true' &&
+    url.hostname === 'postgres' && url.port === '5432';
+  if (!localhost && !actionsService) throw new Error('Refusing non-local PostgreSQL.');
   const name = 'browser_' + randomBytes(5).toString('hex');
   const admin = new pg.Client({ connectionString: baseUrl });
   await admin.connect();

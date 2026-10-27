@@ -134,6 +134,12 @@ jobs:
     # Real browsers (Chromium as an Android phone and desktop, WebKit as an iPhone) walk the whole sign-in and the
     # "My connection" page against the real server code, a fake GitHub and a fake app. No network service is contacted.
     runs-on: ubuntu-latest
+    # Playwright's exact npm version image already contains Chromium, WebKit
+    # and system libraries. Avoid network-limited apt/OS dependency installation
+    # failures before any browser test executes.
+    container:
+      image: mcr.microsoft.com/playwright:v1.64.1-noble
+      options: --init --ipc=host
     timeout-minutes: 10
     services:
       postgres:
@@ -161,27 +167,16 @@ jobs:
           node-version: 24
       - if: steps.scope.outputs.code == 'true'
         run: npm ci
-      # Chromium: the runner's own Google Chrome (nothing to download). WebKit: Playwright's build plus its system libraries.
-      # A slow or stuck install fails after one bounded attempt and leaves its last output as an annotation.
-      - name: Install the WebKit engine
-        if: steps.scope.outputs.code == 'true'
-        timeout-minutes: 6
-        # The runner's mirror can take over 210 s. Do not retry an apt installation killed by a timeout:
-        # its surviving apt-get child holds dpkg's lock, making the next attempt fail before tests execute.
-        # Give one bounded 5-minute attempt and retain the real browser suite, never skip WebKit.
-        run: |
-          start=$(date +%s)
-          if timeout 300 npx playwright install --with-deps webkit > /tmp/pw-install.log 2>&1; then
-            echo "::notice title=WebKit install::completed in $(( $(date +%s) - start )) seconds"
-            exit 0
-          fi
-          echo "::error title=WebKit install failed::$(tail -c 900 /tmp/pw-install.log | tr '\n\r' '  ')"
-          exit 1
+      # Browser engines and OS dependencies are baked into the pinned Playwright
+      # CI image; REQUIRE_ALL_BROWSERS still makes missing engines fail the job.
       - if: steps.scope.outputs.code == 'true'
         run: node scripts/ci-phase.mjs --budget-seconds 180 -- npm run test:browser
         env:
-          TEST_DATABASE_URL: postgresql://postgres:ci-only-not-a-secret@127.0.0.1:5432/postgres
-          BROWSER_CHROMIUM_PATH: /usr/bin/google-chrome
+          # In a GitHub job container, the throwaway PostgreSQL service is
+          # available on Docker's isolated "postgres" service hostname.
+          # The CI-only password is not embedded in a connection URI.
+          PGPASSWORD: ci-only-not-a-secret
+          TEST_DATABASE_URL: postgresql://postgres@postgres:5432/postgres
           REQUIRE_ALL_BROWSERS: '1'
 
   ci:
