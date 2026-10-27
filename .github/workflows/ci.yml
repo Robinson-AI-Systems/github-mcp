@@ -27,6 +27,8 @@ jobs:
       - run: npm ci
       # secret scan, docs check, index validation, catalog count, lint, write-safety, token budgets, core imports
       - run: CI_TIMING_FILE=.ci-timing/phase.jsonl node scripts/ci-phase.mjs --budget-seconds 30 -- npm run check
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
       - name: Verify complete browser spec coverage
         run: node scripts/browser-shards.mjs --check
       - name: Retain CI duration evidence
@@ -37,8 +39,6 @@ jobs:
           path: .ci-timing/phase.jsonl
           if-no-files-found: error
           retention-days: 14
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
 
   unit:
     name: unit (${{ matrix.shard }}/3)

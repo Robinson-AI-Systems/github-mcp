@@ -33,7 +33,9 @@ export function checkLayout(source, expected = policy) {
     if (Number(match[1]) > 30) throw Error('CI feedback target increased beyond 30 seconds; profile/split instead.');
   for (const id of expected.timedJobs ?? [])
     if (!/ci-phase\.mjs --budget-seconds \d+ -- /.test(jobs.get(id) ?? '')) throw Error('Missing measured CI phase budget: ' + id);
-  const browser = jobs.get('browser') ?? '';
+  if (!jobs.get('check')?.includes('name: ci-timing-check'))
+    throw Error('Missing mandatory check timing artifact.');
+    const browser = jobs.get('browser') ?? '';
   if (!/shard:\s*\[sign-in, home-page, fair-use\]/.test(browser))
     throw Error('Required browser shards missing; reconcile the exact file manifest.');
   if (!browser.includes('scripts/browser-shards.mjs') ||

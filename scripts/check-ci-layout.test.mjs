@@ -20,7 +20,7 @@ test('timeout increases and removed aggregate result checks cannot hide slow/mis
  const missing=source().replaceAll('needs.'+id+'.result','needs.'+id+'.ignored');
  assert.throws(()=>checkLayout(missing),/inspect result/);
  assert.throws(()=>checkLayout(source().replaceAll('scripts/ci-phase.mjs','scripts/untimed.mjs')),/Missing measured/);
- assert.throws(()=>checkLayout(source().replaceAll('--budget-seconds 30','--budget-seconds 31')),/feedback budget increased/);
+ assert.throws(()=>checkLayout(source().replaceAll('--budget-seconds 30','--budget-seconds 31')),/feedback target increased/);
 });
 test('sharded cohorts cannot silently become one serial runner',()=>{
  for(const [id] of Object.entries(policy.matrices??{})){
