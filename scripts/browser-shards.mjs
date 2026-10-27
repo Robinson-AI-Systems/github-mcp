@@ -2,7 +2,7 @@
 // Missing, duplicate, renamed and newly created specs fail CI until assigned.
 import { readdirSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
-import { resolve } from 'node:path';
+import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const BROWSER_SHARDS = Object.freeze({
@@ -12,8 +12,20 @@ export const BROWSER_SHARDS = Object.freeze({
 });
 
 export function actualBrowserSpecs(dir = new URL('../tests/browser/', import.meta.url)) {
-  return readdirSync(dir).filter(file => file.endsWith('.test.js'))
-    .map(file => 'tests/browser/' + file).sort();
+  // Match vitest.browser.config.js's tests/browser/**/*.test.js, including
+  // nested suites. A non-recursive listing can silently drop new coverage.
+  const root = dir instanceof URL ? fileURLToPath(dir) : dir;
+  const specs = [];
+  const walk = (folder, prefix = '') => {
+    for (const entry of readdirSync(folder, { withFileTypes: true })) {
+      const relative = prefix ? prefix + '/' + entry.name : entry.name;
+      if (entry.isDirectory()) walk(join(folder, entry.name), relative);
+      else if (entry.isFile() && entry.name.endsWith('.test.js'))
+        specs.push('tests/browser/' + relative);
+    }
+  };
+  walk(root);
+  return specs.sort();
 }
 
 export function validateBrowserShards(manifest = BROWSER_SHARDS, actual = actualBrowserSpecs()) {

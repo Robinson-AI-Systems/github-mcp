@@ -41,7 +41,8 @@ export function writePhaseEvidence(summary, {
   timingFile = process.env.CI_TIMING_FILE, summaryFile = process.env.GITHUB_STEP_SUMMARY,
   append = appendFileSync, mkdir = mkdirSync
 } = {}) {
-  const { exitCode, ...record } = summary;
+  const record = { ...summary };
+  delete record.exitCode;
   const outcome = summary.commandPassed ? (summary.withinBudget ? 'on target' : 'slow pass') : 'FAILED';
   if (timingFile) {
     mkdir(dirname(timingFile), { recursive: true });
