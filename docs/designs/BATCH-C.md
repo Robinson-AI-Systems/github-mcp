@@ -77,6 +77,10 @@ refuses writes; budget script fails on a planted 161-character description (prov
 
 Owner-approved response to real-world agent issue #427: ordinary file/log/PR results remain compact; an explicit `github_content_get` or `github_get_result` byte window of at most 32 KiB returns original file bytes encoded base64, with offset, total, next and EOF. The caller can continue to any size GitHub makes available through this retrieval path. Retained results stay scoped to their originating client/pass and expire after 24 hours. Scan complete source **before encoding/slicing** to preserve credential controls, rather than allowing a base64 bypass. Acceptance uses a 25 KB minified/UTF-8 test in ≤2 calls, binary test, missing/foreign handles, fake and PostgreSQL result stores. See `docs/pr-cards/C-10.md`.
 
+### C-11 — Canonical argument aliases and direct-tool manifest (2026-10-27)
+
+Owner-approved issues #429/#434: read definitions may declare validated server-side aliases for historically inconsistent agent arguments, including `github_commit_list(ref|branch)` and `github_pr_get(number|pull_number)` / `github_pr_list_files(number|pull_number)`. Equivalent values work, conflicting values fail; `github_describe_tool` displays only the preferred canonical spelling with aliases documented separately. A small, read-only `github_tool_manifest` lists only permitted direct/compact tools and their deterministic per-tool interface versions, sorted content hash and explicit changelog hash. It does not expose ungranted write tools or full schemas. Fixture tests exercise direct, `github_call`, batch, missing values, conflicts, and profile filtering; exact-head required CI/review gates still apply. Card: `docs/pr-cards/C-11.md`.
+
 ## 5. Stop-and-ask points
 
 1. The SDK lacks annotations or structured output (C1 false): build the rest; record the gap; amend.
