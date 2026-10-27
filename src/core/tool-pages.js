@@ -29,7 +29,7 @@ export function pageToolsForListing(registry, profile, listing, cursor) {
   const available = toolsForListing(registry, profile, listing);
   const digest = fingerprint(available);
   const offset = decodeCursor(cursor, profile, listing, available.length, digest);
-  const tools = available.slice(offset, offset + TOOLS_PER_PAGE).map(listedTool);
+  const tools = available.slice(offset, offset + TOOLS_PER_PAGE).map(tool => listedTool(tool, { compact: listing === 'compact' }));
   const nextOffset = offset + tools.length;
   return {
     tools,

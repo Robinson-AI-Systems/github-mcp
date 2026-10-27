@@ -44,8 +44,12 @@ export function listedDescription(tool) {
   return !prefix || tool.description.startsWith(prefix) ? tool.description : `${prefix}${tool.description}`;
 }
 
-/** What a client is told about one tool. */
-export const listedTool = (tool) => ({ name: tool.name, description: listedDescription(tool), inputSchema: tool.inputSchema, ...(tool.annotations ? { annotations: tool.annotations } : {}) });
+/** A compact schema is an optional listing-only projection; validation and describe_tool use full inputSchema. */
+export const listedTool = (tool, { compact = false } = {}) => ({
+  name: tool.name, description: listedDescription(tool),
+  inputSchema: compact && tool.compactSchema ? tool.compactSchema : tool.inputSchema,
+  ...(tool.annotations ? { annotations: tool.annotations } : {})
+});
 
 /**
  * The tools a connection is shown. `catalog`: every tool its profile may see. `compact`: only tools marked `compact` (the meta-tools,

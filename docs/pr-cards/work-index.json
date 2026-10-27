@@ -2426,11 +2426,32 @@
         "C-9"
       ],
       "card": "docs/pr-cards/C-10.md",
-      "status": "IN_PROGRESS",
+      "status": "MERGED",
       "migration": "none",
       "budget": 0,
       "units": [
         "C-10"
+      ],
+      "readiness": "READY",
+      "ownerInputs": [],
+      "pr": [
+        437
+      ]
+    },
+    {
+      "id": "C-11",
+      "title": "Canonical read aliases and deterministic direct-tool manifest",
+      "batch": "C",
+      "design": "docs/designs/BATCH-C.md",
+      "dependencies": [
+        "C-10"
+      ],
+      "card": "docs/pr-cards/C-11.md",
+      "status": "IN_PROGRESS",
+      "migration": "none",
+      "budget": 0,
+      "units": [
+        "C-11"
       ],
       "readiness": "READY",
       "ownerInputs": []

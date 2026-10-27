@@ -51,6 +51,29 @@ describe('pull request reads (E-1a)', () => {
     expect(body).toMatchObject({ number: 7, head_sha: H, review_decision: 'APPROVED', threads: { total: 2, unresolved: 1 }, checks: { green: true, basis: 'required' } });
     expect(w.gh.invalid).toEqual([]);
   });
+  it('accepts number and pull_number for PR get and file reads through both invocation paths', async () => {
+    const w = await world();
+    w.gh.when('GET /repos/{owner}/{repo}/pulls/{pull_number}').reply(200, pr({ state: 'closed' }));
+    threads(w.gh);
+    w.gh.when('GET /repos/{owner}/{repo}/pulls/{pull_number}/files').reply(200,
+      [{ filename: 'src/example.js', status: 'modified', additions: 1, deletions: 0 }]);
+    for (const args of [{ number: 7 }, { pull_number: 7 }, { number: 7, pull_number: 7 }]) {
+      const got = await run(w, 'github_pr_get', { ...R, ...args });
+      expect(got.result.isError).not.toBe(true);
+      expect(got.body.number).toBe(7);
+      const files = await run(w, 'github_pr_list_files', { ...R, ...args });
+      expect(files.result.isError).not.toBe(true);
+      expect(files.body.items[0].filename).toBe('src/example.js');
+    }
+    for (const name of ['github_pr_get', 'github_pr_list_files']) {
+      const nested = await run(w, 'github_call', { name, args: { ...R, pull_number: 7 } });
+      expect(nested.result.isError).not.toBe(true);
+      expect((await run(w, name, { ...R, number: 7, pull_number: 8 })).result.isError).toBe(true);
+      expect((await run(w, name, R)).result.isError).toBe(true);
+      expect((await run(w, name, { ...R, pull_number: 'seven' })).result.isError).toBe(true);
+    }
+    expect(w.gh.invalid).toEqual([]);
+  });
   it('overlaps independent review and exact-head CI reads without bypassing the fake GitHub request validator', async () => {
     const w = await world();
     w.gh.when('GET /repos/{owner}/{repo}/pulls/{pull_number}').reply(200, pr());

@@ -35,7 +35,7 @@ describe('github_search_tools', () => {
   it('filters by area and audience, caps the count, and wants something to go on', async () => {
     const w = await world();
     const byArea = data(await w.run('github_search_tools', { area: 'meta' }));
-    expect(byArea.tools.map((t) => t.name).sort()).toEqual(['github_batch', 'github_call', 'github_describe_tool', 'github_search_tools']);
+    expect(byArea.tools.map((t) => t.name).sort()).toEqual(['github_batch', 'github_call', 'github_describe_tool', 'github_search_tools', 'github_tool_manifest']);
     const op = data(await w.run('github_search_tools', { audience: 'Op', limit: 2 }));
     expect(op.count).toBe(2);
     expect((await w.run('github_search_tools', {})).isError).toBe(true);
@@ -64,6 +64,54 @@ describe('github_describe_tool', () => {
       expect(r.isError).toBe(true);
       expect(r.content[0].text).toContain('Unknown or unavailable');
     }
+  });
+});
+
+describe('canonical read aliases', () => {
+  it('describes canonical names once, while documenting accepted aliases separately', async () => {
+    const w = await world('read_only');
+    for (const [name, canonical, alias] of [
+      ['github_commit_list', 'ref', 'branch'],
+      ['github_pr_get', 'number', 'pull_number'],
+      ['github_pr_list_files', 'number', 'pull_number']
+    ]) {
+      const result = data(await w.run('github_describe_tool', { name }));
+      expect(result.arguments.properties).toHaveProperty(canonical);
+      expect(result.arguments.properties).not.toHaveProperty(alias);
+      if (name !== 'github_commit_list') expect(result.arguments.required).toContain('number');
+      expect(result.accepted_aliases[canonical]).toContain(alias);
+      const registered = registry.tools.find(t => t.name === name);
+      expect(registered.inputSchema.properties).toHaveProperty(alias);
+    }
+  });
+});
+
+describe('github_tool_manifest', () => {
+  it('is stable, bounded, sorted, profile-scoped, and changes with a direct-tool contract', async () => {
+    const w = await world();
+    const a = data(await w.run('github_tool_manifest', {}));
+    const b = data(await w.run('github_tool_manifest', {}, { ...registry, tools: [...registry.tools].reverse() }));
+    expect(a).toEqual(b);
+    expect(a.format_version).toBe(1);
+    expect(a.count).toBe(a.tools.length);
+    expect(a.tools.map(x => x.name)).toEqual([...a.tools.map(x => x.name)].sort());
+    expect(a.tools.every(x => /^1-[a-f0-9]{12}$/.test(x.version))).toBe(true);
+    expect(a.manifest_hash).toMatch(/^[a-f0-9]{64}$/);
+    expect(a.changelog_hash).toMatch(/^[a-f0-9]{64}$/);
+    expect(Buffer.byteLength(JSON.stringify(a))).toBeLessThan(8192);
+    const low = await world('read_only');
+    const onlyRead = data(await low.run('github_tool_manifest', {}));
+    expect(onlyRead.count).toBeLessThan(a.count);
+    const extra = defineRead({
+      name: 'github_test_direct_extra', description: 'Synthetic manifest fixture.',
+      compact: true, handler: async () => ({ ready: true })
+    });
+    const changed = data(await w.run('github_tool_manifest', {}, {
+      ...registry, tools: [...registry.tools, extra.tool],
+      handlers: { ...registry.handlers, [extra.tool.name]: extra.handler }
+    }));
+    expect(changed.manifest_hash).not.toBe(a.manifest_hash);
+    expect(changed.tools.map(t => t.name)).toContain(extra.tool.name);
   });
 });
 

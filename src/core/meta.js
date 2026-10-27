@@ -52,6 +52,10 @@ export function describeTool(tool) {
     name: tool.name, kind: kindOf(tool), area: areaOf(tool), audience: (tool.audience ?? ['B', 'O', 'Op']).map((a) => AUDIENCES[a] ?? a), description: tool.description,
     ...(tool.guidance ? { guidance: tool.guidance } : {}), safety: marksOf(tool),
     ...(tool.writes ? { profiles: tool.profiles, how_to_change: 'For an already-authorized routine change, call once without dryRun or confirm. Use dryRun: true only for an optional preview. If the server returns needs_confirmation, review its preview and obtain the required approval before retrying with confirm: true.' } : {}),
-    arguments: tool.inputSchema
+    arguments: tool.aliases ? { ...tool.inputSchema,
+      properties: Object.fromEntries(Object.entries(tool.inputSchema.properties).filter(([k]) =>
+        !Object.values(tool.aliases).some(names => names.includes(k)))),
+      ...(tool.canonicalRequired?.length ? { required: tool.canonicalRequired } : {}) } : tool.inputSchema,
+    ...(tool.aliases ? { accepted_aliases: tool.aliases } : {})
   };
 }

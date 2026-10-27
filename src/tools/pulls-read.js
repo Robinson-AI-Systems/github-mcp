@@ -34,7 +34,7 @@ export const prList = defineRead({
 const THREADS = `query($owner: String!, $name: String!, $number: Int!) { repository(owner: $owner, name: $name) { pullRequest(number: $number) { reviewDecision reviewThreads(first: 100) { totalCount nodes { isResolved } } } } }`;
 
 export const prGet = defineRead({
-  name: 'github_pr_get', area: 'pr', audience: ['B', 'Op'],
+  name: 'github_pr_get', area: 'pr', audience: ['B', 'Op'], aliases: { number: ['pull_number'] },
   description: 'Inspect PR draft/merge state, head SHA, required checks, review decision and threads.',
   properties: { owner: OWNER, repo: REPO, number: PR },
   required: ['repo', 'number'],
@@ -81,7 +81,7 @@ export const prGetDiff = defineRead({
 });
 
 export const prListFiles = defineRead({
-  name: 'github_pr_list_files', area: 'pr', audience: ['B'],
+  name: 'github_pr_list_files', area: 'pr', audience: ['B'], aliases: { number: ['pull_number'] },
   description: 'Files changed in a pull request with additions and deletions (patches cut).',
   properties: { owner: OWNER, repo: REPO, number: PR },
   required: ['repo', 'number'],

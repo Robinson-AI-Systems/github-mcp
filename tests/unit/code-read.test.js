@@ -141,6 +141,23 @@ describe('content reads (D-2)', () => {
     expect((await run(w, 'github_get_result', { handle, byteOffset: 0, page: 1 })).result.isError).toBe(true);
     expect((await run(w, 'github_get_result', { handle, byteOffset: 25001 })).result.isError).toBe(true);
   });
+  it('accepts either commit ref or branch through direct and catalog calls, rejecting conflicts', async () => {
+    const w = await world();
+    w.gh.when('GET /repos/{owner}/{repo}/commits').reply(200, []);
+    for (const args of [{ branch: 'dev' }, { ref: 'dev' }, { branch: 'dev', ref: 'dev' }]) {
+      const { result, body } = await run(w, 'github_commit_list', { ...R, ...args });
+      expect(result.isError).not.toBe(true);
+      expect(body.count).toBe(0);
+      expect(w.gh.calls.at(-1).query.sha).toBe('dev');
+    }
+    const called = await run(w, 'github_call', { name: 'github_commit_list', args: { ...R, branch: 'dev' } });
+    expect(called.result.isError).not.toBe(true);
+    const batched = await run(w, 'github_batch', { calls: [{ name: 'github_commit_list', args: { ...R, branch: 'dev' } }] });
+    expect(batched.body.results[0]).toMatchObject({ ok: true });
+    expect((await run(w, 'github_commit_list', { ...R, branch: 'left', ref: 'right' })).result.isError).toBe(true);
+    expect((await run(w, 'github_commit_list', { ...R, branch: 123 })).result.isError).toBe(true);
+    expect(w.gh.invalid).toEqual([]);
+  });
   it('says so when a file is too large for the contents API', async () => {
     const w = await world();
     w.gh.when('GET /repos/{owner}/{repo}/contents/{path}').reply(200, fileBody({ encoding: 'none', content: '', size: 5_000_000 }));

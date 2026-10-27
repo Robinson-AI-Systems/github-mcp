@@ -19,23 +19,49 @@ export const FIELDS_PROPERTY = { type: 'array', items: { type: 'string', maxLeng
  * @param {string} [spec.guidance] longer instructions, shown by github_describe_tool
  * @param {(args: object, ctx: object) => any} spec.handler returns the raw object, or a list of them
  */
-export function defineRead({ name, description, area, audience, compact, guidance, byteWindow = false, properties = {}, required = [], summaryType, handler }) {
+export function defineRead({ name, description, area, audience, compact, guidance, byteWindow = false, aliases = {}, properties = {}, required = [], summaryType, handler }) {
   if (!NAME.test(name ?? '')) throw new TypeError('A valid tool name is required.');
   if (typeof description !== 'string' || !description) throw new TypeError(`${name}: a description is required.`);
   if (typeof handler !== 'function') throw new TypeError(`${name}: handler must be a function.`);
   if (summaryType !== undefined && !SUMMARY_TYPES.includes(summaryType)) throw new TypeError(`${name}: unknown summary type "${summaryType}".`);
   for (const key of ['detail', 'fields']) if (key in properties) throw new TypeError(`${name}: "${key}" is added by the read layer.`);
+  const aliasEntries = Object.entries(aliases).flatMap(([canonical, names]) => {
+    if (!Object.hasOwn(properties, canonical) || !Array.isArray(names) || !names.length)
+      throw new TypeError(`${name}: aliases need a declared canonical argument.`);
+    return names.map(alias => {
+      if (alias in properties || alias === 'detail' || alias === 'fields')
+        throw new TypeError(`${name}: duplicate alias ${alias}.`);
+      return [canonical, alias];
+    });
+  });
+  const aliasProperties = Object.fromEntries(aliasEntries.map(([canonical, alias]) =>
+    [alias, { ...properties[canonical], description: `Alias for ${canonical}. Prefer ${canonical}.` }]));
+  const normalizedHandler = (args = {}, ctx) => {
+    const chosen = { ...args };
+    for (const [canonical, alias] of aliasEntries) {
+      if (!Object.hasOwn(args, alias)) continue;
+      if (Object.hasOwn(args, canonical) && args[canonical] !== args[alias])
+        throw new TypeError(`Conflicting ${canonical} and ${alias}; provide one value.`);
+      chosen[canonical] = args[alias];
+      delete chosen[alias];
+    }
+    for (const canonical of Object.keys(aliases))
+      if (required.includes(canonical) && !Object.hasOwn(chosen, canonical))
+        throw new TypeError(`${canonical} is required (or an accepted alias).`);
+    return handler(chosen, ctx);
+  };
   const tool = Object.freeze({
     name, description, ...(area ? { area } : {}), ...(audience ? { audience: Object.freeze([...audience]) } : {}), ...(compact ? { compact: true } : {}), ...(guidance ? { guidance } : {}),
     readContract: 'defineRead-v1', results: Object.freeze({ summaryType: summaryType ?? null }),
     ...(byteWindow ? { byteWindow: true } : {}),
+    ...(aliasEntries.length ? { aliases: Object.freeze(Object.fromEntries(Object.entries(aliases).map(([k, v]) => [k, Object.freeze([...v])]))), canonicalRequired: Object.freeze([...required]) } : {}),
     inputSchema: {
       type: 'object',
-      properties: { ...properties, ...(summaryType ? { detail: DETAIL_PROPERTY } : {}), fields: FIELDS_PROPERTY },
-      ...(required.length ? { required } : {}),
+      properties: { ...properties, ...aliasProperties, ...(summaryType ? { detail: DETAIL_PROPERTY } : {}), fields: FIELDS_PROPERTY },
+      ...((required.filter(key => !Object.hasOwn(aliases, key))).length ? { required: required.filter(key => !Object.hasOwn(aliases, key)) } : {}),
       additionalProperties: false
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true }
   });
-  return { tool, handler };
+  return { tool, handler: aliasEntries.length ? normalizedHandler : handler };
 }
