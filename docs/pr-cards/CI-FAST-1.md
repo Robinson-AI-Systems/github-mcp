@@ -1,4 +1,4 @@
-# CI-FAST-1 — parallel browsers, 60-second feedback targets, durable overrun records
+# CI-FAST-1 — parallel browsers, 30-second warn-only feedback targets, durable overrun records
 
 **Owner direction 2026-10-27:** Appliance Desk's CI design is the reference for horizontally parallel, completely covered test suites. A passing test must stay green even when slower than the desired budget. Excess should be recorded and visibly warned about, not retried or failed merely for slowness. Thirty seconds is the desired test-phase target, **not a hard kill**; the full pipeline's 30-second wall-time is aspirational and must be measured separately. This is a new owner-approved CI policy replacing the earlier mandatory soft-budget failure behavior, while preserving genuine failure and hard timeout gates.
 
