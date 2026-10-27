@@ -73,6 +73,10 @@ Files: `src/core/meta.js`, `api/mcp.js` (listing per connection, `?listing=` ove
 Tests: `github_call` passes the write-contract helper (door #2); refuses tools outside the profile; `github_batch`
 refuses writes; budget script fails on a planted 161-character description (prove once).
 
+### C-10 — Exact GitHub file retrieval without sacrificing compact defaults (2026-10-27)
+
+Owner-approved response to real-world agent issue #427: ordinary file/log/PR results remain compact; an explicit `github_content_get` or `github_get_result` byte window of at most 32 KiB returns original file bytes encoded base64, with offset, total, next and EOF. The caller can continue to any size GitHub makes available through this retrieval path. Retained results stay scoped to their originating client/pass and expire after 24 hours. Scan complete source **before encoding/slicing** to preserve credential controls, rather than allowing a base64 bypass. Acceptance uses a 25 KB minified/UTF-8 test in ≤2 calls, binary test, missing/foreign handles, fake and PostgreSQL result stores. See `docs/pr-cards/C-10.md`.
+
 ## 5. Stop-and-ask points
 
 1. The SDK lacks annotations or structured output (C1 false): build the rest; record the gap; amend.

@@ -17,6 +17,16 @@ export function runResultStoreContract(name, make) {
       expect(new Date(got.expires_at).getTime()).toBeGreaterThan(Date.now() + 23 * 3600_000);
     });
 
+    it('retains a 25 KB minified UTF-8 file exactly for its owning connection', async () => {
+      const db = await make();
+      const content = 'x'.repeat(24990) + 'é😀';
+      const body = { type: 'file', path: 'src/minified.js', content, sha: 'fixture-sha' };
+      await db.putResult({ handle: H2, connection: 'client-1', body });
+      expect((await db.getResult(H2, 'client-1')).body).toEqual(body);
+      expect(Buffer.from((await db.getResult(H2, 'client-1')).body.content)).toEqual(Buffer.from(content));
+      expect(await db.getResult(H2, 'client-2')).toBeNull();
+    });
+
     it('does not show a result to another connection, an unknown handle, or a malformed one', async () => {
       const db = await make();
       await db.putResult({ handle: H1, connection: 'client-1', body: { a: 1 } });

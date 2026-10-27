@@ -46,8 +46,14 @@ async function readReply({ tool, args, raw, connection, db, mode }) {
   const { value, unknown } = tool.results ? projected(shaped, args?.fields) : { value: shaped, unknown: [] };
   if (containsCredential(JSON.stringify(value))) return fail('The result was withheld because it looked like it contained a credential.');
   if (tool.keepsResult === false) return { content: [{ type: 'text', text: JSON.stringify(value) }], structuredContent: value };
-  const capped = capText(value);
-  const fit = fitToBudget(capped.value);
+  // Only an explicitly requested byte window may exceed the normal 8 KiB
+  // preview. The read tool validates a hard 32 KiB raw-byte ceiling first.
+  const byteWindow = tool.byteWindow === true &&
+    (args?.byteOffset !== undefined || args?.byteLength !== undefined) &&
+    value?.encoding === 'base64' && typeof value?.content_base64 === 'string' &&
+    value?.byte_length <= 32768;
+  const capped = capText(value, byteWindow ? { textLimit: 48000 } : {});
+  const fit = fitToBudget(capped.value, byteWindow ? 48000 : undefined);
   const notes = {};
   if (unknown.length) notes.unknown_fields = unknown.slice(0, 10);
   if (capped.cut.length || fit.fitted) {
