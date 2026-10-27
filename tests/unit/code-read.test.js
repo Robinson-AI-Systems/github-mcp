@@ -118,7 +118,7 @@ describe('content reads (D-2)', () => {
     expect(JSON.stringify(direct.result)).not.toContain(token);
     const first = await run(w, 'github_content_get', { ...R, path: 'has-token.bin' });
     expect(first.body.kept_result.handle).toMatch(/^res_/);
-    expect(first.body.content).toContain('[hidden]');
+    expect((await w.db.getResult(first.body.kept_result.handle, w.connection.client_id)).body.content).toContain('[hidden]');
     const retained = await run(w, 'github_get_result', {
       handle: first.body.kept_result.handle, byteOffset: 0, byteLength: 32768
     });
