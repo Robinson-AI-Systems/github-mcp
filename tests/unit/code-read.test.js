@@ -51,6 +51,71 @@ describe('content reads (D-2)', () => {
     expect(body.kept_result.handle).toMatch(/^res_/);
     expect(body.content.length).toBeLessThan(25000);
   });
+  it('recovers a 25 KB minified file byte-exact in two calls through a kept handle', async () => {
+    const w = await world();
+    const original = Buffer.from('a'.repeat(24990) + 'é😀' + 'z'.repeat(3));
+    w.gh.when('GET /repos/{owner}/{repo}/contents/{path}').reply(200,
+      fileBody({ content: original.toString('base64'), size: original.length, path: 'minified.js' }));
+    const first = await run(w, 'github_content_get', { ...R, path: 'minified.js' });
+    expect(first.body.kept_result.handle).toMatch(/^res_/);
+    expect(Buffer.byteLength(JSON.stringify(first.body))).toBeLessThan(8192);
+    const second = await run(w, 'github_get_result', {
+      handle: first.body.kept_result.handle, byteOffset: 0, byteLength: 32768
+    });
+    expect(second.result.isError).not.toBe(true);
+    expect(second.body).toMatchObject({
+      type: 'file', encoding: 'base64', byte_offset: 0, byte_length: original.length,
+      total_bytes: original.length, complete: true
+    });
+    expect(Buffer.from(second.body.content_base64, 'base64')).toEqual(original);
+    expect(w.gh.calls).toHaveLength(1);
+  });
+  it('reads a 25 KB binary file exactly in a single explicit byte-window call', async () => {
+    const w = await world();
+    const original = Buffer.allocUnsafe(25000);
+    for (let i = 0; i < original.length; i++) original[i] = i % 256;
+    w.gh.when('GET /repos/{owner}/{repo}/contents/{path}').reply(200,
+      fileBody({ content: original.toString('base64'), size: original.length }));
+    const { body, result } = await run(w, 'github_content_get', {
+      ...R, path: 'byte.bin', byteOffset: 0, byteLength: 32768
+    });
+    expect(result.isError).not.toBe(true);
+    expect(body).toMatchObject({ encoding: 'base64', byte_offset: 0, byte_length: 25000, complete: true });
+    expect(Buffer.from(body.content_base64, 'base64')).toEqual(original);
+    expect(w.gh.invalid).toEqual([]);
+  });
+  it('supports arbitrary ranges across multi-byte boundaries and rejects mixed or invalid ranges', async () => {
+    const w = await world();
+    const original = Buffer.from('🙌é'.repeat(6000));
+    w.gh.when('GET /repos/{owner}/{repo}/contents/{path}').reply(200,
+      fileBody({ content: original.toString('base64'), size: original.length }));
+    const { body } = await run(w, 'github_content_get', {
+      ...R, path: 'long.txt', byteOffset: 13, byteLength: 32768
+    });
+    expect(Buffer.from(body.content_base64, 'base64')).toEqual(original.subarray(13, 13 + 32768));
+    for (const options of [
+      { byteOffset: 0, startLine: 1, endLine: 2 },
+      { byteOffset: original.length + 1, byteLength: 1 },
+      { byteLength: 32769 }
+    ]) {
+      expect((await run(w, 'github_content_get', { ...R, path: 'long.txt', ...options })).result.isError).toBe(true);
+    }
+  });
+  it('kept file bytes are isolated to the connection, and invalid selectors are refused', async () => {
+    const w = await world();
+    const original = 'k'.repeat(25000);
+    w.gh.when('GET /repos/{owner}/{repo}/contents/{path}').reply(200,
+      fileBody({ content: b64(original), size: 25000 }));
+    const first = await run(w, 'github_content_get', { ...R, path: 'private.txt' });
+    const handle = first.body.kept_result.handle;
+    const dispatch = createDispatch({ credentials: w.credentials, gates: [], fetch: w.gh.fetch, now: w.ctx.now });
+    const unrelated = { ...w.connection, client_id: 'another-client' };
+    const refused = await dispatch({ registry, name: 'github_get_result', args: { handle, byteOffset: 0 },
+      connection: unrelated, db: w.db });
+    expect(refused.isError).toBe(true);
+    expect((await run(w, 'github_get_result', { handle, byteOffset: 0, page: 1 })).result.isError).toBe(true);
+    expect((await run(w, 'github_get_result', { handle, byteOffset: 25001 })).result.isError).toBe(true);
+  });
   it('says so when a file is too large for the contents API', async () => {
     const w = await world();
     w.gh.when('GET /repos/{owner}/{repo}/contents/{path}').reply(200, fileBody({ encoding: 'none', content: '', size: 5_000_000 }));
