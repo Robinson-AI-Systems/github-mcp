@@ -83,4 +83,14 @@ describe('C-9 tenant MCP hot path', () => {
       {...env,VERCEL_ENV:'preview'})).toBe(false);
     expect(await tenantMcpAccountsLive({getAccount:async()=>({credential_kind:'master'})},['one'],'production',env)).toBe(true);
   });
+  it('runs a reproducible delayed-SQL benchmark without calling it live speed evidence', async () => {
+    const { execFileSync } = await import('node:child_process');
+    const report=JSON.parse(execFileSync(process.execPath,
+      ['scripts/benchmark-tenant-mcp-auth.mjs'],
+      {cwd:process.cwd(),encoding:'utf8',timeout:30000}));
+    expect(report).toMatchObject({fakeSqlDelayMs:20,repetitions:4});
+    expect(report.serialControlMedianMs).toBeGreaterThan(report.optimizedMedianMs);
+    expect(report.reductionPercent).toBeGreaterThan(30);
+  });
+
 });

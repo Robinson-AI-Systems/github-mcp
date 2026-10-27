@@ -2366,11 +2366,32 @@
         "C-6"
       ],
       "card": "docs/pr-cards/C-8.md",
-      "status": "IN_PROGRESS",
+      "status": "MERGED",
       "migration": "none",
       "budget": 0,
       "units": [
         "C-8"
+      ],
+      "readiness": "READY",
+      "ownerInputs": [],
+      "pr": [
+        424
+      ]
+    },
+    {
+      "id": "C-9",
+      "title": "Speed up live tenant MCP authentication with per-request checked evidence and bounded concurrent account reads",
+      "batch": "C",
+      "design": "docs/designs/BATCH-C.md",
+      "dependencies": [
+        "C-8"
+      ],
+      "card": "docs/pr-cards/C-9.md",
+      "status": "IN_PROGRESS",
+      "migration": "none",
+      "budget": 0,
+      "units": [
+        "C-9"
       ],
       "readiness": "READY",
       "ownerInputs": []
