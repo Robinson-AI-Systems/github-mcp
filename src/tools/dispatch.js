@@ -151,7 +151,7 @@ export function createDispatch({ env = process.env, now = Date.now, fetch = glob
     if (containsCredential(JSON.stringify(shaped))) return fail('The result was withheld because it looked like it contained a credential.');
     // Only public/top-level replies get compact metadata. Keep full JSON for
     // nested tool calls and output-schema declarations required by clients.
-    return topLevel && !tool.outputSchema ? deduplicateLargeEnvelope(shaped) : shaped;
+    return topLevel && !isWrite && !tool.outputSchema ? deduplicateLargeEnvelope(shaped) : shaped;
   }
   return dispatch;
 }
