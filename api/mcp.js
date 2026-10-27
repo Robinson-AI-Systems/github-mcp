@@ -20,6 +20,7 @@ export const config = { api: { bodyParser: true } };
 export async function handleMcp(req, res, { marketplaceAccountId = null } = {}) {
   const began = Date.now();
   let tenantSql = null;
+  let providerMetrics = null;
   let eventOutcome = 'error';
   let usage = null, usageHook = null, publicTenantId = null, countedCall = false;
   try {
@@ -37,6 +38,7 @@ export async function handleMcp(req, res, { marketplaceAccountId = null } = {}) 
     const { db, credentials } = context;
     if (tenantRoute) {
       tenantSql = context.sql;
+      providerMetrics = context.providerMetrics ?? null;
       // All active tenant clients share one DB-backed budget; each connection
       // has a smaller independent burst limit. Original owner unchanged.
       await admitTenantMcp(tenantSql, context.clientId);
@@ -91,9 +93,20 @@ export async function handleMcp(req, res, { marketplaceAccountId = null } = {}) 
       return res.status(503).json({ error: 'temporarily_unavailable', error_description: 'GitHub MCP is not configured or its database is unavailable' });
     }
   } finally {
-    if (tenantSql) await recordTenantMetric(tenantSql,{
-      event:'mcp',outcome:eventOutcome,durationMs:Math.max(0,Date.now()-began)
-    }).catch(()=>{});
+    if (tenantSql) {
+      const metric = {event:'mcp',outcome:eventOutcome,durationMs:Math.max(0,Date.now()-began)};
+      if (providerMetrics) {
+        // GitHub fetches already recorded their outcomes in this request's
+        // bounded buffer. Await one final per-tenant SQL upsert so no
+        // fire-and-forget metric is lost when a serverless worker finishes.
+        try {
+          providerMetrics.record(metric);
+          await providerMetrics.flush();
+        } catch { /* telemetry failure never changes the MCP result */ }
+      } else {
+        await recordTenantMetric(tenantSql,metric).catch(()=>{});
+      }
+    }
     if (countedCall && eventOutcome === 'error') await usage.recordError(publicTenantId).catch(() => {});
   }
 }
