@@ -46,7 +46,8 @@ export function defineRead({ name, description, area, audience, compact, guidanc
       delete chosen[alias];
     }
     for (const canonical of Object.keys(aliases))
-      if (!Object.hasOwn(chosen, canonical)) throw new TypeError(`${canonical} is required (or an accepted alias).`);
+      if (required.includes(canonical) && !Object.hasOwn(chosen, canonical))
+        throw new TypeError(`${canonical} is required (or an accepted alias).`);
     return handler(chosen, ctx);
   };
   const tool = Object.freeze({
