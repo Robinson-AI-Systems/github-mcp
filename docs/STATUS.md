@@ -1,7 +1,3 @@
-## 2026-10-27 — C-9 fresh per-request tenant MCP eligibility optimization
-
-Owner prioritized speed: official README sample 302–513 ms, custom read 1,879–2,022 ms (different connections; uncontrolled). Plan committed on `ai/chatgpt/mcp-hotpath-latency-20261027` before source. Candidate removes same-request rechecks, parallelizes bounded independent SQL reads, and preserves all existing auth and write controls. **No speedup/CI success/release is claimed yet.** Tests and exact-head PR CI/review pending. `docs/pr-cards/C-9.md` and `docs/status/2026-10-27-c9-latency.md` have handoff.
-
 ## 2026-10-26 — C-6 faster guarded PR lane (#418, final review pending)
 
 Owner-approved developer workflow throughput improvement: standard PR open with no labels directly delegates to the existing guarded writer rather than duplicating repo/PR inventory, exact-head merge prep reads independent repo/PR evidence concurrently, and stack preparation reads 3 PRs at a time while keeping ordered validation and a single guarded write. Synthetic scheduling improvements range 25–67%, **not** live traffic performance. Source head `7bb96acc` passed all required `ci` and `release-policy`, full unit, DB, RTC, browser, shapes and check; final docs head and merge still require exact-head checks. `docs/status/2026-10-26-c-6-fast-pr-lane.md` and card C-6 preserve test evidence and deferred live acceptance. No production release initiated.
