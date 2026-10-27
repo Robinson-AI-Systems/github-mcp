@@ -2416,6 +2416,24 @@
       ],
       "readiness": "READY",
       "ownerInputs": []
+    },
+    {
+      "id": "C-10",
+      "title": "Byte-exact resumable file downloads with bounded explicit byte windows",
+      "batch": "C",
+      "design": "docs/designs/BATCH-C.md",
+      "dependencies": [
+        "C-9"
+      ],
+      "card": "docs/pr-cards/C-10.md",
+      "status": "IN_PROGRESS",
+      "migration": "none",
+      "budget": 0,
+      "units": [
+        "C-10"
+      ],
+      "readiness": "READY",
+      "ownerInputs": []
     }
   ],
   "gatewayBoundary": {
