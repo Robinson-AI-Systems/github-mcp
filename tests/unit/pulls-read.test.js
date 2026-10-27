@@ -51,6 +51,25 @@ describe('pull request reads (E-1a)', () => {
     expect(body).toMatchObject({ number: 7, head_sha: H, review_decision: 'APPROVED', threads: { total: 2, unresolved: 1 }, checks: { green: true, basis: 'required' } });
     expect(w.gh.invalid).toEqual([]);
   });
+  it('exposes a 3.5 KB PR body once but keeps full JSON via content for direct and catalog calls', async () => {
+    const w = await world();
+    const body = 'x'.repeat(3500);
+    w.gh.when('GET /repos/{owner}/{repo}/pulls/{pull_number}').reply(200,
+      pr({ state: 'closed', body }));
+    threads(w.gh);
+    for (const [name, args] of [
+      ['github_pr_get', { ...R, number: 7 }],
+      ['github_call', { name: 'github_pr_get', args: { ...R, number: 7 } }]
+    ]) {
+      const reply = (await run(w, name, args)).result;
+      expect(reply.isError).not.toBe(true);
+      expect(reply.structuredContent.body).toBeUndefined();
+      expect(reply.structuredContent.full_payload_location).toBe('content[0].text');
+      expect(JSON.parse(reply.content[0].text).body).toBe(body);
+      expect(Buffer.byteLength(JSON.stringify(reply))).toBeLessThan(5500);
+    }
+    expect(w.gh.invalid).toEqual([]);
+  });
   it('overlaps independent review and exact-head CI reads without bypassing the fake GitHub request validator', async () => {
     const w = await world();
     w.gh.when('GET /repos/{owner}/{repo}/pulls/{pull_number}').reply(200, pr());
