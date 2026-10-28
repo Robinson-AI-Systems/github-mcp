@@ -98,13 +98,13 @@ export const tools = [
   },
   {
     name: 'github_call', area: 'meta', audience: ['B', 'O', 'Op'], compact: true, usesRegistry: true, passthrough: true,
-    description: 'Run any tool your profile includes by name, through the same safety checks as calling it directly.',
+    description: 'Run a visible tool with its original guards.',
     inputSchema: { type: 'object', properties: { name: { type: 'string', maxLength: 80 }, args: { type: 'object', additionalProperties: true, description: 'That tool\'s arguments' } }, required: ['name'], additionalProperties: false },
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true }
   },
   {
     name: 'github_batch', area: 'meta', audience: ['B', 'O', 'Op'], compact: true, usesRegistry: true,
-    description: 'Run up to 10 read tools in one round trip. Changes are refused: use github_call for those.',
+    description: 'Batch up to 10 reads; writes use github_call.',
     inputSchema: { type: 'object', properties: { calls: { type: 'array', items: CALL_ITEM, minItems: 1, maxItems: 10 } }, required: ['calls'], additionalProperties: false },
     annotations: readOnly
   }

@@ -190,7 +190,7 @@ async function mergeStack(a,ctx){
 }
 const whenTool={
   name:'github_workflow_merge_when_green',area:'workflow',audience:['B'],compact:true,
-  description:'Merge a PR at the expected green head and default branch, only after verified review and guarded confirmation.',
+  description:'Guarded exact-head, green-CI PR merge.',
   usesRegistry:true,passthrough:true,profiles:['everyday','full'],delegatedWrites:['github_pr_merge'],
   inputSchema:{type:'object',properties:{...common,number:NUMBER,expectedHeadSha:SHA,
     overrideRules:{type:'boolean'},overrideReason:{type:'string',minLength:10,maxLength:200}},
@@ -199,7 +199,7 @@ const whenTool={
 };
 const stackTool={
   name:'github_workflow_merge_stack',area:'workflow',audience:['B'],compact:true,
-  description:'Safely retarget and merge one checked PR per invocation; require fresh post-retarget CI before the next.',
+  description:'Retarget/merge a PR stack one guarded step at a time.',
   usesRegistry:true,passthrough:true,profiles:['everyday','full'],
   delegatedWrites:['github_pr_update','github_pr_merge'],
   inputSchema:{type:'object',properties:{...common,prs:PRS,stackNumber:NUMBER,expectedHeadShas:SHAS},

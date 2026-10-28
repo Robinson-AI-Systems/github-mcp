@@ -1,4 +1,5 @@
 // W-1: Compose the reviewed PR read/write tools; never issue an unguarded provider write.
+import {redact} from './util.js';
 // A workflow invocation advances at most one durable write, then resumes from fresh reads.
 const OWNER={type:'string',maxLength:39},REPO={type:'string',minLength:1,maxLength:100};
 const NUMBER={type:'integer',minimum:1},BRANCH={type:'string',minLength:1,maxLength:250};
@@ -18,6 +19,23 @@ async function call(ctx,name,args){
   return ctx.callTool(name,args);
 }
 const scope=(a)=>({...(a.owner?{owner:a.owner}:{}),repo:a.repo});
+const bounded=(value,max=240)=>typeof value==='string'?redact(value.slice(0,max)):null;
+function firstFailure(pr,diagnosis){
+  if(!diagnosis||!Array.isArray(diagnosis.runs))return {status:'unavailable',reason:'CI failure details could not be read.'};
+  const run=diagnosis.runs.find(x=>x.head_sha===pr.head_sha&&x.failed_jobs?.length);
+  if(!run)return {status:'unavailable',reason:'No failed GitHub Actions job with matching exact-head evidence was readable.'};
+  const job=run.failed_jobs[0];
+  const annotations=job.annotations?.items;
+  return {status:'observed',head_sha:pr.head_sha,run_id:run.run_id,
+    job:bounded(job.name,120),failed_step:bounded(job.failed_steps?.[0]?.name,120),
+    error_excerpt:job.logs_readable===true?(job.error_lines??[]).slice(0,3).map(x=>bounded(x,300)):null,
+    logs_readable:job.logs_readable===true,
+    annotations:Array.isArray(annotations)?annotations.slice(0,3).map(x=>({
+      path:bounded(x.path,180),line:Number.isInteger(x.line)?x.line:null,
+      level:bounded(x.level,40),message:bounded(x.message,250)})):[],
+    annotations_complete:job.annotations?.complete===true,
+    untrusted:true};
+}
 function nextAction(p){
   if(p.state!=='open')return p.merged?'Already merged.':'Closed; reopen it before continuing.';
   if(p.draft)return 'Mark this draft ready for review.';
@@ -55,18 +73,81 @@ export async function inspectPr(args,ctx){
     }
   }
   const next=nextAction(pr);
+  let ciFailure=null;
+  // Only a confirmed red exact-head check needs additional GitHub Actions reads.
+  // The CI helper selects the latest run at this SHA and bounds its first job.
+  if(pr.state==='open'&&pr.checks?.green===false&&
+    pr.checks.items?.some(x=>x.state==='failure')&&within(ctx,start)){
+    const diagnosis=readBody(await call(ctx,'github_workflow_ci_failure_summary',{
+      ...base,pr:args.number,firstFailureOnly:true}));
+    ciFailure=firstFailure(pr,diagnosis);
+  }
   return {done:true,status:'observed',number:pr.number,head_sha:pr.head_sha,
     head:pr.head,base:pr.base,draft:pr.draft,state:pr.state,merged:pr.merged,
     mergeable:pr.mergeable,mergeable_state:pr.mergeable_state,
     checks:pr.checks??null,review_decision:pr.review_decision??null,
     unresolved_threads:pr.threads?.unresolved??null,stack:position,
-    next_action:next,can_request_merge:next.startsWith('All checks'),
+    ...(ciFailure?{ci_failure:ciFailure}:{}),next_action:next,can_request_merge:next.startsWith('All checks'),
     html_url:pr.html_url,observed_at:new Date(clock(ctx)).toISOString(),
     ...(within(ctx,start)?{}:{incomplete:true,reason:'The 50-second workflow budget is nearly exhausted.'})};
 }
 const statusTool={
   name:'github_workflow_pr_status',area:'workflow',audience:['B','Op'],compact:true,
-  description:'Read a PR with head-specific CI, review threads, stack membership and one actionable next step.',
+  description:'PR head, CI failures, reviews, stack position and next action.',
+  usesRegistry:true,
+  inputSchema:{type:'object',properties:{owner:OWNER,repo:REPO,number:NUMBER},required:['repo','number'],additionalProperties:false},
+  annotations:{readOnlyHint:true,destructiveHint:false,idempotentHint:true,openWorldHint:true}
+};
+// GitHub's native auto_merge field is the only source for whether GitHub itself is armed.
+// The write journal can additionally prove which exact head this connection armed;
+// if GitHub was armed elsewhere or the head moved, never invent an arming SHA.
+export async function mergeAutomationStatus(args,ctx){
+  const account=args.owner??ctx.connection?.default_account;
+  if(!account||!ctx.connection?.accounts?.some(x=>x.toLowerCase()===account.toLowerCase()))
+    return {status:'not_readable',armed:null,reason:'The selected account is not available to this connection.'};
+  const pr=readBody(await call(ctx,'github_pr_get',{...scope(args),number:args.number}));
+  if(!pr)return {status:'not_readable',armed:null,number:args.number,reason:'GitHub PR state could not be read.'};
+  const known=pr.auto_merge?.known!==false && pr.auto_merge!=null;
+  const native=known?pr.auto_merge.enabled===true:null;
+  const conditions=[];
+  if(pr.checks?.green===false)conditions.push('checks');
+  if(pr.checks?.green===null)conditions.push('checks_unreadable');
+  if(pr.threads?.unresolved>0)conditions.push('review_threads');
+  if(['REVIEW_REQUIRED','CHANGES_REQUESTED'].includes(pr.review_decision))conditions.push('reviews');
+  if(pr.mergeable===false)conditions.push('merge_conflicts');
+  if(pr.mergeable==null)conditions.push('mergeability_unreadable');
+  const base={number:pr.number,head_sha:pr.head_sha,provider:'GitHub native auto_merge',
+    native_auto_merge_enabled:native,merge_method:pr.auto_merge?.merge_method??null,
+    enabled_by:pr.auto_merge?.enabled_by??null,mergeable_state:pr.mergeable_state??null,
+    waiting_on:conditions,checks:pr.checks?.green??null,review_decision:pr.review_decision??null,
+    note:'merge_when_green is a one-shot guarded merge, not an automatically armed background job.'};
+  if(pr.merged)return {...base,status:'completed',armed:false,merged:true};
+  if(pr.state!=='open')return {...base,status:'disabled',armed:false,reason:'PR is closed without a confirmed merge.'};
+  if(native===false)return {...base,status:'disabled',armed:false};
+  if(native===null)return {...base,status:'unknown',armed:null,reason:'GitHub did not expose its native auto-merge state.'};
+  let last=null;
+  const client=ctx.connection?.client_id??ctx.connection?.pass_id;
+  if(client&&typeof ctx.db?.listChanges==='function'){
+    try{
+      const rows=await ctx.db.listChanges({account,accounts:[account],
+        repo:account+'/'+args.repo,tool:'github_pr_set_auto_merge',limit:100});
+      last=rows.find(r=>r.connection===client&&r.confirmed===true&&
+        r.before?.pr?.number===args.number)??null;
+    }catch{/* Native provider evidence remains authoritative even if the journal is unavailable. */}
+  }
+  const recorded=!!(last?.after?.auto_merge&&last?.before?.pr?.head_sha);
+  const matching=recorded&&last.before.pr.head_sha===pr.head_sha;
+  const state=recorded&&!matching?'superseded_head':
+    !matching?'armed_unknown_head':
+    pr.mergeable_state==='queued'?'queued':conditions.length?'waiting':'armed';
+  return {...base,status:state,armed:true,armed_head_sha:matching?pr.head_sha:null,
+    recorded_at:matching?last.at:null,
+    ...(recorded&&!matching?{previous_recorded_head_sha:last.before.pr.head_sha}:{}),
+    ...(!matching?{reason:'GitHub confirms auto-merge is enabled, but no matching, connection-scoped arming receipt proves this head.'}:{})};
+}
+const mergeAutomationTool={
+  name:'github_workflow_merge_automation_status',area:'workflow',audience:['B','Op'],compact:true,
+  description:'GitHub auto-merge: actual arming, head and blockers.',
   usesRegistry:true,
   inputSchema:{type:'object',properties:{owner:OWNER,repo:REPO,number:NUMBER},required:['repo','number'],additionalProperties:false},
   annotations:{readOnlyHint:true,destructiveHint:false,idempotentHint:true,openWorldHint:true}
@@ -179,7 +260,7 @@ async function openPr(args,ctx){
 }
 const openTool={
   name:'github_workflow_open_pr',area:'workflow',audience:['B'],compact:true,
-  description:'Open a PR idempotently, then stage labels through the guarded writer; never push code or bypass notification controls.',
+  description:'Open a PR once, applying labels via guarded follow-up.',
   usesRegistry:true,passthrough:true,profiles:['everyday','full'],
   delegatedWrites:['github_pr_create','github_issue_set_labels'],
   inputSchema:{type:'object',properties:{owner:OWNER,repo:REPO,head:BRANCH,
@@ -189,5 +270,5 @@ const openTool={
     required:['repo','head','title'],additionalProperties:false},
   annotations:{readOnlyHint:false,destructiveHint:true,idempotentHint:false,openWorldHint:true}
 };
-export const tools=[statusTool,openTool];
-export const handlers={[statusTool.name]:inspectPr,[openTool.name]:openPr};
+export const tools=[statusTool,mergeAutomationTool,openTool];
+export const handlers={[statusTool.name]:inspectPr,[mergeAutomationTool.name]:mergeAutomationStatus,[openTool.name]:openPr};

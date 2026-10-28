@@ -45,7 +45,12 @@ export const prGet = defineRead({
       number: pr.number, title: pr.title, state: pr.state, draft: pr.draft, merged: pr.merged, user: pr.user?.login, head: pr.head?.ref, head_sha: pr.head?.sha, base: pr.base?.ref,
       head_repo: pr.head?.repo?.full_name, mergeable: pr.mergeable, mergeable_state: pr.mergeable_state, labels: (pr.labels ?? []).map((l) => l.name), commits: pr.commits, changed_files: pr.changed_files,
       additions: pr.additions, deletions: pr.deletions, created_at: pr.created_at, updated_at: pr.updated_at, merged_at: pr.merged_at, html_url: pr.html_url,
-      body: pr.body, author_association: pr.author_association
+      body: pr.body, author_association: pr.author_association,
+      // This is GitHub's actual auto-merge state, not our mergeability prediction.
+      auto_merge:Object.hasOwn(pr,'auto_merge')?(pr.auto_merge
+        ?{known:true,enabled:true,merge_method:pr.auto_merge.merge_method??null,
+          enabled_by:pr.auto_merge.enabled_by?.login??null}
+        :{known:true,enabled:false}):{known:false}
     };
     // Review and exact-head CI are independent after the authoritative PR ref
     // was read. Await both without making a second PR/provider mutation.
