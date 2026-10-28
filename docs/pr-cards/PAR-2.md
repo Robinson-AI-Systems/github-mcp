@@ -34,3 +34,7 @@ The [authority/parity plan](../designs/AUTHORITY-PARITY-2026-10-28.md) supersede
 ### Live false-positive correction, 2026-10-28
 
 The first authorized audit release exposed RTC schema names being redacted and exact byte windows refused. Correct the detector against the actual issued-pass format, retain positive credential protection, add value-free rule/location diagnostics and explicit redacted-text metadata, and verify the exact database-module blob through both official and custom routes after deployment. See `docs/CONTENT-PROTECTION.md`. Native Git is lower priority and not included.
+
+## Owner-approved native Git expansion, 2026-10-28
+
+Five native workspace tools connect the existing MCP lifecycle to a portable signed-HTTP worker running real Git, using tenant/connection-bound job metadata and per-request provider authorization. Scope, commands, limits, advanced local alternatives and migration/acceptance procedure are in docs/NATIVE-GIT-OPERATIONS.md. Existing API-only and scanner work remains separately evidenced; this expansion does not close proprietary scanner equivalence. The owner directs implementation/pre-release tests first, one combined checked release afterward, then live acceptance. Native source/image/live proof must remain distinct.

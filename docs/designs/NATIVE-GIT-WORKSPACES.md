@@ -1,6 +1,6 @@
 # Native Git capability through the GitHub MCP
 
-Status: design proposed 2026-10-28 in response to the owner's request for actual direct full Git capability. Not implemented, installed or deployed. This extends the active [authority/parity plan](AUTHORITY-PARITY-2026-10-28.md); it must not be counted as delivered by existing GitHub git-data API tools or the wiki's isomorphic-git adapter.
+Status: source implementation in progress on 2026-10-28; not yet reviewed, merged, installed or accepted live. The dated parity-completion checkpoint and docs/NATIVE-GIT-OPERATIONS.md identify delivered source versus deployment proof. This extends the active [authority/parity plan](AUTHORITY-PARITY-2026-10-28.md); it must not be counted as delivered by existing GitHub git-data API tools or the wiki's isomorphic-git adapter.
 
 ## Observable outcome
 
@@ -68,3 +68,7 @@ Scaling workers to zero can remove worker compute charges, depending on the sele
 Before broad rollout, load-test multiple tenants and repositories with actual native Git, small/large/binary histories, long-lived conflict states and concurrent users. Prove fair queueing, per-workspace serialization, revocation during queueing/execution, worker crash recovery, safe remote-write reconciliation, tenant-cache isolation and complete cleanup. Measure cold/warm latency and storage/transfer/compute usage at target concurrency; document the capacity, service cost and bottleneck. Scale-out must preserve the public MCP contract and authority model, not require users to re-create their connections.
 
 Owner priority clarification (2026-10-28): audit remediation and deployed MCP verification take precedence over native Git expansion. Initial Dokploy execution is acceptable with a portable image/protocol and durable export. Native Git work is not counted toward closing the audit findings.
+
+## Initial adapter scope
+
+The first source adapter is a bounded single-process worker per persistent volume, with signed HTTP, explicit capacity refusals, typed Git operations, immutable receipts and operator encrypted migration. It is portable, not an implemented autoscaling durable queue. Its named limits and local alternatives are intentional disclosures in NATIVE-GIT-OPERATIONS.md; a future owned managed execution adapter must satisfy the scale criteria above before scale-to-zero or multi-host recovery claims.

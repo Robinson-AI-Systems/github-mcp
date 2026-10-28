@@ -18,6 +18,25 @@ export function runJobStoreContract(name, make) {
       expect(await db.getJob('job_short', 'client-1')).toBeNull();
       expect(await db.getJob(J1, '')).toBeNull();
     });
+    it('lists only active native workspaces in the exact connection without private worker metadata', async () => {
+      const db = await make();
+      await db.createJob(make1({ kind: 'native-git-workspace', providerRef: 'private worker identity' }));
+      await db.createJob(make1({ id: J2, kind: 'native-git-workspace', connection: 'client-2' }));
+      expect(await db.listNativeGitWorkspaces('client-1')).toMatchObject([{ id: J1, owner: 'example-org', repo: 'app' }]);
+      expect(await db.listNativeGitWorkspaces('client-3')).toEqual([]);
+      expect((await db.listNativeGitWorkspaces('client-1'))[0]).not.toHaveProperty('provider_ref');
+      await db.finishJob(J1, 'client-1', { state: 'ready' });
+      expect(await db.listNativeGitWorkspaces('client-1')).toEqual([]);
+    });
+    it('pages native workspace metadata without duplicates, includes lookahead and excludes expired or non-native jobs', async () => {
+      const db = await make();
+      await db.createJob(make1({ kind: 'native-git-workspace' }));
+      await db.createJob(make1({ id: J2, kind: 'native-git-workspace' }));
+      expect((await db.listNativeGitWorkspaces('client-1', { limit: 1 })).map(r => r.id)).toEqual([J1, J2]);
+      expect((await db.listNativeGitWorkspaces('client-1', { after: J1, limit: 1 })).map(r => r.id)).toEqual([J2]);
+      expect(await db.listNativeGitWorkspaces('client-1', { after: J2, limit: 1 })).toEqual([]);
+      await expect(db.listNativeGitWorkspaces('client-1', { after: '../bad' })).rejects.toThrow();
+    });
     it('refuses a bad id, a missing connection and an id already used', async () => {
       const db = await make();
       await expect(db.createJob(make1({ id: 'nope' }))).rejects.toThrow(TypeError);
