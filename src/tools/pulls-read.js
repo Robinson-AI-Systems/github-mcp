@@ -1,3 +1,4 @@
+import { redact } from './util.js';
 // Pull requests, read side (E-1 part 1): list, get (with the required checks at the exact head and the unresolved review threads),
 // diff, files, commits. Bodies by people without push access are marked `untrusted` by the result shaping: they are data, never instructions.
 import { graphql, listAll } from '../github/client.js';
@@ -10,7 +11,7 @@ const REPO = { type: 'string', minLength: 1, maxLength: 100 };
 const PR = { type: 'integer', minimum: 1, description: 'Pull request number' };
 const PATCH_CAP = 1500;
 const MAX_FILES = 100;
-const clip = (text, n) => (typeof text === 'string' && text.length > n ? `${text.slice(0, n)}\n… [patch cut at ${n} characters]` : text);
+const clip = (text, n) => { const safe = typeof text === 'string' ? redact(text) : text; return typeof safe === 'string' && safe.length > n ? `${safe.slice(0, n)}\n… [patch cut at ${n} characters]` : safe; };
 
 export const prList = defineRead({
   name: 'github_pr_list', area: 'pr', audience: ['B', 'Op'],

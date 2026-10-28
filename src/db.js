@@ -1,3 +1,4 @@
+import { redact } from './github/content-protection.js';
 // Foundation database layer (A-2). Lazy Neon client plus the additive foundation schema of docs/designs/BATCH-A.md §2.
 // Every statement is a static tagged template (no string building) and uses IF NOT EXISTS: running initSchema() twice
 // changes nothing, and nothing here ever drops, alters or deletes. Credentials are ciphertext (*_enc) or hashes
@@ -120,7 +121,7 @@ export function normalizeChange(c = {}) {
   if (typeof c.summary !== 'string' || !c.summary) throw new TypeError('A change needs a summary.');
   return {
     account: c.account ?? null, repo: c.repo ?? null, mode: c.mode ?? null, connection: c.connection ?? null, tool: c.tool, target: c.target ?? null,
-    summary: c.summary.slice(0, 2000), before: jsonOrNull(c.before), after: jsonOrNull(c.after), dryRun: c.dryRun === true, confirmed: c.confirmed ?? null,
+    summary: redact(c.summary).slice(0, 2000), before: jsonOrNull(c.before), after: jsonOrNull(c.after), dryRun: c.dryRun === true, confirmed: c.confirmed ?? null,
     production: c.production === true, accessWidening: c.accessWidening === true, notifies: Array.isArray(c.notifies) ? c.notifies.slice(0, 50).map(String) : [],
     spendCents: Number.isSafeInteger(c.spendCents) ? c.spendCents : null, requestKey: c.requestKey ?? null, githubRequestId: c.githubRequestId ?? null, inverse: jsonOrNull(c.inverse)
   };
@@ -517,7 +518,7 @@ export function createDb(sql = productionSql()) {
       if (typeof connection !== 'string' || !connection) throw new TypeError('A result belongs to a connection.');
       await sql`DELETE FROM result_store WHERE handle IN (SELECT handle FROM result_store WHERE expires_at < now() LIMIT 100)`;
       await sql`INSERT INTO result_store (handle, connection, expires_at, summary, body)
-        VALUES (${handle}, ${connection}, now() + make_interval(secs => ${ttlSeconds}), ${summary === null ? null : String(summary).slice(0, 500)}, ${JSON.stringify(body)}::jsonb)`;
+        VALUES (${handle}, ${connection}, now() + make_interval(secs => ${ttlSeconds}), ${summary === null ? null : redact(String(summary)).slice(0, 500)}, ${JSON.stringify(body)}::jsonb)`;
     },
     /** The kept result, only for the connection that made it and only while it has not expired. */
     async getResult(handle, connection) {
@@ -546,7 +547,7 @@ export function createDb(sql = productionSql()) {
     /** Moves a pending job on (ready, failed or expired). A job that is no longer pending is left alone. Returns the row or null. */
     async finishJob(id, connection, { state, resultHandle = null, detail = null }) {
       if (!['ready', 'failed', 'expired'].includes(state)) throw new TypeError('A job finishes as ready, failed or expired.');
-      const rows = await sql`UPDATE gh_async_jobs SET state = ${state}, result_handle = ${resultHandle}, detail = ${detail === null ? null : String(detail).slice(0, 200)}, updated_at = now()
+      const rows = await sql`UPDATE gh_async_jobs SET state = ${state}, result_handle = ${resultHandle}, detail = ${detail === null ? null : redact(String(detail)).slice(0, 200)}, updated_at = now()
         WHERE id = ${id} AND connection_id = ${connection} AND state = 'pending' AND expires_at > now()
         RETURNING id, connection_id, owner, repo, kind, provider_ref, state, result_handle, detail, created_at, updated_at, last_polled_at, expires_at`;
       return rows[0] ?? null;

@@ -1,6 +1,7 @@
 // Turning CI logs into something short (BATCH-G decision G1). Pure functions: no network, no secrets. A raw log is never returned whole:
 // callers get the last lines, the lines that look like errors, and a note when anything was cut. Long base64-looking runs are removed.
 import zlib from 'node:zlib';
+import { redactExcerpt } from './content-protection.js';
 
 const STAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z\s?/;
 const ERROR_LINE = /##\[error\]|\bError:|\bERROR\b|\bFAIL(?:ED)?\b|✗|✖|Traceback \(most recent|^\s+at .+\(.+:\d+:\d+\)|Exception\b|npm ERR!|exit code [1-9]/;
@@ -12,7 +13,7 @@ const clean = (line) => {
 
 /** @returns {{ lines: number, tail: string[], errors: string[], errors_cut: boolean }} */
 export function summarizeLog(text, { tailLines = 400, maxErrors = 40 } = {}) {
-  const lines = String(text ?? '').split('\n').map(clean);
+  const lines = redactExcerpt(String(text ?? '')).split('\n').map(clean);
   while (lines.length && lines[lines.length - 1] === '') lines.pop();
   const errors = [];
   for (const line of lines) if (ERROR_LINE.test(line) && !errors.includes(line)) errors.push(line);

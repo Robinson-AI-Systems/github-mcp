@@ -20,7 +20,7 @@ async function call(ctx,name,args){
   return ctx.callTool(name,args);
 }
 const scope=(a)=>({...(a.owner?{owner:a.owner}:{}),repo:a.repo});
-const bounded=(value,max=240)=>typeof value==='string'?redact(value.slice(0,max)):null;
+const bounded=(value,max=240)=>typeof value==='string'?redact(value).slice(0,max):null;
 function firstFailure(pr,diagnosis){
   if(!diagnosis||!Array.isArray(diagnosis.runs))return {status:'unavailable',reason:'CI failure details could not be read.'};
   const run=diagnosis.runs.find(x=>x.head_sha===pr.head_sha&&x.failed_jobs?.length);

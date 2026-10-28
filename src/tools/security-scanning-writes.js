@@ -1,3 +1,4 @@
+import { redact } from './util.js';
 // Y-7b: code scanning default setup, secret-scanning custom patterns and Dependabot organization access.
 //  - Private code-scanning may trigger charges for future active committers. A user with GitHub plan permission can
 //    authorize it after an uncapped-cost disclosure; the developer's $0 testing rules do not forbid the user's action.
@@ -63,7 +64,7 @@ const patternTarget = (args, ctx) => {
   if (scope === 'repo' && !args.repo) throw new TypeError('scope repo needs repo.');
   return { owner: ownerOf(args, ctx), ...(scope === 'repo' ? { repo: args.repo } : {}), scope };
 };
-const shapePattern = (p) => (p ? { id: p.id, name: String(p.name ?? '').slice(0, 100), slug: p.slug ?? null, state: p.state ?? null, pushProtection: p.push_protection_enabled === true, version: p.custom_pattern_version ?? null,
+const shapePattern = (p) => (p ? { id: p.id, name: redact(String(p.name ?? '')).slice(0, 100), slug: p.slug ?? null, state: p.state ?? null, pushProtection: p.push_protection_enabled === true, version: p.custom_pattern_version ?? null,
   patternSha256: typeof p.pattern === 'string' ? createHash('sha256').update(p.pattern).digest('hex') : null } : null);
 const listPatterns = async (ctx, t) => ((await (await octo(ctx, t.owner)).request(`GET ${patternRoute(t)}`, patternParams(t))).data ?? []);
 const MATCH = { type: 'array', maxItems: 20, items: { type: 'string', minLength: 1, maxLength: 500 } };

@@ -1,3 +1,4 @@
+import { redact } from './util.js';
 // Y-3 shared primitives for reading OTHER accounts' public data (Batch Y decision Y5): only GET, only the allowlisted
 // path roots below, the actor credential chosen for the connected account (the user sign-in when it exists, else the
 // installation), free text marked untrusted and capped, and a missing or private repository always answering the same
@@ -22,7 +23,7 @@ const ALLOWED = [
 ];
 export const isAllowedPublicRoute = (route) => typeof route === 'string' && ALLOWED.some((pattern) => pattern.test(route));
 
-export const cap = (text, n = 600) => (typeof text === 'string' ? (text.length > n ? `${text.slice(0, n)}…` : text) : text ?? null);
+export const cap = (text, n = 600) => { const safe = typeof text === 'string' ? redact(text) : text; return typeof safe === 'string' ? (safe.length > n ? `${safe.slice(0, n)}…` : safe) : safe ?? null; };
 
 /** The connected account that acts: the named `as`, or the default. Never a foreign account. */
 export function actorOf(args, ctx) {

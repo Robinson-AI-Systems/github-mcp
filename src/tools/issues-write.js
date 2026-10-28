@@ -1,3 +1,4 @@
+import { redact } from './util.js';
 // F-1: issue creation, editing and conversation, using the existing guarded, journalled
 // GitHub write pipeline (preview, identity, people, idempotency, readback).
 import { defineGithubWrite } from './define-github-write.js';
@@ -42,7 +43,7 @@ export const issueCreate = defineGithubWrite({
     return { exists: true, has_issues: repo.has_issues };
   },
   classify: ({ args, ctx, target: t }) => notifyOutsiders(ctx, { text: `${args.title}\n${args.body ?? ''}`, logins: args.assignees ?? [], repoOwner: t.owner }),
-  summarize: ({ args, target: t }) => `Create an issue in ${slug(t.owner, t.repo)}: "${args.title.slice(0, 90)}"${args.assignees?.length ? ` and notify ${args.assignees.join(', ')}` : ''}`,
+  summarize: ({ args, target: t }) => `Create an issue in ${slug(t.owner, t.repo)}: "${redact(args.title).slice(0, 90)}"${args.assignees?.length ? ` and notify ${args.assignees.join(', ')}` : ''}`,
   apply: ({ args, ctx, target: t }) => octo(ctx, t.owner).then(o => o.request('POST /repos/{owner}/{repo}/issues', { owner: t.owner, repo: t.repo, title: args.title,
     ...(args.body !== undefined ? { body: args.body } : {}),
     ...(args.labels !== undefined ? { labels: args.labels } : {}),
@@ -114,7 +115,7 @@ export const issueComment = defineGithubWrite({
     return { number: i.number, state: i.state };
   },
   classify: ({ args, ctx, target: t }) => notifyOutsiders(ctx, { text: args.body, repoOwner: t.owner }),
-  summarize: ({ args, target: t }) => `Comment on #${args.number} in ${slug(t.owner, t.repo)}: "${args.body.slice(0,90)}"`,
+  summarize: ({ args, target: t }) => `Comment on #${args.number} in ${slug(t.owner, t.repo)}: "${redact(args.body).slice(0,90)}"`,
   apply: ({ args, ctx, target: t }) => octo(ctx, t.owner).then(o => o.request('POST /repos/{owner}/{repo}/issues/{issue_number}/comments', { owner: t.owner, repo: t.repo, issue_number: args.number, body: args.body })),
   readAfter: ({ ctx, target: t, response }) => octo(ctx, t.owner).then(o => o.request('GET /repos/{owner}/{repo}/issues/comments/{comment_id}', { owner: t.owner, repo: t.repo, comment_id: response.data.id })).then(r => r.data),
   verify: ({ args, after, response }) => !!after && after.id === response.data.id && after.body === args.body,

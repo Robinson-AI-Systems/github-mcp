@@ -1,3 +1,4 @@
+import { redact } from './util.js';
 // PAR-2: explicit, bounded org-wide issue field and type discovery.
 // These are read operations: the matching write tools already live in org-planning.js.
 import { defineRead } from './define-read.js';
@@ -6,7 +7,7 @@ import { orgReader } from './org-read.js';
 const OWNER = { type: 'string', minLength: 1, maxLength: 39,
   description: 'Connected organization (defaults to the active GitHub account)' };
 const MAX = { type: 'integer', minimum: 1, maximum: 100, description: 'Maximum returned items (default 50)' };
-const cap = (s, n = 250) => typeof s === 'string' ? s.slice(0, n) : null;
+const cap = (s, n = 250) => typeof s === 'string' ? redact(s).slice(0, n) : null;
 const nonnegative = (x) => Number.isSafeInteger(x) && x >= 0 ? x : null;
 const text = (s, n) => cap(s, n);
 

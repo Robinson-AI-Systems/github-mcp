@@ -1,3 +1,4 @@
+import { redact } from './util.js';
 // V-2 read-only remote cleanup rehearsal. No freeze, closing PRs or DELETE.
 import {ownerOf,octo,refusal} from './github-write.js';
 import {readCleanupRun,inspectScratchArtifacts} from '../dev/cleanup-execute.js';
@@ -26,7 +27,7 @@ export function cleanupPreflightResult({runId,owner,repo,phase,blocker=null,snap
     run_id:runId,owner,repo,phase,
     status:blocker?'blocked':'remote_snapshot_accepted',
     blocker_code:blocker?reasonCode(blocker):null,
-    blocker_detail:blocker&&blocker.status===422?String(blocker.message).slice(0,300):null,
+    blocker_detail:blocker&&blocker.status===422?redact(String(blocker.message)).slice(0,300):null,
     ...(snapshot?{inventory_counts:{
       branches:snapshot.branch_count,pull_requests:snapshot.pr_count,
       issues:snapshot.issue_count,tags:snapshot.tag_count,

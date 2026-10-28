@@ -1,3 +1,4 @@
+import { redact } from './util.js';
 // Pull requests, changes (E-1 part 2): create (idempotent, labelled), update (title, body, base, open/closed, with a preview of the
 // commits a retarget will carry), set_draft (GraphQL), close, update_branch. None of these merges anything (that is E-2) and none
 // touches production by itself; the pr-only rule for protected repositories lets this routine through (PR_ONLY_TOOLS). A pull request
@@ -48,7 +49,7 @@ const prCreate = defineGithubWrite({
   classify: ({ args, ctx, target: t }) => notifyOutsiders(ctx, { text: `${args.title}\n${args.body ?? ''}`, repoOwner: t.owner }),
   summarize: ({ args, before, target: t }) => (before.existing ? `${prLabel(t, before.existing.number)} is already open for ${args.head} into ${before.base}; it will be returned unchanged`
     : !before.branchExists ? `The branch ${args.head} does not exist in ${slug(t.owner, t.repo)}, so no pull request can be opened`
-      : `Open ${args.draft ? 'a draft ' : 'a '}pull request in ${slug(t.owner, t.repo)}: ${args.head} into ${before.base}, titled "${args.title.slice(0, 80)}"`),
+      : `Open ${args.draft ? 'a draft ' : 'a '}pull request in ${slug(t.owner, t.repo)}: ${args.head} into ${before.base}, titled "${redact(args.title).slice(0, 80)}"`),
   apply: async ({ args, ctx, before, target: t }) => {
     if (before.existing) return { data: before.existing, replayed: true };
     if (!before.branchExists) throw refusal(`There is no branch ${args.head}. Push it first.`, 404);
@@ -114,7 +115,7 @@ const prClose = defineGithubWrite({
   target,
   read: async (args, ctx, t) => brief(await getPr(ctx, t, args.number)),
   classify: () => ({}),
-  summarize: ({ args, before, target: t }) => (before ? `Close ${prLabel(t, args.number)} ("${String(before.title).slice(0, 60)}") without merging; the branch ${before.head} is kept` : `There is no pull request #${args.number} in ${slug(t.owner, t.repo)}`),
+  summarize: ({ args, before, target: t }) => (before ? `Close ${prLabel(t, args.number)} ("${redact(String(before.title)).slice(0, 60)}") without merging; the branch ${before.head} is kept` : `There is no pull request #${args.number} in ${slug(t.owner, t.repo)}`),
   apply: async ({ args, ctx, before, target: t }) => {
     needOpen(before ? { ...before, state: before.state } : null, args.number);
     return (await octo(ctx, t.owner)).request('PATCH /repos/{owner}/{repo}/pulls/{pull_number}', { owner: t.owner, repo: t.repo, pull_number: args.number, state: 'closed' });

@@ -103,7 +103,7 @@ function prepare(args,ctx){
   const allowed=new Map(toolsForProfile(ctx.registry,ctx.connection.profile).map(t=>[t.name,t]));
   const checked=args.steps.map((s,i)=>{
     const t=allowed.get(s.name);
-    if(!canDelegate(t))throw new TypeError('Step '+(i+1)+': not a visible guarded write tool ('+String(s.name).slice(0,80)+').');
+    if(!canDelegate(t))throw new TypeError('Step '+(i+1)+': not a visible guarded write tool ('+redact(String(s.name)).slice(0,80)+').');
     const given=s.args??{};
     if(!isObj(given))throw new TypeError('Step '+(i+1)+': arguments must be an object.');
     if(Object.hasOwn(given,'requestKey'))
@@ -130,7 +130,7 @@ function prepare(args,ctx){
         throw new TypeError('Step '+(i+1)+': '+key+' is required.');
       for(const key of Object.keys(a))if(!Object.hasOwn(schema.properties??{},key)&&
         schema.additionalProperties!==true)
-        throw new TypeError('Step '+(i+1)+': unknown field '+key.slice(0,50));
+        throw new TypeError('Step '+(i+1)+': unknown field '+redact(key).slice(0,50));
     }
     return {name:s.name,args:a,tool:t};
   });
@@ -173,7 +173,7 @@ function outcome(r){
 }
 function unverifiedPr(reason){
   return {structuredContent:{status:'unverified',done:false,
-    reason:'Independent GitHub PR verification failed: '+String(reason).slice(0,150)}};
+    reason:'Independent GitHub PR verification failed: '+redact(String(reason)).slice(0,150)}};
 }
 async function settlePrOpen(result,callArgs,ctx,prior){
   const original=resultBody(result);

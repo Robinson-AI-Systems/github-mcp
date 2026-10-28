@@ -302,3 +302,20 @@ describe('W-3 bounded exact-head file context',()=>{
     expect(w.gh.calls).toEqual([]);
   });
 });
+
+it('redacts full RTC passes before commit and comparison patch clipping',async()=>{
+  const token='rtc_pass_'+'x'.repeat(43);
+  for(const [name,route,args] of [
+    ['github_commit_get','GET /repos/{owner}/{repo}/commits/{ref}',{...R,ref:'abc'}],
+    ['github_commit_compare','GET /repos/{owner}/{repo}/compare/{basehead}',{...R,base:'main',head:'feature'}]
+  ]){
+    const w=await world();
+    // Each request starts the candidate across the handler's actual 1,500-character boundary.
+    w.gh.when(route).reply(200,{sha:'abc',commit:{message:'safe'},files:[{filename:'a.js',patch:'a'.repeat(1449)+token+'suffix'}]});
+    const got=await run(w,name,args);
+    expect(got.result.isError).not.toBe(true);
+    expect(JSON.stringify(got.result)).not.toContain(token.slice(0,40));
+    expect(got.body.files[0].patch).toContain('[hidden]');
+    expect(w.gh.invalid).toEqual([]);
+  }
+});

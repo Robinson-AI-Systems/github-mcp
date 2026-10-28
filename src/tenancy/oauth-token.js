@@ -1,3 +1,4 @@
+import { redact } from '../github/content-protection.js';
 // PUB-2 private OAuth token endpoint routing. An OAuth client ID embeds
 // server-signed tenant and verified subject IDs; these are only selectors.
 // The real tenant's stored OAuth client secret, single-use code/refresh hash,
@@ -26,7 +27,7 @@ export async function privateTenantToken(req, res, {
   // mirrored client row (secret hash, redirect list), single-use code and live membership still decide.
   const publicClient = isPublicClientId(params.client_id);
   // Internal log only (no secrets, no codes): what kind of token request arrived and how it ended.
-  const note = (stage) => { try { console.error('[oauth-token]', stage, 'grant=' + String(params.grant_type ?? '-').slice(0, 24),
+  const note = (stage) => { try { console.error('[oauth-token]', stage, 'grant=' + redact(String(params.grant_type ?? '-')).slice(0, 24),
     'client=' + (publicClient ? 'pcl' : 'other'), 'secret=' + (typeof params.client_secret === 'string' && params.client_secret ? 'yes' : 'no'),
     'basic=' + (/^basic /i.test(String(req.headers?.authorization ?? '')) ? 'yes' : 'no'),
     'resource=' + (params.resource ? 'yes' : 'no'), 'verifier=' + (params.code_verifier ? 'yes' : 'no'), 'status=' + res.statusCode); } catch { /* logging must never break a request */ } };

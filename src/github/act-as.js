@@ -1,3 +1,4 @@
+import { redact } from './content-protection.js';
 import { isOwnerConnection } from '../core/authority.js';
 // GOD-6 "Act as me". With a master token added and the switch on, every GitHub call is made with the person's own token, so
 // GitHub records the person (not the Robinson GitHub MCP app). This module decides WHEN that happens (actAsFor), records who
@@ -12,7 +13,7 @@ const whole = (text, fallback, max) => {
   return Number.isSafeInteger(n) && n >= 0 && n <= max ? n : fallback;
 };
 const off = (reason = null, quiet = false) => ({ on: false, reason, quiet });
-const dayOf = (iso) => { try { return formatDenver(new Date(iso)); } catch { return String(iso).slice(0, 10); } };
+const dayOf = (iso) => { try { return formatDenver(new Date(iso)); } catch { return redact(String(iso)).slice(0, 10); } };
 
 /** Every setting the answer depends on, read once per tool call (`ctx.actAsCache` is made by the dispatcher). */
 async function factsFor(ctx, subject) {
@@ -97,7 +98,7 @@ export async function actingAsFor(ctx, summary) {
     const status = typeof ctx.credentials?.masterStatus === 'function' ? await ctx.credentials.masterStatus().catch(() => null) : null;
     if (status?.subject) login = await loginFor(ctx, status.subject, status.login ?? null);
   }
-  const note = summary.notes.join('; ').slice(0, 300);
+  const note = redact(summary.notes.join('; ')).slice(0, 300);
   return { acting_as: actingAsText(summary, login), ...(note ? { acting_as_note: note } : {}) };
 }
 
@@ -227,4 +228,4 @@ export async function skippedRules(octokitApp, { owner, repo, branch, ci = null,
   return lines;
 }
 
-export const overrideSummaryPrefix = (reason) => `OVERRIDE (${String(reason).replace(/\s+/g, ' ').slice(0, 200)}): `;
+export const overrideSummaryPrefix = (reason) => `OVERRIDE (${redact(String(reason)).replace(/\s+/g, ' ').slice(0, 200)}): `;

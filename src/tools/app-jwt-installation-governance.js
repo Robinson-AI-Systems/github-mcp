@@ -1,3 +1,4 @@
+import { redact } from './util.js';
 // CAP-4: GitHub App JWT-only installation grants and installation requests.
 // Distinct from user U / organization I installation visibility. The enrolled
 // App OWNER is re-verified against GET /app before either JWT request. All
@@ -25,7 +26,7 @@ const grants=d=>{
   return Object.fromEntries(Object.entries(d).map(([key,value])=>{
     if(!/^[a-z][a-z0-9_]{0,69}$/.test(key)||
       !['read','write','admin'].includes(value))
-      throw new TypeError('GitHub returned invalid App permission '+key.slice(0,50));
+      throw new TypeError('GitHub returned invalid App permission '+redact(key).slice(0,50));
     return [key,value];
   }).sort(([a],[b])=>a.localeCompare(b)));
 };

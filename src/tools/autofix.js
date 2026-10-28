@@ -1,3 +1,4 @@
+import { redact } from './util.js';
 // Code scanning autofix (Y-8): ask GitHub to suggest a fix for an alert (a background job), then commit an accepted suggestion to a branch.
 import { defineGithubWrite } from './define-github-write.js';
 import { missing, octo, ownerOf, refusal } from './github-write.js';
@@ -39,7 +40,7 @@ const commit = defineGithubWrite({
   read: async (args, ctx, t) => ({ fix: await getFix(ctx, t, args.alertNumber) }),
   classify: async ({ ctx, target: t }) => ({ production: await productionReason(ctx, t) }),
   summarize: ({ args, target: t, before }) => (before.fix?.status === 'success'
-    ? `Commit the suggested fix for alert ${args.alertNumber} to branch ${args.targetRef} of ${t.owner}/${t.repo}${before.fix.description ? `: ${String(before.fix.description).slice(0, 120)}` : ''}`
+    ? `Commit the suggested fix for alert ${args.alertNumber} to branch ${args.targetRef} of ${t.owner}/${t.repo}${before.fix.description ? `: ${redact(String(before.fix.description)).slice(0, 120)}` : ''}`
     : `No ready fix for alert ${args.alertNumber} (${before.fix?.status ?? 'none started'}); nothing will be committed`),
   apply: async ({ args, ctx, target: t, before }) => {
     if (before.fix?.status !== 'success') throw refusal('There is no ready fix for this alert. Start one with github_code_scanning_autofix_start and wait until github_job_status says ready.');

@@ -1,3 +1,4 @@
+import { redact } from './content-protection.js';
 // CAP-1: source-pinned capability census. This module NEVER issues a provider request,
 // grants authority, or treats an API finder / tool count as actual GitHub coverage.
 import {deriveRestCredentials, listedFor, NO_EVIDENCE, DERIVED_REVIEWED} from './credential-derivation.js';
@@ -280,7 +281,7 @@ function routeEligibility(op) {
     return {candidate: op.method === 'GET' || ['POST','PUT','PATCH','DELETE'].includes(op.method),
       reason: 'Requires per-operation scoped request/credential/readback proof'};
   } catch (error) {
-    return {candidate: false, reason: String(error.message).slice(0,240)};
+    return {candidate: false, reason: redact(String(error.message)).slice(0,240)};
   }
 }
 function restRecord(op, names) {

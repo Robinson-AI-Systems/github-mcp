@@ -1,3 +1,4 @@
+import { redact } from '../github/content-protection.js';
 // Public sign-in ("connect") and the person's own "My connection" page. Redesigned 2026-10-23 after a day of phone-only
 // failures: the old flow chained up to ten hops (our form, GitHub, install, GitHub again, an accounts page, a God-mode page,
 // a token page, a hand-back page) and needed three browser cookies to survive every hop. In-app browsers lost them.
@@ -140,7 +141,7 @@ export function createPublicConnect({ env = process.env, fetchImpl = fetch, root
     await directory().deleteStalePublicClients({ days: 30, limit: 50, keep: [FORGET_CLIENT, MANAGE_CLIENT, MUSE_PUBLIC_CLIENT_ID] }).catch(() => {});
     const clientId = 'pcl_' + random(24), authMethod = body.token_endpoint_auth_method ?? 'client_secret_post';
     const secret = authMethod === 'none' ? null : randomToken(32);
-    const name = typeof body.client_name === 'string' ? body.client_name.slice(0, 100) : null;
+    const name = typeof body.client_name === 'string' ? redact(body.client_name).slice(0, 100) : null;
     // Keep a hashed unusable placeholder for public clients: the existing schema never stores plaintext.
     const stored = await directory().createPublicClient({ clientId, secretHash: hashToken(secret ?? randomToken(32)), authMethod, redirectUris: uris,
       clientName: name, maxClients: limits.maxClients });

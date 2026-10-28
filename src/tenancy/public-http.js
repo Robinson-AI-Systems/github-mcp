@@ -1,3 +1,4 @@
+import { redact } from '../github/content-protection.js';
 import { marketplaceAccount } from '../marketplace/resource.js';
 // The web side of the public sign-in and of the person's "My connection" page. Plain-English pages, no scripts, strict CSP,
 // and NO cookies: every step carries its own one-use handle (see public-connect.js for why that is safe). Every failure
@@ -27,7 +28,7 @@ function page(res, status, title, body) {
 }
 // Internal reason only (never shown to the person, never a secret): lets the owner see why a step was refused.
 function logRefusal(error, where = '') {
-  try { console.error('[public-connect] refused', where, error?.name ?? 'none', error?.code ?? '', error?.why ?? '', String(error?.message ?? '').slice(0, 160)); } catch { /* logging must never break the page */ }
+  try { console.error('[public-connect] refused', where, error?.name ?? 'none', error?.code ?? '', error?.why ?? '', redact(String(error?.message ?? '')).slice(0, 160)); } catch { /* logging must never break the page */ }
 }
 function failure(res, error, where = '') {
   logRefusal(error, where);

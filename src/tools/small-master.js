@@ -1,3 +1,4 @@
+import { redact } from './util.js';
 // GOD-4 B: small tools that need the person's own login (the master token): GitHub Classroom reads, the Marketplace listing of an
 // App you own, a user's hovercard, and creating a view on one of your own user projects. A closed or unavailable GitHub answer is
 // reported plainly instead of failing.
@@ -62,7 +63,7 @@ const hovercard = defineRead({
     if ((args.subjectType === undefined) !== (args.subjectId === undefined)) throw new TypeError('subjectType and subjectId go together.');
     const { gh } = await masterReader(ctx, 'repo', { identity: false });
     const data = (await gh.request('GET /users/{username}/hovercard', { username: args.username, ...(args.subjectType ? { subject_type: args.subjectType, subject_id: args.subjectId } : {}) })).data;
-    return { username: args.username, contexts: (data?.contexts ?? []).map((c) => ({ message: String(c.message).slice(0, 300), octicon: c.octicon })) };
+    return { username: args.username, contexts: (data?.contexts ?? []).map((c) => ({ message: redact(String(c.message)).slice(0, 300), octicon: c.octicon })) };
   })
 });
 

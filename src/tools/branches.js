@@ -1,3 +1,4 @@
+import { redact } from './util.js';
 import { isOwnerConnection } from '../core/authority.js';
 // Branch/tag tools read actual provider state. Full owner instructions reach
 // GitHub, which enforces default-branch and protection rules. Explicit requested
@@ -25,7 +26,7 @@ const branchTarget = (args, ctx, ref) => ({ owner: ownerOf(args, ctx), repo: arg
 const tagTarget = (args, ctx) => ({ owner: ownerOf(args, ctx), repo: args.repo, ref: args.tag, scope: 'repo', kind: 'tag' });
 const productionOf = (ctx, target) => productionReason(ctx, target).then((production) => ({ production }));
 const checkName = (name, what) => {
-  if (!/^[^\s~^:?*[\\]+$/.test(name) || name.startsWith('/') || name.endsWith('/') || name.endsWith('.') || name.includes('..') || name.includes('//') || name.endsWith('.lock')) throw new TypeError(`"${String(name).slice(0, 60)}" is not a valid ${what} name.`);
+  if (!/^[^\s~^:?*[\\]+$/.test(name) || name.startsWith('/') || name.endsWith('/') || name.endsWith('.') || name.includes('..') || name.includes('//') || name.endsWith('.lock')) throw new TypeError(`"${redact(String(name)).slice(0, 60)}" is not a valid ${what} name.`);
   return name;
 };
 

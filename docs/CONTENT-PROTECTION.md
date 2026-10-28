@@ -17,3 +17,9 @@ The prior RTC pattern matched any nonempty suffix after the pass prefix. Across 
 The issued RTC bearer format is a 43-character base64url suffix (`randomBytes(32)`); the HTTP authenticator requires exactly that format. Redaction now requires at least that issued length, retaining conservative redaction of an embedded/extended candidate. The measured 20 identifier matches become zero. Real full-length passes still redact in normal, retained, nested, error and property-name cases. Validation also stops reflecting truncated long argument names, since truncating a credential before redaction can leak its prefix.
 
 This is a labeled local regression corpus, not a universal false-positive-rate estimate or a claim that every remaining GitHub/private-key matcher is perfect. The new diagnostics make remaining cases reproducible without exposing secrets. Other detector families remain active.
+
+## Protection before shortening text
+
+The shared detector runs on complete provider text before patch, comment, search-fragment, public-data, log, preview-summary or persistence caps. Shortening first can turn a real credential into a prefix the full-format detector cannot recognize. Boundary regressions cover 306 overlap positions at common caps, actual commit/comparison patch handlers, provider logs and journal summaries. The shared implementation lives in `src/github/content-protection.js`; output shaping and diagnostics reuse it. No-match results are explicitly not a clean-file verdict.
+
+Search fragments and log excerpts may already have been shortened upstream. Those excerpts retain conservative RTC-prefix masking because a complete credential may no longer be visible. They are not byte-exact file reads; use the immutable full-file diagnostic/read for an exact source decision. This prevents fragment-prefix leakage without reinstating false-positive blocks on complete harmless source files.

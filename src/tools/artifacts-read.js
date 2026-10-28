@@ -1,3 +1,4 @@
+import { redact } from './util.js';
 // Reading inside build artifacts and repository archives, and the SBOM (Y-8). The server downloads and opens the zip itself; the signed
 // download address GitHub hands out is never returned, and binary files are described (name, size, SHA-256), never sent.
 import { createHash } from 'node:crypto';
@@ -25,7 +26,7 @@ export function describeZip(buffer, { path, maxBytes = 20000, strip = false } = 
   }
   const wanted = path.replace(/^\/+/, '');
   const entry = files.find((e) => nameOf(e) === wanted);
-  if (!entry) throw new TypeError(`There is no file "${wanted.slice(0, 120)}" in the archive. Leave out path to list the files.`);
+  if (!entry) throw new TypeError(`There is no file "${redact(wanted).slice(0, 120)}" in the archive. Leave out path to list the files.`);
   const bytes = readEntry(buffer, entry);
   const sha256 = createHash('sha256').update(bytes).digest('hex');
   if (!looksLikeText(bytes)) return { path: wanted, size: bytes.length, binary: true, sha256, note: 'Binary files are described, not sent.' };
@@ -46,7 +47,7 @@ export async function artifactBytes(octokit, { owner, repo, artifactId, entry = 
   const { bytes } = await downloadPublicAsset(url, { maxBytes: ZIP_LIMITS.compressed });
   if (!entry) return { bytes, name: artifact.name };
   const found = listZip(bytes, ZIP_LIMITS).find((e) => !e.directory && e.name === entry.replace(/^\/+/, ''));
-  if (!found) throw new TypeError(`There is no file "${entry.slice(0, 120)}" in artifact ${artifact.name}.`);
+  if (!found) throw new TypeError(`There is no file "${redact(entry).slice(0, 120)}" in artifact ${artifact.name}.`);
   const out = readEntry(bytes, found);
   if (out.length > maxBytes) throw new TypeError('That file is bigger than the upload limit.');
   return { bytes: out, name: artifact.name };

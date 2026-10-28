@@ -1,3 +1,4 @@
+import { redact } from './util.js';
 // Actions variables and the secret list (G-3 part 1). Variables are not secret, so their values are shown. Secret values never pass
 // through a tool and GitHub never returns them; `github_secret_list` shows names and dates only. Where a variable or secret lives:
 // `environment` set (with `repo`) = one environment; `repo` only = one repository; neither = the whole organization (always production).
@@ -60,7 +61,7 @@ const variableSet = defineGithubWrite({
   target: (args, ctx) => targetOf(place(args, ctx)),
   read: async (args, ctx) => ({ current: await getVar(ctx, place(args, ctx), args.name) }),
   classify: ({ ctx, target }) => productionReason(ctx, target).then((production) => ({ production })),
-  summarize: ({ args, ctx, before }) => `${before.current ? 'Change' : 'Create'} variable ${args.name} in ${place(args, ctx).label}${before.current ? ` (now "${String(before.current.value).slice(0, 40)}")` : ''} to "${args.value.slice(0, 60)}${args.value.length > 60 ? '…' : ''}"`,
+  summarize: ({ args, ctx, before }) => `${before.current ? 'Change' : 'Create'} variable ${args.name} in ${place(args, ctx).label}${before.current ? ` (now "${redact(String(before.current.value)).slice(0, 40)}")` : ''} to "${redact(args.value).slice(0, 60)}${args.value.length > 60 ? '…' : ''}"`,
   apply: async ({ args, ctx, before }) => {
     const pl = place(args, ctx);
     if (args.visibility && pl.level !== 'org') throw refusal('Visibility only applies to organization variables.');
@@ -85,7 +86,7 @@ const variableDelete = defineGithubWrite({
   target: (args, ctx) => targetOf(place(args, ctx)),
   read: async (args, ctx) => ({ current: await getVar(ctx, place(args, ctx), args.name) }),
   classify: ({ ctx, target }) => productionReason(ctx, target).then((production) => ({ production })),
-  summarize: ({ args, ctx, before }) => (before.current ? `Delete variable ${args.name} (value "${String(before.current.value).slice(0, 40)}") from ${place(args, ctx).label}` : `There is no variable ${args.name} in ${place(args, ctx).label}`),
+  summarize: ({ args, ctx, before }) => (before.current ? `Delete variable ${args.name} (value "${redact(String(before.current.value)).slice(0, 40)}") from ${place(args, ctx).label}` : `There is no variable ${args.name} in ${place(args, ctx).label}`),
   apply: async ({ args, ctx, before }) => {
     if (!before.current) throw refusal(`There is no variable ${args.name}.`, 404);
     const pl = place(args, ctx);

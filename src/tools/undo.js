@@ -1,3 +1,4 @@
+import { redact } from './util.js';
 // X-1: undo one finished change by running the clean opposite that was stored with it. Nothing here talks to GitHub:
 // the opposite is handed back to the same dispatcher, so the target tool's own arguments check, profile, production
 // switch, protected list, people/spend gates, preview/confirm, request key and change-log row all apply again.
@@ -64,7 +65,7 @@ async function undoChange(args, ctx) {
   const { later, unprovable } = await overtakenBy(ctx, row, inverse.tool);
   if (later.length) {
     const first = later[later.length - 1];
-    return refuse(`This was already followed by a newer change (number ${first.id}: ${String(first.summary).slice(0, 160)}). Undoing the old one now could overwrite it. Undo the newer change first, or make the change by hand.`,
+    return refuse(`This was already followed by a newer change (number ${first.id}: ${redact(String(first.summary)).slice(0, 160)}). Undoing the old one now could overwrite it. Undo the newer change first, or make the change by hand.`,
       { ...about, newerChanges: later.slice(-5).map((r) => r.id) });
   }
   if (unprovable) return refuse('So many newer changes exist that this one cannot be proven current. Make the change by hand.', about);

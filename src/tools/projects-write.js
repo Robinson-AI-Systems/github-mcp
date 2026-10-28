@@ -1,3 +1,4 @@
+import { redact } from './util.js';
 // F-3: guarded Projects v2 item membership and field editing, scoped to enrolled organizations.
 import {listAll} from '../github/client.js';
 import {defineGithubWrite} from './define-github-write.js';
@@ -181,7 +182,7 @@ export const projectSetItems=defineGithubWrite({
           {...p(t,a),item_id:item.itemId,fields:item.fields});
         done.push(item.itemId);
       }catch(error){
-        failed={itemId:item.itemId,reason:String(error?.message??error).slice(0,200)};
+        failed={itemId:item.itemId,reason:redact(String(error?.message??error)).slice(0,200)};
         break; // never retry (A8)
       }
     }

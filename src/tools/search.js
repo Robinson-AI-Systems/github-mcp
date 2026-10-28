@@ -1,3 +1,4 @@
+import { redactExcerpt } from './util.js';
 // F-3: real GitHub search across six result types, with bounded fragments.
 // Never return raw blobs, entire files or unbounded search hits.
 import { defineRead } from './define-read.js';
@@ -8,7 +9,7 @@ const ROUTES={
   pull_request:'GET /search/issues',commit:'GET /search/commits',
   repository:'GET /search/repositories',user:'GET /search/users'
 };
-const truncate=(v,n)=>typeof v==='string'?v.slice(0,n):null;
+const truncate=(v,n)=>typeof v==='string'?redactExcerpt(v).slice(0,n):null;
 const repoName=x=>x?.repository?.full_name??(typeof x?.repository_url==='string'
   ?x.repository_url.replace('https://api.github.com/repos/',''):null);
 // PUB-5 C: search results fail closed: text is untrusted unless GitHub says the author is an owner, member or collaborator.

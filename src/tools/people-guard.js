@@ -1,3 +1,4 @@
+import { redact } from './util.js';
 import { isOwnerConnection } from '../core/authority.js';
 // The people guard (B4): who a change can reach and whose access it widens. Tools call these helpers from `classify`; the numbers
 // and names come from GitHub and the owner's settings, never from the arguments' say-so.
@@ -22,7 +23,7 @@ export function cleanLogins(input) {
   const logins = [...new Set(raw.map((n) => String(n).trim().replace(/^@/, '')).filter(Boolean))];
   if (logins.length > MAX_EXTRA) return { error: `At most ${MAX_EXTRA} names.` };
   const bad = logins.find((n) => !isValidLogin(n.replace(/\[bot\]$/i, '')));
-  if (bad) return { error: `"${bad.slice(0, 40)}" is not a valid GitHub name.` };
+  if (bad) return { error: `"${redact(bad).slice(0, 40)}" is not a valid GitHub name.` };
   return { logins };
 }
 

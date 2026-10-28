@@ -1,3 +1,4 @@
+import { redact } from './util.js';
 // Y-6b: Actions limits, custom deployment protection rules and Pages builds.
 //  - Raising a cache or artifact/log limit means GitHub may store more, which can cost money. The server cannot calculate
 //    that bill, so an increase is treated as spend (blocked while the spend limit is $0); lowering or keeping a value is free.
@@ -152,7 +153,7 @@ const reviewCustom = defineGithubWrite({
     return { run: run ? { id: run.id, status: run.status, conclusion: run.conclusion ?? null } : null };
   },
   classify: ({ args }) => ({ production: `${args.state === 'approved' ? 'lets' : 'stops'} a waiting deployment to "${args.environment}"` }),
-  summarize: ({ args, before }) => (before.run ? `${args.state.toUpperCase()} the custom-rule check for run ${args.runId} on "${args.environment}"${args.comment ? ` (comment: ${args.comment.slice(0, 80)})` : ''}` : `Run ${args.runId} was not found`),
+  summarize: ({ args, before }) => (before.run ? `${args.state.toUpperCase()} the custom-rule check for run ${args.runId} on "${args.environment}"${args.comment ? ` (comment: ${redact(args.comment).slice(0, 80)})` : ''}` : `Run ${args.runId} was not found`),
   apply: async ({ args, ctx, target: t, before }) => {
     if (!before.run) throw refusal('That workflow run was not found.', 404);
     if (before.run.status !== 'waiting') throw refusal(`Run ${args.runId} is ${before.run.status}, not waiting; there is nothing to answer.`);

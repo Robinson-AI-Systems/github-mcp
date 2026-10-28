@@ -5,7 +5,7 @@ import { defineRead } from './define-read.js';
 import { globToRegExp } from './production-guard.js';
 import { githubDownloadPage, safeGithubDownloadRedirect } from './safe-download-link.js';
 import { plain, readerFor } from './github-read.js';
-import { containsCredential, contentProtectionReport } from './util.js';
+import { containsCredential, contentProtectionReport, redact } from './util.js';
 
 const OWNER = { type: 'string', maxLength: 39, description: 'GitHub account (default: the connection\'s default account)' };
 const REPO = { type: 'string', minLength: 1, maxLength: 100 };
@@ -15,7 +15,7 @@ const MAX_FILES = 100;
 const MAX_TREE = 500;
 const MAX_TEXT_BYTES = 1_000_000;
 const first = (text) => String(text ?? '').split('\n')[0];
-const clip = (text, n) => (typeof text === 'string' && text.length > n ? `${text.slice(0, n)}\n… [patch cut at ${n} characters]` : text);
+const clip = (text, n) => { const safe = typeof text === 'string' ? redact(text) : text; return typeof safe === 'string' && safe.length > n ? `${safe.slice(0, n)}\n… [patch cut at ${n} characters]` : safe; };
 
 const fileView = (f) => ({ filename: f.filename, status: f.status, additions: f.additions, deletions: f.deletions, ...(f.previous_filename ? { renamed_from: f.previous_filename } : {}),
   ...(f.patch ? { patch: clip(f.patch, PATCH_CAP) } : { patch: null }) });

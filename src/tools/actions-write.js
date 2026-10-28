@@ -1,3 +1,4 @@
+import { redact } from './util.js';
 // GitHub Actions, change side (G-1 part 2): enable/disable a workflow, start one, rerun, cancel, delete a run, approve or reject a
 // waiting deployment. A workflow is production when its file deploys to a production environment (read from the file at the ref
 // being run), or when the ref itself is production; anything that cannot be read for certain counts as production.
@@ -192,7 +193,7 @@ const reviewPending = defineGithubWrite({
   },
   summarize: ({ args, before, target }) => {
     const ids = before.pending.filter((d) => args.environments.includes(d.environment?.name));
-    return ids.length === args.environments.length ? `${args.state === 'approved' ? 'APPROVE' : 'REJECT'} the deployment of run ${args.runId} to ${args.environments.join(', ')} in ${slug(target.owner, target.repo)}: "${args.comment.slice(0, 80)}"`
+    return ids.length === args.environments.length ? `${args.state === 'approved' ? 'APPROVE' : 'REJECT'} the deployment of run ${args.runId} to ${args.environments.join(', ')} in ${slug(target.owner, target.repo)}: "${redact(args.comment).slice(0, 80)}"`
       : `Run ${args.runId} is not waiting on ${args.environments.filter((n) => !ids.some((d) => d.environment?.name === n)).join(', ')}`;
   },
   apply: async ({ args, ctx, target, before }) => {
