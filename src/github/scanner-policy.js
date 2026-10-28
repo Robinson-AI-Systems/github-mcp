@@ -10,6 +10,11 @@ export const SCANNER_SETTINGS_SCHEMA={type:'object',additionalProperties:false,p
  disabledRules:{type:'array',maxItems:8,uniqueItems:true,items:STR},
  suppressions:{type:'array',maxItems:20,items:{type:'object',additionalProperties:false,properties:{rule:STR,path:{type:'string',minLength:1,maxLength:1000},blobSha:{type:'string',pattern:'^[a-f0-9]{40}$'},reason:{type:'string',minLength:8,maxLength:200},fileReadException:{type:'boolean'},fingerprint:{type:'string',pattern:'^[a-f0-9]{64}$'}},required:['rule','path','blobSha','reason']}}
 }};
+// JSONB is free to reorder object keys. Equality must retain values/array order, not insertion order.
+export function stableScannerJson(value){
+ const normalize=v=>Array.isArray(v)?v.map(normalize):v&&typeof v==='object'?Object.fromEntries(Object.keys(v).sort().map(k=>[k,normalize(v[k])])):v;
+ return JSON.stringify(normalize(value));
+}
 export const defaultScannerSettings=()=>({additionalRules:[],disabledRules:[],suppressions:[]});
 export const scannerSettingKey=(owner,repo)=>'scanner_'+createHash('sha256').update(JSON.stringify([owner.toLowerCase(),repo.toLowerCase()])).digest('hex').slice(0,32);
 const knownKeys=(o,keys)=>Object.keys(o).every(k=>keys.includes(k));

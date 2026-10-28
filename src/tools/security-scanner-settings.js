@@ -5,7 +5,7 @@ import {isOwnerConnection} from '../core/authority.js';
 import {defineRead} from './define-read.js';
 import {defineGithubWrite} from './define-github-write.js';
 import {ownerOf} from './github-write.js';
-import {SCANNER_RULE_IDS,SCANNER_SETTINGS_SCHEMA,defaultScannerSettings,scannerSettings,scannerSettingKey,loadScannerPolicy} from '../github/scanner-policy.js';
+import {SCANNER_RULE_IDS,SCANNER_SETTINGS_SCHEMA,stableScannerJson,defaultScannerSettings,scannerSettings,scannerSettingKey,loadScannerPolicy} from '../github/scanner-policy.js';
 const OWNER={type:'string',minLength:1,maxLength:39};
 const REPO={type:'string',minLength:1,maxLength:100,pattern:'^[A-Za-z0-9_.-]+$'};
 const REVISION={type:'integer',minimum:0,maximum:2147483646};
@@ -21,12 +21,12 @@ const summary=p=>({revision:p.revision,settings:p.settings,history:p.history.map
 const get=defineRead({name:'github_security_scanner_get_settings',area:'security',audience:['B','O','Op'],description:'Read repository-scoped scanner rules, exact-blob suppressions and rollback revisions; no credential values.',properties:{owner:OWNER,repo:REPO,targetOwner:OWNER,targetRepo:REPO},required:['repo'],
  handler:async(a,c)=>{
   const t=target(a,c),p=await loadScannerPolicy(c.db,t.owner,t.repo),portable={version:1,source:{owner:t.owner,repo:t.repo,revision:p.revision},additionalRules:p.settings.additionalRules};
-  const result={...summary(p),portable_profile:{...portable,fingerprint:createHash('sha256').update(JSON.stringify(portable)).digest('hex'),file_suppressions_included:false}};
+  const result={...summary(p),portable_profile:{...portable,fingerprint:createHash('sha256').update(stableScannerJson(portable)).digest('hex'),file_suppressions_included:false}};
   if(a.targetOwner&&!a.targetRepo)throw new TypeError('Offering a profile requires targetRepo.');
   if(a.targetRepo){
    if(!isOwnerConnection(c.connection))throw new TypeError('Only the full owner may offer a profile across repositories.');
    const destination=target({owner:a.targetOwner??t.owner,repo:a.targetRepo},c),current=await loadScannerPolicy(c.db,destination.owner,destination.repo),merged=[...current.settings.additionalRules];
-   for(const rule of p.settings.additionalRules){const old=merged.find(r=>r.id===rule.id);if(old&&JSON.stringify(old)!==JSON.stringify(rule))throw new TypeError('Destination has a different rule under the same ID; rename or review it explicitly.');if(!old)merged.push(rule);}
+   for(const rule of p.settings.additionalRules){const old=merged.find(r=>r.id===rule.id);if(old&&stableScannerJson(old)!==stableScannerJson(rule))throw new TypeError('Destination has a different rule under the same ID; rename or review it explicitly.');if(!old)merged.push(rule);}
    scannerSettings({additionalRules:merged},current.settings);
    result.offer={owner:destination.owner,repo:destination.repo,expectedRevision:current.revision,changes:{additionalRules:merged},applied:false,requires:'A destination pinned-file verification and reason before github_security_scanner_configure. No suppression or output exception is copied.'};
   }
@@ -46,7 +46,7 @@ const configure=defineGithubWrite({name:'github_security_scanner_configure',area
   const value={revision:b.revision+1,settings,changed_at,reason:a.reason,changed_by:{client_id:c.connection.client_id,actor:c.actor?.summary?.()?.as??'authenticated owner'},verification_receipts,history:[...b.history,{revision:b.revision,settings:b.settings,changed_at:b.changed_at??null,reason:b.reason??null,changed_by:b.changed_by??null}].slice(-10)};
   const saved=await c.db.compareAndSetSetting(scannerSettingKey(t.owner,t.repo),b.revision,value);if(!saved)throw new TypeError('Scanner settings changed concurrently; no overwrite was made.');return {revision:value.revision,settings};
  },readAfter:async({args:a,ctx:c,target:t,before:b})=>{const p=await loadScannerPolicy(c.db,t.owner,t.repo);return {...p,post_verification:await verifyScannerChanges(c,t,b.settings,p.settings,a.verification)};},
- verify:({after:a,response:r})=>a.revision===r.revision&&JSON.stringify(a.settings)===JSON.stringify(r.settings)&&a.post_verification.every(c=>c.after_detected===c.expected_after&&c.before_detected===c.expected_before),
+ verify:({after:a,response:r})=>a.revision===r.revision&&stableScannerJson(a.settings)===stableScannerJson(r.settings)&&a.post_verification.every(c=>c.after_detected===c.expected_after&&c.before_detected===c.expected_before),
  inverse:({before:b,after:a,target:t})=>({tool:'github_security_scanner_configure',args:{owner:t.owner,repo:t.repo,expectedRevision:a.revision,changes:b.settings,reason:'Restore the previous journaled scanner configuration',verification:b.test.map(c=>({path:c.path,blobSha:c.blobSha,rule:c.rule,...(c.fingerprint?{fingerprint:c.fingerprint}:{}),door:c.door,expectedBefore:c.after_detected,expectedAfter:c.before_detected}))}}),present:({after:a})=>summary(a)});
 const gateway={name:'github_secret_scanner',area:'security',audience:['B','O','Op'],compact:true,usesRegistry:true,passthrough:true,
  description:'Secret scanner: settings, scan/preview, configure, rollback or offer a profile. Detailed schemas load on demand.',

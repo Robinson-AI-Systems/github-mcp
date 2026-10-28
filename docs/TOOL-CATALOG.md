@@ -966,3 +966,5 @@ Large text, lists and object payloads have one full JSON copy in `content[0].tex
 `github_content_get` accepts `fullText`, immutable `blobSha` continuation and `branch` as an alias for `ref`. PR reads/writes accept `pull_number` as an alias for canonical `number`; conflicting values fail before provider requests. `github_security_scan_guidance` supplies repo-specific native/official-engine setup and a Robinson repository scanner workflow without claiming installation or equivalent detection.
 
 Owner setup continuation (2026-10-28): merge/PR/release workflows reconstruct declared canonical payloads; guarded merge refusals preserve their status/reason instead of unknown. Owner connection setup and protected secret entry follow the current authority specification; legacy account production flags remain restricted-grant compatibility fields. No new public tool is added in this continuation.
+
+Scanner configuration compares independent persisted policy readback structurally; PostgreSQL JSONB object-key ordering does not manufacture an unconfirmed outcome.
