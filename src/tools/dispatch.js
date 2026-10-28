@@ -16,6 +16,7 @@ import { passRefusal } from '../rtc/pass-scope.js';
 import { shapeResult, redact, containsCredential } from './util.js';
 import {optionalConsentChallenge,OptionalConsentRequired} from '../tenancy/optional-challenge.js';
 import { actingAsFor, createActorLog } from '../github/act-as.js';
+import { createRateCollector } from '../github/rate.js';
 
 const fail = (text) => ({ isError: true, content: [{ type: 'text', text: redact(text) }] });
 const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -83,11 +84,27 @@ export function createDispatch({ env = process.env, now = Date.now, fetch = glob
   // PUB-5 B: a change slot is reserved before the change runs (so parallel calls cannot slip past the limit) and handed back
   // unless the change was counted. `box` remembers that for this one call.
   const dispatch = async (input) => {
-    const box = { reserved: false, counted: false };
-    try { return await run(input, box); }
-    finally { if (box.reserved && !box.counted) { try { await usage.release?.(); } catch { /* best effort */ } } }
+    const box={reserved:false,counted:false};
+    const topLevel=!input.rateObservations;
+    const rateObservations=input.rateObservations??createRateCollector({now});
+    try{
+      const result=await run({...input,rateObservations},box);
+      if(!topLevel)return result;
+      const rates=rateObservations.snapshot();
+      if(!rates.items.length)return result;
+      // Attach after selection/capping so requested fields cannot accidentally
+      // strip mandatory rate context. Keep the existing error/status envelope.
+      const original=result.structuredContent;
+      const data=isObject(original)?{...original,meta:{...(isObject(original.meta)?original.meta:{}),github_rate:rates}}:
+        {meta:{github_rate:rates}};
+      const originalText=isObject(original)?JSON.stringify(original):null;
+      const contents=Array.isArray(result.content)?result.content:[];
+      const updated=contents.map(c=>c.type==='text'&&c.text===originalText?
+        {...c,text:JSON.stringify(data)}:c);
+      return {...result,structuredContent:data,content:updated};
+    }finally{if(box.reserved&&!box.counted){try{await usage.release?.();}catch{/* best effort */}}}
   };
-  async function run({ registry, name, args, connection, db, actor = null, actAsCache = null }, box) {
+  async function run({ registry, name, args, connection, db, actor = null, actAsCache = null, rateObservations }, box) {
     // GOD-6: one log of "who acted" per top-level call; a workflow's nested calls share it, so its result covers them.
     const topLevel = actor === null;
     const actorLog = actor ?? createActorLog();
@@ -116,8 +133,8 @@ export function createDispatch({ env = process.env, now = Date.now, fetch = glob
       const challenge=await optionalConsentChallenge({
         name,args:args??{},connection,credentials,env});
       if(challenge)return challenge;
-      const callTool = (innerName, innerArgs) => dispatch({ registry, name: innerName, args: innerArgs, connection, db, actor: actorLog, actAsCache: cache });
-      result = await handler(args ?? {}, { connection, db, env, now, fetch, credentials, actor: actorLog, actAsCache: cache, ...(sleep ? { sleep } : {}), ...(isWrite ? { gates } : {}), ...(tool.usesRegistry ? { registry, callTool } : {}) });
+      const callTool = (innerName, innerArgs) => dispatch({ registry, name: innerName, args: innerArgs, connection, db, actor: actorLog, actAsCache: cache, rateObservations });
+      result = await handler(args ?? {}, { connection, db, env, now, fetch, credentials, actor: actorLog, actAsCache: cache, rateObservations, ...(sleep ? { sleep } : {}), ...(isWrite ? { gates } : {}), ...(tool.usesRegistry ? { registry, callTool } : {}) });
     } catch (error) {
       if(error instanceof OptionalConsentRequired)return error.reply;
       const response=fail(error instanceof TypeError ? error.message : 'That tool could not complete right now. Nothing was changed.');
