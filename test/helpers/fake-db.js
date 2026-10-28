@@ -254,8 +254,7 @@ export function createFakeDb({ clock = Date.now } = {}) {
         ? owner.installation_status === 'active' && owner.installation_id != null
         : owner?.credential_kind === 'fine_grained' && owner.fine_grained_enc != null &&
           (!owner.fine_grained_expires_at || new Date(owner.fine_grained_expires_at).getTime() > clock());
-      if (!owner || owner.account_type !== 'Organization' || owner.is_scratch !== true ||
-          owner.production_enabled !== true || !credentialReady || !active.length ||
+      if (!owner || !credentialReady || !active.length ||
           active.some((t) => t.mode !== 'preview' || t.profile !== 'full' ||
             t.default_account.toLowerCase() !== account.toLowerCase() || t.accounts.length !== 1 || t.accounts[0] !== account)) return 0;
       for (const t of active) t.mode = 'production';

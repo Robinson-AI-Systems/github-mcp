@@ -1,3 +1,4 @@
+import { completeDispatchResult } from '../core/result-envelope.js';
 // W-1: Compose the reviewed PR read/write tools; never issue an unguarded provider write.
 import {redact} from './util.js';
 // A workflow invocation advances at most one durable write, then resumes from fresh reads.
@@ -12,7 +13,7 @@ const clock=(ctx)=>typeof ctx.now==='function'?ctx.now():Date.now();
 const within=(ctx,start)=>clock(ctx)-start<46000;
 const readBody=(response)=>{
   if(response?.isError||!response?.structuredContent)return null;
-  return response.structuredContent;
+  return completeDispatchResult(response);
 };
 async function call(ctx,name,args){
   if(typeof ctx.callTool!=='function')throw new Error('The guarded tool dispatcher is unavailable.');

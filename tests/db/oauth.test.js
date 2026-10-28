@@ -87,3 +87,25 @@ describe('connector login store on throwaway Postgres only', () => {
     expect((await rawQuery(`SELECT success FROM login_attempts WHERE ip = '192.0.2.51'`))[0].success).toBe(true);
   });
 });
+
+describe('owner connection compatibility flags on PostgreSQL',()=>{
+  it('upgrades a full personal non-scratch connection despite a legacy production-off preference, retaining exact client and credential checks',async()=>{
+    await db.upsertAccount({login:'example-user',accountId:97431,accountType:'User',label:'Owner',credentialKind:'app',appId:97432});
+    await db.setInstallation('example-user',{installationId:97433,repositorySelection:'all',permissions:{contents:'write'},status:'active'});
+    await db.createOAuthClient({clientId:'owner-mode-client',clientSecret:'fixture-owner-mode-secret',redirectUris:['https://example.test/cb']});
+    const token={clientId:'owner-mode-client',accessToken:'fixture-owner-mode-access',refreshToken:'fixture-owner-mode-refresh',
+      defaultAccount:'example-user',accounts:['example-user'],mode:'preview',profile:'full',listing:'compact'};
+    await db.createAccessToken(token);
+    expect((await db.getAccount('example-user')).production_enabled).toBe(false);
+    await db.setInstallationStatus('example-user','suspended');
+    expect(await db.upgradeConnectionProductionMode(token.clientId,'example-user')).toBe(0);
+    await db.setInstallationStatus('example-user','active');
+    expect(await db.upgradeConnectionProductionMode('wrong-client','example-user')).toBe(0);
+    expect(await db.upgradeConnectionProductionMode(token.clientId,'example-user')).toBe(1);
+    expect(await db.getAccessToken(token.accessToken)).toMatchObject({profile:'full',mode:'production',accounts:['example-user']});
+    await db.setConnectionsReadOnly(true);
+    expect(await db.getAccessToken(token.accessToken)).toMatchObject({profile:'read_only',mode:'preview'});
+    await db.setConnectionsReadOnly(false);
+    expect(await db.getAccessToken(token.accessToken)).toMatchObject({profile:'full',mode:'production'});
+  });
+});

@@ -1,0 +1,11 @@
+# Owner connection/setup continuation
+
+Continues AUTH-1/PAR-2 after merged source #445 and release-route #446. Full owner private consent/callback, optional credential completion, public approval, connection management and authenticated secret entry no longer inherit legacy account production/protected-list policy. Actual installed/active credentials, exact bound client/account, tenant isolation, CSRF/passphrase, read-only grants and explicitly restricted profiles remain binding. Existing columns are retained for restricted grants and compatibility; no automatic issued-pass migration.
+
+Connection SQL preserves active/refreshable connector identity, exact single-account full owner upgrade, provider credential readiness and atomic readback. Personal/non-scratch accounts no longer need artificial scratch/production switches. Read-only reversal is an authenticated owner action, not a grant refresh side effect. Actual PostgreSQL regressions cover owner flags, provider suspension, wrong client and read-only restoration.
+
+Workflow consumers reconstruct canonical compact results and preserve guarded refusals rather than hiding them as unknown. RTC reuses the same core helper. The observed #446 merged-main DB failure was traced to random sampled housekeeping adding three DELETE statements during a telemetry test that assumed one total SQL call. Inject the sampling clock/random dependency for deterministic evidence; retain separate positive housekeeping coverage and every metric assertion. No timing-only rerun or skipped assertion.
+
+Release status: initial manual dispatch via old live MCP was refused by its built-in pr-only repository gate before provider dispatch. Do not claim dispatch or live release. The new checked manual route is merged, but source-bearing release still requires verified green main and an authorized dispatch/promotion route; old live remains independently observed at b47643d.
+
+Next: exact-head complete CI/review/merge, finish the explicitly authorized manual release and serving-source readback, perform eligible large-read/alias/search/scanning client acceptance, then native Git implementation on Robinson-controlled infrastructure. Legacy universal contracts and deployed parity remain tracked; no whole-project completion claim.

@@ -632,7 +632,7 @@ describe('PUB-2 private-only provider identity and tenant pilot allowlist in REA
     const fields={client_id:client,redirect_uri:redirect,response_type:'code',
       code_challenge:'x'.repeat(43),code_challenge_method:'S256',
       resource:env.PUBLIC_BASE_URL+'/api/mcp'};
-    expect(await consent.inspect(fields)).toEqual({productionAllowed:false});
+    expect(await consent.inspect(fields)).toEqual({productionAllowed:true});
     await db.setProductionEnabled(account,true);
     expect(await consent.inspect(fields)).toEqual({productionAllowed:true});
     await expect(consent.inspect({...fields,redirect_uri:'https://wrong.example.test/cb'}))

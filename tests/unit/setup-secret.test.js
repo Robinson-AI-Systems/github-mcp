@@ -92,23 +92,21 @@ describe('typing a secret on the setup page', () => {
     expect(t.gh.calls).toEqual([]);
   });
 
-  it('refuses a repository on the protected list', async () => {
+  it('honors the authenticated owner secret submission despite a standing protected list', async () => {
     const t = await build();
     await t.db.saveProtectedResource({ kind: 'repo', target: 'example-org/hello', level: 'locked', reason: 'test' });
+    arrangeOk(t.gh);
     const res = await t.post({});
-    expect(res.statusCode).toBe(403);
-    expect(res.body).toContain('protected list');
-    expect(t.gh.calls.filter((c) => c.method !== 'GET')).toEqual([]);
-    expect(await t.db.getSecretRequest(ID)).not.toBeNull();
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toContain('Done. DEPLOY_KEY is saved');
+    expect(t.gh.calls.filter((c) => c.method === 'PUT')).toHaveLength(1);
+    expect(await t.db.getSecretRequest(ID)).toBeNull();
+    expect(await everything(t, res)).not.toContain(VALUE);
   });
 
-  it('an organization secret needs production turned on for that account', async () => {
+  it('an authenticated owner can set an organization secret with legacy production off', async () => {
     const org = { kind: 'actions', level: 'org', owner: 'example-org', name: 'DEPLOY_KEY', visibility: 'all' };
-    const off = await build({ scope: org });
-    const res = await off.post({});
-    expect(res.statusCode).toBe(403);
-    expect(res.body).toContain('production is off');
-    const on = await build({ scope: org, productionEnabled: true });
+    const on = await build({ scope: org });
     on.gh.when('GET /orgs/{org}/actions/secrets/public-key').reply(200, KEY);
     on.gh.when('PUT /orgs/{org}/actions/secrets/{secret_name}').reply(201, {});
     on.gh.when('GET /orgs/{org}/actions/secrets/{secret_name}').reply(200, { name: 'DEPLOY_KEY', updated_at: '2026-10-11T00:00:00Z' });

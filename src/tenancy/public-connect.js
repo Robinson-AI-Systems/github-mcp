@@ -432,9 +432,9 @@ export function createPublicConnect({ env = process.env, fetchImpl = fetch, root
       if (!row || row.installation_status !== 'active') throw refused('r27');
       rows.push(row);
     }
-    // Changes only when not read-only AND every connected account really has them on; otherwise safe preview.
+    // An owner full grant follows the actual provider installation, not a legacy account production preference.
     // Read-only means the read_only profile (every change tool refused), not only preview mode.
-    const mode = readOnly !== true && env.VERCEL_ENV === 'production' && rows.every((r) => r.production_enabled === true) ? 'production' : 'preview';
+    const mode = readOnly !== true && env.VERCEL_ENV === 'production' ? 'production' : 'preview';
     // GOD-5: the person's extra places (master token) come along with a new connection; their own gate keeps changes off until allowed.
     const places = readOnly === true ? [] : (await db.listAccounts()).filter((a) => a.credential_kind === 'master').map((a) => a.login);
     logins.push(...places.filter((p) => !logins.some((l) => l.toLowerCase() === p.toLowerCase())));
@@ -478,7 +478,7 @@ export function createPublicConnect({ env = process.env, fetchImpl = fetch, root
       accountLogin: signedInAs.toLowerCase(), offers: offers?.length ? offers : null }, MANAGE_SECONDS);
     const all = await db.listAccounts();
     const accounts = all.filter((a) => a.credential_kind !== 'master').map((a) => ({ login: a.login, organization: a.account_type === 'Organization',
-      changes: a.production_enabled === true, active: a.installation_status === 'active',
+      changes: a.installation_status === 'active', active: a.installation_status === 'active',
       // GitHub's own page for this installation, where the person can change its repositories or uninstall it. Only the page
       // address is built here; this server never uninstalls anything.
       githubUrl: Number.isSafeInteger(Number(a.installation_id)) && Number(a.installation_id) > 0 && LOGIN.test(String(a.login))
@@ -489,7 +489,7 @@ export function createPublicConnect({ env = process.env, fetchImpl = fetch, root
     // Refresh-aware: an app whose one-hour access lapsed but can still renew it is listed (and can be disconnected).
     const seen = new Set();
     const connections = (await db.listUpgradeableConnections()).filter((c) => c.client_id !== MANAGE_CLIENT && !seen.has(c.client_id) && seen.add(c.client_id))
-      .map((c) => ({ clientId: c.client_id, name: c.client_name ?? 'An app', readOnly: c.profile === 'read_only', canChange: c.profile !== 'read_only' && c.mode === 'production',
+      .map((c) => ({ clientId: c.client_id, name: c.client_name ?? 'An app', readOnly: c.profile === 'read_only', canChange: c.profile === 'full' || (c.profile !== 'read_only' && c.mode === 'production'),
         accounts: c.accounts }));
     const master = await directory().getPilotOptionalCredential({ tenantId, identityId, accountLogin: MASTER_HANDLE, kind: 'M' }).catch(() => null);
     // GOD-6: "Act as me" and "Allow overriding branch rules" are per person (their GitHub id), never per tenant.

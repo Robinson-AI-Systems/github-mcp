@@ -850,13 +850,13 @@ export function createDb(sql = productionSql()) {
       // An extra place always joins (its own gate keeps every change refused until the person allows changes for that place).
       const places = new Set(ready.filter((r) => r.credential_kind === 'master').map((r) => r.login));
       const all = ready.map((r) => r.login), changes = ready.filter((r) => (r.credential_kind === 'master' || r.production_enabled === true)).map((r) => r.login);
-      const rows = await sql`SELECT token_hash, accounts, mode, client_id FROM oauth_tokens
+      const rows = await sql`SELECT token_hash, accounts, mode, profile, client_id FROM oauth_tokens
         WHERE kind = 'connector' AND revoked_at IS NULL AND (expires_at > now() OR refresh_hash IS NOT NULL)`;
       let changed = 0;
       for (const row of rows) {
         const have = (row.accounts ?? []).map((a) => String(a).toLowerCase());
         // Extra places only join the person's own multi-account (public sign-in) connections, never a single-account signed client.
-        const add = (row.mode === 'production' ? changes : all).filter((l) => !have.includes(l) && (!places.has(l) || String(row.client_id ?? '').startsWith('pcl_')));
+        const add = (row.mode === 'production' && row.profile !== 'full' ? changes : all).filter((l) => !have.includes(l) && (!places.has(l) || String(row.client_id ?? '').startsWith('pcl_')));
         const next = [...(row.accounts ?? []), ...add].slice(0, 10);
         if (next.length === (row.accounts ?? []).length) continue;
         await sql`UPDATE oauth_tokens SET accounts = ${next}::text[] WHERE token_hash = ${row.token_hash} AND revoked_at IS NULL`;
@@ -866,7 +866,7 @@ export function createDb(sql = productionSql()) {
     },
     /** "Read-only" switch for all of this store's live connector logins (refreshable ones included).
      * Read-only uses the read_only profile, which refuses every change tool, plus preview mode. Allowing changes again
-     * restores the full profile; production mode returns only where every account has changes switched on.
+     * restores the full profile; production mode returns where every account has an active provider connection.
      * Returns how many logins changed. */
     async setConnectionsReadOnly(readOnly) {
       if (readOnly === true) {
@@ -877,7 +877,7 @@ export function createDb(sql = productionSql()) {
       if (readOnly !== false) return 0;
       const rows = await sql`UPDATE oauth_tokens t SET profile = 'full',
           mode = CASE WHEN cardinality(t.accounts) > 0 AND NOT EXISTS (SELECT 1 FROM unnest(t.accounts) acct WHERE NOT EXISTS (
-            SELECT 1 FROM gh_accounts a WHERE lower(a.login) = lower(acct) AND (a.credential_kind = 'master' OR (a.production_enabled = TRUE AND a.installation_status = 'active'))))
+            SELECT 1 FROM gh_accounts a WHERE lower(a.login) = lower(acct) AND (a.credential_kind = 'master' OR a.installation_status = 'active')))
             THEN 'production' ELSE 'preview' END
         WHERE t.kind = 'connector' AND t.revoked_at IS NULL AND (t.expires_at > now() OR t.refresh_hash IS NOT NULL)
         RETURNING token_hash`;
@@ -889,7 +889,7 @@ export function createDb(sql = productionSql()) {
       return rows.length;
     },
     /** Atomically upgrade the owner's already-authorized, single-account FULL/PREVIEW connector.
-     * A mixed-client grant, disconnected account, or production-off account fails closed.
+     * A mixed-client grant or disconnected/expired credential fails closed; old production/scratch preferences do not restrict a full owner.
      * No access or refresh token changes, and refresh preserves the upgraded row mode.
      */
     async upgradeConnectionProductionMode(clientId, account) {
@@ -901,8 +901,7 @@ export function createDb(sql = productionSql()) {
           AND lower(default_account) = lower(${account}) AND accounts = ARRAY[${account}]::text[]
           AND (expires_at > now() OR refresh_hash IS NOT NULL)
           AND EXISTS (SELECT 1 FROM gh_accounts a WHERE lower(a.login) = lower(${account})
-            AND a.production_enabled = TRUE AND a.account_type = 'Organization'
-            AND a.is_scratch = TRUE AND (
+            AND (
               (a.credential_kind = 'app' AND a.installation_status = 'active' AND a.installation_id IS NOT NULL)
               OR (a.credential_kind = 'fine_grained' AND a.fine_grained_enc IS NOT NULL
                 AND (a.fine_grained_expires_at IS NULL OR a.fine_grained_expires_at > now()))))

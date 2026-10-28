@@ -101,17 +101,17 @@ export function createPrivateGitHubConsent({ env = process.env, fetchImpl = fetc
         account.installation_status!=='active' ||
         !['all','selected'].includes(account.repository_selection) ||
         (mode==='production' && (env.VERCEL_ENV!=='production' ||
-          account.production_enabled!==true))) throw refused();
+          (profile!=='full' && account.production_enabled!==true)))) throw refused();
     return { claim, mode, profile, listing, dir, db, sql, account,
       productionAllowed: env.VERCEL_ENV === 'production' &&
-        account.production_enabled === true };
+        (profile === 'full' || account.production_enabled === true) };
   }
 
   /** Read-only consent readiness: anonymous visitors never see tenant details
    * or production choices for an expired/revoked/unauthorized client. */
   async function inspect(p) {
     const result=await preflight({ ...p, mode:'preview',
-      profile:'everyday',listing:'compact' });
+      profile:'full',listing:'compact' });
     return Object.freeze({ productionAllowed: result.productionAllowed });
   }
 
@@ -166,7 +166,7 @@ export function createPrivateGitHubConsent({ env = process.env, fetchImpl = fetc
         !Number.isSafeInteger(account.installation_id) || account.installation_id<=0 ||
         account.installation_status!=='active' ||
         (flow.mode==='production' && (env.VERCEL_ENV!=='production' ||
-          account.production_enabled!==true))) throw refused();
+          (flow.profile!=='full' && account.production_enabled!==true)))) throw refused();
     const appClient=await pilotAppClient({env,db:createDb(rootSqlFactory(env.DATABASE_URL))});
     const exchange=await fetchImpl(gitToken,{
       method:'POST',signal:AbortSignal.timeout(10000),

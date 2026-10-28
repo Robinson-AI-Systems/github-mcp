@@ -454,6 +454,10 @@ describe('PUB-6 letting the assistant make changes', () => {
     const grantOn = await routedOn.db.getAccessToken(tokenOn.access_token);
     expect(grantOn.mode).toBe('production');
     for (const login of grantOn.accounts) expect((await routedOn.db.getAccount(login)).production_enabled).toBe(true);
+    for (const login of grantOn.accounts) await routedOn.db.setProductionEnabled(login,false);
+    const nextToken = await tokenFor(c, client, 'alice');
+    const nextRoute = await gateFor(nextToken);
+    expect(await nextRoute.db.getAccessToken(nextToken.access_token)).toMatchObject({mode:'production',profile:'full'});
     const tokenOff = await tokenFor(c, client, 'alice', { readOnly: true });
     // Read-only is the read_only profile (every change tool refused), not only preview mode (review finding on #337)
     expect((await (await gateFor(tokenOff)).db.getAccessToken(tokenOff.access_token))).toMatchObject({ mode: 'preview', profile: 'read_only' });

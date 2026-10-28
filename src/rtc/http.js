@@ -15,15 +15,8 @@ const MAX_REQUEST_BYTES=32768;
 // MCP's public large replies can keep full JSON only in content to save agent
 // context. The RTC adapter still needs the complete checked value to preserve
 // its 8 KiB-or-handle contract; never return the slim metadata as full data.
-export function completeDispatchResult(output) {
-  const value = output?.structuredContent;
-  if (value?.full_payload_location !== 'content[0].text') return value;
-  if (value.full_payload_format !== 'json' || output.content?.length !== 1 ||
-      output.content[0]?.type !== 'text') throw new Error('Incomplete canonical result');
-  const parsed = JSON.parse(output.content[0].text);
-  if (!parsed || typeof parsed !== 'object') throw new Error('Invalid canonical result');
-  return parsed;
-}
+export { completeDispatchResult } from '../core/result-envelope.js';
+import { completeDispatchResult } from '../core/result-envelope.js';
 // JSON has already been parsed by the HTTP door. Bound the complete wire
 // payload before allowing a tool dispatch, including multibyte strings.
 function boundedRequest(value,headers={}) {

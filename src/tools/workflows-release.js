@@ -1,3 +1,4 @@
+import { completeDispatchResult, guardedResultBody } from '../core/result-envelope.js';
 // W-6: staged release and PR-evidenced cleanup; mutations only through guarded writers.
 import {createHash} from 'node:crypto';
 import {matchesAny,productionNames} from './production-guard.js';
@@ -7,14 +8,14 @@ const common={owner:OWNER,repo:REPO,confirm:{type:'boolean'},dryRun:{type:'boole
 const scope=a=>({...a.owner?{owner:a.owner}:{},repo:a.repo});
 const receipt=(v,error=false)=>({structuredContent:v,content:[{type:'text',text:JSON.stringify(v)}],...error?{isError:true}:{}});
 const refused=reason=>receipt({done:false,status:'refused',reason},true);
-const shape=r=>r&&!r.isError?r.structuredContent??null:null;
+const shape=r=>r&&!r.isError?completeDispatchResult(r)??null:null;
 const incomplete=x=>!x||x.more_exist||x.next_page_possible||x.kept_result||x.complete===false;
 const key=(a,step,ctx)=>'w6-'+createHash('sha256').update(JSON.stringify([a.requestKey,{owner:a.owner??ctx.connection.default_account,repo:a.repo},step])).digest('hex');
 const budget=(ctx,start)=>ctx.now()-start<46000;
 async function invoke(ctx,name,args){return shape(await ctx.callTool(name,args));}
 async function change(ctx,name,args){
   const result=await ctx.callTool(name,args);
-  return result?.structuredContent??{status:result?.isError?'refused':'unknown',
+  return guardedResultBody(result)??{status:result?.isError?'refused':'unknown',
     reason:(result?.content?.find(x=>x.type==='text')?.text??'No verified guarded result.').slice(0,400)};
 }
 // Reader results can be retained even when provider pagination was complete.

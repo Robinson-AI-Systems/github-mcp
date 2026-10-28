@@ -1,3 +1,4 @@
+import { guardedResultBody } from '../core/result-envelope.js';
 // W-2: no direct mutations; compose existing expected-head and production-guarded writers.
 // One mutating step per invocation. A stack advances after a fresh read on the next call.
 const OWNER={type:'string',maxLength:39},REPO={type:'string',minLength:1,maxLength:100};
@@ -11,7 +12,7 @@ const reply=(v,bad=false)=>({structuredContent:v,content:[{type:'text',text:JSON
 const refuse=(reason,more={})=>reply({status:'refused',done:false,reason,...more},true);
 const scope=a=>({...(a.owner?{owner:a.owner}:{}),repo:a.repo});
 const now=ctx=>ctx.now();
-const shape=r=>!r?.isError?r?.structuredContent??null:null;
+const shape=guardedResultBody;
 const stop=(start,ctx)=>now(ctx)-start>=46000;
 async function invoke(ctx,name,args){
   if(typeof ctx.callTool!=='function')throw new Error('Guarded tool dispatch is unavailable.');

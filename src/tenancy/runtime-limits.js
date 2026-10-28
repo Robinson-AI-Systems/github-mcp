@@ -255,8 +255,8 @@ export async function recordTenantMetric(sql, { event, outcome, durationMs }) {
  * request-finally, including error/refusal responses. Never keep this globally
  * or attach user-provided paths, URLs, subjects, bodies or exception text.
  */
-export function createTenantMetricBuffer(sql, { now = Date.now } = {}) {
-  if (typeof sql !== 'function' || typeof now !== 'function')
+export function createTenantMetricBuffer(sql, { now = Date.now, random = Math.random } = {}) {
+  if (typeof sql !== 'function' || typeof now !== 'function' || typeof random !== 'function')
     throw new TypeError('Tenant metric buffer needs a scoped SQL function and clock.');
   const counts = new Map();
   return {
@@ -282,7 +282,7 @@ export function createTenantMetricBuffer(sql, { now = Date.now } = {}) {
           AS item(hour text,event text,outcome text,latency_bucket text,count bigint)
         ON CONFLICT (hour,event,outcome,latency_bucket) DO UPDATE
           SET count=gh_tenant_runtime_metrics.count+EXCLUDED.count`;
-      if (Math.random() < 1/128) await purgeExpiredTenantRuntime(sql).catch(() => {});
+      if (random() < 1/128) await purgeExpiredTenantRuntime(sql).catch(() => {});
       return records.reduce((total,row) => total + row.count, 0);
     }
   };

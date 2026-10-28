@@ -263,8 +263,8 @@ describe('PUB-3 tenant capacity with REAL PostgreSQL',()=>{
     let writesA=0,writesB=0;
     const trackedA=(parts,...values)=>{writesA++;return sqlA(parts,...values);};
     const trackedB=(parts,...values)=>{writesB++;return sqlB(parts,...values);};
-    const metricsA=createTenantMetricBuffer(trackedA);
-    const metricsB=createTenantMetricBuffer(trackedB);
+    const metricsA=createTenantMetricBuffer(trackedA,{random:()=>1});
+    const metricsB=createTenantMetricBuffer(trackedB,{random:()=>1});
     const ok=async()=>new Response(null,{status:200});
     const rejected=async()=>new Response(null,{status:403});
     const failed=async()=>{throw new Error('fixture connection failed');};
