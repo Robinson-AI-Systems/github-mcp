@@ -23,7 +23,8 @@ export function authorizedReleaseInvocation(env, repository, now = new Date()) {
   // No default dispatch or automated production override; GitHub owner only.
   return env.GITHUB_EVENT_NAME === 'workflow_dispatch' &&
     env.GITHUB_ACTOR === 'christcr2012' && env.GITHUB_TRIGGERING_ACTOR === 'christcr2012' &&
-    env.RECOVER_MISSED_DAILY === 'true' && denverMinute(now) >= 1;
+    ((env.MANUAL_RELEASE === 'true' && /^[a-f0-9]{40}$/.test(env.EXPECTED_MAIN_SHA ?? '')) ||
+      (env.RECOVER_MISSED_DAILY === 'true' && denverMinute(now) >= 1));
 }
 
 export function checksPass(runs, required, sha) {
@@ -58,9 +59,10 @@ export async function run(policy = JSON.parse(readFileSync(new URL('./policy.jso
   { attempts = 20, pause = () => new Promise(resolve => setTimeout(resolve, 30000)) } = {}) {
   const repo = process.env.GITHUB_REPOSITORY;
   if (!authorizedReleaseInvocation(process.env, policy.repository))
-    throw Error('Scheduled or explicitly owner-recovered main only');
+    throw Error('Scheduled or explicitly owner-authorized checked main only');
   const deadline = Date.now() + 10 * 60 * 1000;
-  const marker = 'live-promotion/' + denverDay();
+  const manual = process.env.GITHUB_EVENT_NAME === 'workflow_dispatch' && process.env.MANUAL_RELEASE === 'true';
+  const marker = manual ? 'manual-live-promotion/' + process.env.EXPECTED_MAIN_SHA : 'live-promotion/' + denverDay();
   const tagged = () => git(['ls-remote', '--tags', 'origin', 'refs/tags/' + marker]) !== '';
   const remoteHead = ref => git(['ls-remote', 'origin', 'refs/heads/' + ref]).split(/\s+/)[0];
   for (let attempt = 0; attempt < attempts && Date.now() < deadline; attempt++) {
@@ -70,6 +72,8 @@ export async function run(policy = JSON.parse(readFileSync(new URL('./policy.jso
       '+refs/heads/live:refs/remotes/origin/live']);
     const main = git(['rev-parse', 'origin/main']);
     const live = git(['rev-parse', 'origin/live']);
+    if (manual && main !== process.env.EXPECTED_MAIN_SHA)
+      throw Error('Main moved from the owner-authorized manual release target');
     if (tagged()) { console.log('Already processed today'); return; }
     let ancestor = false;
     try { git(['merge-base', '--is-ancestor', live, main]); ancestor = true; } catch { /* fail closed */ }
