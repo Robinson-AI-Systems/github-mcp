@@ -151,3 +151,12 @@ it('keeps identical text protected in another repository within a nested workflo
  const combined={...registry,tools:[...registry.tools,sibling,flow],handlers:{...registry.handlers,[sibling.name]:()=>({body:source}),[flow.name]:async(_a,c)=>{const allowed=await c.callTool('github_content_get',{repo:'fixture',path:payload.path,fullText:true});const other=await c.callTool(sibling.name,{repo:'other'});return {content:[{type:'text',text:JSON.stringify({allowed:parse(allowed),other:parse(other)})}]};}}};
  const out=parse(await dispatch(w)({registry:combined,name:flow.name,args:{},connection:w.connection,db:w.db}));expect(out.allowed.content).toBe(source);expect(out.other.body).not.toContain('FAKE_NESTED');
 });
+it('confirms JSONB-reordered settings and permits a retested metadata-only rule edit',async()=>{
+ const w=await makeWorld({profile:'full'}),save=w.db.compareAndSetSetting.bind(w.db);
+ const reorder=v=>Array.isArray(v)?v.map(reorder):v&&typeof v==='object'?Object.fromEntries(Object.entries(v).reverse().map(([k,x])=>[k,reorder(x)])):v;
+ w.db.compareAndSetSetting=(key,revision,value)=>save(key,revision,reorder(value));
+ const first=parse(await configure(w,{changes:{additionalRules:[rule]}}));expect(first).toMatchObject({status:'applied',confirmed:true,result:{revision:1}});
+ const second=parse(await configure(w,{expectedRevision:1,changes:{additionalRules:[{...rule,label:'Reviewed updated rule label'}]},verification:[{path:w.scannerPayload.path,blobSha:w.scannerPayload.sha,rule:rule.id,door:'scan',expectedBefore:true,expectedAfter:true}]}));
+ expect(second).toMatchObject({status:'applied',confirmed:true,result:{revision:2}});
+ const restored=parse(await configure(w,{expectedRevision:2,rollbackRevision:0}));expect(restored).toMatchObject({status:'applied',confirmed:true,result:{revision:3}});
+});

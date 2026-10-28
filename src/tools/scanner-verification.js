@@ -2,7 +2,7 @@
 import {createHash} from 'node:crypto';
 import {readerFor} from './github-read.js';
 import {detectCredentialPatterns} from './security-scan-files.js';
-import {filterScannerFindings} from '../github/scanner-policy.js';
+import {filterScannerFindings,stableScannerJson} from '../github/scanner-policy.js';
 import {evaluateFileProtection} from '../github/file-protection.js';
 export const VERIFICATION_SCHEMA={type:'object',additionalProperties:false,properties:{path:{type:'string',minLength:1,maxLength:1000},blobSha:{type:'string',pattern:'^[a-f0-9]{40}$'},rule:{type:'string',minLength:1,maxLength:80},fingerprint:{type:'string',pattern:'^[a-f0-9]{64}$'},door:{type:'string',enum:['scan','file_read']},expectedBefore:{type:'boolean'},expectedAfter:{type:'boolean'}},required:['path','blobSha','rule','door','expectedBefore','expectedAfter']};
 const matchRule=(finding,id)=>finding.rule===id||finding.detector_rules?.includes(id);
@@ -23,9 +23,9 @@ export function assertScannerVerification(receipt){if(receipt.before_detected!==
 
 export function assertTuneCoverage(before,after,checks){
  const changed=new Set(),meaning=r=>r&&Object.fromEntries(Object.entries(r).filter(([k])=>k!=='label')),exceptionMeaning=s=>Object.fromEntries(Object.entries(s).filter(([k])=>k!=='reason'));
- for(const r of [...before.additionalRules,...after.additionalRules])if(JSON.stringify(meaning(before.additionalRules.find(x=>x.id===r.id)))!==JSON.stringify(meaning(after.additionalRules.find(x=>x.id===r.id))))changed.add(r.id);
+ for(const r of [...before.additionalRules,...after.additionalRules])if(stableScannerJson(meaning(before.additionalRules.find(x=>x.id===r.id)))!==stableScannerJson(meaning(after.additionalRules.find(x=>x.id===r.id))))changed.add(r.id);
  for(const id of new Set([...before.disabledRules,...after.disabledRules]))if(before.disabledRules.includes(id)!==after.disabledRules.includes(id))changed.add(id);
- const exceptions=[...before.suppressions,...after.suppressions].filter(s=>!before.suppressions.some(x=>JSON.stringify(exceptionMeaning(x))===JSON.stringify(exceptionMeaning(s)))||!after.suppressions.some(x=>JSON.stringify(exceptionMeaning(x))===JSON.stringify(exceptionMeaning(s))));
+ const exceptions=[...before.suppressions,...after.suppressions].filter(s=>!before.suppressions.some(x=>stableScannerJson(exceptionMeaning(x))===stableScannerJson(exceptionMeaning(s)))||!after.suppressions.some(x=>stableScannerJson(exceptionMeaning(x))===stableScannerJson(exceptionMeaning(s))));
  for(const id of changed)if(!checks.some(c=>c.rule===id&&c.before_detected!==c.after_detected))throw new TypeError('Every changed custom rule needs a verification that proves detection changed.');
  for(const s of exceptions)if(!checks.some(c=>c.rule===s.rule&&c.path===s.path&&c.blobSha===s.blobSha&&c.before_detected!==c.after_detected&&(s.fileReadException!==true||c.door==='file_read'&&c.fingerprint===s.fingerprint)))throw new TypeError('Every changed exception needs its exact pinned-file verification; file-read exceptions must test that door.');
 }
