@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { defineWrite } from '../../src/core/write.js';
 import { createGates } from '../../src/tools/gates.js';
 import { makeWorld, parse, doorsFor } from '../../test/helpers/write-contract.js';
-import { blockers } from '../../src/tools/pulls-merge.js';
+import { blockers, mergeCheckSummary } from '../../src/tools/pulls-merge.js';
 
 const build = (changes = {}) => defineWrite({
   name: 'github_owner_fixture', area: 'fixture', audience: ['O'], description: 'Authority fixture.',
@@ -59,6 +59,15 @@ describe('full owner authority versus explicit delegation', () => {
     const result = parse(await build({ readAfter: async () => ({ on: false }) }).handler({}, w.ctx));
     expect(result).toMatchObject({ status: 'unconfirmed', confirmed: false, done: false });
     expect(result.warning).toBeTruthy();
+  });
+  it('owner merge summaries report actual check states without inventing green checks', () => {
+    expect(mergeCheckSummary({ ci: { green: false, checks: [
+      { state: 'success' }, { state: 'failure' }, { state: 'pending' }, { state: 'unexpected' }
+    ] } })).toBe('CI: 1 successful, 1 failed, 1 pending, 1 unknown');
+    expect(mergeCheckSummary({ ci: { green: true, checks: [{ state: 'failure' }, { state: 'failure' }] } })).toContain('2 failed');
+    expect(mergeCheckSummary({})).toBe('CI status unknown');
+    expect(mergeCheckSummary({ ci: { green: null, checks: [] } })).toBe('CI status unknown');
+    expect(mergeCheckSummary({ ci: { green: true, checks: [] } })).toBe('CI: no checks reported');
   });
   it('ordinary owner merge relays rules to GitHub while retaining expected-head accuracy', () => {
     const pr = { state: 'open', head_sha: 'a'.repeat(40), draft: true, mergeable: false, mergeable_state: 'blocked' };

@@ -90,7 +90,19 @@ const overrideText = (args, line) => {
   if (plan.refuse || !plan.use) return `${overrideLine(plan)} ${line}`.slice(0, 1000);
   return `${overrideSummaryPrefix(plan.reason)}${line}. ${overrideLine(plan)}`.slice(0, 1000);
 };
-const mergeCount = (before) => `${before.ci?.checks?.length ?? 0} check${before.ci?.checks?.length === 1 ? '' : 's'} green`;
+export function mergeCheckSummary(before) {
+  const ci = before?.ci;
+  if (!ci || ci.green === null || !Array.isArray(ci.checks)) return 'CI status unknown';
+  if (!ci.checks.length) return 'CI: no checks reported';
+  const counts = { successful: 0, failed: 0, pending: 0, unknown: 0 };
+  for (const check of ci.checks) {
+    const bucket = check.state === 'success' ? 'successful'
+      : ['failure', 'error'].includes(check.state) ? 'failed'
+        : ['pending', 'queued', 'in_progress', 'waiting', 'requested'].includes(check.state) ? 'pending' : 'unknown';
+    counts[bucket]++;
+  }
+  return 'CI: ' + Object.entries(counts).map(([state, count]) => `${count} ${state}`).join(', ');
+}
 
 async function sendAsync({ args, ctx, before, target: t }, bypass) {
   const why = blockers(before, args, { override: bypass });
@@ -124,7 +136,7 @@ const prMerge = defineGithubWrite({
   summarize: ({ args, before, target: t }) => {
     const bypass = overriding(args);
     const why = blockers(before, args, { override: bypass });
-    const line = why.length ? `Cannot merge ${label(t, args.number)}: ${why.join(' ')}` : `Merge ${label(t, args.number)} (${before.pr.head} into ${before.pr.base}) at ${short(args.expectedHeadSha ?? before.pr.head_sha)} with ${args.method ?? 'merge'}; ${bypass ? 'rules skipped on purpose' : mergeCount(before)}`;
+    const line = why.length ? `Cannot merge ${label(t, args.number)}: ${why.join(' ')}` : `Merge ${label(t, args.number)} (${before.pr.head} into ${before.pr.base}) at ${short(args.expectedHeadSha ?? before.pr.head_sha)} with ${args.method ?? 'merge'}; ${bypass ? 'rules skipped on purpose' : mergeCheckSummary(before)}`;
     return overrideText(args, line);
   },
   apply: async (input) => {
@@ -151,7 +163,7 @@ const prMergeAsync = defineGithubWrite({
   summarize: ({ args, before, target: t }) => {
     const bypass = overriding(args);
     const why = blockers(before, args, { override: bypass });
-    return overrideText(args, why.length ? `Cannot merge ${label(t, args.number)}: ${why.join(' ')}` : `Merge ${label(t, args.number)} in the background at ${short(args.expectedHeadSha ?? before.pr.head_sha)} with ${args.method ?? 'merge'}; ${bypass ? 'rules skipped on purpose' : mergeCount(before)}`);
+    return overrideText(args, why.length ? `Cannot merge ${label(t, args.number)}: ${why.join(' ')}` : `Merge ${label(t, args.number)} in the background at ${short(args.expectedHeadSha ?? before.pr.head_sha)} with ${args.method ?? 'merge'}; ${bypass ? 'rules skipped on purpose' : mergeCheckSummary(before)}`);
   },
   apply: (input) => sendAsync(input, overriding(input.args)),
   readAfter: asyncAfter,

@@ -27,3 +27,11 @@ Local PostgreSQL server binaries and Docker are absent; database/browser validat
 5. Native Git: [workspace design](../designs/NATIVE-GIT-WORKSPACES.md) includes actual Git worker, conflict/recovery, existing Dokploy initial host, idle-cost assumptions and autoscaling queue/worker/storage architecture. Proposed design only; no worker provisioned or native Git feature delivered by API-only tools.
 
 Continue the same plan; do not reopen prior closed feedback as new work or mark the above remainder complete from source counts.
+
+## First exact-head CI and correction batch
+
+At source `725e0db6814142fbd551825d3c5f029b6f50fdb2`, all three complete unit shards, shapes, RTC, static checks and home-page/fair-use browser groups passed. Two disposable PostgreSQL cases still expected owner mode/confirmation refusal; they now explicitly exercise restricted passes while retaining real journal/concurrent replay assertions. Two sign-in browser cases used a test-client helper that did not reconstruct the new canonical large payload; the helper now follows full_payload_location. No browser assertions were deleted. Full logs for both failed jobs were inspected; incidental expected negative-fixture SQL errors were not misdiagnosed as the cause.
+
+Final review also removed a personal-token reserve on full owners and lets an explicit owner override use the enrolled personal credential despite earlier actor/override preferences; real provider rejection/expiry and restricted grants remain binding. The actor/owner regression selection passed 50/50. New exact-head full CI is required after this combined correction; previous green results are not reused as proof of a different head.
+
+Review thread PRRT_kwDOVD_LK86xHGrT identified an inherited merge summary that counted every observed check as green after owner eligibility became provider-controlled. Both synchronous and background summaries now share actual successful/failed/pending/unknown counts; missing/unreadable CI is explicitly unknown. The focused regression includes two failed non-required checks despite an eligible merge.

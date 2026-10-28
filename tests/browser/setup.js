@@ -130,6 +130,7 @@ export async function mcpTool(world, accessToken, name, args = {}) {
   if (msg.error) throw new Error('MCP error ' + JSON.stringify(msg.error));
   const toolText = msg.result?.content?.[0]?.text ?? 'null';
   let content = msg.result?.structuredContent;
+  if (content?.full_payload_location === 'content[0].text') content = JSON.parse(toolText);
   if (content === undefined) { try { content = JSON.parse(toolText); } catch { content = toolText; } }
   return { isError: msg.result?.isError === true, content };
 }

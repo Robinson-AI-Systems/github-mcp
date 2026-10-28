@@ -55,11 +55,11 @@ export async function actAsFor(ctx, { cred = 'I', scope, masterStatus = undefine
     return off('this tool asks for a narrowed token, which only the app can have');
   if (!scopeCovered(status.scopes, 'repo')) return off('your master token does not have the repo permission');
   const facts = await factsFor(ctx, status.subject);
-  if (facts.act === 'off') return off('Act as me is off on My connection', true);
+  if (facts.act === 'off' && !(isOwnerConnection(ctx.connection) && ctx.forceMe === true)) return off('Act as me is off on My connection', true);
   if (facts.rejected) return off('GitHub rejected your master token; add a new one on My connection');
   const reserve = whole(ctx.env?.GITHUB_PERSONAL_RATE_RESERVE ?? process.env.GITHUB_PERSONAL_RATE_RESERVE, 100, 5000);
   const rate = facts.rate;
-  if (rate && rate.remaining !== null && rate.remaining !== undefined && Number(rate.remaining) <= reserve) {
+  if (!isOwnerConnection(ctx.connection) && rate && rate.remaining !== null && rate.remaining !== undefined && Number(rate.remaining) <= reserve) {
     const reset = rate.reset_at ? new Date(rate.reset_at).getTime() : null;
     const now = (ctx.now ?? Date.now)();
     if (reset === null || reset > now) return off(`your own GitHub allowance is nearly used up until ${reset === null ? 'it resets' : formatDenver(new Date(reset))}`);
@@ -191,7 +191,7 @@ export const OVERRIDE_ARGS = Object.freeze({
  */
 export async function overrideAllowed(ctx, args) {
   if (!isOwnerConnection(ctx.connection) && (typeof args?.overrideReason !== 'string' || args.overrideReason.trim().length < 10)) return { ok: false, message: 'Say why you are overriding the rules (overrideReason, 10 to 200 characters).' };
-  const me = await actAsFor(ctx, { cred: 'I' });
+  const me = await actAsFor(isOwnerConnection(ctx.connection) ? { ...ctx, forceMe: true } : ctx, { cred: 'I' });
   if (!me.on) return { ok: false, message: 'Only your own GitHub login can skip branch rules; add your master token and turn Act as me on.' + (me.reason ? ` (Right now: ${me.reason}.)` : '') };
   const facts = await factsFor(ctx, me.subject);
   if (!isOwnerConnection(ctx.connection) && facts.override === 'off') return { ok: false, message: 'Overriding branch rules is off on My connection.' };
