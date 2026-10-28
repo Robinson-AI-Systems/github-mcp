@@ -1,6 +1,7 @@
+import { isOwnerConnection } from '../core/authority.js';
 // Y-4a: the Projects v2 container — create, edit, copy, delete and link a project to a repository or team.
 // Every tool reads the project first, proves GitHub says it belongs to a connected account, makes ONE mutation and
-// reads the project back. Making a project public always asks first; deleting needs the exact title and has no undo.
+// reads the project back. Full owners execute directly; restricted grants retain confirmation. Deletion has no undo.
 import { graphql } from '../github/client.js';
 import { defineGithubWrite } from './define-github-write.js';
 import { refusal } from './github-write.js';
@@ -109,14 +110,14 @@ const copy = defineGithubWrite({
 // ---- delete ---------------------------------------------------------------------------------------------------------
 const del = defineGithubWrite({
   name: 'github_project_delete', area: 'project', audience: ['O'],
-  description: 'Delete a project and all its items and fields. Needs the exact title typed as confirmTitle. Restore is not possible.',
+  description: 'Delete a project and its items permanently. Optional confirmTitle checks the current title; full owners can execute directly.',
   properties: { owner: OWNER, number: NUMBER, confirmTitle: TITLE },
-  required: ['number', 'confirmTitle'],
+  required: ['number'],
   declarations: { production: 'always', confirm: 'always', cred: 'I,U', profiles: ['full'] },
   target: projectTarget,
   read: async (args, ctx, target) => {
     const found = await loadProject(ctx, target.owner, args.number).catch((e) => { if (e?.status === 404) return null; throw e; });
-    if (found && found.project.title !== args.confirmTitle) throw refusal('confirmTitle must be exactly the project\'s current title.');
+    if (found && (args.confirmTitle !== undefined || !isOwnerConnection(ctx.connection)) && found.project.title !== args.confirmTitle) throw refusal('confirmTitle must be exactly the project\'s current title.');
     return { project: found?.project ?? null };
   },
   classify: ({ before }) => (!before?.project ? {} : { production: `deleting project "${before?.project?.title}" with ${before?.project?.items?.totalCount ?? 0} items cannot be undone` }),
@@ -124,7 +125,7 @@ const del = defineGithubWrite({
   apply: async ({ args, ctx, target, before }) => {
     if (!before.project) throw refusal('The project no longer exists; nothing was deleted.', 404);
     const { gh, project } = await loadProject(ctx, target.owner, args.number);
-    if (project.id !== before.project.id || project.title !== args.confirmTitle) throw refusal('The project changed.');
+    if (project.id !== before.project.id || project.title !== before.project.title) throw refusal('The project changed.');
     return { data: (await graphql(gh, 'mutation($projectId: ID!) { deleteProjectV2(input: {projectId: $projectId}) { projectV2 { id } } }', { projectId: project.id })).deleteProjectV2 };
   },
   readAfter: async ({ ctx, target, before }) => (before.project ? (await reloadProject(ctx, target.owner, before.project.id)) : null) ?? { deleted: true },

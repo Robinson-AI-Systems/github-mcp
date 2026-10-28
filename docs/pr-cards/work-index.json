@@ -2420,14 +2420,17 @@
         "C-9"
       ],
       "card": "docs/pr-cards/CI-FAST-1.md",
-      "status": "IN_PROGRESS",
+      "status": "MERGED",
       "migration": "none",
       "budget": 0,
       "units": [
         "CI-FAST-1"
       ],
       "readiness": "READY",
-      "ownerInputs": []
+      "ownerInputs": [],
+      "pr": [
+        426
+      ]
     },
     {
       "id": "C-10",

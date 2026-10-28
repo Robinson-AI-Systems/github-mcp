@@ -27,7 +27,7 @@ runWriteContract({ label: 'github_security_advisory_save', definition: def(advis
     gh.when(`POST ${ADV}`).reply(201, (req) => { gh.when(`GET ${ADV}/{ghsa_id}`).reply(200, adv({ summary: ok(o) ? req.body.summary : 'something else', description: req.body.description })); return adv({ summary: req.body.summary, description: req.body.description }); });
   } });
 runWriteContract({ label: 'github_security_advisory_publish', definition: def(advisories, 'github_security_advisory_publish'), needsConfirm: true, production: true, profile: 'full',
-  args: { ...R, ghsa: GHSA, confirmGhsa: GHSA },
+  args: { ...R, ghsa: GHSA },
   arrange: (gh, o) => {
     gh.when(`GET ${ADV}/{ghsa_id}`).reply(200, adv());
     gh.when(`PATCH ${ADV}/{ghsa_id}`).reply(200, () => { if (ok(o)) gh.when(`GET ${ADV}/{ghsa_id}`).reply(200, adv({ state: 'published' })); return adv({ state: 'published' }); });

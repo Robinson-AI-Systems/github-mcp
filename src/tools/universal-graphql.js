@@ -147,7 +147,7 @@ function targetWrite(a,c){
   const entry=inspectGraphql(a.mutation,a.variables??{},'mutation');
   assertSafeGraphqlArguments(entry,{ownerDirected:isOwnerConnection(c.connection)});
   if(REFUSED_MUTATIONS.has(entry.mutation))
-    throw new TypeError(entry.mutation+' is refused on purpose: '+REFUSED_MUTATIONS.get(entry.mutation));
+    throw new TypeError(entry.mutation+' has no implemented ownership/readback contract in this server. This is not a statement about your GitHub permissions. No mutation was sent. Find a supported alternative with github_search_tools; find an alternate REST route with github_api_search and github_api_describe; for a repository/account setting, use github_where_is_setting for its exact setup steps and verification.');
   const spec=writeSpec(entry.mutation);
   const repoOk=typeof repo==='string'&&/^[A-Za-z0-9_.-]{1,100}$/.test(repo);
   if((!spec||spec.scope==='repo')&&!repoOk)

@@ -1,8 +1,7 @@
 // GQL-1 (enterprise settings): the enterprise-wide member policies and the enterprise profile, through the person's master
-// token. Each call proves the person administers the enterprise, previews, confirms like any production change, and is
-// read back from GitHub. Not built, on purpose (see REFUSED_MUTATIONS): two-factor requirements and disallowed methods
-// (they can lock members out), deploy keys, repository projects (GitHub shows no way to read them back) and the
-// repository-creation policy (five linked fields).
+// token. Each call proves enterprise administration, discloses changes, journals and reads back from GitHub.
+// Missing verified contracts remain for two-factor requirements/methods, deploy keys, repository projects and the
+// repository-creation policy (five linked fields); these are engineering gaps, not additional owner authority limits.
 import { defineGithubWrite } from './define-github-write.js';
 import { refusal, ownerOf } from './github-write.js';
 import { requireEnterprise, ENTERPRISE_SLUG } from '../github/enterprise-access.js';

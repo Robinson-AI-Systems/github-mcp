@@ -1,5 +1,6 @@
+import { isOwnerConnection } from '../core/authority.js';
 // Y-5a: moderation tools — pin, hide, delete and edit text, close or delete discussions, delete issues, link branches.
-// These act on text written by other people, so hiding and deleting always ask first, repository text is returned as
+// These act on text written by other people; restricted grants retain confirmation, repository text is returned as
 // untrusted data, and deletions say plainly that they cannot be undone. The GraphQL tools reuse the reviewed Y-2 write
 // specs (before/after selection, "already done" test, verification and opposite), so the rules live in one place.
 import { graphql } from '../github/client.js';
@@ -27,7 +28,7 @@ function specTool({ area = 'issue', name, description, properties, required, dec
     declarations: { production: 'never', confirm: 'always', cred: 'I', profiles: ['full'], ...declarations }, target,
     read: async (args, ctx, t) => {
       const gh = await octo(ctx, t.owner);
-      const plan = await build(args, gh, t);
+      const plan = await build(args, gh, t, ctx);
       const spec = writeSpec(plan.mutation);
       if (!spec) throw refusal(`No reviewed write spec for ${plan.mutation}.`);
       const node = plan.nodeId ? (await graphql(gh, specReadQuery(spec), { id: plan.nodeId })).node : null;
@@ -146,10 +147,10 @@ const discussionManage = specTool({
 // ---- delete an issue --------------------------------------------------------------------------------------------------
 const issueDelete = specTool({
   name: 'github_issue_delete',
-  description: 'Permanently delete an issue (repository admin only). Type the issue number again as confirmNumber. Cannot be undone.',
-  properties: { number: NUMBER, confirmNumber: NUMBER }, required: ['number', 'confirmNumber'], declarations: { production: 'always' },
-  build: async (args, gh, t) => {
-    if (args.confirmNumber !== args.number) throw refusal('confirmNumber must equal the issue number.');
+  description: 'Delete an issue permanently (repository admin). Optional confirmNumber checks the target; full owners can execute directly.',
+  properties: { number: NUMBER, confirmNumber: NUMBER }, required: ['number'], declarations: { production: 'always' },
+  build: async (args, gh, t, ctx) => {
+    if ((args.confirmNumber !== undefined || !isOwnerConnection(ctx.connection)) && args.confirmNumber !== args.number) throw refusal('confirmNumber must equal the issue number.');
     const r = (await graphql(gh, REPO_ISSUE, { o: t.owner, n: t.repo, num: args.number })).repository;
     if (!r?.issue?.id) throw refusal(`Issue #${args.number} was not found.`, 404);
     return { mutation: 'deleteIssue', nodeId: r.issue.id, input: { issueId: r.issue.id }, title: r.issue.title, admin: r.viewerPermission === 'ADMIN' };

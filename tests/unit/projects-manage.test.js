@@ -143,7 +143,7 @@ const OK = (outcome) => outcome === 'ok';
 const more = [
   ['github_project_copy', manage, { owner: OWNER, number: 3, title: 'Copy' }, { needsConfirm: true },
     (gh, o) => { const st = { project: proj() }; server(gh, { state: st, mutate: () => { if (OK(o)) st.copy = true; st.project = OK(o) ? proj({ id: 'PVT_copy', title: 'Copy', number: 4 }) : st.project; return { copyProjectV2: { projectV2: { id: 'PVT_copy', number: 4 } } }; } }); }],
-  ['github_project_delete', manage, { owner: OWNER, number: 3, confirmTitle: 'Roadmap' }, { needsConfirm: true, production: true },
+  ['github_project_delete', manage, { owner: OWNER, number: 3 }, { needsConfirm: true, production: true },
     (gh, o) => { const st = { project: proj() }; server(gh, { state: st, mutate: () => { if (OK(o)) st.project = null; return { deleteProjectV2: { projectV2: { id: PID } } }; } }); }],
   ['github_project_link', manage, { owner: OWNER, number: 3, repo: 'example-org/app' }, { needsConfirm: true },
     (gh, o) => { const st = { project: proj() }; server(gh, { state: st, mutate: () => { if (OK(o)) st.project = proj({ repositories: { nodes: [{ id: 'R_one', nameWithOwner: 'example-org/app' }] } }); return { linkProjectV2ToRepository: { clientMutationId: null } }; } }); }],

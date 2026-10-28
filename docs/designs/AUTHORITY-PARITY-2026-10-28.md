@@ -50,14 +50,18 @@ Document first, then assemble coherent read/parity and authority changes with fo
 - [x] Both supplied reports reviewed; baseline source and prior merged feedback reconciled.
 - [x] Full plan documented before implementation.
 - [x] Governing documentation aligned; older setup/compatibility surfaces remain explicitly tracked.
-- [x] Complete reads and wire efficiency verified in focused source tests; live comparison remains open.
+- [x] Complete reads and wire efficiency verified in source and live immutable-file comparison, including exact four-window byte reconstruction after false-positive correction (#448).
 - [x] Argument/search behavior and honest scanning alternatives verified in source tests; proprietary scanner parity is not claimed.
 - [x] Shared owner write authority verified through handler, dispatcher and meta-tool source tests.
 - [ ] Tool-specific authority and settings/connection transition verified.
 - [ ] Unfinished work reconciled and implemented where eligible.
 - [ ] Required checks, review and merge.
-- [ ] Deployed head-to-head acceptance (requires source-bearing release).
+- [x] Deployed head-to-head audit read/search/scanner/alias/denial acceptance; exact evidence in the audit checkpoint. Broader paid/client/RTC acceptance remains individually tracked.
 
 ## Concrete follow-up after the first implementation outcome
 
 See [the dated checkpoint](../status/2026-10-28-authority-parity.md) for commands, proof and named remainder. Existing work-index accounting reports CI-FAST-1 as the remaining older indexed work; this new authority/parity follow-up is tracked on AUTH-1/PAR-2 without rewriting their previous merger evidence. Legacy enrollment/UI/persisted-field cleanup, unsupported universal operation contracts, exact source-bearing release acceptance and native Git worker implementation remain separately named work. No source count, green static check or generated workflow closes those obligations.
+
+## Current checkpoint after the audit release
+
+#445–#448 merged, with the content correction independently serving READY on 75b4d61b. Owner setup/connection persistence and workflow result propagation were delivered in #447. Remaining duplicate typed-target confirmations and truthful unsupported GraphQL guidance are in the current owner-confirmation cleanup; exact-head review/CI/merge is still required. The existing acceptance queue now separates current restricted-grant criteria from superseded owner policy. Each real paid/destructive/client fixture remains individually named, never relabeled passed. Native Git is deferred by the owner's audit-first priority, with its portable design retained.

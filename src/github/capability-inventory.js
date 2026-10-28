@@ -382,8 +382,8 @@ function gqlRecord(root, field, names) {
       rec.implementation.route = 'refused-by-design';
       rec.implementation.status = 'refused-by-design';
       rec.state = 'refused-by-design';
-      rec.implementation.reason = REFUSED_MUTATIONS.get(field.name);
-      rec.delivery.nextAction = 'None: refused on purpose (see reason); revisit only on an owner decision';
+      rec.implementation.reason = 'Missing verified ownership/readback contract; legacy refused-by-design classification is not a GitHub permission refusal. Historical note: ' + REFUSED_MUTATIONS.get(field.name);
+      rec.delivery.nextAction = 'Implement the verified scoped contract; meanwhile use github_search_tools, github_api_search/github_api_describe or github_where_is_setting for supported alternatives and setup guidance';
     } else if (WRITE_SPECS.has(field.name)) {
       rec.implementation.universalCandidate = true;
       rec.implementation.reason = 'A reviewed GraphQL writeSpec exists; exact credential, ownership and request shape still require verification';

@@ -322,8 +322,10 @@ export const WRITE_SPECS = new Map([
   }]
 ]);
 
-/** Mutations this server refuses on purpose, each with a plain-English reason (GQL-1). The inventory shows them as
- *  `refused-by-design`; `github_graphql_write` names the reason. Nothing here is a gap to be filled later. */
+/** Legacy unsupported-mutation inventory (GQL-1). The exported name and inventory label are retained for compatibility.
+ * These entries are implementation gaps or retired-provider routes, not an authority above the owner.
+ * Old risk descriptions below are historical context, not current provider-permission claims.
+ * Runtime guidance names supported-tool, REST and exact-setting alternatives; missing verified contracts remain backlog. */
 export const REFUSED_MUTATIONS = new Map([
   ['updateProjectV2Collaborators', 'It replaces the whole collaborator list of a project, which can silently remove or widen access. Change who can see a project on github.com.'],
   ['createProjectV2IssueField', 'The new field cannot be proven to belong to your account by a read before it is created.'],

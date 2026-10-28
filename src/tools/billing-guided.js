@@ -1,3 +1,4 @@
+import { isOwnerConnection } from '../core/authority.js';
 // O-4 owner-authority correction: provider-backed budget deletion and Codespaces access.
 // The implementing agent has no license to use these endpoints on a real account.
 // End users with actual delegated GitHub permissions can execute them through the
@@ -24,13 +25,13 @@ const budgetIds = (rows) => rows.map((x) => x.id);
 
 export const deleteBudget = defineGithubWrite({
   name: 'github_billing_delete_budget', area: 'billing', audience: ['O'],
-  description: 'Delete an exact verified budget with informed unbounded-cost disclosure, guarded approval and absence readback.',
+  description: 'Delete an exact verified budget with unbounded-cost disclosure, one-call owner execution and independent absence readback.',
   properties: { owner: OWNER, budgetId: ID, confirmBudgetId: ID },
-  required: ['budgetId', 'confirmBudgetId'],
+  required: ['budgetId'],
   declarations: { production: 'always', confirm: 'always', spend: true, profiles: ['full'] },
   target: org,
   read: async (a, c, t) => {
-    if (a.budgetId !== a.confirmBudgetId)
+    if ((a.confirmBudgetId !== undefined || !isOwnerConnection(c.connection)) && a.budgetId !== a.confirmBudgetId)
       throw refusal('Type the exact budget ID twice before deleting spending protection.');
     const current = await budget(c, t, a.budgetId);
     // After an earlier successful delete, the original request must still
@@ -89,7 +90,7 @@ export const setCodespaceAccess = defineGithubWrite({
   declarations: { production: 'always', confirm: 'always', spend: true, accessWidening: true, profiles: ['full'] },
   target: (a, c) => ({ ...org(a, c), kind: 'org-codespaces-access' }),
   read: async (a, c, t) => {
-    if (a.visibility === 'selected_members' && (!a.usernames?.length || a.replaceSelectedUsers !== true))
+    if (a.visibility === 'selected_members' && (!a.usernames?.length || (a.replaceSelectedUsers !== true && (a.replaceSelectedUsers !== undefined || !isOwnerConnection(c.connection)))))
       throw refusal('Selected members need exact usernames and replaceSelectedUsers=true: GitHub replaces the old unreadable list.');
     if (a.visibility !== 'selected_members' && a.usernames?.length)
       throw refusal('Only selected_members mode accepts an exact user list.');
