@@ -1,6 +1,6 @@
 ## 2026-10-27 — C-16 explicit guarded write batching (#431)
 
-C-16's plan card was committed before source. The separate `github_write_batch` delegates to ordinary authorized GitHub writers in order and records durable per-step PostgreSQL write intent, receipts and stop-on-error handling, without changing read-only `github_batch`. The one-call branch-create → exact-head commit/push → PR-open workflow now independently reads back the new PR in the same call. Code, tests and database migration are in the feature branch; final exact-head CI, review, PR merge and independent #431 issue closure are pending. No live write or release was performed.
+C-16's plan card was committed before source. The separate `github_write_batch` delegates to ordinary authorized GitHub writers in order and records durable per-step PostgreSQL write intent, receipts and stop-on-error handling, without changing read-only `github_batch`. The one-call branch-create → exact-head commit/push → PR-open workflow now independently reads back the new PR in the same call. Code, tests and database migration are in PR #443. Initial CI exposed an incorrectly appended started marker, schema inventory ordering and two unused declarations; repaired in a focused patch, with full new-head CI, review, PR merge and #431 closure still pending. No live write or release was performed.
 
 ## 2026-10-27 — C-15 observed credential-rate metadata (#435) CLOSED
 

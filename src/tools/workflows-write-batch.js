@@ -26,7 +26,6 @@ const connectionId=ctx=>ctx.connection?.client_id??ctx.connection?.pass_id??null
 const digest=x=>hash(JSON.stringify(x));
 const deny=(reason,more={})=>({done:false,status:'refused',reason:redact(String(reason)).slice(0,300),...more});
 const empty=x=>x===undefined||x===null;
-const scoped=(a,ctx)=>({owner:a.owner??ctx.connection?.default_account,repo:a.repo});
 function cleanRefValue(key,v){
   if(['number','id','run_id','issue_number'].includes(key))
     return Number.isSafeInteger(v)&&v>0?v:null;
@@ -316,7 +315,7 @@ export async function guardedWriteBatch(args,ctx){
     let result;
     try{result=await ctx.callTool(step.name,callArgs);}
     catch{
-      try{await save([...items,item(i,step,'uncertain',{reason:'The delegated write interrupted before its result could be confirmed.'})],'uncertain');}catch{}
+      try{await save([...items.slice(0,-1),item(i,step,'uncertain',{reason:'The delegated write interrupted before its result could be confirmed.'})],'uncertain');}catch{}
       return respond('reconciliation_required',items,{next_action:'The delegated write may have applied. Check provider state and its individual journal before a NEW batch.'});
     }
     if(step.name==='github_workflow_open_pr'){
@@ -326,7 +325,7 @@ export async function guardedWriteBatch(args,ctx){
     const observed=outcome(result);
     const row=item(i,step,observed.status,{...observed,
       ...(observed.status==='applied'?{request_key:callArgs.requestKey??null}:{})});
-    try{await save([...items,row],observed.status==='uncertain'?'uncertain':
+    try{await save([...items.slice(0,-1),row],observed.status==='uncertain'?'uncertain':
       observed.status==='refused'?'partial':i===checked.length-1?'complete':'running');}
     catch{return respond('reconciliation_required',items,{next_action:'The provider result could not be durably recorded; no following step was sent.'});}
     if(observed.status!=='applied')
