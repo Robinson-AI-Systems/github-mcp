@@ -51,14 +51,16 @@ export function runConnectionsContract(name, make) {
       expect(await db.setConnectionDefaultAccount('nobody', 'example-org')).toBe(0);
     });
 
-    it('upgrades one full single-account PREVIEW login only after production enabled, keeps bearer/refresh and isolates other logins', async () => {
+    it('upgrades one full single-account PREVIEW login with active provider credentials despite legacy production off, keeps bearer/refresh and isolates other logins', async () => {
       const db = await make();
       await db.upsertAccount({ login: 'example-org', accountId: 445566, accountType: 'Organization', label: 'Example org', credentialKind: 'app', appId: 445566, isScratch: true });
       await db.setInstallation('example-org', { installationId: 445567, repositorySelection: 'all', permissions: { contents: 'write' }, status: 'active' });
       await login(db, 'full-one', 'ChatGPT', 'access-full', { accounts: ['example-org'], defaultAccount: 'example-org', profile: 'full' });
       await login(db, 'other-one', 'Other', 'access-other', { accounts: ['example-org'], defaultAccount: 'example-org', profile: 'full' });
+      expect((await db.getAccount('example-org')).production_enabled).toBe(false);
+      await db.setInstallationStatus('example-org', 'suspended');
       expect(await db.upgradeConnectionProductionMode('full-one', 'example-org')).toBe(0);
-      await db.setProductionEnabled('example-org', true);
+      await db.setInstallationStatus('example-org', 'active');
       expect(await db.upgradeConnectionProductionMode('full-one', 'foreign-account')).toBe(0);
       expect(await db.upgradeConnectionProductionMode('full-one', 'example-org')).toBe(1);
       expect((await db.getAccessToken('access-full')).mode).toBe('production');
