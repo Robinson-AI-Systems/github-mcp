@@ -1,6 +1,6 @@
 # 2026-10-27 — C-12 one-copy lossless MCP result envelopes (#428)
 
-**State: implementation and tests committed to feature branch; CI, review, merge and live verification not yet claimed.**
+**State: merged PR #439, exact-head CI and release-policy green, review resolved, issue #428 verified closed.** Merge commit `1a37feee5446ecc8f476a515c6aaa0c835e5c4c5`. Live deployment unverified.
 
 Owner reports large PR bodies and tool schemas duplicated in both text content and structuredContent. The new core envelope packs only top-level, credential-screened, non-outputSchema read/runner responses when their exact JSON body exceeds 1600 bytes: complete JSON remains in content[0].text once, structuredContent holds small scalars/computed fields, omitted_fields and full_payload_location. Small replies and writes are unchanged. Nested calls remain full for workflow and batch execution. RTC/HTTPS reconstructs full canonical values from that same text before its independent 8 KiB-or-handle policy.
 

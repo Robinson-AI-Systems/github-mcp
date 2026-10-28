@@ -1109,3 +1109,6 @@ open obligations, original fixture ownership, approvals and deployment provenanc
 ]
 ```
 <!-- release-acceptance:end -->
+
+## C-13 PR #440 repair — 2026-10-27
+Custom GitHub MCP opened PR #440. The exact-head first CI failed due to missing catalog/docs inventory and registry list plus duplicate field projection on server response envelopes. Review noted binary credentials could pass the archive scanner; source and regression fixtures address it. Rate metadata #435 is NOT in #440, remains open. New exact-head CI, review resolution and merge are pending.

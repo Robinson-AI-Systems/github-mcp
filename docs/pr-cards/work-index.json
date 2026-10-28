@@ -2468,11 +2468,32 @@
         "C-11"
       ],
       "card": "docs/pr-cards/C-12.md",
-      "status": "IN_PROGRESS",
+      "status": "MERGED",
       "migration": "none",
       "budget": 0,
       "units": [
         "C-12"
+      ],
+      "readiness": "READY",
+      "ownerInputs": [],
+      "pr": [
+        439
+      ]
+    },
+    {
+      "id": "C-13",
+      "title": "Complete read pathway: repository ZIP snapshots, universal fields and scoped rate hints",
+      "batch": "C",
+      "design": "docs/designs/BATCH-C.md",
+      "dependencies": [
+        "C-12"
+      ],
+      "card": "docs/pr-cards/C-13.md",
+      "status": "IN_PROGRESS",
+      "migration": "none",
+      "budget": 0,
+      "units": [
+        "C-13"
       ],
       "readiness": "READY",
       "ownerInputs": []
