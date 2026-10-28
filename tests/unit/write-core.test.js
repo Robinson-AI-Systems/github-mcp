@@ -197,3 +197,14 @@ describe('failures and retries', () => {
     expect(explainGithubError(new Error('socket hang up with token ghp_FAKE'))).not.toContain('ghp_');
   });
 });
+
+it('awaits verified asynchronous target identity and denies rejected or foreign targets before a send', async () => {
+ const w = await makeWorld({ profile: 'full', gates: [] }); let sent = 0;
+ const make = target => defineWrite({ name: 'github_x_async_target', description: 'Resolve target identity from current stored authorization.', declarations: { production: 'never', profiles: ['full'] },
+ target, read: async () => ({}), classify: () => ({}), summarize: () => 'Async target write', apply: async () => { sent++; }, readAfter: async () => ({}), verify: () => true, requestKey: () => 'rmcp_async_target' });
+ const accepted = await make(async () => ({ owner: 'example-org', scope: 'repo', repo: 'hello' })).handler({}, w.ctx);
+ expect(parse(accepted).status).toBe('applied'); expect(sent).toBe(1);
+ expect(parse(await make(async () => ({ owner: 'foreign', scope: 'repo', repo: 'hello' })).handler({}, w.ctx)).status).toBe('refused');
+ expect(parse(await make(async () => { throw new TypeError('Stored grant revoked'); }).handler({}, w.ctx)).error).toContain('Stored grant revoked');
+ expect(sent).toBe(1);
+});

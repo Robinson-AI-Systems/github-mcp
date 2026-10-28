@@ -544,6 +544,15 @@ export function createDb(sql = productionSql()) {
         FROM gh_async_jobs WHERE id = ${id} AND connection_id = ${connection} AND expires_at > now()`;
       return rows[0] ?? null;
     },
+    /** Connection-bound native workspace inventory; metadata is reauthorized before tools return it. */
+    async listNativeGitWorkspaces(connection, { after = null, limit = 10 } = {}) {
+      if (typeof connection !== 'string' || !connection) return [];
+      if (after !== null && !JOB_ID.test(after) || !Number.isSafeInteger(limit) || limit < 1 || limit > 20) throw new TypeError('Invalid workspace inventory page.');
+      return sql`SELECT id, owner, repo, expires_at FROM gh_async_jobs
+        WHERE connection_id = ${connection} AND kind = 'native-git-workspace' AND state = 'pending' AND expires_at > now() AND (${after}::text IS NULL OR id > ${after})
+        ORDER BY id LIMIT ${limit + 1}`;
+    },
+
     /** Moves a pending job on (ready, failed or expired). A job that is no longer pending is left alone. Returns the row or null. */
     async finishJob(id, connection, { state, resultHandle = null, detail = null }) {
       if (!['ready', 'failed', 'expired'].includes(state)) throw new TypeError('A job finishes as ready, failed or expired.');

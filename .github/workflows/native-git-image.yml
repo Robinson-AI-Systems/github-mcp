@@ -1,0 +1,23 @@
+name: Native Git worker image
+on:
+  pull_request:
+    paths:
+      - 'workers/native-git/**'
+      - 'src/native-git/**'
+      - 'src/github/content-protection.js'
+      - '.github/workflows/native-git-image.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  native-git-image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a
+        with:
+          persist-credentials: false
+      - name: Build pinned portable image
+        run: docker build --pull -f workers/native-git/Dockerfile -t robinson-native-git:test .
+      - name: Exercise native Git in the unprivileged resource-limited image
+        run: docker run --rm --read-only --cap-drop ALL --security-opt no-new-privileges --pids-limit 128 --memory 512m --cpus 1 --tmpfs /tmp:rw,noexec,nosuid,size=256m robinson-native-git:test node --test workers/native-git/smoke.test.js

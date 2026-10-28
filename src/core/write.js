@@ -109,7 +109,7 @@ export function defineWrite(spec) {
       return refuseOutright('The arguments are invalid: dryRun and confirm must be true or false.');
     }
     let tgt;
-    try { tgt = target(args, ctx); } catch (error) { return refuseOutright(error instanceof TypeError ? error.message : 'The target could not be worked out from the arguments.'); }
+    try { tgt = await target(args, ctx); } catch (error) { return refuseOutright(error instanceof TypeError ? error.message : 'The target could not be worked out from the arguments.'); }
     if (!tgt?.owner || !tgt.scope) return refuseOutright('The target could not be worked out from the arguments.');
     if (!connection.accounts.some((login) => sameLogin(login, tgt.owner))) {
       return refuseOutright(`"${tgt.owner}" is not one of the GitHub accounts this connection may use (${connection.accounts.join(', ')}).`);

@@ -1,0 +1,25 @@
+services:
+  native-git:
+    build:
+      context: ../..
+      dockerfile: workers/native-git/Dockerfile
+    restart: unless-stopped
+    init: true
+    user: "1000:1000"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 128
+    mem_limit: 512m
+    cpus: 1.0
+    environment:
+      PORT: "3000"
+      NATIVE_GIT_STORAGE_ROOT: /data
+      NATIVE_GIT_CONTROL_PUBLIC_KEY: ${NATIVE_GIT_CONTROL_PUBLIC_KEY:?Pin the MCP public verification key from its native-git-key endpoint}
+    volumes:
+      - native-git-data:/data
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    expose: ["3000"]
+volumes:
+  native-git-data:
