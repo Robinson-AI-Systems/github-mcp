@@ -24,6 +24,7 @@ async function searchHandler(args, ctx) {
 // Profile-visible direct tools only. Sorted stable digests allow clients to
 // check for changes without downloading every schema during ordinary work.
 const MANIFEST_CHANGELOG = Object.freeze([
+  {revision:'2026-10-28',changes:'Add compact secret-scanner gateway with repository tuning, verification receipts and profile offers.'},
   { revision: '2026-10-27', changes: 'Add direct-tool manifest and documented read argument aliases (#429, #434).' }
 ]);
 const digest = (data) => createHash('sha256').update(JSON.stringify(data)).digest('hex');
@@ -46,7 +47,7 @@ async function describeHandler(args, ctx) {
   return describeTool(tool);
 }
 
-const callable = (ctx, name) => { const t = find(ctx, name); return t && (!t.usesRegistry || (t.area === 'workflow' && (Array.isArray(t.delegatedWrites) || t.annotations?.readOnlyHint === true))) ? t : null; };
+const callable = (ctx, name) => { const t = find(ctx, name); return t && (!t.usesRegistry || t.name==='github_secret_scanner' || (t.area === 'workflow' && (Array.isArray(t.delegatedWrites) || t.annotations?.readOnlyHint === true))) ? t : null; };
 
 async function callHandler(args, ctx) {
   if (!callable(ctx, args.name)) {

@@ -1,3 +1,5 @@
+import {loadScannerPolicy} from '../github/scanner-policy.js';
+import {withProtectionContext,withRepositoryProtection} from '../github/content-protection.js';
 // The tool dispatcher (A-5c, extended in B-1). Default-deny: it runs only tools it can vouch for, checks arguments against the
 // tool's own schema, shapes every result (hidden secrets, Denver times, dollars, untrusted marks, production banner) and withholds any
 // result that still looks like it holds a credential.
@@ -95,7 +97,7 @@ const COUNTED_STATUSES = new Set(['applied', 'unconfirmed', 'uncertain']);
 export function createDispatch({ env = process.env, now = Date.now, fetch = globalThis.fetch, credentials = null, gates = null, sleep = undefined, usage = null } = {}) {
   // PUB-5 B: a change slot is reserved before the change runs (so parallel calls cannot slip past the limit) and handed back
   // unless the change was counted. `box` remembers that for this one call.
-  const dispatch=async(input)=>{
+  const dispatch=async(input)=>withProtectionContext(async()=>{
     const box={reserved:false,counted:false};
     const topLevel=!input.rateObservations;
     const rateObservations=input.rateObservations??createRateCollector({now});
@@ -121,8 +123,18 @@ export function createDispatch({ env = process.env, now = Date.now, fetch = glob
     }finally{
       if(box.reserved&&!box.counted){try{await usage.release?.();}catch{/* best effort */}}
     }
-  };
-  async function run({ registry, name, args, connection, db, actor = null, actAsCache = null, rateObservations }, box) {
+  });
+  async function run(input,box){
+    const {registry,name,args,connection,db}=input,tool=registry.tools.find(t=>t.name===name);
+    if(['github_security_scanner_configure','github_security_scanner_get_settings'].includes(name))return withRepositoryProtection([],()=>runScoped(input,box),{isolateFiles:true});
+    const owner=args?.owner??connection?.default_account,repo=args?.repo;
+    if(tool&&isToolVisible(tool,connection?.profile)&&!validateArgs(tool.inputSchema,args)&&!passRefusal({tool,args:args??{},connection})&&typeof repo==='string'&&/^[A-Za-z0-9_.-]{1,100}$/.test(repo)&&connection?.accounts?.some(a=>a.toLowerCase()===String(owner).toLowerCase())&&typeof db?.getSetting==='function'){
+      try{const policy=await loadScannerPolicy(db,owner,repo);return withRepositoryProtection(policy.settings.additionalRules.filter(r=>!policy.settings.disabledRules.includes(r.id)),()=>runScoped(input,box),{repository:JSON.stringify([owner.toLowerCase(),repo.toLowerCase()])});}
+      catch{return fail('Repository scanner policy could not be loaded; no unprotected result was returned. Inspect scanner settings and retry.');}
+    }
+    return withRepositoryProtection([],()=>runScoped(input,box),{isolateFiles:!tool?.usesRegistry});
+  }
+  async function runScoped({ registry, name, args, connection, db, actor = null, actAsCache = null, rateObservations }, box) {
     // GOD-6: one log of "who acted" per top-level call; a workflow's nested calls share it, so its result covers them.
     const topLevel = actor === null;
     const actorLog = actor ?? createActorLog();

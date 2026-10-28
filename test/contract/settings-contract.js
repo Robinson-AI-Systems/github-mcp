@@ -17,6 +17,18 @@ export function runSettingsContract(name, make) {
       await expect(db.setSetting('', 1)).rejects.toThrow(TypeError);
     });
 
+    it('atomically claims and advances non-secret setting revisions without lost updates',async()=>{
+      const db=await make(),key='scanner_revision_contract';
+      const first=await Promise.all([db.compareAndSetSetting(key,0,{revision:1,settings:{name:'first'}}),db.compareAndSetSetting(key,0,{revision:1,settings:{name:'second'}})]);
+      expect(first.filter(Boolean)).toHaveLength(1);expect(await db.getSetting(key)).toEqual(first.find(Boolean));
+      const second=await Promise.all([db.compareAndSetSetting(key,1,{revision:2,settings:{name:'a'}}),db.compareAndSetSetting(key,1,{revision:2,settings:{name:'b'}})]);
+      expect(second.filter(Boolean)).toHaveLength(1);expect(await db.getSetting(key)).toEqual(second.find(Boolean));
+      expect(await db.compareAndSetSetting(key,1,{revision:2})).toBeNull();
+      expect(await db.compareAndSetSetting('scanner_absent_revision',3,{revision:4})).toBeNull();
+      await expect(db.compareAndSetSetting('Bad Key',0,{revision:1})).rejects.toThrow(TypeError);
+      await expect(db.compareAndSetSetting(key,2,{revision:8})).rejects.toThrow(TypeError);
+    });
+
     it('turns production on and off for a known account only', async () => {
       const db = await make();
       await db.upsertAccount({ login: 'example-org', accountId: 1, accountType: 'Organization', label: 'Example', credentialKind: 'app' });

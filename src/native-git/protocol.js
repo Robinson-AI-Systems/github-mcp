@@ -1,6 +1,6 @@
 // Internal worker transport, never a user-supplied URL or host command.
 import { createHmac, timingSafeEqual, createHash, createPublicKey, verify } from 'node:crypto';
-export const WORKER_PROTOCOL = 1;
+export const WORKER_PROTOCOL = 2;
 export function workerKey(key) {
  if (typeof key === 'string' && key.startsWith('ed25519:')) {
   const parsed = createPublicKey({ key: Buffer.from(key.slice(8), 'base64'), format: 'der', type: 'spki' });

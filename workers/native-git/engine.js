@@ -1,3 +1,5 @@
+import {evaluateFileProtection,findingFingerprint} from '../../src/github/file-protection.js';
+import {defaultScannerSettings} from '../../src/github/scanner-policy.js';
 // Portable execution plane: fixed argv, no shell, hooks, filters or caller-supplied config.
 import { spawn } from 'node:child_process';
 import { randomBytes, createHash } from 'node:crypto';
@@ -6,7 +8,7 @@ import { resolve, join, dirname, isAbsolute } from 'node:path';
 import { READ_OPERATIONS, gitCommand, ref, value } from '../../src/native-git/commands.js';
 export { READ_OPERATIONS, WRITE_OPERATIONS, gitCommand } from '../../src/native-git/commands.js';
 import { nativeWorkspaceId } from '../../src/native-git/protocol.js';
-import { containsCredential, redact, contentProtectionReport } from '../../src/github/content-protection.js';
+import { containsCredential, redact, activeProtectionReport, withProtectionContext, withRepositoryProtection } from '../../src/github/content-protection.js';
 
 const ID = /^git_[a-f0-9]{32}$/;
 const hash = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
@@ -21,9 +23,9 @@ async function save(path, data) {
 }
 
 export class NativeGitWorker {
-  constructor({ root, authorize, credential, allowLocalFixtures = false, timeoutMs = 45000, maxOutputBytes = 2 * 1024 * 1024, now = Date.now } = {}) {
+  constructor({ root, authorize, credential, allowLocalFixtures = false, timeoutMs = 45000, maxOutputBytes = 2 * 1024 * 1024, now = Date.now, scannerPolicy={settings:defaultScannerSettings(),revision:0} } = {}) {
     if (!isAbsolute(root ?? '') || typeof authorize !== 'function') throw new TypeError('Isolated absolute storage and an authorization callback are required.');
-    Object.assign(this, { root: resolve(root), authorize, credential, allowLocalFixtures, timeoutMs, maxOutputBytes, now });
+    Object.assign(this, { root: resolve(root), authorize, credential, allowLocalFixtures, timeoutMs, maxOutputBytes, now, scannerPolicy });
   }
   async access(binding, write) {
     bindingHash(binding);
@@ -123,7 +125,8 @@ export class NativeGitWorker {
     const result = await this.git(w.repo, ['ls-remote', '--refs', '--', w.meta.remote, ...(selected ? [ref(selected)] : [])], { token, remote: w.meta.remote });
     return Object.fromEntries(result.stdout.trim().split('\n').filter(Boolean).map(line => { const [id, name] = line.split('\t'); return [name, id]; }));
   }
-  async execute(id, binding, { operation, args = {}, requestKey, expectedGeneration } = {}) {
+  async execute(id,binding,options={}){return withProtectionContext(()=>withRepositoryProtection(this.scannerPolicy.settings.additionalRules.filter(r=>!this.scannerPolicy.settings.disabledRules.includes(r.id)),()=>this.executeScoped(id,binding,options)));}
+  async executeScoped(id, binding, { operation, args = {}, requestKey, expectedGeneration } = {}) {
     gitCommand(operation, args); const writing = !READ_OPERATIONS.includes(operation);
     const w = await this.workspace(id, binding, writing);
     await this.selectWorktree(w, args.worktree);
@@ -139,8 +142,16 @@ export class NativeGitWorker {
       if ((await lstat(path)).size > 20 * 1024 * 1024) throw new TypeError('File exceeds the worker read limit; use local Git export.');
       const data = await readFile(path);
       if (data.length > 20 * 1024 * 1024) throw new TypeError('File exceeds the worker read limit; use the documented local Git export.');
-      if (operation === 'protection_check') return { path: args.path, file_hash: createHash('sha256').update(data).digest('hex'), ...contentProtectionReport(data.toString('utf8')), next: 'Inspect the reported locations in your own editor. Share only this value-free report and a harmless minimal reproduction; correct the detector with positive and negative tests. No repository-wide bypass.' };
-      if (containsCredential(data.toString('utf8'))) throw new TypeError('Byte retrieval blocked by content protection; use github_git_workspace_read operation=protection_check with this path for value-free rule locations.');
+      const source=data.toString('utf8'),blobSha=createHash('sha1').update(Buffer.from(`blob ${data.length}\0`)).update(data).digest('hex');
+      const specific=data.length<=1000000&&this.scannerPolicy.settings.suppressions.some(s=>s.fileReadException&&s.path===args.path&&s.blobSha===blobSha);
+      const assessed=specific?evaluateFileProtection({source,path:args.path,sha:blobSha,settings:this.scannerPolicy.settings,revision:this.scannerPolicy.revision}):null;
+      if(operation==='protection_check'){
+        const report=assessed?.report??activeProtectionReport(source);
+        return {path:args.path,blob_sha:blobSha,file_hash:createHash('sha256').update(data).digest('hex'),...report,policy_revision:this.scannerPolicy.revision,
+          findings:report.findings.map(f=>({...f,fingerprint:f.fingerprint??findingFingerprint(blobSha,f.rule,f.byte_offset,f.byte_length)})),
+          next:'Use value-free fingerprints and repository-scoped scanner settings. Committed pinned samples verify changes; changed bytes never inherit a file-read exception.'};
+      }
+      if(assessed?!assessed.report.byte_exact_available:containsCredential(source))throw new TypeError('Byte retrieval blocked by content protection; use github_git_workspace_read operation=protection_check with this path for value-free rule locations.');
       const offset = args.byteOffset ?? 0, length = args.byteLength ?? 32768;
       const fileHash = createHash('sha256').update(data).digest('hex');
       if ((offset > 0 || args.expectedFileHash !== undefined) && args.expectedFileHash !== fileHash) throw new TypeError('File hash changed or is missing for continuation; restart from byte offset zero.');

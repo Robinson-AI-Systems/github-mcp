@@ -51,6 +51,10 @@ See [combined release evidence](status/2026-10-28-combined-release.md). Before s
 curl --fail --show-error "$WORKER_ORIGIN/health"
 ```
 
-Expect HTTP 200 with service=robinson-native-git and protocol=1. Then call github_git_workspace_read with operation=capabilities and require worker.ready=true plus the actual native Git version. Do not open another clone to troubleshoot an unavailable route. Healthy Docker status alone proves only internal health.
+Expect HTTP 200 with service=robinson-native-git and protocol=2. Then call github_git_workspace_read with operation=capabilities and require worker.ready=true plus the actual native Git version. Do not open another clone to troubleshoot an unavailable route. Healthy Docker status alone proves only internal health.
 
 If it times out, the authorized host/network operator must provide publicly reachable TLS routing to this project's native-git service on port 3000, or an owned outbound tunnel. Verify DNS, the TLS proxy/tunnel and the service route; a generated sslip.io hostname does not open the host's firewall/NAT or tunnel ingress. Keep Docker/host administration private. When the origin changes, set NATIVE_GIT_WORKER_URL and deploy that configuration through the checked release process; retain the public key pin and persistent data. Existing project-level connection permissions cannot grant missing server-wide/network authority. Backing-volume capacity monitoring remains an operator prerequisite for ongoing active use.
+
+## Scanner policy transport upgrade
+
+The scanner-tuning release uses worker protocol 2, so an older worker cannot silently ignore project protection settings. Rebuild the worker from the same checked release before enabling native operations; retain the data volume and pinned public verifier. Protocol 1 requests are refused by the updated worker and the old worker refuses protocol 2 before running an operation. Workspace storage/snapshot format is unchanged. The MCP sends the current repository policy inside each signed lease; native file reads, diagnostics and command-output redaction use that policy. The existing external-ingress blocker remains separate from this source upgrade.

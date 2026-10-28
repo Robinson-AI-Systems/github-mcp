@@ -1,3 +1,4 @@
+import {loadScannerPolicy} from '../github/scanner-policy.js';
 import { createHash } from 'node:crypto';
 import { githubFor, credentialFor } from '../github/client.js';
 import { WORKER_PROTOCOL, workerUrl } from './protocol.js';
@@ -25,13 +26,14 @@ export async function nativeRecord(ctx, id, { allowDisposed = false } = {}) {
 }
 export async function callNativeWorker(ctx, { binding, action, workspace_id, operation, options, requestKey, expectedGeneration, allowWrite = false, network = false }) {
  const url = workerUrl(ctx.env);
+ const scannerPolicy=binding?await loadScannerPolicy(ctx.db,binding.owner,binding.repo):null;
  let credential;
  if (network) {
   const result = await credentialFor(ctx, { owner: binding.owner, ...(!isOwnerConnection(ctx.connection) ? { scope: { repositories: [binding.repo] } } : {}) });
   credential = result.personal?.token ?? result.token;
   if (typeof credential !== 'string' || !credential) throw new TypeError('GitHub network authorization is unavailable.');
  }
- const body = JSON.stringify({ version: WORKER_PROTOCOL, expiresAt: (ctx.now ?? Date.now)() + 60000, binding, action, workspace_id, operation, options, requestKey, expectedGeneration, allowWrite, ...(credential ? { credential } : {}) });
+ const body = JSON.stringify({ version: WORKER_PROTOCOL, expiresAt: (ctx.now ?? Date.now)() + 60000, binding, action, workspace_id, operation, options, requestKey, expectedGeneration, allowWrite, ...(scannerPolicy?{scannerPolicy:{settings:scannerPolicy.settings,revision:scannerPolicy.revision}}:{}), ...(credential ? { credential } : {}) });
  const response = await (ctx.fetch ?? globalThis.fetch)(url, { method: 'POST', redirect: 'error', signal: AbortSignal.timeout(50000), headers: { 'Content-Type': 'application/json', 'x-robinson-signature': signNativeWorkerBody(body, ctx.env) }, body });
  const reader = response.body.getReader(); const chunks = []; let size = 0;
  try { for (;;) { const { value, done } = await reader.read(); if (done) break; size += value.length; if (size > 3 * 1024 * 1024) { await reader.cancel(); throw new TypeError('Worker response exceeds the complete result limit.'); } chunks.push(Buffer.from(value)); } } finally { reader.releaseLock(); }

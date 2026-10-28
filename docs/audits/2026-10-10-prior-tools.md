@@ -20,7 +20,6 @@ these clones cover both.
 | Sd | same repository: package docs (`TOOL-NAMING-STANDARD.md`, `IMPLEMENTATION-PLAN.md`, `QUICK_REFERENCE.md`, …), every root-level `.md/.txt/.json`, `docs/`, `plans/`, `standalone/`, `packages/free-agent-mcp/src`, `packages/paid-agent-mcp/src` | same |
 | Sp | `GITHUB-COMPLETION-PLAN.md` phase 2 (planned names without the `github_` prefix, normalized by adding it) and `github-api-coverage-analysis.md` | same |
 | A | `robinsons-toolkit-api`: `TOOLS-REGISTRY.json`, `implemented-tools.txt`, `github-mcp-tools.txt` (225), `lib/github.js`, `api/github/`, `openapi-schema.json`, `openapi.yaml`, `CUSTOM-GPT-SCHEMA.json` | `d7f7d9f7c55041f9a8eafb4760a72c07048bce97` |
-| — | Other projects (needs, §5): `appliance-desk` `574fe981`, `Cortiware` `49aca911` (2025-10-27), `oldReplit` `9395352e` (2025-09-27), `Household-Assistant` `ab8962d4` (2025-11-06) | as listed |
 
 Method: every `github_<name>` token in those files was collected by script (regex `\bgithub_[a-z][a-z0-9_]*[a-z0-9]\b`),
 plus the unprefixed planned names in `GITHUB-COMPLETION-PLAN.md`; noise was removed (§2); every remaining name was mapped
@@ -674,10 +673,10 @@ Origins use the codes in §1. Dropped reasons:
 
 | New tool | Prior name(s) | Why it is a real gap | GitHub operation (2026-03-10) | Card |
 |---|---|---|---|---|
-| `github_content_check_codeowners` | `github_get_codeowners_errors` (T) | Cortiware's `.github/CODEOWNERS` routes every path to Chris; a broken line silently stops code-owner review rules from working. No new tool read it; `github_content_get` only returns the raw file | `GET /repos/{owner}/{repo}/codeowners/errors` ([docs](https://docs.github.com/en/rest/repos/repos#list-codeowners-errors)) | D-2 |
+| `github_content_check_codeowners` | `github_get_codeowners_errors` (T) | A repository can route every path to its owner in `.github/CODEOWNERS`; a broken line silently stops code-owner review rules from working. No new tool read it; `github_content_get` only returns the raw file | `GET /repos/{owner}/{repo}/codeowners/errors` ([docs](https://docs.github.com/en/rest/repos/repos#list-codeowners-errors)) | D-2 |
 | `github_release_delete_asset` | `github_delete_release_asset` (T, S, A) | A wrong build attached to a release could only be removed by deleting the whole release. `github_release_update_asset` (rename/label) stays universal | `DELETE /repos/{owner}/{repo}/releases/assets/{asset_id}` | G-5 |
 | `github_package_delete` | `github_delete_package` (T, S, A); restore: `github_restore_package` (S, A) | Clearing out an old container image or npm package took one call per version. Restore of a whole package folds into `github_package_restore_version` | `DELETE /orgs/{org}/packages/{type}/{name}`, `/user/…`, `/users/{username}/…`; restore `POST …/restore` (30 days; public packages over 5,000 downloads refused) ([docs](https://docs.github.com/en/rest/packages/packages#delete-a-package-for-an-organization), read 2026-10-10) | G-6 |
-| `github_security_compare_dependencies` | planned category "Dependency Review" (Sp) | Dependabot opens many PRs in Cortiware (`dependabot.yml`, 10 open PRs per ecosystem); before merging, an agent needs "which dependencies does this PR add or change, and are any vulnerable". Nothing in the catalog answered that | `GET /repos/{owner}/{repo}/dependency-graph/compare/{basehead}` (Contents read; private repos need Advanced Security/Code Security, otherwise 403 → `not_available_on_plan`) ([docs](https://docs.github.com/en/rest/dependency-graph/dependency-review), read 2026-10-10) | H-4 |
+| `github_security_compare_dependencies` | planned category "Dependency Review" (Sp) | Dependabot can open many dependency PRs in one repository; before merging, an agent needs "which dependencies does this PR add or change, and are any vulnerable". Nothing in the catalog answered that | `GET /repos/{owner}/{repo}/dependency-graph/compare/{basehead}` (Contents read; private repos need Advanced Security/Code Security, otherwise 403 → `not_available_on_plan`) ([docs](https://docs.github.com/en/rest/dependency-graph/dependency-review), read 2026-10-10) | H-4 |
 
 Totals after the gap check: **305 tools = 299 hand-built + 6 universal** (was 301 = 295 + 6), counted by
 `python3 scripts/count-catalog.py`.
@@ -686,18 +685,3 @@ Not added (judged covered or not worth a hand-built tool): commit-comment and re
 edit/delete, autolinks, forks/stargazers/watchers lists, followers, gist star/fork, SARIF upload and code-scanning
 analyses, runner tools and OIDC templates — all reachable through the universal tools with the same guards, and the
 ROADMAP rule ("hand-build when the change log shows repeated universal calls") applies.
-
-## 5. Needs found in other projects
-
-| Project | What it needs from GitHub | Covered by |
-|---|---|---|
-| **Appliance Desk** | Already mapped row by row in `docs/APP-NEEDS-APPLIANCE-DESK.md` (G1–G20) | as listed there |
-| **Cortiware** (Turborepo, 13 workflows) | Repository secrets set by script (`scripts/setup-github-secrets.ps1`; `VERCEL_TOKEN`, `NEON_API_KEY`, several fallback PAT secrets) | `github_secret_set` (value typed on the setup page), `github_secret_list` to spot stale fallback PATs |
-| | `workflow_dispatch` and scheduled workflows (E2E smoke, labels, performance, contract promotion, Stripe webhook smoke) | `github_actions_dispatch`, `github_actions_list_runs`, `github_workflow_ci_failure_summary` |
-| | Label set kept in sync (`labels-ensure.yml`), issue triage labelling, ~100 open issues | `github_label_sync`, `github_issue_set_labels`, `github_issue_list` |
-| | `CODEOWNERS` | **`github_content_check_codeowners` (added)** |
-| | Dependabot for npm and Actions; CodeQL; gitleaks | `github_security_list_alerts`, `github_workflow_security_review`, **`github_security_compare_dependencies` (added)**, `github_workflow_merge_when_green` |
-| | Artifacts uploaded by CI; Vercel preview wait via deployment statuses | `github_artifact_list` / `github_artifact_get_link`, `github_deploy_list` |
-| | Issue and PR templates, labeler config | `github_content_get` / `github_content_push_files` |
-| **oldReplit** | Replit-hosted Next.js app; no `.github/`, no GitHub API use (one line in `replit.md` about a GitHub/Vercel/Neon `.env` workflow) | nothing extra |
-| **Household-Assistant** | One design document (`READ_ME.txt`) about Google/Apple sign-in; no GitHub needs | nothing extra |

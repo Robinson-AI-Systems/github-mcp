@@ -14,7 +14,7 @@ The owner previously approved a dedicated tool for reviewing and approving first
 
 ## 2026-10-26 — Let GitHub decide an authorized person's explicit override
 
-Owner reported a Cortiware merge authorized via the official GitHub connector but blocked by our MCP. Best-effort rule discovery is explanatory, never authority to refuse a deliberate override. For an explicitly confirmed override, pass the authenticated person's actual request to GitHub; show known or unknown rules, and let GitHub independently accept/reject. Preserve exact-head safety, user-chosen authorization restrictions, journal, confirmation, and developer limits. Expose the same override via the common compact merge workflow, and treat future official-connector parity failures as MCP defects to investigate.
+Owner reported a the external repository merge authorized via the official GitHub connector but blocked by our MCP. Best-effort rule discovery is explanatory, never authority to refuse a deliberate override. For an explicitly confirmed override, pass the authenticated person's actual request to GitHub; show known or unknown rules, and let GitHub independently accept/reject. Preserve exact-head safety, user-chosen authorization restrictions, journal, confirmation, and developer limits. Expose the same override via the common compact merge workflow, and treat future official-connector parity failures as MCP defects to investigate.
 
 ## 2026-10-26 — one guarded writer, not two copies of PR preflight
 

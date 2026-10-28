@@ -4,7 +4,7 @@ import { verifyWorkerBody, signWorkerBody } from '../../src/native-git/protocol.
 import { nativeGitKeyHandler } from '../../api/native-git-key.js';
 const env = { TOKEN_ENCRYPTION_KEY: Buffer.alloc(32, 9).toString('base64') };
 it('purpose-separated asymmetric leases verify with public material without permitting a shared-secret downgrade', () => {
- const now = Date.now(); const body = JSON.stringify({ version: 1, expiresAt: now + 60000, action: 'capabilities' });
+ const now = Date.now(); const body = JSON.stringify({ version: 2, expiresAt: now + 60000, action: 'capabilities' });
  const pub = nativeWorkerPublicKey(env); const signature = signNativeWorkerBody(body, env);
  expect(pub).toMatch(/^ed25519:/); expect(verifyWorkerBody(body, signature, pub, now).action).toBe('capabilities');
  expect(() => verifyWorkerBody(body + ' ', signature, pub, now)).toThrow(/authorization/);

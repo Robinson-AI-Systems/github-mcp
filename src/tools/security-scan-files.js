@@ -1,3 +1,5 @@
+import {contentProtectionReport} from '../github/content-protection.js';
+import {SCANNER_SETTINGS_SCHEMA,defaultScannerSettings,scannerSettings,loadScannerPolicy,customScannerFindings,filterScannerFindings} from '../github/scanner-policy.js';
 // PAR-2: bounded, on-demand review of ALREADY HOSTED GitHub files.
 // No raw source code, secret value, snippet or token enters tool arguments or results.
 // Not GitHub's proprietary remote-MCP run_secret_scanning: that has no public REST equivalent.
@@ -35,7 +37,7 @@ export const SCAN_LIMITS = Object.freeze({ maxFiles: MAX_FILES, maxFileBytes: FI
   maxTotalBytes: TOTAL_BYTES, maxFindings: MAX_FINDINGS });
 
 /** Returns positions and generic remediation only — never matching bytes or neighboring text. */
-export function detectCredentialPatterns(source, path, limit = MAX_FINDINGS) {
+export function detectCredentialPatterns(source, path, limit = MAX_FINDINGS, settings = defaultScannerSettings()) {
   if (typeof source !== 'string' || typeof path !== 'string')
     throw new TypeError('Scan requires text and an existing repository path.');
   const findings = [];
@@ -48,7 +50,22 @@ export function detectCredentialPatterns(source, path, limit = MAX_FINDINGS) {
       if (findings.length >= limit) return { findings, capped: true };
     }
   }
-  return { findings, capped: false };
+  const shared=contentProtectionReport(source,{maxFindings:limit});
+  for(const f of shared.findings){
+    let id=f.rule;
+    if(f.rule==='github-fine-grained-token')id='github_personal_access_token';
+    if(f.rule==='github-token'){const at=Buffer.from(source).subarray(f.byte_offset,f.byte_offset+4).toString();id=at==='ghp_'?'github_personal_access_token':'github_oauth_or_app_token';}
+    if(f.rule==='private-key')id='private_key';
+    if(f.rule.startsWith('slack-'))id='slack_api_token';
+    if(f.rule==='aws-access-token')id='aws_access_key_id';
+    if(f.rule==='cloud-secret-assignment'&&/AWS_SECRET_ACCESS_KEY[\s"']*[:=][\s"']*$/.test(Buffer.from(source).subarray(Math.max(0,f.byte_offset-100),f.byte_offset).toString()))id='aws_secret_key_assignment';
+    const prior=findings.find(x=>x.line===f.line&&x.rule===id);
+    if(prior){prior.detector_rules=[...new Set([...(prior.detector_rules??[]),f.rule])];continue;}
+    findings.push({path,line:f.line,rule:id,detector_rules:[f.rule],kind:f.description,byte_offset:f.byte_offset,byte_length:f.byte_length,action:'Review locally; remove and rotate or revoke exposed credentials.'});
+  }
+  findings.push(...customScannerFindings(source,path,settings));
+  findings.sort((a,b)=>a.line-b.line);
+  return {findings:findings.slice(0,limit),capped:shared.findings_truncated||findings.length>limit};
 }
 
 export function validScanPath(path) {
@@ -65,7 +82,8 @@ export const securityScanFiles = defineRead({
     owner: OWNER, repo: REPO,
     paths: { type: 'array', minItems: 1, maxItems: MAX_FILES,
       items: { type: 'string', minLength: 1, maxLength: 255 } },
-    ref: REF
+    ref: REF,
+    previewSettings: SCANNER_SETTINGS_SCHEMA
   },
   required: ['repo', 'paths'],
   handler: (args, ctx) => plain(async () => {
@@ -73,6 +91,9 @@ export const securityScanFiles = defineRead({
         !args.paths.every(validScanPath) || new Set(args.paths).size !== args.paths.length)
       throw new TypeError('Use 1-12 distinct relative file paths with no traversal, URL or query syntax.');
     const { owner, octokit: gh } = await readerFor(args, ctx);
+    const policy=await loadScannerPolicy(ctx.db,owner,args.repo);
+    const settings=args.previewSettings===undefined?policy.settings:scannerSettings(args.previewSettings,policy.settings);
+    let disabled=0,suppressed=0;
     const reviewed = [], skipped = [], findings = [];
     let totalBytes = 0, incomplete = false;
     for (const path of args.paths) {
@@ -107,9 +128,11 @@ export const securityScanFiles = defineRead({
       }
       totalBytes += bytes.length;
       const matched = detectCredentialPatterns(bytes.toString('utf8'), path,
-        MAX_FINDINGS - findings.length);
+        MAX_FINDINGS - findings.length,settings);
       reviewed.push({ path, bytes: bytes.length });
-      findings.push(...matched.findings);
+      const visible=filterScannerFindings(matched.findings,settings,path,data.sha);
+      disabled+=visible.disabled;suppressed+=visible.suppressed;
+      findings.push(...visible.findings);
       if (matched.capped) incomplete = true;
     }
     return {
@@ -118,6 +141,7 @@ export const securityScanFiles = defineRead({
       skipped, findings, finding_count: findings.length,
       complete: !incomplete && skipped.length === 0,
       setup_guidance: { tool: 'github_security_scan_guidance', arguments: { owner, repo: args.repo } },
+      scanner_policy:{revision:policy.revision,source:args.previewSettings===undefined?'stored':'preview',disabled_rules:settings.disabledRules,custom_rule_ids:settings.additionalRules.map(r=>r.id),suppressed_findings:suppressed,disabled_findings:disabled,file_output_protection:'unchanged; always enforced'},
       engine: 'bounded_common_credential_patterns', provider_engine: false, repository_clean: null,
       provider_alerts: { tool: 'github_security_list_alerts', arguments: { owner, repo: args.repo, kind: 'secret' },
         note: 'Existing GitHub alerts are provider-backed; they are not a fresh scan of supplied content.' },

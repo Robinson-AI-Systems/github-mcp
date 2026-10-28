@@ -17,20 +17,17 @@ Do not merge development PRs into `live`, force-update it, delete promotion mark
 
 This repository's linked Vercel project uses a Basic build machine (2 vCPUs, 8 GB) and disabled on-demand concurrent builds: builds queue, maximum one at a time.
 
-All six non-Cortiware existing linked projects were verified Basic/queued. Vercel's team default for future projects remains Elastic and was not changed. Do not buy additions or assume new projects inherit Basic. Recheck actual project settings when hosting is separately authorized; do not trigger a paid test deployment merely to verify this document.
 
 ## Database and spending
 
 This service's existing Neon project defaults and computes are capped at 0.25 CU minimum/maximum with 300-second autosuspend. Its primary main branch is protected.
 
-All seven existing Neon project defaults and eleven computes retain 0.25 CU caps and five-minute autosuspend. All six non-Cortiware primary branches are protected; Cortiware's primary branch is unprotected and deliberately deferred. This is an idle-development profile, not proof of production capacity.
 
 Preserve data, recovery branches, backups, retention, roles, credentials and pooled/direct connection choices. No consolidation or SQL keepalive/health polling was authorized. Raising capacity, changing always-on behavior, adding paid resources or enabling automatic spending-budget pausing requires a separate owner decision. Metadata inspection avoids waking computes.
 
-Stripe LIVE remains disabled. Existing independently authenticated owner approvals for production access, real money-out and other gated actions remain mandatory. Cortiware stays back-burnered. No plan upgrade, paid addon, production activation or spending authorization follows from these settings.
 
 ## Integration and handoff
 
-Include this record and its operating-instruction pointer in the next substantive implementation PR; do not open a documentation-only PR or count this prepared branch as an implementation PR. Add a short checkpoint to `docs/STATUS.md` distinguishing saved infrastructure settings from unverified scheduled/runtime acceptance. Reconcile older statements such as “single ci merge gate”, “main deploys automatically” and “wait for preview” with this newer owner policy, without rewriting unrelated history.
+This record applies only to this MCP service. Unrelated fleet observations have been removed. Include this record and its operating-instruction pointer in the next substantive implementation PR; do not open a documentation-only PR or count this prepared branch as an implementation PR. Add a short checkpoint to `docs/STATUS.md` distinguishing saved infrastructure settings from unverified scheduled/runtime acceptance. Reconcile older statements such as “single ci merge gate”, “main deploys automatically” and “wait for preview” with this newer owner policy, without rewriting unrelated history.
 
 At session start and before merge, inspect live GitHub state because other agents are active. At session end follow only the current owner prompt's scope/count and leave the concise continuation prompt; there is no repository PR-number alignment. No implementation PR was created for this documentation handoff.

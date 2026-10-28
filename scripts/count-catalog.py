@@ -32,8 +32,8 @@ for line in text.splitlines():
 
 names = set()
 # The only non-read tools allowed in read_only: github_call runs whatever tool it names (that tool's own profile
-# applies) and github_workflow_app_readiness previews fixes but only applies them on a profile that allows writes.
-READ_ONLY_WRITE_EXCEPTIONS = {'github_call', 'github_workflow_app_readiness'}
+# applies), the scanner gateway dispatches each action through its original guards, and github_workflow_app_readiness previews fixes but only applies them on a profile that allows writes.
+READ_ONLY_WRITE_EXCEPTIONS = {'github_call', 'github_workflow_app_readiness', 'github_secret_scanner'}
 SAFETY = re.compile(r'^(—|as the tool|C \(always\)|(P|C)(·(D|Prod\*?|A\*?|M\*?|\$\*?))*)$')
 for s in sections:
     if len(s['rows']) != s['claimed']:
