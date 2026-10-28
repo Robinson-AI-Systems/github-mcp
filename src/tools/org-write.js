@@ -1,6 +1,6 @@
 // O-2: guarded organization owner administration. Every mutation is journalled,
 // previews its exact recipient/policy and requires independent provider readback.
-import {listAll} from '../github/client.js';
+import {listAll,graphql} from '../github/client.js';
 import {defineGithubWrite} from './define-github-write.js';
 import {octo,ownerOf,refusal,missing} from './github-write.js';
 import {accessChange,invitation} from './people-guard.js';
@@ -32,12 +32,12 @@ const identity=(d,t)=>{if(!d||String(d.login).toLowerCase()!==t.owner.toLowerCas
 const same=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
 const orgFields=['name','description','company','blog','location','email',
   'default_repository_permission','members_can_create_repositories',
-  'members_can_fork_private_repositories'];
+  'members_can_fork_private_repositories','web_commit_signoff_required'];
 const PROFILE_TEXT=['name','description','company','blog','location','email'];
 const orgSchemas={name:STR,description:{type:'string',maxLength:1024},
   company:STR,blog:STR,location:STR,email:{type:'string',maxLength:254},
   default_repository_permission:{type:'string',enum:['none','read','write','admin']},
-  members_can_create_repositories:BOOL,members_can_fork_private_repositories:BOOL};
+  members_can_create_repositories:BOOL,members_can_fork_private_repositories:BOOL,web_commit_signoff_required:BOOL};
 const policyBefore=async(ctx,t)=>identity(await scoped(ctx,t,'GET /orgs/{org}'),t);
 const checkedChanges=(a,b)=>{
   if(!b)throw refusal('No verified organization policy baseline.');
@@ -374,11 +374,35 @@ export const orgSetImmutable=defineGithubWrite({
     enforced_repositories:x?.enforced_repositories,
     selected_repository_ids:x?.selected_repository_ids??[]})
 });
-export const tools=[orgUpdate.tool,orgInvite.tool,orgCancelInvitation.tool,
+const NOTIFICATION_READ = 'query OrganizationNotificationPolicy($login: String!) { organization(login: $login) { id login notificationDeliveryRestrictionEnabledSetting } }';
+async function notificationPolicy(ctx,t) {
+  await policyBefore(ctx,t);
+  const node = (await graphql(await client(ctx,t),NOTIFICATION_READ,{login:t.owner})).organization;
+  if (!node?.id || node.login?.toLowerCase() !== t.owner.toLowerCase() || !['ENABLED','DISABLED'].includes(node.notificationDeliveryRestrictionEnabledSetting)) throw refusal('GitHub did not return the exact readable organization notification setting.');
+  return {id:node.id,setting:node.notificationDeliveryRestrictionEnabledSetting};
+}
+export const notificationRestriction=defineGithubWrite({
+  name:'github_org_set_notification_restriction',area:'org',audience:['O'],
+  description:'Set organization notification delivery restrictions with exact identity, concurrent-change check and independent readback.',
+  properties:{owner:OWNER,restricted:BOOL},required:['restricted'],declarations:{production:'always',confirm:'always',accessWidening:true,profiles:['full']},target,
+  read:(_a,c,t)=>notificationPolicy(c,t),
+  classify:()=>({production:'organization-wide notification delivery restriction',accessWidening:'changes which domains can receive organization notifications'}),
+  summarize:({args:a,target:t})=>`Set notification delivery restriction for ${t.owner} to ${a.restricted?'ENABLED':'DISABLED'}`,
+  apply:async({args:a,ctx:c,target:t,before:b})=>{
+    const current=await notificationPolicy(c,t);
+    if(current.id!==b.id||current.setting!==b.setting)throw refusal('The organization notification setting changed; refresh first.');
+    return graphql(await client(c,t),'mutation OrganizationNotificationSet($input: UpdateNotificationRestrictionSettingInput!) { updateNotificationRestrictionSetting(input: $input) { clientMutationId } }',{input:{ownerId:b.id,settingValue:a.restricted?'ENABLED':'DISABLED'}});
+  },
+  readAfter:({ctx:c,target:t})=>notificationPolicy(c,t),
+  verify:({args:a,before:b,after:x})=>x?.id===b.id&&x.setting===(a.restricted?'ENABLED':'DISABLED'),
+  inverse:({before:b,target:t})=>({tool:'github_org_set_notification_restriction',args:{owner:t.owner,restricted:b.setting==='ENABLED'}}),
+  present:({after:x})=>({setting:x?.setting??null})
+});
+export const tools=[orgUpdate.tool,notificationRestriction.tool,orgInvite.tool,orgCancelInvitation.tool,
   orgSetMemberRole.tool,orgRemoveMember.tool,orgOutsideCollaborator.tool,
   orgSetBlocked.tool,orgCustomProperties.tool,orgSetImmutable.tool];
 export const handlers=Object.fromEntries(tools.map(t=>[t.name,({
-  [orgUpdate.tool.name]:orgUpdate,[orgInvite.tool.name]:orgInvite,
+  [orgUpdate.tool.name]:orgUpdate,[notificationRestriction.tool.name]:notificationRestriction,[orgInvite.tool.name]:orgInvite,
   [orgCancelInvitation.tool.name]:orgCancelInvitation,
   [orgSetMemberRole.tool.name]:orgSetMemberRole,[orgRemoveMember.tool.name]:orgRemoveMember,
   [orgOutsideCollaborator.tool.name]:orgOutsideCollaborator,[orgSetBlocked.tool.name]:orgSetBlocked,

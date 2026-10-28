@@ -35,7 +35,7 @@ When exact provider parity is genuinely unavailable, implement the strongest pra
 
 ## Native Git expansion
 
-The owner asked whether actual direct full Git can be included. [Native Git workspaces](NATIVE-GIT-WORKSPACES.md) specifies the worker architecture, typed operations, isolation/credential model, conflicts, recovery, costs and acceptance. It is proposed design, not delivered functionality; this request does not make existing API git-data tools full native Git.
+The owner asked whether actual direct full Git can be included. [Native Git workspaces](NATIVE-GIT-WORKSPACES.md) specifies the worker architecture, typed operations, isolation/credential model, conflicts, recovery, costs and acceptance. Implementation merged in #451, including typed real Git, signed service requests, durable workspaces, encrypted migration and a passing container build/smoke. Worker hosting and live acceptance remain pending the combined release; this is not yet a claim of live availability.
 
 ## Implementation boundaries
 
@@ -53,9 +53,9 @@ Document first, then assemble coherent read/parity and authority changes with fo
 - [x] Complete reads and wire efficiency verified in source and live immutable-file comparison, including exact four-window byte reconstruction after false-positive correction (#448).
 - [x] Argument/search behavior and honest scanning alternatives verified in source tests; proprietary scanner parity is not claimed.
 - [x] Shared owner write authority verified through handler, dispatcher and meta-tool source tests.
-- [ ] Tool-specific authority and settings/connection transition verified.
+- [x] Tool-specific authority and settings/connection transition implemented and source-verified (#447, #449); post-release live proof remains.
 - [ ] Unfinished work reconciled and implemented where eligible.
-- [ ] Required checks, review and merge.
+- [x] Required checks, review and merge for #445–#451; administrative completion must still pass its own exact-head CI/review.
 - [x] Deployed head-to-head audit read/search/scanner/alias/denial acceptance; exact evidence in the audit checkpoint. Broader paid/client/RTC acceptance remains individually tracked.
 
 ## Concrete follow-up after the first implementation outcome
@@ -77,3 +77,7 @@ Remaining implementation is grouped by usable outcome, not line counts:
 3. Reconcile documentation and perform complete pre-release verification on assembled outcomes. Reassess the existing 15 acceptance obligations; preserve real prerequisites rather than inventing passes. Once implementation is finished and exact-head checks/reviews pass, use the owner's now-authorized combined checked release, independently verify serving READY/source, and run eligible live proof. Missing exact paid/destructive fixtures remain separate, never authorization to spend.
 
 This is the same approved audit/parity/native-Git scope. Do not label implementation finished while a functioning worker or named contract still exists only as a design. Exact publication/release/checkpoints belong in the dated status note.
+
+## Assembled implementation checkpoint
+
+#449 completed owner confirmation cleanup and corrected CI-FAST-1 accounting; #450 delivered eight enterprise policy contracts and setup wording; #451 delivered portable native Git with exact-head full CI and actual container smoke. The final administrative group adds organization/enterprise IP entry lifecycle and organization notification/signoff settings. Exact source, tests and remaining deployment prerequisites are recorded in docs/status/2026-10-28-admin-contract-completion.md. Older progress paragraphs above describe their dated state, not current missing implementation. The remaining provider-private fresh secret scanner has a concrete Robinson/repository alternative rather than a fabricated matching API. Advanced native Git capabilities requiring executable hooks, LFS/submodules or signing have actionable local setup guidance.

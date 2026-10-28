@@ -23,7 +23,7 @@ Restricted preview RTC successful replies revalidate service pass and scratch ow
 
 Every tool this server will have, by area — the product scope. The implementing model builds exactly these; anything
 else goes in `docs/ROADMAP.md` and the PR report, and universal tools (last section) provide guarded access only where their actual credential, classification and request support permits. Endpoint-level completeness remains unproven; see [MAXIMUM-AUTHORITY](designs/MAXIMUM-AUTHORITY.md). Counts are checked by `python3 scripts/count-catalog.py` (run by `npm run check` and CI since A-1, #1). When a
-tool merges, its Card cell gains `built #<PR>`. Built so far: **487 cataloged tools** (every row below is in the registry, `src/tools/index.js`; `scripts/count-catalog.py` and `scripts/check-writes.mjs` fail the build if a tool and its row disagree)
+tool merges, its Card cell gains `built #<PR>`. Built so far: **491 cataloged tools** (every row below is in the registry, `src/tools/index.js`; `scripts/count-catalog.py` and `scripts/check-writes.mjs` fail the build if a tool and its row disagree)
 and holds the two A-5 tools, the B-3 protected-list reader the two B-2 production-switch tools and the B-4 spend-limit tool. Since B-5 every result of these tools is shaped (`src/tools/util.js`) and failures are explained by `src/tools/errors.js`. Since B-6 a connection sees only the tools its profile allows (`tools/list` and by-name calls). Every write tool below is built with `defineGithubWrite` (B-1, #16, `src/tools/define-github-write.js`) and pass the nine write-contract checks (`test/helpers/write-contract.js`); the two B-2 tools are the first (`src/tools/server.js`).
 
 **Safety metadata and scoped behavior:** `—` reads only; `P` supports optional dryRun; `D` describes destructive effects; `Prod`/`Prod*` describe production scope; `A`/`A*` describe access changes; `M` describes notifications; `$`/`$*` describe billing. `C` retains the restricted-profile confirmation declaration checked against source. On a full ordinary owner connection these marks are disclosure, not automatic confirmation or refusal. Explicitly restricted profiles/passes retain their chosen mode, access and spend limits. GitHub applies provider rules; journal/replay/readback and credential isolation apply to everyone.
@@ -423,7 +423,7 @@ Card(s): H-4.
 | `github_actions_get_settings` | Repository Actions settings: allowed actions, default token permissions, fork PR approval, retention | — | N | I | O,B | R | H-4 built #195/#196/#224 |
 | `github_actions_set_settings` | Change repository Actions settings | C·Prod·A | N | I | O | F | H-4 built #195/#196/#224 |
 
-## Owner: organization and members (`github_org_*`) — 12
+## Owner: organization and members (`github_org_*`) — 13
 
 Card(s): O-2.
 
@@ -440,6 +440,7 @@ Card(s): O-2.
 | `github_org_set_outside_collaborator` | Convert a member to outside collaborator, or remove an outside collaborator | C | N built #199 | I | O | F | O-2 built #199 |
 | `github_org_set_blocked` | Block or unblock a user for the organization; list blocked users | P | N built #199 | I | O | F | O-2 built #199 |
 | `github_org_custom_properties` | Read or define the organization's custom properties (schema) | P | N built #199 | I | O | F | O-2 built #199 |
+| `github_org_set_notification_restriction` | Set organization notification domain restrictions with independent readback | C·A·Prod | N | I | O | F | GQL-1 |
 | `github_org_set_immutable_releases` | Require immutable releases for all or selected repositories | C·Prod | N built #199 | I | O | F | O-2 built #199 |
 
 ## Owner: teams and roles (`github_team_*, github_role_*`) — 9
@@ -819,7 +820,7 @@ Card(s): CAP-4. Read-only, account-bound organization audit and SAML-SSO SCIM id
 | `github_app_webhook_configuration_set` | Change exact owner App HTTPS webhook destination or content type through confirmed, journaled JWT-only write | C·Prod·A·M | N | JWT | O | F | CAP-4 |
 | `github_app_webhook_redeliver` | Redeliver an exact owned App webhook event; only confirm a distinct provider-observed retry, never HTTP 202 alone | C·Prod·M | N | JWT | O | F | CAP-4 |
 
-## GitHub Enterprise (`github_enterprise_*`) — 13
+## GitHub Enterprise (`github_enterprise_*`) — 16
 
 Card(s): ENT-1. Every tool uses the person's **master token** (credential `M`, with enterprise permissions) and only for an enterprise the person administers (`github_enterprise_list`); nothing is sent for any other slug. Not available on read-only connections or passes. Writes are always production-class and confirmed, and are read back from GitHub. Not built: the Copilot coding-agent policy write, because GitHub's description has no operation that reads that policy back; it stays reachable through the universal REST tool. Membership changes (admins, members, organizations) are not in this set.
 
@@ -837,6 +838,9 @@ Card(s): ENT-1. Every tool uses the person's **master token** (credential `M`, w
 | `github_enterprise_dependabot_access_set` | Change Dependabot's default repository access level, or add or remove repositories it may access | C·A·Prod | N | M | O | F | ENT-1 |
 | `github_enterprise_actions_settings_set` | Change one enterprise Actions setting: cache retention, cache storage limit, or an OIDC custom property | C·Prod | N | M | O | F | ENT-1 |
 | `github_enterprise_policy_set` | Change enterprise two-factor, IP allow-list, deploy-key, repository creation or member policy; provider-admin proof and readback | C·$·A·Prod | N | M | O | F | GQL-1 |
+| `github_ip_allowlist_list` | Page verified organization or enterprise IP allow-list entries with honest cursors | — | N | I,M | O | R | GQL-1 |
+| `github_ip_allowlist_save` | Create or update an exact owner IP entry, preserving omitted values and confirming readback | C·A·Prod | N | I,M | O | F | GQL-1 |
+| `github_ip_allowlist_delete` | Delete a verified owner IP entry and independently confirm absence | C·D·A·Prod | N | I,M | O | F | GQL-1 |
 | `github_enterprise_profile_set` | Edit the enterprise profile: name, description, location, website or security contact email; read back | C·Prod | N | M | O | F | GQL-1 |
 
 ## Master-token families: Copilot Spaces, Classroom, Marketplace and more (`github_copilot_space_*, github_classroom_*, ...`) — 17
@@ -876,7 +880,7 @@ Card(s): PAR-1. Code Quality findings come from GitHub's own analysis (not marke
 
 ## Totals
 
-**Totals:** 487 tools: 481 hand-built + 6 universal (`github_api_*`, `github_graphql_*`), plus guided settings for every
+**Totals:** 491 tools: 485 hand-built + 6 universal (`github_api_*`, `github_graphql_*`), plus guided settings for every
 dashboard-only owner setting. By profile (lowest profile that has the tool): read_only 158, everyday adds 83
 (everyday lists 240), full adds 113 (full lists 396). In compact mode (`docs/designs/BATCH-C.md`) an agent
 loads only about 25 tools up front (meta-tools, whoami, universal search, workflows) and reaches the rest through
@@ -904,7 +908,7 @@ loads only about 25 tools up front (meta-tools, whoami, universal search, workfl
 | Webhooks | 8 |
 | Collaborators and deploy keys | 7 |
 | Security features and alerts; Actions settings | 11 |
-| Owner: organization and members | 12 |
+| Owner: organization and members | 13 |
 | Owner: teams and roles | 9 |
 | Owner: billing, budgets, Copilot and Codespaces | 14 |
 | Owner: apps and fine-grained tokens | 7 |
@@ -924,10 +928,10 @@ loads only about 25 tools up front (meta-tools, whoami, universal search, workfl
 | Workflows | 18 |
 | Everything else on GitHub: the universal tools | 6 |
 | Batch Y-9d financial and Copilot operations | 17 |
-| GitHub Enterprise | 13 |
+| GitHub Enterprise | 16 |
 | Master-token families: Copilot Spaces, Classroom, Marketplace and more | 17 |
 | Code quality and GitHub help | 4 |
-| **Total** | **487** |
+| **Total** | **491** |
 
 <!-- #108: experimental RTC HTTPS reader bridges only server/meta read tools using existing guarded dispatch; RTC 1 certification is not claimed. -->
 

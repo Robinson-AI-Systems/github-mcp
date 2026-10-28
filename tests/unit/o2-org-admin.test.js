@@ -92,6 +92,8 @@ const def=name=>({tool:writers.tools.find(x=>x.name===name),
 for(const x of [
   {name:'github_org_update_settings',args:{changes:{name:'Updated'}},
     arrange:arrangeUpdate,production:true},
+  {name:'github_org_update_settings',args:{changes:{web_commit_signoff_required:true}},
+    arrange:(gh,result)=>{exactRead(gh,R.org,{...organization(),web_commit_signoff_required:false},{...organization(),web_commit_signoff_required:result==='ok'});gh.when(R.update).reply(200,{...organization(),web_commit_signoff_required:true});},production:true},
   {name:'github_org_invite_member',args:{username:'alice',role:'direct_member'},
     arrange:arrangeInvite,notifies:['alice'],accessWidening:true},
   {name:'github_org_cancel_invitation',args:{invitationId:12},
