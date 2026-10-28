@@ -2482,21 +2482,45 @@
     },
     {
       "id": "C-13",
-      "title": "Complete read pathway: repository ZIP snapshots, universal fields and scoped rate hints",
+      "title": "Repository ZIP snapshot and universal selectors (#430/#436; #435 separated)",
       "batch": "C",
       "design": "docs/designs/BATCH-C.md",
       "dependencies": [
         "C-12"
       ],
       "card": "docs/pr-cards/C-13.md",
-      "status": "IN_PROGRESS",
+      "status": "MERGED",
       "migration": "none",
       "budget": 0,
       "units": [
         "C-13"
       ],
       "readiness": "READY",
-      "ownerInputs": []
+      "ownerInputs": [],
+      "pr": [
+        440
+      ]
+    },
+    {
+      "id": "C-14",
+      "title": "PR CI failure visibility and native auto-merge arming inspection",
+      "batch": "C",
+      "design": "docs/designs/BATCH-C.md",
+      "dependencies": [
+        "C-13"
+      ],
+      "card": "docs/pr-cards/C-14.md",
+      "status": "MERGED",
+      "migration": "none",
+      "budget": 0,
+      "units": [
+        "C-14"
+      ],
+      "readiness": "READY",
+      "ownerInputs": [],
+      "pr": [
+        441
+      ]
     },
     {
       "id": "C-15",

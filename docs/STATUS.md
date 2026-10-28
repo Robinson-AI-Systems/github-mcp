@@ -1,6 +1,10 @@
 ## 2026-10-27 — C-15 scoped provider-rate metadata (#435)
 
-A separate planned branch `ai/chatgpt/c-15-scoped-rate-metadata-20261027` implements request-observed GitHub rate hints through the canonical response dispatcher, with independent App, user, personal, God Mode and optional credential budgets. Fresh header observations are labelled separately from persisted throttling; no rate-only GitHub requests or production changes. First required CI showed a header-regex regression and metadata-loss on deduplicated RTC payloads; both review findings and lint failures have been corrected for a fresh exact-head run. Merge and independent #435 closure remain pending. #430/#436 were merged separately in PR #440; #431 remains open.
+PR #442 implements request-observed GitHub rate headers across the canonical dispatcher with independent App, user, personal, God Mode, notifications and package budgets. Initial CI exposed a header-regex regression and a large-result metadata-loss bug; both were fixed and reviewed, the two review threads were resolved, and both mandatory checks passed exact source head `a06114958d01210fdd8cc325561f0db8c86f2823`. Branch integration with the just-merged #441 and new exact-head checks remain pending. No release or live customer mutation. #430/#436 merged in PR #440, #431 remains open.
+
+## 2026-10-27 — C-14 PR CI failures and native merge arming (#432/#433)
+
+PR #441 merged on source head `8a6e52a3378bff65a8e0067e529d9c3962157f90`, after both required `ci` and `release-policy` passed and all review threads were clear. GitHub independently confirmed #432 and #433 closed/completed. First CI iterations required honest index/catalog/token budget repairs, with no test disabled. New source includes inline CI failure diagnostics and read-only native auto-merge inspection; no production release or real-client verification.
 
 ## 2026-10-26 — C-6 faster guarded PR lane (#418, final review pending)
 
