@@ -126,7 +126,7 @@ export function normalizeChange(c = {}) {
   };
 }
 export function changeView(row) {
-  return { id: Number(row.id), at: row.at, summary: row.summary, confirmed: row.confirmed, after: row.after ?? null, githubRequestId: row.github_request_id ?? null,
+  return { id: Number(row.id), at: row.at, summary: row.summary, confirmed: row.confirmed, after: row.after ?? null, connection: row.connection ?? null, githubRequestId: row.github_request_id ?? null,
     ...(row.tool ? { tool: row.tool, account: row.account, repo: row.repo, mode: row.mode, production: row.production, dryRun: row.dry_run, requestKey: row.request_key,
       notifies: row.notifies ?? [], spendCents: row.spend_cents == null ? null : Number(row.spend_cents), inverse: row.inverse ?? null, before: row.before ?? null, actedAs: row.acted_as ?? null } : {}) };
 }

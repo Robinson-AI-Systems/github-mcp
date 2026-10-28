@@ -45,7 +45,7 @@ copy code) · `F` the old toolkit had it **with a bug or a missing guard**, fixe
 never collides with the Vercel or Neon server's tools in the same chat; `scripts/count-catalog.py` enforces it.
 
 
-## Server about itself (`github_*`) — 25
+## Server about itself (`github_*`) — 24
 
 Card(s): A-5, B-2, B-3, B-8, C-1, C-2, R-1, O-1, X-1. Meta-tools, connection and safety settings. Compact listing (`docs/designs/BATCH-C.md`) starts here.
 
@@ -71,7 +71,6 @@ Card(s): A-5, B-2, B-3, B-8, C-1, C-2, R-1, O-1, X-1. Meta-tools, connection and
 | `github_describe_tool` | Full instructions and arguments for one tool | — | N | — | B,O,Op | R | C-2 built #26 |
 | `github_call` | Run any tool in the profile by name, through the same guards | as the tool | N | — | B,O,Op | R | C-2 built #26 |
 | `github_batch` | Up to 10 read calls in one round trip | — | N | — | B,O,Op | R | C-2 built #26 |
-| `github_write_batch` | 1–20 sequential authorized guarded writes, safe prior-result references, durable connection-scoped replay and per-step stop-on-error receipts | as the tool | N | I | B,Op | E | C-16 #431 |
 | `github_get_result` | Page through kept results; explicit `byteOffset`/`byteLength` returns up to 32 KiB of original retained file bytes as base64 | — | N | — | B,O,Op | R | C-1 built #25; RTC scoped single read #148 |
 | `github_create_pass` | Make a short-lived preview pass for the HTTPS API and Robinson's Toolkit (read-only unless changes are allowed; $0; no access changes; shown once on the setup page) | C | N | — | O | F | R-1 built #225 |
 | `github_where_is_setting` | Structured steps (link, numbered actions, expected result, read-back check) for any GitHub setting with no API | — | N | — | O | R | B-8 built #24 |
@@ -614,7 +613,7 @@ Card(s): P-1 … P-3. P-1 implementation in PR #206: additive, versioned known_p
 | `github_profile_get` | One profile: repos, production branches and environments, required checks, workflows with write access, owned settings | — | N | — | B,O | R | P-1 built #206 |
 | `github_profile_draft` | Turn what an agent found in a codebase (workflows, branches, environments, required checks) into a draft profile and APP-NEEDS text | — | N | — | B,O | R | P-3 built #209 |
 
-## Workflows (`github_workflow_*`) — 17
+## Workflows (`github_workflow_*`) — 18
 
 Card(s): P-2, P-3, W-1 … W-7. P-2 built in PR #207 as a non-read-only composed workflow: inspection is read-only, but a single explicitly named repair invokes an existing independently guarded write. Never claim unverified process rows or unreadable provider settings are healthy. Whole jobs in one call, answered in plain English with `structuredContent` (`docs/designs/BATCH-W.md`). W-3/W-4 add verified review disposition and CI recovery workflows; their genuine deployed acceptance remains queued. W-1 and W-2 were implemented together in PR #210; status is read-only, while open/merge workflows delegate to the existing journaled and independently guarded writers. A staged PR open or stack progresses one write at a time and requires a fresh call for the next step.
 
@@ -625,6 +624,7 @@ Card(s): P-2, P-3, W-1 … W-7. P-2 built in PR #207 as a non-read-only composed
 | `github_workflow_merge_when_green` | Merge at the exact head SHA only when required checks are green there and no review thread is unresolved; otherwise says what is missing | C·Prod* | F | I | B | E | W-2 built #210 |
 | `github_workflow_merge_stack` | Merge a stack bottom-up: retarget each PR to the default branch, require fresh green CI at its head, merge; stops at the first PR that is not ready | C·Prod* | N | I | B | E | W-2 built #210 |
 | `github_workflow_review_threads` | Unresolved review threads with file context; after fixes, reply and resolve each one verified at the current head | P·M | N | I | B | E | W-3 built #214 |
+| `github_workflow_merge_automation_status` | Read GitHub-native auto-merge arming, connection-scoped exact-head receipt where known, and pending CI/review constraints; do not infer arming from mergeability | — | N | I | B,Op | R | C-14 #433 |
 | `github_workflow_ci_failure_summary` | Diagnose actual head-specific CI runs: failed jobs, steps, errors, annotations and matching default-branch failures; zero/capped runs never count as a completed diagnosis | — | N | I | B,Op | R | W-4 built #214 |
 | `github_workflow_rerun_failed_ci` | Re-run only failed jobs once; refuses a second automatic re-run of the same failure (two-strikes rule) | P | N | I | B,Op | E | W-4 built #214 |
 | `github_workflow_repo_health` | Protection and rules, CI pass rate, open PRs and staleness, security alerts, secret scanning/push protection, Actions settings | — | F | I | O,Op | R | W-5 built #217 |
@@ -880,7 +880,7 @@ loads only about 25 tools up front (meta-tools, whoami, universal search, workfl
 
 | Section | Tools |
 | --- | --- |
-| Server about itself | 25 |
+| Server about itself | 24 |
 | Repositories | 22 |
 | Files, commits and git data | 17 |
 | Branches and tags | 9 |
@@ -917,7 +917,7 @@ loads only about 25 tools up front (meta-tools, whoami, universal search, workfl
 | Projects v2 lifecycle | 15 |
 | Public profiles, following and star lists | 13 |
 | Project profiles | 3 |
-| Workflows | 17 |
+| Workflows | 18 |
 | Everything else on GitHub: the universal tools | 6 |
 | Batch Y-9d financial and Copilot operations | 17 |
 | GitHub Enterprise | 13 |
@@ -942,4 +942,4 @@ B-5 provider permission hints: only explicit read/write/admin entries are eligib
 
 **C-8 request-path latency (source-only until checked release):** `github_whoami` concurrently reads independent enrolled account rate evidence, obtains master-token status once per request and reuses the personal rate lookup. The authenticated tenant MCP provider wrapper buffers coarse, anonymous provider outcome/latency events per HTTP request, then awaits one tenant-isolated PostgreSQL upsert in route cleanup instead of one telemetry write after **every** GitHub HTTP response. It does not cache GitHub checks or permissions, change login/admission controls, skip telemetry, or alter the response/result/guard contract. Synthetic benchmarks are not production latency evidence. See `docs/pr-cards/C-8.md`.
 
-**C-16 sequential write batching (#431):** `github_write_batch` is a separate explicit composition from the deliberately read-only `github_batch`. Pass 1–20 ordered `steps`, a stable `batchKey`, and optionally `dryRun`/`confirm`; a literal `{ "$from": 0, "path": "sha" }` draws only a permitted scalar reference from a fully confirmed previous result (e.g., exact branch SHA for `github_content_commit_git_data.expectedHead`). Each change re-enters its original guarded writer and original authorization. PostgreSQL stores only intent hashes, scoped leases and bounded safe outcome receipts. Replays never reissue completed steps, and interrupted/uncertain writes require independent reconciliation rather than an unsafe automatic retry. This is not a transaction or rollback mechanism.
+**C-15 credential-scoped GitHub rate observations (#435):** Read, write, and nested responses may have compact `meta.github_rate.items` with observed `account`, credential kind, GitHub resource, remaining budget where not expired, reset time, primary/secondary cooldown and `source` (`fresh` for this operation's headers, `cached` for an existing DB throttle). Unknown rates are omitted. Actual GitHub App, personal login, God Mode, optional package, notifications and U token budgets use independent database keys; no rate-only GitHub calls are added. A composed workflow may report multiple credential/resource observations; never treat a prior quota as current merely because it was cached.

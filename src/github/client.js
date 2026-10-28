@@ -6,7 +6,7 @@ import { paginateRest } from '@octokit/plugin-paginate-rest';
 import { retry } from '@octokit/plugin-retry';
 import { throttling } from '@octokit/plugin-throttling';
 import { GithubClientError, formatDenver } from './errors.js';
-import { assertNotBlocked, rateLimited, recordRate, resourceFor, takeWriteSlot } from './rate.js';
+import { assertNotBlocked, rateLimited, recordRate, rateFromHeaders, resourceFor, takeWriteSlot } from './rate.js';
 import { actAsFor, forgetActAs, mustUseAppForBranch } from './act-as.js';
 import { isAppOnly } from './app-only.js';
 
@@ -228,7 +228,17 @@ export async function githubFor(ctx, { owner, cred = 'I', scope } = {}) {
 
     const attempt = async (useMe, why) => {
       const actual = useMe ? 'M' : cred;
-      const rateKey = personal && useMe ? `~me:${personal.subject}` : account;
+      // App allowances, personal login, extra-place God Mode and each optional
+      // credential are distinct real GitHub budgets. Never store them under
+      // the same account/resource key (or reuse their 304 ETags).
+      const rateKey=personal&&useMe?`~me:${personal.subject}`:
+        actual==='I'?account:`~cred:${actual}:${account.toLowerCase()}`;
+      const credential=personal&&useMe?'personal':
+        ({I:'app',U:'user',K:'notifications',P:'package',M:'god_mode'}[actual]??'unknown');
+      const observed=(headers,status=200)=>{
+        const rate=rateFromHeaders(headers,{status,fallbackResource:resource,now});
+        ctx.rateObservations?.record({account,credential,resource,observation:rate,source:'fresh'});
+      };
       // Classic package credentials never authorize arbitrary REST, GraphQL or foreign accounts.
       // Validate the expanded URL BEFORE any request or rate/write side effect.
       if ((actual === 'K' || actual === 'P' || actual === 'M') && typeof ctx.credentials?.authorizeOptionalRequest === 'function')
@@ -239,7 +249,13 @@ export async function githubFor(ctx, { owner, cred = 'I', scope } = {}) {
       sent.headers = { ...sent.headers, 'x-github-api-version': GITHUB_API_VERSION };
       delete sent.headers['if-none-match']; // an earlier attempt's cache validator belongs to that credential only
       if (personal) sent.headers.authorization = `token ${useMe ? personal.token : await botToken()}`;
-      await assertNotBlocked(ctx.db, rateKey, resource);
+      await assertNotBlocked(ctx.db, rateKey, resource, {onBlocked:state=>{
+        ctx.rateObservations?.record({account,credential,resource,
+          source:'cached',observation:{
+            resource,remaining:state.remaining,resetAt:state.reset_at?new Date(state.reset_at):null,
+            blockedUntil:state.blocked_until?new Date(state.blocked_until):null
+          }});
+      }});
       if (write) {
         sent.request = { ...sent.request, retries: 0 }; // a write is never replayed after an error (A8)
         await takeWriteSlot(ctx.db, `${account}:${actual}`, { sleep: ctx.sleep });
@@ -255,14 +271,16 @@ export async function githubFor(ctx, { owner, cred = 'I', scope } = {}) {
       try {
         response = await request(sent);
       } catch (error) {
-        if (error?.status === 304 && cached) { noteActor(); return { status: 200, url, headers: error.response?.headers ?? {}, data: cached.body, notModified: true }; }
+        if (error?.status === 304 && cached) { observed(error.response?.headers,304); noteActor(); return { status: 200, url, headers: error.response?.headers ?? {}, data: cached.body, notModified: true }; }
         if (write) noteActor(); // a change may have been sent: it is on the record as made by this credential
+        observed(error?.response?.headers,error?.status);
         throw await asRateLimited(ctx, rateKey, resource, error);
       }
       // Octokit returns integers beyond 2^53 as BigInt (webhook delivery IDs are now that large). A BigInt cannot be saved to the
       // change journal or sent as JSON, so every one becomes its exact decimal text here, before anything else sees it.
       response.data = exactIntegers(response.data);
       noteActor();
+      observed(response.headers,response.status);
       try {
         await recordRate(ctx.db, rateKey, response.headers, { status: response.status, fallbackResource: resource, now });
         const etag = response.headers?.etag;

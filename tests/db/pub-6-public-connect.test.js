@@ -276,8 +276,12 @@ describe('PUB-6 public simple connect in REAL PostgreSQL', () => {
     const client = await c.registerClient({ redirect_uris: [CB] });
     const hammer = codeOf(await approved(c, client, 'alice'));
     const other = codeOf(await approved(c, client, 'bob'));
-    const answers = [];
-    for (let i = 0; i < 40; i += 1) answers.push(await exchange(client, hammer));
+    // A real hammer issues requests concurrently. Serial PostgreSQL
+    // round trips under a loaded CI host can span the limiter's full
+    // time window and cease to be 40 *rapid* calls. This also checks
+    // that the shared database limiter is atomic under parallel load.
+    const answers = await Promise.all(Array.from({length:40},
+      () => exchange(client, hammer)));
     const limited = answers.find((a) => a.statusCode === 429);
     expect(limited, 'a 429 within 40 rapid calls').toBeTruthy();
     expect(Number(limited.headers['Retry-After'])).toBeGreaterThan(0);

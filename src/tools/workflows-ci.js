@@ -36,10 +36,10 @@ async function select(a,ctx){
   return [...workflows.values()];
 }
 const failed=j=>j.conclusion==='failure'||j.failed_steps?.length>0;
-async function failures(a,ctx,run,start){
+async function failures(a,ctx,run,start,{firstOnly=false}={}){
   if(bad(run)||!Array.isArray(run.jobs)||run.jobs_complete!==true)return {complete:false,items:[],reason:'Failed-job inventory is incomplete.'};
   const items=[];
-  for(const job of run.jobs.filter(failed)){
+  for(const job of run.jobs.filter(failed).slice(0,firstOnly?1:undefined)){
     if(ended(ctx,start))return {complete:false,items,reason:'Workflow time budget exhausted.'};
     const log=await call(ctx,'github_actions_get_job_log',{...scope(a),jobId:job.id,tailLines:10});
     const errors=bad(log)?null:(Array.isArray(log.errors)?log.errors:null);
@@ -80,7 +80,7 @@ export async function ciFailureSummary(a,ctx){
       if(ended(ctx,start))return {done:false,status:'pending',runs,next_action:'Budget exhausted; inspect one remaining runId directly.'};
       const run=await getRun(a,ctx,item.id);
       if(bad(run)||run.head_sha!==item.head_sha){runs.push({run_id:item.id,state:'unreadable',complete:false});continue;}
-      const own=await failures(a,ctx,run,start),base=await baseline(a,ctx,run,repo,start);
+      const own=await failures(a,ctx,run,start,{firstOnly:a.firstFailureOnly===true}),base=a.firstFailureOnly===true?null:await baseline(a,ctx,run,repo,start);
       runs.push({run_id:run.id,head_sha:run.head_sha,workflow_id:run.workflow_id,status:run.status,
         conclusion:run.conclusion,attempt:run.run_attempt,complete:own.complete,
         reason:own.reason,baseline:base?{run_id:base.run_id,head_sha:base.head_sha,branch:base.branch}:null,
@@ -92,8 +92,11 @@ export async function ciFailureSummary(a,ctx){
             (baselineJob?.conclusion==='success'?false:null);
           return {...job,same_failure_on_default:same,baseline_job:other?.id??null};
         }),html_url:run.html_url});
+      if(a.firstFailureOnly===true&&own.items.length>0)break;
     }
-    const complete=runs.length>0&&runs.every(r=>r.complete&&r.status==='completed');
+    const complete=a.firstFailureOnly===true
+      ?runs.some(r=>r.complete&&r.status==='completed'&&r.failed_jobs?.length>0)
+      :runs.length>0&&runs.every(r=>r.complete&&r.status==='completed');
     return {done:complete,status:complete?'observed':'partial',runs,
       next_action:'Use observed errors to reproduce/fix locally. A guarded automatic failed-job rerun is allowed only once for a workflow/head.'};
   }catch(e){return {done:false,status:'unreadable',reason:e instanceof TypeError?e.message:'CI evidence could not be read.'};}
@@ -120,7 +123,8 @@ export async function rerunFailedCi(a,ctx){
 }
 const summary=defineRead({name:'github_workflow_ci_failure_summary',area:'workflow',audience:['B','Op'],
   description:'Explain failed CI jobs, steps, errors and annotations; compare observed failures with the same workflow on the default branch.',
-  properties:{owner:OWNER,repo:REPO,pr:ID,runId:ID,ref:{type:'string',minLength:1,maxLength:250}},required:['repo'],handler:ciFailureSummary});
+  properties:{owner:OWNER,repo:REPO,pr:ID,runId:ID,ref:{type:'string',minLength:1,maxLength:250},
+    firstFailureOnly:{type:'boolean',description:'Return only the first failed job at the selected exact head; skip baseline comparison.'}},required:['repo'],handler:ciFailureSummary});
 const retry={name:'github_workflow_rerun_failed_ci',area:'workflow',audience:['B','Op'],
   description:'Retry failed jobs once for an exact workflow/head; preserve production guards and stop after a durable prior retry claim.',
   usesRegistry:true,passthrough:true,boundsResult:true,profiles:['everyday','full'],delegatedWrites:['github_actions_rerun'],
