@@ -1,5 +1,9 @@
 # Product-user capability versus implementation-agent authority
 
+> **Current governing owner decision (2026-10-27), implementation authorized 2026-10-28:**
+> See [owner decision](OWNER-DECISION-2026-10-27.md). It supersedes conflicting product gates below, including spend/production/notification/protected-resource restrictions on the owner's own connection. Builder operating restrictions remain builder-only; explicit delegated restrictions remain binding. Historical designs and evidence do not override this decision.
+> Active remediation: [plan](designs/AUTHORITY-PARITY-2026-10-28.md).
+
 **Binding owner clarification — October 16, 2026.** Apply to all GitHub MCP implementation, architecture, tooling and final acceptance. This clarification supersedes earlier readings of IN-09, B-4, Y3 and money-related owner decisions *when they turned developer operating restrictions into product prohibitions*. Preserve historical records but use this current decision for the product.
 
 ## The two agent roles must never be conflated

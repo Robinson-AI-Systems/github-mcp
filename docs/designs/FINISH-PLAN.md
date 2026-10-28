@@ -1,5 +1,9 @@
 # FINISH PLAN — everything left to make Robinson GitHub MCP a finished product
 
+> **Current governing owner decision (2026-10-27), implementation authorized 2026-10-28:**
+> See [owner decision](../OWNER-DECISION-2026-10-27.md). It supersedes conflicting product gates below, including spend/production/notification/protected-resource restrictions on the owner's own connection. Builder operating restrictions remain builder-only; explicit delegated restrictions remain binding. Historical designs and evidence do not override this decision.
+> Active remediation: [plan](AUTHORITY-PARITY-2026-10-28.md).
+
 **Written 2026-10-23 at Chris's request** ("write the design and planning for everything still needed to finish this
 product… in a way lesser coding models such as Sol 5.6 can implement at light to medium effort"). This file is the
 single starting point for the remaining work. Each piece has its own complete card in `docs/pr-cards/` (FIN batch in

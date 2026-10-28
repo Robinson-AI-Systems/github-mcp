@@ -1,5 +1,9 @@
 # Read before any PR that touches credentials, secrets, guards, production, access, spend, login or passes
 
+> **Current governing owner decision (2026-10-27), implementation authorized 2026-10-28:**
+> See [owner decision](OWNER-DECISION-2026-10-27.md). It supersedes conflicting product gates below, including spend/production/notification/protected-resource restrictions on the owner's own connection. Builder operating restrictions remain builder-only; explicit delegated restrictions remain binding. Historical designs and evidence do not override this decision.
+> Active remediation: [plan](designs/AUTHORITY-PARITY-2026-10-28.md).
+
 **Owner clarification 2026-10-16:** This checklist protects the developer during engineering, and preserves genuine user-selected delegation restrictions. It cannot be read as a permanent denial of paid, production, destructive or security-sensitive capabilities for a validly authorized end user; [END-USER-AUTHORITY.md](END-USER-AUTHORITY.md) governs conflicts.\n\nBlocking review input, in the spirit of the Stripe MCP's and Appliance Desk's audit notes. There is no automated review
 in this repo (IN-01): write one line per applicable item in the PR description under "Self-review", saying how it is
 honored. A blocking item that is not honored is fixed in the same PR, never deferred.

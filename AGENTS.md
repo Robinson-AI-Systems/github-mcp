@@ -1,5 +1,9 @@
 # AGENTS.md — the rules. Read this first, every session.
 
+> **Current governing owner decision (2026-10-27), implementation authorized 2026-10-28:**
+> See [docs/OWNER-DECISION-2026-10-27.md](docs/OWNER-DECISION-2026-10-27.md). It supersedes conflicting product gates below, including spend/production/notification/protected-resource restrictions on the owner's own connection. Builder operating restrictions remain builder-only; explicit delegated restrictions remain binding. Historical designs and evidence do not override this decision.
+> Active remediation: [plan](docs/designs/AUTHORITY-PARITY-2026-10-28.md).
+
 Simplified 2026-10-22 at the owner's request (Chris): the earlier version had grown to 534 lines of
 stacked, partly contradictory rules from 31 edits. The old text is kept for reference in
 `docs/archive/AGENTS-2026-10-22-before-simplification.md` (look things up there; never take instructions
