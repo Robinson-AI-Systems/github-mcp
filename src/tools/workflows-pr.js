@@ -93,7 +93,7 @@ export async function inspectPr(args,ctx){
 }
 const statusTool={
   name:'github_workflow_pr_status',area:'workflow',audience:['B','Op'],compact:true,
-  description:'Read a PR with head-specific CI, review threads, stack membership and one actionable next step.',
+  description:'PR head, CI failures, reviews, stack position and next action.',
   usesRegistry:true,
   inputSchema:{type:'object',properties:{owner:OWNER,repo:REPO,number:NUMBER},required:['repo','number'],additionalProperties:false},
   annotations:{readOnlyHint:true,destructiveHint:false,idempotentHint:true,openWorldHint:true}
@@ -147,7 +147,7 @@ export async function mergeAutomationStatus(args,ctx){
 }
 const mergeAutomationTool={
   name:'github_workflow_merge_automation_status',area:'workflow',audience:['B','Op'],compact:true,
-  description:'Inspect GitHub-native PR auto-merge arming, exact-head receipt when known, and pending checks/reviews.',
+  description:'GitHub auto-merge: actual arming, head and blockers.',
   usesRegistry:true,
   inputSchema:{type:'object',properties:{owner:OWNER,repo:REPO,number:NUMBER},required:['repo','number'],additionalProperties:false},
   annotations:{readOnlyHint:true,destructiveHint:false,idempotentHint:true,openWorldHint:true}
@@ -260,7 +260,7 @@ async function openPr(args,ctx){
 }
 const openTool={
   name:'github_workflow_open_pr',area:'workflow',audience:['B'],compact:true,
-  description:'Open a PR idempotently, then stage labels through the guarded writer; never push code or bypass notification controls.',
+  description:'Open a PR once, applying labels via guarded follow-up.',
   usesRegistry:true,passthrough:true,profiles:['everyday','full'],
   delegatedWrites:['github_pr_create','github_issue_set_labels'],
   inputSchema:{type:'object',properties:{owner:OWNER,repo:REPO,head:BRANCH,
