@@ -1456,9 +1456,9 @@ export function createDb(sql = productionSql()) {
      */
     async saveWriteBatch({key,connection,account,lease,items,status}) {
       if(!['running','partial','complete','uncertain'].includes(status) ||
-          !Array.isArray(items)||items.length>8)throw new TypeError('Invalid batch outcome.');
+          !Array.isArray(items)||items.length>20)throw new TypeError('Invalid batch outcome.');
       const json=JSON.stringify(items);
-      if(json.length>16000)throw new TypeError('Batch receipts exceed safe bound.');
+      if(json.length>50000)throw new TypeError('Batch receipts exceed safe bound.');
       const end=status!=='running';
       const rows=await sql`UPDATE gh_write_batches SET items=${json}::jsonb,
         status=${status},lease_id=CASE WHEN ${end} THEN NULL ELSE lease_id END,

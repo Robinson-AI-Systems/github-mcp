@@ -630,7 +630,7 @@ export function createFakeDb({ clock = Date.now } = {}) {
       if(!row||row.connection!==connection||row.account!==account||row.lease!==lease||
         row.until===null||row.until<=clock()||row.status!=='running')return false;
       if(!['running','partial','complete','uncertain'].includes(status)||!Array.isArray(items)||
-        items.length>8||JSON.stringify(items).length>16000)throw new TypeError('Invalid batch receipts.');
+        items.length>20||JSON.stringify(items).length>50000)throw new TypeError('Invalid batch receipts.');
       row.items=structuredClone(items);row.status=status;
       if(status!=='running'){row.lease=null;row.until=null;}
       return true;

@@ -98,8 +98,8 @@ function topScope(args,ctx){
   return account;
 }
 function prepare(args,ctx){
-  if(!Array.isArray(args.steps)||args.steps.length<1||args.steps.length>8)
-    throw new TypeError('Provide between 1 and 8 sequential operations.');
+  if(!Array.isArray(args.steps)||args.steps.length<1||args.steps.length>20)
+    throw new TypeError('Provide between 1 and 20 sequential operations.');
   const account=topScope(args,ctx);
   const allowed=new Map(toolsForProfile(ctx.registry,ctx.connection.profile).map(t=>[t.name,t]));
   const checked=args.steps.map((s,i)=>{
@@ -171,6 +171,35 @@ function outcome(r){
     return {status:'refused',reason:redact(String(body.reason??body.next_action??body.status)).slice(0,240)};
   return {status:'uncertain',reason:'The writer reported '+redact(String(body.status??'unknown')).slice(0,70)+
     '; no automatic retry is safe without independent reconciliation.'};
+}
+async function settlePrOpen(result,callArgs,ctx,prior){
+  const original=resultBody(result);
+  if(result?.isError||original?.status!=='pr_opened'||!Number.isInteger(original.number))
+    return result;
+  // W-1 first reports done:false after the guarded PR create. Independently
+  // read the PR within the same *outer* batch call, without another POST.
+  const read=await ctx.callTool('github_pr_get',{
+    owner:callArgs.owner,repo:callArgs.repo,number:original.number});
+  const p=resultBody(read);
+  if(read?.isError||p?.number!==original.number||p.state!=='open'||
+    p.head!==callArgs.head||!SHA.test(p.head_sha??''))return result;
+  const latest=[...prior].reverse().find(x=>x.status==='applied'&&
+    x.name==='github_content_commit_git_data'&&x.reference?.branch_head);
+  if(latest&&p.head_sha!==latest.reference.branch_head)return result;
+  if(!Array.isArray(callArgs.labels)||callArgs.labels.length===0)
+    return {structuredContent:{status:'existing',done:true,number:p.number,
+      head_sha:p.head_sha,head:p.head,base:p.base,html_url:p.html_url}};
+  // Requested labels use W-1's existing guarded follow-up, same stable step
+  // key, and a final fresh PR read. A partial label apply is never success.
+  let next=result;
+  for(let i=0;i<2;i++){
+    next=await ctx.callTool('github_workflow_open_pr',callArgs);
+    const observed=resultBody(next);
+    if(!next?.isError&&observed?.done===true&&observed.status==='existing'&&
+      observed.number===p.number&&observed.head_sha===p.head_sha)return next;
+    if(next?.isError||observed?.status!=='labels_applied')break;
+  }
+  return next;
 }
 async function checkPrefix(checked,items,ctx){
   // Before resuming an interrupted batch, prove the last observed branch head
@@ -290,6 +319,10 @@ export async function guardedWriteBatch(args,ctx){
       try{await save([...items,item(i,step,'uncertain',{reason:'The delegated write interrupted before its result could be confirmed.'})],'uncertain');}catch{}
       return respond('reconciliation_required',items,{next_action:'The delegated write may have applied. Check provider state and its individual journal before a NEW batch.'});
     }
+    if(step.name==='github_workflow_open_pr'){
+      try{result=await settlePrOpen(result,callArgs,ctx,items);}
+      catch{/* No extra write or false verification after read failure. */}
+    }
     const observed=outcome(result);
     const row=item(i,step,observed.status,{...observed,
       ...(observed.status==='applied'?{request_key:callArgs.requestKey??null}:{})});
@@ -312,7 +345,7 @@ export const tools=[{
   inputSchema:{type:'object',properties:{
     owner:OWNER,repo:REPO,
     batchKey:{type:'string',minLength:4,maxLength:128,description:'One stable key for this plan across retries; never reuse for different steps'},
-    steps:{type:'array',minItems:1,maxItems:8,items:CALL},
+    steps:{type:'array',minItems:1,maxItems:20,items:CALL},
     dryRun:{type:'boolean'},confirm:{type:'boolean'}
   },required:['batchKey','steps'],additionalProperties:false},
   annotations:readOnly

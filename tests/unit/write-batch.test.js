@@ -17,9 +17,10 @@ function harness({connection='first',account='org',clock=()=>NOW,work=null}={}){
     github_branch_create:reply({status:'applied',done:true,confirmed:true,result:{branch:'topic',sha:A}}),
     github_content_commit_git_data:reply({status:'applied',done:true,confirmed:true,result:{
       branch_head:B,commit:B,parent:A,tree:'c'.repeat(40),files:1}}),
-    github_workflow_open_pr:reply({status:'pr_opened',done:true,number:17,head_sha:B}),
+    // W-1 initially returns done:false after a guarded PR creation.
+    github_workflow_open_pr:reply({status:'pr_opened',done:false,number:17}),
     github_branch_get:reply({branch:'topic',head:B}),
-    github_pr_get:reply({number:17,state:'open',head_sha:B})
+        github_pr_get:reply({number:17,state:'open',head:'topic',head_sha:B,base:'main'})
   };
   const ctx={
     registry,connection:{client_id:connection,default_account:account,accounts:[account],
@@ -52,13 +53,13 @@ describe('C-16 guarded sequential write batch',()=>{
         {index:1,status:'applied',reference:{branch_head:B,commit:B}},
         {index:2,status:'applied',reference:{number:17,head_sha:B}}]});
     expect(f.calls.map(x=>x.name)).toEqual([
-      'github_branch_create','github_content_commit_git_data','github_workflow_open_pr']);
+      'github_branch_create','github_content_commit_git_data','github_workflow_open_pr','github_pr_get']);
     expect(f.calls[1].args.expectedHead).toBe(A);
     expect(f.calls[2].args.head).toBe('topic');
-    expect(f.calls.every(x=>x.args.confirm===true)).toBe(true);
+    expect(f.calls.filter(x=>x.name!=='github_pr_get').every(x=>x.args.confirm===true)).toBe(true);
     const replay=await guardedWriteBatch(input(),f.ctx);
     expect(replay).toMatchObject({status:'replayed',replayed:true,done:true,completed:3});
-    expect(f.calls).toHaveLength(3);
+    expect(f.calls).toHaveLength(4);
   });
   it('previews the whole plan with no database claim or GitHub writes',async()=>{
     const f=harness();
@@ -96,7 +97,7 @@ describe('C-16 guarded sequential write batch',()=>{
     const again=await guardedWriteBatch(modified,f.ctx);
     expect(again).toMatchObject({status:'refused'});
     expect(again.reason).toMatch(/different authorization intent/i);
-    expect(f.calls).toHaveLength(3);
+    expect(f.calls).toHaveLength(4);
   });
   it('rejects forward, self, secret and object references before sending any mutation',async()=>{
     for(const v of [
@@ -150,8 +151,8 @@ describe('C-16 guarded sequential write batch',()=>{
     const two=harness({connection:'tenant-2'});
     expect((await guardedWriteBatch(input(),one.ctx)).status).toBe('complete');
     expect((await guardedWriteBatch(input(),two.ctx)).status).toBe('complete');
-    expect(one.calls).toHaveLength(3);
-    expect(two.calls).toHaveLength(3);
+    expect(one.calls).toHaveLength(4);
+    expect(two.calls).toHaveLength(4);
   });
   it('accepts only visible reviewed guarded writes, not read tools or unguarded meta calls',async()=>{
     for(const name of ['github_repo_get','github_call','github_batch','github_write_batch']){
@@ -179,6 +180,6 @@ describe('C-16 guarded sequential write batch',()=>{
     unblock();
     const done=await p;
     expect(done.status).toBe('complete');
-    expect(f.calls).toHaveLength(3);
+    expect(f.calls).toHaveLength(4);
   });
 });
