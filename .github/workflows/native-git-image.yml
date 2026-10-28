@@ -5,6 +5,12 @@ on:
       - 'workers/native-git/**'
       - 'src/native-git/**'
       - 'src/github/content-protection.js'
+      - 'src/github/open-secret-rules.js'
+      - 'src/github/secret-literals.js'
+      - 'src/github/custom-secret-rules.js'
+      - 'src/github/scanner-policy.js'
+      - 'src/github/file-protection.js'
+      - 'vendor/gitleaks/**'
       - '.github/workflows/native-git-image.yml'
   workflow_dispatch:
 permissions:
