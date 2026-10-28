@@ -65,3 +65,15 @@ See [the dated checkpoint](../status/2026-10-28-authority-parity.md) for command
 ## Current checkpoint after the audit release
 
 #445–#448 merged, with the content correction independently serving READY on 75b4d61b. Owner setup/connection persistence and workflow result propagation were delivered in #447. Remaining duplicate typed-target confirmations and truthful unsupported GraphQL guidance are in the current owner-confirmation cleanup; exact-head review/CI/merge is still required. The existing acceptance queue now separates current restricted-grant criteria from superseded owner policy. Each real paid/destructive/client fixture remains individually named, never relabeled passed. Native Git is deferred by the owner's audit-first priority, with its portable design retained.
+
+## Owner execution order, 2026-10-28 follow-through
+
+Owner explicitly directs: finish implementation first, run all acceptance that does not need a release as work proceeds, then make one combined checked release and run live acceptance. Do not promote intermediate chunks. Coherent reviewed chunks may merge to main; merging is not releasing. This instruction supersedes any earlier suggestion to release #449 immediately.
+
+Remaining implementation is grouped by usable outcome, not line counts:
+
+1. Complete verified administrative mutation contracts and their alternative routes, plus legacy owner-facing setup/wording cleanup. Query the pinned provider schema, preserve exact account/enterprise binding and secret handling, cover before/send/readback/replay and delegated denial. Inspect the official fresh-scanning interface: integrate only if its real credential/request/result contract is verifiable; otherwise improve the concrete Robinson/repository alternative without claiming equivalence.
+2. Deliver portable native-Git execution, service authorization and MCP integration together: isolated typed worker operations, durable workspace/journal/lease state, credential broker, complete protected output, real local bare-repository conflict/recovery/network tests, portable initial Dokploy packaging and migration instructions. Honest unsupported advanced capabilities must supply setup guidance. No paid infrastructure or uncontrolled host execution is inferred.
+3. Reconcile documentation and perform complete pre-release verification on assembled outcomes. Reassess the existing 15 acceptance obligations; preserve real prerequisites rather than inventing passes. Once implementation is finished and exact-head checks/reviews pass, use the owner's now-authorized combined checked release, independently verify serving READY/source, and run eligible live proof. Missing exact paid/destructive fixtures remain separate, never authorization to spend.
+
+This is the same approved audit/parity/native-Git scope. Do not label implementation finished while a functioning worker or named contract still exists only as a design. Exact publication/release/checkpoints belong in the dated status note.

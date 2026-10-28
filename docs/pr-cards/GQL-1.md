@@ -105,3 +105,7 @@ just stops counting them as missing. Add a unit test that every tool name in the
       purpose (two-factor requirement and methods can lock members out, deploy keys and repository projects cannot be
       read back, repository-creation policy has five linked fields). Capability report shows 0 `missing`.
 - [x] All four groups done (PRs #345, #346, #347, and the enterprise PR).
+
+## Administrative completion, 2026-10-28
+
+Eight former missing contracts are now available through github_enterprise_policy_set: required/disallowed two-factor methods, repository deploy keys/projects, coarse or granular repository creation and three IP allow-list enforcement policies. Pinned schema supplies actual readback fields and ownerId versus enterpriseId inputs. Granular creation preserves omitted visibility values, rejects mutually exclusive coarse/granular forms, and does not promise an inverse when linked prior values are nullable. All changes require verified enterprise administration and actual master scope; provider refusals, replay, readback and explicit restrictions remain effective. No live policy changed as a test.

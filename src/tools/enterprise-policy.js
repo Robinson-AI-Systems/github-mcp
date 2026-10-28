@@ -1,7 +1,6 @@
 // GQL-1 (enterprise settings): the enterprise-wide member policies and the enterprise profile, through the person's master
 // token. Each call proves enterprise administration, discloses changes, journals and reads back from GitHub.
-// Missing verified contracts remain for two-factor requirements/methods, deploy keys, repository projects and the
-// repository-creation policy (five linked fields); these are engineering gaps, not additional owner authority limits.
+// Security and repository-creation policies use the same provider-admin proof and readback as other settings.
 import { defineGithubWrite } from './define-github-write.js';
 import { refusal, ownerOf } from './github-write.js';
 import { requireEnterprise, ENTERPRISE_SLUG } from '../github/enterprise-access.js';
@@ -12,6 +11,15 @@ const E = ENTERPRISE_SLUG;
 const ON_OFF = ['ENABLED', 'DISABLED', 'NO_POLICY'];
 /** key -> the GraphQL mutation, the field that reads it back, its allowed values, and how risky switching it on is. */
 export const POLICIES = {
+  ip_allowlist_enabled: { mutation: 'updateIpAllowListEnabledSetting', read: 'ipAllowListEnabledSetting', values: ['ENABLED', 'DISABLED'], inputId: 'ownerId', what: 'enforce the enterprise IP allow list; requests outside allowed networks may be denied' },
+  ip_allowlist_installed_apps: { mutation: 'updateIpAllowListForInstalledAppsEnabledSetting', read: 'ipAllowListForInstalledAppsEnabledSetting', values: ['ENABLED', 'DISABLED'], inputId: 'ownerId', what: 'allow installed GitHub Apps through IP allow-list configuration' },
+  ip_allowlist_user_enforcement: { mutation: 'updateIpAllowListUserLevelEnforcementEnabledSetting', read: 'ipAllowListUserLevelEnforcementEnabledSetting', values: ['ENABLED', 'DISABLED'], inputId: 'ownerId', what: 'enforce the IP allow list for enterprise users' },
+
+  two_factor_required: { mutation: 'updateEnterpriseTwoFactorAuthenticationRequiredSetting', read: 'twoFactorRequiredSetting', values: ['ENABLED', 'NO_POLICY'], what: 'require two-factor authentication; members without it may lose access' },
+  two_factor_disallowed_methods: { mutation: 'updateEnterpriseTwoFactorAuthenticationDisallowedMethodsSetting', read: 'twoFactorDisallowedMethodsSetting', values: ['INSECURE', 'NO_POLICY'], what: 'disallow insecure two-factor methods; affected members may lose access' },
+  repository_deploy_keys: { mutation: 'updateEnterpriseDeployKeySetting', read: 'repositoryDeployKeySetting', values: ON_OFF, widens: 'ENABLED', what: 'repositories can use deploy keys' },
+  repository_projects: { mutation: 'updateEnterpriseRepositoryProjectsSetting', read: 'repositoryProjectsSetting', values: ON_OFF, what: 'repositories can use projects' },
+  members_can_create_repositories: { mutation: 'updateEnterpriseMembersCanCreateRepositoriesSetting', read: 'membersCanCreateRepositoriesSetting', values: ['ALL', 'DISABLED', 'NO_POLICY', 'PRIVATE', 'PUBLIC'], widensAbove: ['ALL', 'PRIVATE', 'PUBLIC'], what: 'which repository visibilities members can create' },
   members_can_change_repository_visibility: { mutation: 'updateEnterpriseMembersCanChangeRepositoryVisibilitySetting', read: 'membersCanChangeRepositoryVisibilitySetting', values: ON_OFF, widens: 'ENABLED', what: 'members can make repositories public or private' },
   members_can_delete_issues: { mutation: 'updateEnterpriseMembersCanDeleteIssuesSetting', read: 'membersCanDeleteIssuesSetting', values: ON_OFF, widens: 'ENABLED', what: 'members can delete issues' },
   members_can_delete_repositories: { mutation: 'updateEnterpriseMembersCanDeleteRepositoriesSetting', read: 'membersCanDeleteRepositoriesSetting', values: ON_OFF, widens: 'ENABLED', what: 'members can delete or transfer repositories' },
@@ -24,6 +32,14 @@ export const POLICIES = {
   default_repository_permission: { mutation: 'updateEnterpriseDefaultRepositoryPermissionSetting', read: 'defaultRepositoryPermissionSetting', values: ['NONE', 'READ', 'WRITE', 'ADMIN', 'NO_POLICY'], widensAbove: ['WRITE', 'ADMIN'], what: 'the default permission every member gets on organization repositories' }
 };
 const KEYS = Object.keys(POLICIES);
+const CREATION_FIELDS = ['membersCanCreateInternalRepositories', 'membersCanCreatePrivateRepositories', 'membersCanCreatePublicRepositories'];
+const CREATION_READS = Object.fromEntries(CREATION_FIELDS.map(k => [k, `${k}Setting`]));
+const creationArgs = args => CREATION_FIELDS.filter(k => args[k] !== undefined);
+const creation = args => args.setting === 'members_can_create_repositories';
+const policyInput = args => ({ ...(args.value !== undefined ? { settingValue: args.value } : {}), ...Object.fromEntries(creationArgs(args).map(k => [k, args[k]])), ...(args.membersCanCreateRepositoriesPolicyEnabled !== undefined ? { membersCanCreateRepositoriesPolicyEnabled: args.membersCanCreateRepositoriesPolicyEnabled } : {}) });
+const policyMatches = (args, state) => (args.value === undefined || state[POLICIES[args.setting].read] === args.value)
+  && creationArgs(args).every(k => state[CREATION_READS[k]] === args[k])
+  && (args.membersCanCreateRepositoriesPolicyEnabled === undefined || (args.membersCanCreateRepositoriesPolicyEnabled ? typeof state.membersCanCreateRepositoriesSetting === 'string' && state.membersCanCreateRepositoriesSetting !== 'NO_POLICY' : state.membersCanCreateRepositoriesSetting === 'NO_POLICY'));
 // These three do not change what anyone can do inside a repository; every other policy does, so it is refused while a
 // protected repository sits inside the enterprise (same fail-closed rule as attaching a security configuration to everything).
 const NOT_REPO_ACCESS = new Set(['organization_projects', 'members_can_view_dependency_insights', 'members_can_make_purchases']);
@@ -34,7 +50,7 @@ const entTarget = (args, ctx) => ({ owner: ownerOf({}, ctx), scope: 'org', kind:
 const decl = (extra = {}) => ({ production: 'always', confirm: 'always', cred: 'M', profiles: ['full'], ...extra });
 const adminClient = (ctx, t) => requireEnterprise(ctx, t.enterprise, { scope: 'admin:enterprise' });
 
-const POLICY_READ = `query EnterprisePolicies($slug: String!) { enterprise(slug: $slug) { id ownerInfo { ${[...new Set(KEYS.map((k) => POLICIES[k].read))].join(' ')} allowPrivateRepositoryForkingSettingPolicyValue } } }`;
+const POLICY_READ = `query EnterprisePolicies($slug: String!) { enterprise(slug: $slug) { id ownerInfo { ${[...new Set([...KEYS.map((k) => POLICIES[k].read), ...Object.values(CREATION_READS)])].join(' ')} allowPrivateRepositoryForkingSettingPolicyValue } } }`;
 const PROFILE_READ = 'query EnterpriseProfile($slug: String!) { enterprise(slug: $slug) { id name description location websiteUrl securityContactEmail } }';
 async function readPolicies(gh, t) {
   const e = (await graphql(gh, POLICY_READ, { slug: t.enterprise }))?.enterprise;
@@ -49,13 +65,19 @@ async function readProfile(gh, t) {
 
 const policySet = defineGithubWrite({
   name: 'github_enterprise_policy_set', area: 'enterprise', audience: ['O'],
-  description: 'Change one enterprise-wide member policy (repository deletion, visibility, forking, default permission, purchases...); read back.',
+  description: 'Change enterprise two-factor, IP allow-list, deploy-key, repository-creation or member policy; verify administrator and read back.',
   properties: { enterprise: E, setting: { type: 'string', enum: KEYS }, value: { type: 'string', enum: [...new Set(KEYS.flatMap((k) => POLICIES[k].values))] },
+    ...Object.fromEntries(CREATION_FIELDS.map(k => [k, { type: 'boolean', description: 'Repository creation only; omitted visibility permissions retain their provider value.' }])),
+    membersCanCreateRepositoriesPolicyEnabled: { type: 'boolean', description: 'Repository creation only: false delegates creation privileges to member organizations.' },
     forkingPolicy: { type: 'string', enum: FORKING, description: 'Only for allow_private_repository_forking: where forks may go' } },
-  required: ['enterprise', 'setting', 'value'], declarations: decl({ accessWidening: true, spend: true }),
+  required: ['enterprise', 'setting'], declarations: decl({ accessWidening: true, spend: true }),
   target: (args, ctx) => {
     const p = POLICIES[args.setting];
-    if (!p.values.includes(args.value)) throw new TypeError(`${args.setting} accepts: ${p.values.join(', ')}.`);
+    if (creation(args)) {
+      if (args.value !== undefined && creationArgs(args).length) throw new TypeError('Choose value OR granular repository creation fields, not both.');
+      if (args.value === undefined && !creationArgs(args).length && args.membersCanCreateRepositoriesPolicyEnabled === undefined) throw new TypeError('Select a repository creation policy or at least one granular field.');
+    } else if (creationArgs(args).length || args.membersCanCreateRepositoriesPolicyEnabled !== undefined) throw new TypeError('Granular creation fields only apply to members_can_create_repositories.');
+    if ((!creation(args) || args.value !== undefined) && !p.values.includes(args.value)) throw new TypeError(`${args.setting} accepts: ${p.values.join(', ')}.`);
     if (args.forkingPolicy && args.setting !== 'allow_private_repository_forking') throw new TypeError('forkingPolicy only applies to allow_private_repository_forking.');
     return entTarget(args, ctx);
   },
@@ -67,31 +89,32 @@ const policySet = defineGithubWrite({
   price: ({ args }) => (POLICIES[args.setting].spend && args.value === 'ENABLED' ? null : 0),
   classify: ({ args }) => {
     const p = POLICIES[args.setting];
-    const widens = args.value === p.widens || p.widensAbove?.includes(args.value);
+    const widens = args.value === p.widens || p.widensAbove?.includes(args.value) || creationArgs(args).some(k => args[k] === true);
     return { production: `an enterprise-wide policy: ${p.what}; it applies to every organization in the enterprise`,
-      ...(widens || args.forkingPolicy ? { accessWidening: `${p.what}: set to ${args.value}${args.forkingPolicy ? ` with forks allowed to: ${args.forkingPolicy}` : ''} for the whole enterprise` } : {}) };
+      ...(widens || args.forkingPolicy ? { accessWidening: `${p.what}: set to ${JSON.stringify(policyInput(args))}${args.forkingPolicy ? ` with forks allowed to: ${args.forkingPolicy}` : ''} for the whole enterprise` } : {}) };
   },
   summarize: ({ args, target: t, before }) => (before.blocked
     ? `Refused: ${before.blocked}. This policy would change access to protected resources.`
-    : `Set "${POLICIES[args.setting].what}" in ${t.enterprise} to ${args.value} (today: ${before[POLICIES[args.setting].read] ?? 'unknown'})`
+    : `Set "${POLICIES[args.setting].what}" in ${t.enterprise} to ${JSON.stringify(policyInput(args))} (today: ${before[POLICIES[args.setting].read] ?? 'unknown'})`
       + (args.forkingPolicy ? `; forks may go to ${args.forkingPolicy} (today: ${before.allowPrivateRepositoryForkingSettingPolicyValue ?? 'unset'})` : '')),
   apply: async ({ args, ctx, target: t, before }) => {
     const p = POLICIES[args.setting];
     if (before.blocked) throw refusal(`${before.blocked}, so this policy will not be changed (it would change access to protected resources).`, 403);
-    if (before[p.read] === args.value && (!args.forkingPolicy || before.allowPrivateRepositoryForkingSettingPolicyValue === args.forkingPolicy)) throw refusal(`That policy is already ${args.value}; nothing to do.`);
+    if (policyMatches(args, before) && (!args.forkingPolicy || before.allowPrivateRepositoryForkingSettingPolicyValue === args.forkingPolicy)) throw refusal(`That policy is already ${args.value}; nothing to do.`);
     const gh = await adminClient(ctx, t);
     const doc = `mutation EnterprisePolicySet($input: ${p.mutation[0].toUpperCase()}${p.mutation.slice(1)}Input!) { ${p.mutation}(input: $input) { clientMutationId } }`;
-    return graphql(gh, doc, { input: { enterpriseId: before.id, settingValue: args.value, ...(args.forkingPolicy ? { policyValue: args.forkingPolicy } : {}) } });
+    return graphql(gh, doc, { input: { [p.inputId ?? 'enterpriseId']: before.id, ...policyInput(args), ...(args.forkingPolicy ? { policyValue: args.forkingPolicy } : {}) } });
   },
   readAfter: async ({ ctx, target: t }) => readPolicies(await adminClient(ctx, t), t),
-  verify: ({ args, after }) => after[POLICIES[args.setting].read] === args.value
+  verify: ({ args, after }) => policyMatches(args, after)
     && (!args.forkingPolicy || after.allowPrivateRepositoryForkingSettingPolicyValue === args.forkingPolicy),
   // The undo puts the old value back only when there was one and no forking policy was changed (that earlier policy value is a separate read).
   inverse: ({ args, before, target: t }) => {
+    if (creation(args) && (creationArgs(args).length || args.membersCanCreateRepositoriesPolicyEnabled !== undefined)) return null; // Nullable linked prior values cannot promise a safe inverse.
     const prior = before[POLICIES[args.setting].read];
     return prior && !args.forkingPolicy ? { tool: 'github_enterprise_policy_set', args: { enterprise: t.enterprise, setting: args.setting, value: prior } } : null;
   },
-  present: ({ args, after }) => ({ setting: args.setting, value: after[POLICIES[args.setting].read] })
+  present: ({ args, after }) => ({ setting: args.setting, value: after[POLICIES[args.setting].read], ...(creation(args) ? { granular: Object.fromEntries(CREATION_FIELDS.map(k => [k, after[CREATION_READS[k]] ?? null])) } : {}) })
 });
 
 const profileSet = defineGithubWrite({

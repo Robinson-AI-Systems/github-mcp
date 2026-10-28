@@ -31,9 +31,11 @@ function arrange(gh, { policy = {}, profile = {}, flips = true, admin = [{ slug:
       state.sent.push(input);
       if (flips) {
         if (q.includes('EnterprisePolicySet')) {
-          const name = q.match(/(updateEnterprise\w+)\(/)[1];
+          const name = q.match(/(update(?:Enterprise|IpAllowList)\w+)\(/)[1];
           const p = Object.values(POLICIES).find((x) => x.mutation === name);
-          state.policy[p.read] = input.settingValue;
+          if (input.settingValue !== undefined) state.policy[p.read] = input.settingValue;
+          for (const k of ['membersCanCreateInternalRepositories', 'membersCanCreatePrivateRepositories', 'membersCanCreatePublicRepositories']) if (input[k] !== undefined) state.policy[`${k}Setting`] = input[k];
+          if (input.membersCanCreateRepositoriesPolicyEnabled === false) state.policy.membersCanCreateRepositoriesSetting = 'NO_POLICY';
           if (input.policyValue) state.policy.allowPrivateRepositoryForkingSettingPolicyValue = input.policyValue;
         } else Object.assign(state.profile, Object.fromEntries(Object.entries(input).filter(([k]) => k !== 'enterpriseId')));
       }
@@ -144,6 +146,37 @@ describe('GQL-1 enterprise policies and profile', () => {
     expect(COVERED_BY_TOOL.get('updateEnterpriseProfile')).toBe('github_enterprise_profile_set');
     for (const m of ['updateEnterpriseTwoFactorAuthenticationRequiredSetting', 'updateEnterpriseTwoFactorAuthenticationDisallowedMethodsSetting',
       'updateEnterpriseDeployKeySetting', 'updateEnterpriseRepositoryProjectsSetting', 'updateEnterpriseMembersCanCreateRepositoriesSetting'])
-      expect(REFUSED_MUTATIONS.get(m)?.length, m).toBeGreaterThan(30);
+      { expect(REFUSED_MUTATIONS.has(m), m).toBe(false); expect(COVERED_BY_TOOL.get(m), m).toBe('github_enterprise_policy_set'); }
   });
 });
+
+for (const setting of ['two_factor_required', 'two_factor_disallowed_methods', 'repository_deploy_keys', 'repository_projects']) {
+  const p = POLICIES[setting];
+  runWriteContract({ ...base, label: `enterprise ${setting}`, definition: def('github_enterprise_policy_set'),
+    args: { enterprise: SLUG, setting, value: p.values[0] },
+    arrange: (gh, outcome) => arrange(gh, { policy: { [p.read]: 'NO_POLICY' }, flips: outcome === 'ok' }) });
+}
+runWriteContract({ ...base, label: 'enterprise granular repository creation', definition: def('github_enterprise_policy_set'),
+  args: { enterprise: SLUG, setting: 'members_can_create_repositories', membersCanCreatePublicRepositories: false },
+  arrange: (gh, outcome) => arrange(gh, { policy: { membersCanCreateRepositoriesSetting: 'ALL', membersCanCreatePublicRepositoriesSetting: true, membersCanCreatePrivateRepositoriesSetting: true }, flips: outcome === 'ok' }) });
+
+it('enterprise creation preserves omitted visibility fields and rejects mutually exclusive inputs without a mutation', async () => {
+ const w = withMaster(await makeWorld({ profile: 'full', mode: 'production' }));
+ const state = arrange(w.gh, { policy: { membersCanCreateRepositoriesSetting: 'ALL', membersCanCreatePublicRepositoriesSetting: true, membersCanCreatePrivateRepositoriesSetting: true } });
+ const args = { enterprise: SLUG, setting: 'members_can_create_repositories', membersCanCreatePublicRepositories: false };
+ const out = parse(await call(w, 'github_enterprise_policy_set', args));
+ expect(out.status).toBe('applied');
+ expect(state.sent).toEqual([{ enterpriseId: 'E1', membersCanCreatePublicRepositories: false }]);
+ expect(state.policy.membersCanCreatePrivateRepositoriesSetting).toBe(true);
+ expect(w.gh.invalid).toEqual([]);
+ const conflict = await call(w, 'github_enterprise_policy_set', { ...args, value: 'DISABLED' });
+ expect(conflict.isError).toBe(true);
+ expect(state.sent).toHaveLength(1);
+});
+
+for (const setting of ['ip_allowlist_enabled', 'ip_allowlist_installed_apps', 'ip_allowlist_user_enforcement']) {
+ const p = POLICIES[setting];
+ runWriteContract({ ...base, label: `enterprise ${setting}`, definition: def('github_enterprise_policy_set'),
+  args: { enterprise: SLUG, setting, value: 'ENABLED' },
+  arrange: (gh, outcome) => arrange(gh, { policy: { [p.read]: 'DISABLED' }, flips: outcome === 'ok' }) });
+}

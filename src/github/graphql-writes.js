@@ -388,9 +388,6 @@ export const REFUSED_MUTATIONS = new Map([
   ['createIpAllowListEntry', 'IP allow lists can lock every person out of the organization or enterprise. Change them on github.com.'],
   ['deleteIpAllowListEntry', 'IP allow lists can lock every person out of the organization or enterprise. Change them on github.com.'],
   ['updateIpAllowListEntry', 'IP allow lists can lock every person out of the organization or enterprise. Change them on github.com.'],
-  ['updateIpAllowListEnabledSetting', 'IP allow lists can lock every person out of the organization or enterprise. Change them on github.com.'],
-  ['updateIpAllowListForInstalledAppsEnabledSetting', 'IP allow lists can lock every person out of the organization or enterprise. Change them on github.com.'],
-  ['updateIpAllowListUserLevelEnforcementEnabledSetting', 'IP allow lists can lock every person out of the organization or enterprise. Change them on github.com.'],
   ['addVerifiableDomain', 'Verifiable domains control who can see members email addresses and need DNS changes only the owner can make. Do this on github.com.'],
   ['approveVerifiableDomain', 'Verifiable domains control who can see members email addresses and need DNS changes only the owner can make. Do this on github.com.'],
   ['deleteVerifiableDomain', 'Verifiable domains control who can see members email addresses and need DNS changes only the owner can make. Do this on github.com.'],
@@ -422,11 +419,6 @@ export const REFUSED_MUTATIONS = new Map([
   ['deleteUserList', 'Star lists are personal bookmarks without an ownership scope here. Manage them on github.com.'],
   ['updateUserList', 'Star lists are personal bookmarks without an ownership scope here. Manage them on github.com.'],
   ['updateUserListsForItem', 'Star lists are personal bookmarks without an ownership scope here. Manage them on github.com.'],
-  ['updateEnterpriseTwoFactorAuthenticationRequiredSetting', 'Requiring two-factor sign-in can remove every member who has not set it up. Change it on github.com.'],
-  ['updateEnterpriseTwoFactorAuthenticationDisallowedMethodsSetting', 'Blocking sign-in methods can lock members out. Change it on github.com.'],
-  ['updateEnterpriseDeployKeySetting', 'GitHub shows no way to read this setting back, so the change could not be confirmed. Change it on github.com.'],
-  ['updateEnterpriseRepositoryProjectsSetting', 'GitHub shows no way to read this setting back, so the change could not be confirmed. Change it on github.com.'],
-  ['updateEnterpriseMembersCanCreateRepositoriesSetting', 'Five linked fields decide who may create which kind of repository; a partial change is easy to get wrong. Change it on github.com.']
 ]);
 
 export const writeSpec = (mutation) => WRITE_SPECS.get(mutation) ?? null;
