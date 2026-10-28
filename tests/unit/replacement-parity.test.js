@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
 import { createDispatch } from '../../src/tools/dispatch.js';
 import { registry } from '../../src/tools/index.js';
 import { makeWorld } from '../../test/helpers/write-contract.js';
@@ -102,4 +103,58 @@ describe('replacement verification regressions', () => {
     expect(w.gh.invalid).toEqual([]);
   });
 
+});
+
+it('returns the actual database module byte-for-byte, including RTC schema names', async()=>{
+  const source=readFileSync(new URL('../../src/db.js',import.meta.url),'utf8');
+  const w=await makeWorld({profile:'read_only'});
+  w.gh.when('GET /repos/{owner}/{repo}/contents/{path}').reply(200,{...file,
+    size:Buffer.byteLength(source),content:Buffer.from(source).toString('base64')});
+  const result=value(await call(w,'github_content_get',{repo:'hello',path:'src/db.js',ref:sha,fullText:true}));
+  expect(result.content).toBe(source);
+});
+
+it('diagnoses genuine format matches without values, and marks modified text honestly',async()=>{
+  const credential='rtc_pass_'+'x'.repeat(43);
+  const source='ordinary rtc_pass_rate identifier\n😀 '+credential+'\n';
+  const w=await makeWorld({profile:'read_only'});
+  const payload={...file,size:Buffer.byteLength(source),content:Buffer.from(source).toString('base64')};
+  w.gh.when('GET /repos/{owner}/{repo}/contents/{path}').reply(200,payload);
+  const report=value(await call(w,'github_content_protection_check',{repo:'hello',path:'src/db.js',ref:sha}));
+  expect(report).toMatchObject({inspected:true,sha,total_findings:1,byte_exact_available:false,report_contains_secret_values:false});
+  expect(report.findings[0]).toMatchObject({rule:'robinson-rtc-pass',line:2,column:3,credential_validity:'not_checked'});
+  expect(JSON.stringify(report)).not.toContain(credential);
+  expect(report.exact_local_retrieval.read.args).toEqual(['-C','repository','cat-file','blob',sha]);
+  const textRead=value(await call(w,'github_content_get',{repo:'hello',path:'src/db.js',ref:sha,fullText:true}));
+  expect(textRead.content_protection).toMatchObject({text_redacted:true,content_exact:false,byte_exact_available:false});
+  expect(textRead.content).toContain('ordinary rtc_pass_rate identifier');
+  expect(textRead.content).not.toContain(credential);
+  const denied=await call(w,'github_content_get',{repo:'hello',path:'src/db.js',ref:sha,byteOffset:0});
+  expect(denied.isError).toBe(true);
+  expect(JSON.stringify(denied)).toContain('github_content_protection_check');
+  expect(JSON.stringify(denied)).not.toContain(credential);
+});
+
+it('allows exact byte windows for harmless RTC identifiers after detector correction',async()=>{
+  const source=Buffer.from('😀 CREATE TABLE rtc_pass_rate; SELECT rtc_pass_scopes;');
+  const w=await makeWorld({profile:'read_only'});
+  w.gh.when('GET /repos/{owner}/{repo}/git/blobs/{file_sha}').reply(200,{sha,size:source.length,encoding:'base64',content:source.toString('base64')});
+  const result=value(await call(w,'github_content_get',{repo:'hello',path:'src/db.js',blobSha:sha,byteOffset:0}));
+  expect(result.complete).toBe(true);
+  expect(Buffer.from(result.content_base64,'base64')).toEqual(source);
+  const report=value(await call(w,'github_content_protection_check',{repo:'hello',path:'src/db.js',blobSha:sha}));
+  expect(report).toMatchObject({total_findings:0,byte_exact_available:true});
+});
+
+it('protects a private-key body before selecting line windows, preserving original line numbers',async()=>{
+  const key=['-----BEGIN '+'PRIVATE KEY-----','YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXo=','-----END PRIVATE KEY-----'].join('\n');
+  const source='first\n'+key+'\nlast\n';
+  const w=await makeWorld({profile:'read_only'});
+  w.gh.when('GET /repos/{owner}/{repo}/contents/{path}').reply(200,{...file,size:Buffer.byteLength(source),content:Buffer.from(source).toString('base64')});
+  const middle=value(await call(w,'github_content_get',{repo:'hello',path:'key-fixture',ref:sha,startLine:3,endLine:3}));
+  expect(middle).toMatchObject({start_line:3,end_line:3,total_lines:6,content:'[hidden]'});
+  expect(middle.content_protection.content_exact).toBe(false);
+  expect(JSON.stringify(middle)).not.toContain('YWJjZGVm');
+  const tail=value(await call(w,'github_content_get',{repo:'hello',path:'key-fixture',ref:sha,startLine:5,endLine:5}));
+  expect(tail.content).toBe('last');
 });

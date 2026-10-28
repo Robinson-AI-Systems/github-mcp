@@ -1,3 +1,4 @@
+import { redact } from './util.js';
 // Repositories, change side (D-1 part 2). Every tool is a `defineGithubWrite`: it reads the repository first, the guards classify the
 // change (visibility and settings are production; making something public is an access change), the caller previews and confirms, one
 // request is sent through `githubFor`, and the result is read back and compared with the intent.
@@ -283,7 +284,7 @@ const repoSetCustomProperties = defineGithubWrite({
     if (entries.length > 30) throw new TypeError('At most 30 properties at a time.');
     const text = (v) => typeof v === 'string' && v.length <= 1000;
     for (const [name, value] of entries) {
-      if (!/^[A-Za-z0-9_.-]{1,75}$/.test(name)) throw new TypeError(`"${name.slice(0, 40)}" is not a valid property name.`);
+      if (!/^[A-Za-z0-9_.-]{1,75}$/.test(name)) throw new TypeError(`"${redact(name).slice(0, 40)}" is not a valid property name.`);
       if (!(value === null || text(value) || (Array.isArray(value) && value.length <= 50 && value.every(text)))) throw new TypeError(`The value of "${name}" must be text, a list of text, or null.`);
     }
     return { owner: ownerOf(args, ctx), repo: args.repo, scope: 'repo' };

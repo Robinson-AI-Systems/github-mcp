@@ -1,3 +1,4 @@
+import { redact } from './util.js';
 // Y-7c: organization code-security configurations (a named bundle of security settings that can be attached to many
 // repositories). Paid private security changes remain executable for users who have GitHub provider permission and
 // authorize unknown future metered charges; they are never made free by guessing a price.
@@ -32,7 +33,7 @@ const ONE = `${BASE}/{configuration_id}`;
 export const turnsOnPaid = (settings) => !!settings && (
   [...PAID].some((k) => settings[k] === 'enabled') || ['enabled', 'code_security', 'secret_protection'].includes(settings.advanced_security));
 export const shapeConfig = (c) => (c ? {
-  id: c.id, name: String(c.name ?? '').slice(0, 100), description: typeof c.description === 'string' ? c.description.slice(0, 255) : null, enforcement: c.enforcement ?? null,
+  id: c.id, name: redact(String(c.name ?? '')).slice(0, 100), description: typeof c.description === 'string' ? redact(c.description).slice(0, 255) : null, enforcement: c.enforcement ?? null,
   paid: turnsOnPaid(c), settings: Object.fromEntries([...SETTING_KEYS, 'advanced_security',
     'code_scanning_default_setup_options', 'code_scanning_options']
     .filter(k=>c[k]!==undefined).map(k=>[k,c[k]]))
@@ -244,7 +245,7 @@ const detach = defineGithubWrite({
   read: async (args, ctx, t) => {
     const chosen = await resolveRepos(ctx, t, args.repositories);
     const withConfig = [];
-    for (const r of chosen) { const c = await repoConfig(ctx, t, r.name); if (c?.configuration) withConfig.push({ ...r, configId: c.configuration.id, configName: String(c.configuration.name ?? '').slice(0, 100) }); }
+    for (const r of chosen) { const c = await repoConfig(ctx, t, r.name); if (c?.configuration) withConfig.push({ ...r, configId: c.configuration.id, configName: redact(String(c.configuration.name ?? '')).slice(0, 100) }); }
     return { chosen, withConfig };
   },
   classify: () => ({ production: 'stops the organization from managing those repositories\' security settings' }),

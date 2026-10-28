@@ -1,3 +1,4 @@
+import { redact } from './util.js';
 // Y-4: shared pieces for the Projects v2 lifecycle tools (GraphQL only; REST has no way to create, copy, delete or
 // restructure a project). A project is always named by its owner and number; the owner must be a connected account and
 // GitHub itself must say the project belongs to that owner (never trusted from the arguments). Organizations use the
@@ -33,7 +34,7 @@ const BY_ID = `query ProjectById($id: ID!) { node(id: $id) { __typename ... on P
 const OWNER_QUERY = `query ProjectOwner($login: String!) { repositoryOwner(login: $login) { __typename id login } }`;
 
 export const shapeProject = (p) => ({
-  number: p.number, id: p.id, title: p.title, description: p.shortDescription ?? null, readme: p.readme ? String(p.readme).slice(0, 2000) : null, public: p.public === true, closed: p.closed === true,
+  number: p.number, id: p.id, title: p.title, description: p.shortDescription ?? null, readme: p.readme ? redact(String(p.readme)).slice(0, 2000) : null, public: p.public === true, closed: p.closed === true,
   url: p.url, owner: p.owner?.login ?? null, itemCount: p.items?.totalCount ?? 0,
   fields: (p.fields?.nodes ?? []).filter(Boolean).map((f) => ({ id: f.id, name: f.name, dataType: f.dataType })),
   views: (p.views?.nodes ?? []).filter(Boolean).map((v) => ({ id: v.id, name: v.name, layout: v.layout })), untrusted: true

@@ -23,7 +23,7 @@ Restricted preview RTC successful replies revalidate service pass and scratch ow
 
 Every tool this server will have, by area — the product scope. The implementing model builds exactly these; anything
 else goes in `docs/ROADMAP.md` and the PR report, and universal tools (last section) provide guarded access only where their actual credential, classification and request support permits. Endpoint-level completeness remains unproven; see [MAXIMUM-AUTHORITY](designs/MAXIMUM-AUTHORITY.md). Counts are checked by `python3 scripts/count-catalog.py` (run by `npm run check` and CI since A-1, #1). When a
-tool merges, its Card cell gains `built #<PR>`. Built so far: **481 cataloged tools** (every row below is in the registry, `src/tools/index.js`; `scripts/count-catalog.py` and `scripts/check-writes.mjs` fail the build if a tool and its row disagree)
+tool merges, its Card cell gains `built #<PR>`. Built so far: **482 cataloged tools** (every row below is in the registry, `src/tools/index.js`; `scripts/count-catalog.py` and `scripts/check-writes.mjs` fail the build if a tool and its row disagree)
 and holds the two A-5 tools, the B-3 protected-list reader the two B-2 production-switch tools and the B-4 spend-limit tool. Since B-5 every result of these tools is shaped (`src/tools/util.js`) and failures are explained by `src/tools/errors.js`. Since B-6 a connection sees only the tools its profile allows (`tools/list` and by-name calls). Every write tool below is built with `defineGithubWrite` (B-1, #16, `src/tools/define-github-write.js`) and pass the nine write-contract checks (`test/helpers/write-contract.js`); the two B-2 tools are the first (`src/tools/server.js`).
 
 **Safety metadata and scoped behavior:** `—` reads only; `P` supports optional dryRun; `D` describes destructive effects; `Prod`/`Prod*` describe production scope; `A`/`A*` describe access changes; `M` describes notifications; `$`/`$*` describe billing. `C` retains the restricted-profile confirmation declaration checked against source. On a full ordinary owner connection these marks are disclosure, not automatic confirmation or refusal. Explicitly restricted profiles/passes retain their chosen mode, access and spend limits. GitHub applies provider rules; journal/replay/readback and credential isolation apply to everyone.
@@ -102,13 +102,14 @@ Card(s): D-1.
 | `github_repo_set_custom_properties` | Set custom property values on a repository | P | N | I | O | F | D-1 built #29 |
 | `github_repo_star` | Star or unstar a repository as Chris (uses your master token when added) | P | C | U | Op | E | D-1 built #29 |
 
-## Files, commits and git data (`github_content_*, github_commit_*, github_git_*`) — 17
+## Files, commits and git data (`github_content_*, github_commit_*, github_git_*`) — 18
 
 Card(s): D-2.
 
 | Tool | What it does | Safety | Origin | Cred | Audience | Profile | Card |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `github_content_get` | A file or directory at any ref; compact text by default, byte-exact base64 via `byteOffset`/`byteLength` (up to 32 KiB per explicit call) and a retained handle for overflow | — | F | I | B,Op | R | D-2 built #30 |
+| `github_content_protection_check` | Explain matching rules and locations without values; provide a safe false-positive report and exact local-Git retrieval guidance | — | N | I | B,O,Op | R | PAR-2 |
 | `github_content_get_tree` | Whole-repo file list at a ref (recursive tree), filtered by a glob | — | C | I | B | R | D-2 built #30 |
 | `github_content_put_file` | Create or update one file with a commit (checks the file's current version first) | P·Prod* | F | I | B | E | D-2 built #32 |
 | `github_content_delete_file` | Delete one file with a commit | C·Prod* | C | I | B | E | D-2 built #32 |
@@ -870,7 +871,7 @@ Card(s): PAR-1. Code Quality findings come from GitHub's own analysis (not marke
 
 ## Totals
 
-**Totals:** 481 tools: 475 hand-built + 6 universal (`github_api_*`, `github_graphql_*`), plus guided settings for every
+**Totals:** 482 tools: 476 hand-built + 6 universal (`github_api_*`, `github_graphql_*`), plus guided settings for every
 dashboard-only owner setting. By profile (lowest profile that has the tool): read_only 158, everyday adds 83
 (everyday lists 240), full adds 113 (full lists 396). In compact mode (`docs/designs/BATCH-C.md`) an agent
 loads only about 25 tools up front (meta-tools, whoami, universal search, workflows) and reaches the rest through
@@ -880,7 +881,7 @@ loads only about 25 tools up front (meta-tools, whoami, universal search, workfl
 | --- | --- |
 | Server about itself | 25 |
 | Repositories | 22 |
-| Files, commits and git data | 17 |
+| Files, commits and git data | 18 |
 | Branches and tags | 9 |
 | Pull requests | 15 |
 | Reviews and review threads | 10 |
@@ -921,7 +922,7 @@ loads only about 25 tools up front (meta-tools, whoami, universal search, workfl
 | GitHub Enterprise | 13 |
 | Master-token families: Copilot Spaces, Classroom, Marketplace and more | 17 |
 | Code quality and GitHub help | 4 |
-| **Total** | **481** |
+| **Total** | **482** |
 
 <!-- #108: experimental RTC HTTPS reader bridges only server/meta read tools using existing guarded dispatch; RTC 1 certification is not claimed. -->
 

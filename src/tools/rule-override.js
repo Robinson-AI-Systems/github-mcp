@@ -1,3 +1,4 @@
+import { redact } from './util.js';
 import { isOwnerConnection } from '../core/authority.js';
 // GOD-6 step 6b: a tool that may skip a branch's rules ON PURPOSE. `overridable(spec, { branchOf })` wraps one write tool:
 //  - adds `overrideRules` (+ `overrideReason`) to its arguments;
@@ -40,7 +41,7 @@ export function overrideLine(plan) {
   if (!plan) return '';
   if (plan.refuse) return `Cannot skip the rules: ${plan.refuse}`;
   if (!plan.use) return 'No rules would be skipped, so the override is not needed.';
-  const list = plan.skipped.length ? plan.skipped.join('; ').slice(0, 380)
+  const list = plan.skipped.length ? redact(plan.skipped.join('; ')).slice(0, 380)
     : 'No branch rules identified by the available reads; other checks or GitHub policies may still apply';
   return `Requested override on ${plan.branch}: ${list}. GitHub decides whether ${plan.login ?? 'you'} may bypass; nothing is skipped without its approval. Reason: ${plan.reason}.`;
 }
@@ -72,8 +73,8 @@ export function overridable(spec, { branchOf, extras = async () => ({}) }) {
       const plan = planOf(input.args);
       const line = spec.summarize(input);
       if (!plan) return line;
-      if (plan.refuse || !plan.use) return `${overrideLine(plan)} ${line}`.slice(0, 1000);
-      return `${overrideSummaryPrefix(plan.reason)}${line}. ${overrideLine(plan)}`.slice(0, 1000);
+      if (plan.refuse || !plan.use) return redact(`${overrideLine(plan)} ${line}`).slice(0, 1000);
+      return redact(`${overrideSummaryPrefix(plan.reason)}${line}. ${overrideLine(plan)}`).slice(0, 1000);
     },
     present: (input) => {
       const shown = spec.present(input);

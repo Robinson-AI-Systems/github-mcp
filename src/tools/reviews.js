@@ -1,3 +1,4 @@
+import { redact } from './util.js';
 // Reviews and review threads (E-3). Reads: reviews, threads (GraphQL, with resolved/outdated), inline comments. Text written by
 // people without push access carries its author association so the dispatcher marks it untrusted.
 import { createHash } from 'node:crypto';
@@ -11,7 +12,7 @@ const NUMBER = { type: 'integer', minimum: 1, description: 'Pull request number'
 const MAX = { type: 'integer', minimum: 1, maximum: 300, description: 'Default 50' };
 
 const commentText = body => ({
-  body: String(body ?? '').slice(0, 1500),
+  body: redact(String(body ?? '')).slice(0, 1500),
   body_sha256: createHash('sha256').update(String(body ?? '')).digest('hex'),
   ...(String(body ?? '').length > 1500 ? { body_truncated: true } : {})
 });

@@ -30,3 +30,7 @@ Plan committed before feature changes. Implementation and synthetic tests checke
 ## 2026-10-28 remediation — Drift check and current scope
 
 The [authority/parity plan](../designs/AUTHORITY-PARITY-2026-10-28.md) supersedes older owner confirmation/cap/protection acceptance in this card. Reuse existing implementations; complete-read fallback, owner write authority and repository scan guidance are current work. Historical MERGED status does not certify this follow-up or deployed parity. Keep existing completion evidence unchanged; follow-up proof belongs in the dated remediation status.
+
+### Live false-positive correction, 2026-10-28
+
+The first authorized audit release exposed RTC schema names being redacted and exact byte windows refused. Correct the detector against the actual issued-pass format, retain positive credential protection, add value-free rule/location diagnostics and explicit redacted-text metadata, and verify the exact database-module blob through both official and custom routes after deployment. See `docs/CONTENT-PROTECTION.md`. Native Git is lower priority and not included.

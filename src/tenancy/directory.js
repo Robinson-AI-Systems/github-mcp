@@ -1,3 +1,4 @@
+import { redact } from '../github/content-protection.js';
 // PUB-1: PRIVATE, unexposed tenant isolation foundation. No request route may call this
 // until PUB-2 binds a verified GitHub numeric subject to the session. Existing owner
 // data in the legacy (public) schema is never migrated, copied or modified here.
@@ -1133,7 +1134,7 @@ export function createTenantDirectory(sql) {
     /** Same for any built-in page (delete my data, My connection). */
     async ensureBuiltInClient(clientId, redirectUri, secretHash, name) {
       await sql`INSERT INTO gh_public_clients (client_id, secret_hash, redirect_uris, client_name)
-        VALUES (${clientId}, ${secretHash}, ${[redirectUri]}::text[], ${String(name).slice(0, 100)})
+        VALUES (${clientId}, ${secretHash}, ${[redirectUri]}::text[], ${redact(String(name)).slice(0, 100)})
         ON CONFLICT (client_id) DO UPDATE SET redirect_uris = EXCLUDED.redirect_uris`;
     },
     /** Reserved nonsecret public Muse client: fixed verified Meta callback, no owner credential. */

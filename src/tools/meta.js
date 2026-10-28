@@ -1,3 +1,4 @@
+import { redact } from './util.js';
 // The meta-tools (C-2): find a tool, read its instructions, run any tool by name through the same guards, or read several things at once.
 // They see only the tools the connection's profile includes. `github_call` and `github_batch` run tools through the dispatcher itself
 // (`ctx.callTool`), so every check - arguments, profile, production switch, protected list, people, spend, change log - still applies.
@@ -41,7 +42,7 @@ function manifestHandler(_args, ctx) {
 
 async function describeHandler(args, ctx) {
   const tool = find(ctx, args.name);
-  if (!tool) throw new TypeError(`Unknown or unavailable tool: ${String(args.name).slice(0, 80)}. Search with github_search_tools.`);
+  if (!tool) throw new TypeError(`Unknown or unavailable tool: ${redact(String(args.name)).slice(0, 80)}. Search with github_search_tools.`);
   return describeTool(tool);
 }
 
@@ -49,7 +50,7 @@ const callable = (ctx, name) => { const t = find(ctx, name); return t && (!t.use
 
 async function callHandler(args, ctx) {
   if (!callable(ctx, args.name)) {
-    return { isError: true, content: [{ type: 'text', text: `Unknown or unavailable tool: ${String(args.name).slice(0, 80)}. Search with github_search_tools.${find(ctx, args.name) ? ' The tool-finding tools are called directly, not through github_call.' : ''}` }] };
+    return { isError: true, content: [{ type: 'text', text: `Unknown or unavailable tool: ${redact(String(args.name)).slice(0, 80)}. Search with github_search_tools.${find(ctx, args.name) ? ' The tool-finding tools are called directly, not through github_call.' : ''}` }] };
   }
   return ctx.callTool(args.name, args.args ?? {});
 }

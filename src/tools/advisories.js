@@ -1,3 +1,4 @@
+import { redact } from './util.js';
 // Y-7a: repository security advisories. Advisory text describes an unfixed hole, so it is treated as sensitive:
 //  - no result and no change-log row ever contains the description; only its SHA-256 and length are kept;
 //  - publishing makes the advisory PUBLIC and cannot be undone: it needs the GHSA id typed again and a production connection;
@@ -31,7 +32,7 @@ const toVulns = (list) => list.map((v) => ({ package: { ecosystem: v.ecosystem, 
 /** The log-safe view of an advisory: ids, state, severity, counts and a hash of the description - never its text. */
 export const shapeAdvisory = (a) => (a ? {
   ghsa: a.ghsa_id, state: a.state, severity: a.severity ?? null, cveId: a.cve_id ?? null,
-  summary: typeof a.summary === 'string' ? a.summary.slice(0, 200) : null,
+  summary: typeof a.summary === 'string' ? redact(a.summary).slice(0, 200) : null,
   packages: (a.vulnerabilities ?? []).map((v) => `${v.package?.ecosystem ?? '?'}/${v.package?.name ?? '?'}`).slice(0, 20),
   descriptionSha256: sha(a.description), descriptionLength: typeof a.description === 'string' ? a.description.length : 0,
   publishedAt: a.published_at ?? null, htmlUrl: a.html_url ?? null, privateFork: a.private_fork?.full_name ?? null
@@ -63,7 +64,7 @@ const save = defineGithubWrite({
   }),
   summarize: ({ args, target: t, before }) => (args.ghsa
     ? `Edit ${before.adv ? `${before.adv.state} advisory ${args.ghsa}` : `advisory ${args.ghsa} (not found)`} in ${t.owner}/${t.repo}: ${['summary', 'description', 'severity', 'cvssVector', 'vulnerabilities', 'cweIds', 'credits'].filter((k) => args[k] !== undefined).join(', ')} (description text is never shown)`
-    : `Create a DRAFT advisory "${String(args.summary).slice(0, 80)}" in ${t.owner}/${t.repo} for ${args.vulnerabilities.length} package(s); it stays private until published`),
+    : `Create a DRAFT advisory "${redact(String(args.summary)).slice(0, 80)}" in ${t.owner}/${t.repo} for ${args.vulnerabilities.length} package(s); it stays private until published`),
   apply: async ({ args, ctx, target: t, before }) => {
     const gh = await octo(ctx, t.owner);
     const body = {
@@ -79,7 +80,7 @@ const save = defineGithubWrite({
   },
   readAfter: async ({ args, ctx, target: t, response }) => ({ adv: shapeAdvisory(await getAdvisory(ctx, t, args.ghsa ?? response?.data?.ghsa_id)) }),
   verify: ({ args, before, after }) => !!after.adv
-    && (args.summary === undefined || after.adv.summary === args.summary.slice(0, 200))
+    && (args.summary === undefined || after.adv.summary === redact(args.summary).slice(0, 200))
     && (args.description === undefined || after.adv.descriptionSha256 === sha(args.description))
     && (args.severity === undefined || after.adv.severity === args.severity)
     && (args.ghsa ? after.adv.state === before.adv.state : after.adv.state === 'draft'),
@@ -151,7 +152,7 @@ const report = defineGithubWrite({
     return { to: `${args.owner}/${args.repo}` };
   },
   classify: async ({ args, ctx }) => notifyOutsiders(ctx, { logins: [args.owner] }),
-  summarize: ({ args }) => `Send a PRIVATE vulnerability report "${args.summary.slice(0, 80)}" to the maintainers of ${args.owner}/${args.repo} as you (description ${args.description.length} characters, never shown here)`,
+  summarize: ({ args }) => `Send a PRIVATE vulnerability report "${redact(args.summary).slice(0, 80)}" to the maintainers of ${args.owner}/${args.repo} as you (description ${args.description.length} characters, never shown here)`,
   apply: async ({ args, ctx, target: t }) => {
     const gh = await githubFor(ctx, { owner: t.owner, cred: 'U' });
     return gh.request('POST /repos/{owner}/{repo}/security-advisories/reports', {

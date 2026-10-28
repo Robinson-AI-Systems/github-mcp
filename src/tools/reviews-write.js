@@ -1,3 +1,4 @@
+import { redact } from './util.js';
 // Reviews and review threads, change side (E-3 part 2). Reviews and replies are messages: anything that mentions or reaches people
 // outside Chris's own accounts needs confirm. Nothing here touches a branch, so none of it is production.
 import { createHash } from 'node:crypto';
@@ -111,7 +112,7 @@ const reviewDismiss = defineGithubWrite({
   read: async (args, ctx, target) => ({ review: await getReview(ctx, target, args, args.reviewId) }),
   classify: ({ args, ctx, target, before }) => notifyOutsiders(ctx, { logins: before.review?.user?.login ? [before.review.user.login] : [], text: args.message, repoOwner: target.owner }),
   summarize: ({ args, before, target }) => (before.review && ['APPROVED', 'CHANGES_REQUESTED'].includes(before.review.state)
-    ? `Dismiss ${before.review.user?.login}'s ${before.review.state} review ${args.reviewId} on pull request #${args.number} in ${slug(target.owner, target.repo)}: "${args.message.slice(0, 80)}"`
+    ? `Dismiss ${before.review.user?.login}'s ${before.review.state} review ${args.reviewId} on pull request #${args.number} in ${slug(target.owner, target.repo)}: "${redact(args.message).slice(0, 80)}"`
     : `Review ${args.reviewId} on pull request #${args.number} is ${before.review ? before.review.state : 'not found'}; only an approval or a change request can be dismissed`),
   apply: async ({ args, ctx, target, before }) => {
     if (!before.review) throw refusal(`There is no review ${args.reviewId} on pull request #${args.number}.`, 404);
@@ -135,7 +136,7 @@ const reviewReply = defineGithubWrite({
     return readThread(ctx, target, args);
   },
   classify: ({ args, ctx, target }) => notifyOutsiders(ctx, { text: args.body, repoOwner: target.owner }),
-  summarize: ({ args, before, target }) => (before?.mine ? `Reply in the review thread on ${before.path} of pull request #${args.number} in ${slug(target.owner, target.repo)}: "${args.body.slice(0, 80)}"` : 'That review thread was not found on this pull request'),
+  summarize: ({ args, before, target }) => (before?.mine ? `Reply in the review thread on ${before.path} of pull request #${args.number} in ${slug(target.owner, target.repo)}: "${redact(args.body).slice(0, 80)}"` : 'That review thread was not found on this pull request'),
   apply: async ({ args, ctx, target, before }) => {
     needThread(before, target);
     await verifyHead(ctx, target, args);

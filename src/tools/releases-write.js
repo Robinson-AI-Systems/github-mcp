@@ -1,3 +1,4 @@
+import { redact } from './util.js';
 // G-5 release lifecycle. Every mutation uses the shared confirmed, request-keyed
 // write contract; publishing and deleting releases remain production operations.
 import { defineGithubWrite } from './define-github-write.js';
@@ -66,7 +67,7 @@ const create = defineGithubWrite({
   classify: classifications,
   summarize: ({ args, before, target: t }) => before.existing
     ? `Release "${args.tag}" already exists in ${describe(t)}. It will not be duplicated.`
-    : `Create ${args.draft === false ? 'PUBLISHED' : 'draft'} release "${args.tag}" in ${describe(t)}, ${args.generateReleaseNotes === false ? 'without' : 'with'} generated notes. Publishing creates the tag and notifies watchers. This cannot be automatically undone.${before.generated ? ` Current GitHub notes preview (may change before creation): ${before.generated.name} — ${before.generated.body.slice(0, 600)}` : ''}`,
+    : `Create ${args.draft === false ? 'PUBLISHED' : 'draft'} release "${args.tag}" in ${describe(t)}, ${args.generateReleaseNotes === false ? 'without' : 'with'} generated notes. Publishing creates the tag and notifies watchers. This cannot be automatically undone.${before.generated ? ` Current GitHub notes preview (may change before creation): ${before.generated.name} — ${redact(before.generated.body).slice(0, 600)}` : ''}`,
   apply: async ({ args, before, ctx, target: t }) => {
     if (before.existing) throw refusal(`Release "${args.tag}" already exists.`);
     return (await octo(ctx, t.owner)).request(ROUTES.create, {

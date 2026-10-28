@@ -20,3 +20,10 @@ describe('mapped object input validation',()=>{
     expect(validateArgs(closed,{user:{name:'a',secret:'not accepted'}})).toContain('Unknown argument');
   });
 });
+
+it('does not reflect a truncated credential prefix from an unknown long property name',()=>{
+  const key='rtc_pass_'+'x'.repeat(43);
+  const message=validateArgs({type:'object',properties:{},additionalProperties:false},{[key]:true});
+  expect(message).toContain('Unknown argument');
+  expect(message).not.toContain(key.slice(0,40));
+});

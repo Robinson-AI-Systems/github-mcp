@@ -1,3 +1,4 @@
+import { redact } from './util.js';
 // ENT-1 (reads): GitHub Enterprise through the person's master token (credential M). Every tool first proves the person
 // administers the named enterprise (src/github/enterprise-access.js); nothing is sent for any other slug.
 import { defineRead } from './define-read.js';
@@ -81,7 +82,7 @@ const securityConfigs = defineRead({
 
 const shapeAlert = (a) => ({ number: a.number, state: a.state, severity: a.security_advisory?.severity ?? a.security_vulnerability?.severity ?? null,
   package: a.dependency?.package?.name ?? null, ecosystem: a.dependency?.package?.ecosystem ?? null, manifest: a.dependency?.manifest_path ?? null,
-  repository: a.repository?.full_name ?? null, summary: String(a.security_advisory?.summary ?? '').slice(0, 200), created_at: a.created_at ?? null, url: a.html_url ?? null });
+  repository: a.repository?.full_name ?? null, summary: redact(String(a.security_advisory?.summary ?? '')).slice(0, 200), created_at: a.created_at ?? null, url: a.html_url ?? null });
 const dependabot = defineRead({
   name: 'github_enterprise_dependabot', area: 'enterprise', audience: ['O'],
   description: 'Read enterprise Dependabot alerts (filter by state and severity) or which repositories Dependabot may access.',

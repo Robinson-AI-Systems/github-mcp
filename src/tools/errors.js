@@ -3,7 +3,7 @@
 // with GitHub's request id for anyone who needs to look further. Nothing here ever includes a credential, a request body or a
 // stack trace. Unknown errors fall back to the plain status line unchanged.
 import { GithubClientError, formatDenver } from '../github/errors.js';
-import { redact } from './util.js';
+import { redactExcerpt as redact } from './util.js';
 
 const clip = (text, n = 300) => redact(String(text ?? '').replace(/\s+/g, ' ').trim()).slice(0, n);
 const headerOf = (error, name) => error?.response?.headers?.[name] ?? error?.headers?.[name];

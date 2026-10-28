@@ -1,3 +1,4 @@
+import { redactPreservingLines } from '../github/content-protection.js';
 // Files, commits and git data, read side (D-2 part 1). Big answers are bounded here (a file's text, a tree, a patch) and then again by the
 // result rules (C-1): nothing is returned whole when it is large. Reads only.
 import { listAll } from '../github/client.js';
@@ -5,7 +6,7 @@ import { defineRead } from './define-read.js';
 import { globToRegExp } from './production-guard.js';
 import { githubDownloadPage, safeGithubDownloadRedirect } from './safe-download-link.js';
 import { plain, readerFor } from './github-read.js';
-import { containsCredential } from './util.js';
+import { containsCredential, contentProtectionReport, redact } from './util.js';
 
 const OWNER = { type: 'string', maxLength: 39, description: 'GitHub account (default: the connection\'s default account)' };
 const REPO = { type: 'string', minLength: 1, maxLength: 100 };
@@ -15,7 +16,7 @@ const MAX_FILES = 100;
 const MAX_TREE = 500;
 const MAX_TEXT_BYTES = 1_000_000;
 const first = (text) => String(text ?? '').split('\n')[0];
-const clip = (text, n) => (typeof text === 'string' && text.length > n ? `${text.slice(0, n)}\n… [patch cut at ${n} characters]` : text);
+const clip = (text, n) => { const safe = typeof text === 'string' ? redact(text) : text; return typeof safe === 'string' && safe.length > n ? `${safe.slice(0, n)}\n… [patch cut at ${n} characters]` : safe; };
 
 const fileView = (f) => ({ filename: f.filename, status: f.status, additions: f.additions, deletions: f.deletions, ...(f.previous_filename ? { renamed_from: f.previous_filename } : {}),
   ...(f.patch ? { patch: clip(f.patch, PATCH_CAP) } : { patch: null }) });
@@ -67,7 +68,7 @@ export const contentGet = defineRead({
       // Check the entire decoded file before splitting/encoding: checking the
       // requested window alone could leak a token split across two windows.
       if (containsCredential(buffer.toString('utf8')))
-        throw new TypeError('Byte-exact retrieval is not available for a file containing credential-shaped content.');
+        throw new TypeError('Byte-exact retrieval is blocked by content protection for credential-shaped content. Call github_content_protection_check with the same repository, path and blobSha to identify the matching rule and locations without exposing values.');
       const at = args.byteOffset ?? 0;
       if (at > buffer.length) throw new TypeError('byteOffset exceeds the file size.');
       const chunk = buffer.subarray(at, at + (args.byteLength ?? 32768));
@@ -77,12 +78,44 @@ export const contentGet = defineRead({
     }
     if (looksBinary(buffer)) return { ...base, binary: true, content: null, note: 'This is a binary file, so its content is not shown.', download_url: data.download_url };
     const text = buffer.toString('utf8');
+    const protection = contentProtectionReport(text);
+    if (protection.total_findings) base.content_protection = { text_redacted: true, content_exact: false,
+      byte_exact_available: false, total_findings: protection.total_findings,
+      diagnostic: { tool: 'github_content_protection_check', arguments: { owner, repo: args.repo, path, blobSha: data.sha } } };
     if (args.startLine !== undefined) {
-      const lines = text.split('\n');
+      const lines = redactPreservingLines(text).split('\n');
       return { ...base, start_line: args.startLine, end_line: Math.min(args.endLine, lines.length),
         total_lines: lines.length, content: lines.slice(args.startLine - 1, args.endLine).join('\n') };
     }
     return { ...base, content: text };
+  })
+});
+
+export const contentProtectionCheck = defineRead({
+  name: 'github_content_protection_check', area: 'content', audience: ['B', 'O', 'Op'],
+  description: 'Explain file protection matches by rule and location, without values; prepare a safe false-positive report and exact local retrieval guidance.',
+  properties: { owner: OWNER, repo: REPO, path: { type: 'string', minLength: 1, maxLength: 1000 }, ref: REF,
+    blobSha: { type: 'string', pattern: '^[a-fA-F0-9]{40}$' } }, required: ['repo', 'path'],
+  handler: (args, ctx) => plain(async () => {
+    if (args.blobSha && args.ref) throw new TypeError('blobSha cannot be combined with ref.');
+    const { owner, octokit } = await readerFor(args, ctx);
+    const { data } = args.blobSha
+      ? await octokit.request('GET /repos/{owner}/{repo}/git/blobs/{file_sha}', { owner, repo: args.repo, file_sha: args.blobSha })
+      : await octokit.request('GET /repos/{owner}/{repo}/contents/{path}', { owner, repo: args.repo, path: args.path, ...(args.ref ? { ref: args.ref } : {}) });
+    if (Array.isArray(data) || data.encoding !== 'base64' || typeof data.content !== 'string' || data.size > MAX_TEXT_BYTES)
+      return { owner, repo: args.repo, path: args.path, inspected: false, note: 'Select one file up to 1 MB; use local Git for larger or unsupported content.' };
+    const buffer = Buffer.from(data.content, 'base64');
+    if (buffer.length > MAX_TEXT_BYTES) throw new TypeError('File exceeds the diagnostic limit.');
+    if (!Buffer.from(buffer.toString('utf8')).equals(buffer)) return { owner, repo: args.repo, path: args.path,
+      inspected: false, note: 'This file is not valid UTF-8; inspect it locally with Git. No text-location claim is made.' };
+    return { owner, repo: args.repo, path: args.path, sha: data.sha, inspected: true,
+      ...contentProtectionReport(buffer.toString('utf8')),
+      next: 'Check these locations in your own editor. Share only this value-free report and a harmless minimal example with your agent to correct the matching rule, then retest this immutable blob. No repository-wide bypass or secret values are needed.',
+      provider_blob_api: `https://api.github.com/repos/${owner}/${args.repo}/git/blobs/${data.sha}`,
+      exact_local_retrieval: { clone: { program: 'git', args: ['clone', '--', `https://github.com/${owner}/${args.repo}.git`, 'repository'] },
+        read: { program: 'git', args: ['-C', 'repository', 'cat-file', 'blob', data.sha], save_stdout_to_local_file: true },
+        note: 'If the blob is absent from your clone, fetch its original ref or use the exact provider blob API directly. For ambiguous credential-shaped fixtures, keep exact bytes outside chat. This MCP does not disable protection or assert that a format match is a valid credential.' },
+      report_contains_secret_values: false };
   })
 });
 
@@ -240,6 +273,6 @@ export const gitGetCommit = defineRead({
   })
 });
 
-const all = [contentGet, contentGetTree, contentGetArchiveLink, contentCheckCodeowners, commitList, commitGet, commitCompare, commitListPrs, gitGetRef, gitGetCommit];
+const all = [contentGet, contentProtectionCheck, contentGetTree, contentGetArchiveLink, contentCheckCodeowners, commitList, commitGet, commitCompare, commitListPrs, gitGetRef, gitGetCommit];
 export const tools = all.map((d) => d.tool);
 export const handlers = Object.fromEntries(all.map((d) => [d.tool.name, d.handler]));

@@ -263,3 +263,5 @@ For branch → commit → PR in one request: step 0 calls `github_branch_create`
 Use `github_content_get` with `fullText: true` for full bounded source text. Default previews remain small; if the retained store fails, follow `continuation` using the immutable `blobSha` and exact byte windows until `complete`. Large prose has one authoritative JSON copy in `content[0].text`; structured metadata points to it.
 
 `github_security_scan_files` checks only selected committed files using local patterns. For provider protection and repository coverage, call `github_security_scan_guidance`: it reads current settings and supplies exact native setup calls, official remote-MCP setup, and a Robinson Gitleaks workflow/local commands. Generated configuration is not an installed scan, existing alerts are not a fresh scan, and zero matches never certify a repository has no secrets.
+
+For a masked source file or refused exact-byte read, use `github_content_protection_check`. It names the rule and location without exposing the matched value; see [content protection and false positives](CONTENT-PROTECTION.md) for correction and local retrieval steps.

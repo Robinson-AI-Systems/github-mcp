@@ -1,3 +1,4 @@
+import { redact } from './util.js';
 import { isOwnerConnection } from '../core/authority.js';
 // Ordinary full-owner merges rely on GitHub's repository rules and permissions.
 // An optional expectedHeadSha is checked and sent to GitHub for race detection.
@@ -87,8 +88,8 @@ const overriding = (args) => planOf(args)?.use === true;
 const overrideText = (args, line) => {
   const plan = planOf(args);
   if (!plan) return line;
-  if (plan.refuse || !plan.use) return `${overrideLine(plan)} ${line}`.slice(0, 1000);
-  return `${overrideSummaryPrefix(plan.reason)}${line}. ${overrideLine(plan)}`.slice(0, 1000);
+  if (plan.refuse || !plan.use) return redact(`${overrideLine(plan)} ${line}`).slice(0, 1000);
+  return redact(`${overrideSummaryPrefix(plan.reason)}${line}. ${overrideLine(plan)}`).slice(0, 1000);
 };
 export function mergeCheckSummary(before) {
   const ci = before?.ci;

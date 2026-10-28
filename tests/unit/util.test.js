@@ -47,3 +47,10 @@ describe('shapeResult', () => {
     expect(() => shapeResult(deep)).not.toThrow();
   });
 });
+
+it('preserves ordinary RTC schema identifiers while redacting complete issued pass values',()=>{
+  const source="CREATE TABLE rtc_pass_rate; SELECT * FROM rtc_pass_scopes JOIN rtc_pass_grants;";
+  expect(redact(source)).toBe(source);
+  const issued='rtc_pass_'+'x'.repeat(43);
+  expect(redact(source+' '+issued)).toBe(source+' [hidden]');
+});

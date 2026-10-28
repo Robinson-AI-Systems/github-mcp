@@ -55,7 +55,8 @@ function check(spec, value, path, depth) {
             if (problem) return problem;
             continue;
           }
-          return `Unknown argument: ${key.slice(0, 40)}.`;
+          // Do not expose a credential prefix by truncating an untrusted property name before redaction.
+          return key.length > 40 ? 'Unknown argument (long name omitted).' : `Unknown argument: ${key}.`;
         }
         const problem = check(props[key], item, path ? `${path}.${key}` : key, depth + 1);
         if (problem) return problem;

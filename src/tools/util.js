@@ -7,25 +7,13 @@
 // It never mutates its input and always returns plain JSON-able data.
 import { formatDenver } from '../github/errors.js';
 
-export const HIDDEN = '[hidden]';
+import { HIDDEN, redact } from '../github/content-protection.js';
+export { HIDDEN, redact, redactExcerpt, containsCredential, contentProtectionReport } from '../github/content-protection.js';
 const SECRET_KEYS = new Set(['token', 'access_token', 'refresh_token', 'secret', 'client_secret', 'webhook_secret', 'password', 'pem', 'private_key', 'encrypted_value', 'secret_value']);
-// GitHub's stateless installation tokens (2026) are JWTs: `ghs_` + three base64url parts joined by dots (~520 characters),
-// so a token shape must include `.`, `-` and `_` or redaction would stop at the first dot and leave the rest visible.
-const TOKEN_SHAPES = [/rtc_pass_[A-Za-z0-9_-]+/g, /\b(?:tac|trf)_[A-Za-z0-9_-]{40,}/g, /gh[pousr]_[A-Za-z0-9._-]{4,}/g, /github_pat_[A-Za-z0-9_]{4,}/g, /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?(?:-----END [A-Z ]*PRIVATE KEY-----|$)/g];
 const TRUSTED = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);
 const TEXT_FIELDS = ['body', 'title', 'message', 'text', 'description', 'name'];
 const ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/;
 const MAX_DEPTH = 12;
-
-/** Replaces token- and key-shaped text inside a string. */
-export function redact(text) {
-  let out = String(text);
-  for (const shape of TOKEN_SHAPES) out = out.replace(shape, HIDDEN);
-  return out;
-}
-
-/** Whole-output defense also catches credential-shaped property names and deep values. */
-export const containsCredential = text => redact(text) !== String(text);
 
 const dollars = (cents) => `$${(cents / 100).toFixed(2)}`;
 

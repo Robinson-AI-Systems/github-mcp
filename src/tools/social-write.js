@@ -1,3 +1,4 @@
+import { redact } from './util.js';
 // Y-3 (WU-Y3b): acting AS THE VIEWER on things the connected account does not own — following a person, watching a
 // repository, public profile links and star lists. Every tool uses the user sign-in (credential U), reads the current
 // state first, proves who the viewer is, and reads the result back. Following notifies the other person, so it goes
@@ -99,8 +100,8 @@ const cleanUrls = (list, label) => {
   const urls = [...new Set((list ?? []).map(String))];
   for (const url of urls) {
     let parsed;
-    try { parsed = new URL(url); } catch { throw refusal(`${label} "${url.slice(0, 60)}" is not a valid https address.`); }
-    if (parsed.protocol !== 'https:' || parsed.username || parsed.password) throw refusal(`${label} "${url.slice(0, 60)}" must be a plain https address.`);
+    try { parsed = new URL(url); } catch { throw refusal(`${label} "${redact(url).slice(0, 60)}" is not a valid https address.`); }
+    if (parsed.protocol !== 'https:' || parsed.username || parsed.password) throw refusal(`${label} "${redact(url).slice(0, 60)}" must be a plain https address.`);
   }
   return urls;
 };

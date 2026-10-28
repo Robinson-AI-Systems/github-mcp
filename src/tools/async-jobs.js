@@ -1,3 +1,4 @@
+import { redact } from './util.js';
 // Slow GitHub operations (Y-8): a tool that starts one hands back a job id at once; github_job_status asks GitHub ONE question per call and
 // never waits or loops, so no request is held open. The finished result is kept as an ordinary result handle (github_get_result).
 import { randomBytes } from 'node:crypto';
@@ -26,7 +27,7 @@ const POLLERS = {
     const fix = (await octokit.request('GET /repos/{owner}/{repo}/code-scanning/alerts/{alert_number}/autofix', { owner: job.owner, repo: job.repo, alert_number: Number(job.provider_ref) })).data;
     if (fix.status === 'pending') return { state: 'pending' };
     if (fix.status === 'success') return { state: 'ready', body: { alert: Number(job.provider_ref), status: fix.status, description: fix.description, started_at: fix.started_at }, summary: `Autofix for alert ${job.provider_ref}` };
-    return { state: 'failed', detail: fix.status === 'outdated' ? 'The suggested fix is outdated; start a new one.' : `GitHub could not produce a fix (${String(fix.status).slice(0, 40)}).` };
+    return { state: 'failed', detail: fix.status === 'outdated' ? 'The suggested fix is outdated; start a new one.' : `GitHub could not produce a fix (${redact(String(fix.status)).slice(0, 40)}).` };
   },
   async sbom_report({ job, ctx }) {
     if (!SBOM_UUID.test(job.provider_ref)) return { state: 'failed', detail: 'The saved report id is not valid.' };

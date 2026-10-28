@@ -13,12 +13,12 @@ import { deduplicateLargeEnvelope } from '../core/result-envelope.js';
 import { summarize } from './summaries.js';
 import { isToolVisible } from '../core/registry.js';
 import { passRefusal } from '../rtc/pass-scope.js';
-import { shapeResult, redact, containsCredential } from './util.js';
+import { shapeResult, redact, redactExcerpt, containsCredential } from './util.js';
 import {optionalConsentChallenge,OptionalConsentRequired} from '../tenancy/optional-challenge.js';
 import { actingAsFor, createActorLog } from '../github/act-as.js';
 import { createRateCollector } from '../github/rate.js';
 
-const fail = (text) => ({ isError: true, content: [{ type: 'text', text: redact(text) }] });
+const fail = (text) => ({ isError: true, content: [{ type: 'text', text: redactExcerpt(text) }] });
 const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 
 /** Summary form (unless `detail: 'full'`) of a tool's raw result: a list, `{ ..., items: [...] }` or one object. */
@@ -133,7 +133,7 @@ export function createDispatch({ env = process.env, now = Date.now, fetch = glob
     const isRead = tool?.annotations?.readOnlyHint === true && tool.writes !== true && tool.passthrough !== true;
     // A runner (github_call) hands another tool's call back to this same function, so that tool's own checks run; it is neither read nor write itself.
     const isRunner = tool?.passthrough === true && tool.usesRegistry === true && tool.writes !== true;
-    if (!handler || (!isWrite && !isRead && !isRunner) || !isToolVisible(tool, connection?.profile)) return fail(`Unknown or unavailable tool: ${String(name).slice(0, 80)}`);
+    if (!handler || (!isWrite && !isRead && !isRunner) || !isToolVisible(tool, connection?.profile)) return fail(`Unknown or unavailable tool: ${redact(String(name)).slice(0, 80)}`);
     const problem = validateArgs(tool.inputSchema, args);
     if (problem) return fail(problem);
     // A service pass is narrower than its profile. This is the one place every call passes, so a workflow's nested calls are held to it too.

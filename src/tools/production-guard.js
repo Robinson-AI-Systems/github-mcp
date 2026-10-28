@@ -1,3 +1,4 @@
+import { redact } from './util.js';
 import { isOwnerConnection } from '../core/authority.js';
 // The production guard (B2). A change is "production" when any rule below says so, judged from GitHub's own answers and the
 // owner's settings, never from the arguments. A read that fails counts as production: the guard never guesses "safe".
@@ -18,7 +19,7 @@ export function cleanNames(input, what) {
   const names = [...new Set(raw.map((n) => String(n).trim()).filter(Boolean))];
   if (names.length > MAX_NAMES) return { error: `At most ${MAX_NAMES} ${what} names.` };
   const bad = names.find((n) => !NAME.test(n));
-  if (bad) return { error: `"${bad.slice(0, 40)}" is not a valid ${what} name (letters, numbers, . _ - / and * only).` };
+  if (bad) return { error: `"${redact(bad).slice(0, 40)}" is not a valid ${what} name (letters, numbers, . _ - / and * only).` };
   return { names };
 }
 
