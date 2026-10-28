@@ -16,6 +16,7 @@ import { passRefusal } from '../rtc/pass-scope.js';
 import { shapeResult, redact, containsCredential } from './util.js';
 import {optionalConsentChallenge,OptionalConsentRequired} from '../tenancy/optional-challenge.js';
 import { actingAsFor, createActorLog } from '../github/act-as.js';
+import { createRateCollector } from '../github/rate.js';
 
 const fail = (text) => ({ isError: true, content: [{ type: 'text', text: redact(text) }] });
 const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -82,12 +83,36 @@ const COUNTED_STATUSES = new Set(['applied', 'unconfirmed', 'uncertain']);
 export function createDispatch({ env = process.env, now = Date.now, fetch = globalThis.fetch, credentials = null, gates = null, sleep = undefined, usage = null } = {}) {
   // PUB-5 B: a change slot is reserved before the change runs (so parallel calls cannot slip past the limit) and handed back
   // unless the change was counted. `box` remembers that for this one call.
-  const dispatch = async (input) => {
-    const box = { reserved: false, counted: false };
-    try { return await run(input, box); }
-    finally { if (box.reserved && !box.counted) { try { await usage.release?.(); } catch { /* best effort */ } } }
+  const dispatch=async(input)=>{
+    const box={reserved:false,counted:false};
+    const topLevel=!input.rateObservations;
+    const rateObservations=input.rateObservations??createRateCollector({now});
+    try{
+      let result=await run({...input,rateObservations},box);
+      if(!topLevel)return result;
+      const rates=rateObservations.snapshot();
+      if(rates.items.length){
+        // The canonical *full* JSON must contain metadata before the
+        // large-text envelope is deduplicated. RTC restores content[0].text.
+        const original=result.structuredContent;
+        const body=isObject(original)?original:{error:redact(result.content?.[0]?.text??'Tool failed.')};
+        const data={...body,meta:{...(isObject(body.meta)?body.meta:{}),github_rate:rates}};
+        const full=JSON.stringify(data);
+        const oldText=isObject(original)?JSON.stringify(original):null;
+        const updated=(Array.isArray(result.content)?result.content:[]).map(c=>
+          c.type==='text'&&(oldText===null||c.text===oldText)?{...c,text:full}:c);
+        result={...result,structuredContent:data,content:updated};
+      }
+      const tool=input.registry?.tools?.find(t=>t.name===input.name);
+      const isWrite=tool?.writes===true&&tool?.writeContract==='defineWrite-v1';
+      return !isWrite&&!tool?.delegatedWrites?.length&&!tool?.outputSchema&&
+        !['github_get_result','github_content_get'].includes(input.name)
+        ?deduplicateLargeEnvelope(result):result;
+    }finally{
+      if(box.reserved&&!box.counted){try{await usage.release?.();}catch{/* best effort */}}
+    }
   };
-  async function run({ registry, name, args, connection, db, actor = null, actAsCache = null }, box) {
+  async function run({ registry, name, args, connection, db, actor = null, actAsCache = null, rateObservations }, box) {
     // GOD-6: one log of "who acted" per top-level call; a workflow's nested calls share it, so its result covers them.
     const topLevel = actor === null;
     const actorLog = actor ?? createActorLog();
@@ -116,8 +141,8 @@ export function createDispatch({ env = process.env, now = Date.now, fetch = glob
       const challenge=await optionalConsentChallenge({
         name,args:args??{},connection,credentials,env});
       if(challenge)return challenge;
-      const callTool = (innerName, innerArgs) => dispatch({ registry, name: innerName, args: innerArgs, connection, db, actor: actorLog, actAsCache: cache });
-      result = await handler(args ?? {}, { connection, db, env, now, fetch, credentials, actor: actorLog, actAsCache: cache, ...(sleep ? { sleep } : {}), ...(isWrite ? { gates } : {}), ...(tool.usesRegistry ? { registry, callTool } : {}) });
+      const callTool = (innerName, innerArgs) => dispatch({ registry, name: innerName, args: innerArgs, connection, db, actor: actorLog, actAsCache: cache, rateObservations });
+      result = await handler(args ?? {}, { connection, db, env, now, fetch, credentials, actor: actorLog, actAsCache: cache, rateObservations, ...(sleep ? { sleep } : {}), ...(isWrite ? { gates } : {}), ...(tool.usesRegistry ? { registry, callTool } : {}) });
     } catch (error) {
       if(error instanceof OptionalConsentRequired)return error.reply;
       const response=fail(error instanceof TypeError ? error.message : 'That tool could not complete right now. Nothing was changed.');
@@ -154,9 +179,7 @@ export function createDispatch({ env = process.env, now = Date.now, fetch = glob
     // nested tool calls and output-schema declarations required by clients.
     // Workflows with delegated mutations also use RTC writeReply, which has
     // no companion text field. Their full structured status must survive.
-    return topLevel && !isWrite && !tool.delegatedWrites?.length && !tool.outputSchema &&
-      !['github_get_result', 'github_content_get'].includes(name)
-      ? deduplicateLargeEnvelope(shaped) : shaped;
+    return shaped;
   }
   return dispatch;
 }

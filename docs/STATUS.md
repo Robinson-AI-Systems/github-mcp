@@ -1,6 +1,10 @@
+## 2026-10-27 — C-15 scoped provider-rate metadata (#435)
+
+PR #442 implements request-observed GitHub rate headers across the canonical dispatcher with independent App, user, personal, God Mode, notifications and package budgets. Initial CI exposed a header-regex regression and a large-result metadata-loss bug; both were fixed and reviewed, the two review threads were resolved, and both mandatory checks passed exact source head `a06114958d01210fdd8cc325561f0db8c86f2823`. Branch integration with #441 succeeded through a two-parent merge commit; the next two database CI attempts surfaced different load-sensitive fixture timing problems (one write-slot overlap, one token-endpoint hammer). Both test scenarios are being made genuinely simultaneous, without lowering thresholds or skipping tests. Fresh exact-head checks and #435 merge remain pending. No release or live customer mutation. #430/#436 merged in PR #440, #431 remains open.
+
 ## 2026-10-27 — C-14 PR CI failures and native merge arming (#432/#433)
 
-PR #441 on branch `ai/chatgpt/c-14-pr-ci-visibility-20261027` combines exact-head failed CI job/step/annotation/error excerpts with a provider-native auto-merge inspector. Acceptance was committed before code. First head `dd75ca5` passed release-policy, but check CI and two unit shards failed on roadmap-index drift, compact catalog token inventory and registry inventory. The next run exposed the remaining catalog count and 15-token compact listing difference. These are being repaired without weakening tests or bypassing checks. Exact final-head CI/review/merge/issue closeout remain pending. #435 is separate; #431 remains open. No deploy or production changes.
+PR #441 merged on source head `8a6e52a3378bff65a8e0067e529d9c3962157f90`, after both required `ci` and `release-policy` passed and all review threads were clear. GitHub independently confirmed #432 and #433 closed/completed. First CI iterations required honest index/catalog/token budget repairs, with no test disabled. New source includes inline CI failure diagnostics and read-only native auto-merge inspection; no production release or real-client verification.
 
 ## 2026-10-26 — C-6 faster guarded PR lane (#418, final review pending)
 

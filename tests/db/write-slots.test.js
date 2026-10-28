@@ -33,8 +33,23 @@ describe('GitHub client on throwaway Postgres only', () => {
     gh.when('POST /repos/{owner}/{repo}/issues').reply(201, { number: 1 });
     const sleepsA = [];
     const sleepsB = [];
-    const a = await githubFor(instance(dbA, gh, sleepsA), {});
-    const b = await githubFor(instance(dbB, gh, sleepsB), {});
+    // Verify genuinely overlapping database slot claims, not a fragile
+    // assumption that independent credential/ETag preflight ends in <100ms.
+    // Both requests must arrive at the slot allocator before either
+    // reserves; the original >=900ms wait assertion remains unchanged.
+    let arrived = 0;
+    let release;
+    const together = new Promise((resolve) => { release = resolve; });
+    const simultaneous = (db) => ({
+      ...db,
+      claimWriteSlot: async (...args) => {
+        if (++arrived === 2) release();
+        await together;
+        return db.claimWriteSlot(...args);
+      }
+    });
+    const a = await githubFor(instance(simultaneous(dbA), gh, sleepsA), {});
+    const b = await githubFor(instance(simultaneous(dbB), gh, sleepsB), {});
     await Promise.all([
       a.request('POST /repos/{owner}/{repo}/issues', { owner: 'example-org', repo: 'hello', title: 'from A' }),
       b.request('POST /repos/{owner}/{repo}/issues', { owner: 'example-org', repo: 'hello', title: 'from B' })
