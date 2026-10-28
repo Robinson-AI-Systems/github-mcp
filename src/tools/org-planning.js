@@ -1,5 +1,6 @@
+import { isOwnerConnection } from '../core/authority.js';
 // Y-5b: organization issue types and issue fields, per-issue field values, interaction limits and autolinks.
-// Issue types and fields are organization-wide, so every change asks first and runs only on a connected organization.
+// Issue types and fields are organization-wide; writes bind the connected organization and restricted grants retain confirmation.
 // Everything is REST, read first and read back; deletes say how many things use the object when GitHub tells us.
 import { defineGithubWrite } from './define-github-write.js';
 import { missing, octo, ownerOf, refusal } from './github-write.js';
@@ -57,14 +58,14 @@ const typeSave = defineGithubWrite({
 
 const typeDelete = defineGithubWrite({
   name: 'github_org_issue_type_delete', area: 'org', audience: ['O'],
-  description: 'Delete an organization issue type. Type its exact name as name. Issues keep their text but lose this type. No undo.',
-  properties: { org: ORG, typeId: { type: 'integer', minimum: 1 }, name: { type: 'string', minLength: 1, maxLength: 50 } }, required: ['typeId', 'name'],
+  description: 'Delete an organization issue type permanently. Optional name checks the target; full owners need only its typeId.',
+  properties: { org: ORG, typeId: { type: 'integer', minimum: 1 }, name: { type: 'string', minLength: 1, maxLength: 50 } }, required: ['typeId'],
   declarations: decl({ production: 'always' }),
   target: (a, c) => orgTarget({ owner: a.org }, c),
   read: async (args, ctx, t) => {
     await requireOrg(ctx, t.owner);
     const current = (await listOrg(ctx, t.owner, 'issue-types')).find((x) => x?.id === args.typeId) ?? null;
-    if (current && current.name !== args.name) throw refusal('name must be exactly the issue type\'s current name.');
+    if (current && (args.name !== undefined || !isOwnerConnection(ctx.connection)) && current.name !== args.name) throw refusal('name must be exactly the issue type\'s current name.');
     let used = null;
     if (current) {
       const found = await missing(async () => (await (await octo(ctx, t.owner)).request('GET /search/issues', { q: `org:${t.owner} type:"${current.name}"`, per_page: 1 })).data);
@@ -159,14 +160,14 @@ const fieldSave = defineGithubWrite({
 
 const fieldDelete = defineGithubWrite({
   name: 'github_org_issue_field_delete', area: 'org', audience: ['O'],
-  description: 'Delete an organization issue field and all the values stored in it. Type its exact name as name. No undo.',
-  properties: { org: ORG, fieldId: { type: 'integer', minimum: 1 }, name: { type: 'string', minLength: 1, maxLength: 50 } }, required: ['fieldId', 'name'],
+  description: 'Delete an organization issue field and its values permanently. Optional name checks the target; full owners need only its fieldId.',
+  properties: { org: ORG, fieldId: { type: 'integer', minimum: 1 }, name: { type: 'string', minLength: 1, maxLength: 50 } }, required: ['fieldId'],
   declarations: decl({ production: 'always' }),
   target: (a, c) => orgTarget({ owner: a.org }, c),
   read: async (args, ctx, t) => {
     await requireOrg(ctx, t.owner);
     const current = (await listOrg(ctx, t.owner, 'issue-fields')).find((f) => f?.id === args.fieldId) ?? null;
-    if (current && current.name !== args.name) throw refusal('name must be exactly the issue field\'s current name.');
+    if (current && (args.name !== undefined || !isOwnerConnection(ctx.connection)) && current.name !== args.name) throw refusal('name must be exactly the issue field\'s current name.');
     return { current };
   },
   classify: ({ before }) => (before?.current ? { production: `deleting issue field "${before.current.name}" erases its value on every issue and cannot be undone` } : {}),

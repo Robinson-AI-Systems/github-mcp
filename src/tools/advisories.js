@@ -1,3 +1,4 @@
+import { isOwnerConnection } from '../core/authority.js';
 import { redact } from './util.js';
 // Y-7a: repository security advisories. Advisory text describes an unfixed hole, so it is treated as sensitive:
 //  - no result and no change-log row ever contains the description; only its SHA-256 and length are kept;
@@ -91,11 +92,11 @@ const save = defineGithubWrite({
 // ---- publish (public, irreversible) -------------------------------------------------------------------------------------
 const publish = defineGithubWrite({
   name: 'github_security_advisory_publish', area: 'security', audience: ['O'],
-  description: 'Publish a draft security advisory. This makes it PUBLIC and cannot be undone. Type the GHSA id again as confirmGhsa.',
-  properties: { owner: OWNER, repo: REPO_NAME, ghsa: GHSA, confirmGhsa: GHSA }, required: ['repo', 'ghsa', 'confirmGhsa'],
+  description: 'Publish a draft security advisory publicly and irreversibly. Optional confirmGhsa checks the target; full owners can execute directly.',
+  properties: { owner: OWNER, repo: REPO_NAME, ghsa: GHSA, confirmGhsa: GHSA }, required: ['repo', 'ghsa'],
   declarations: decl({ production: 'always' }),
   target: (args, ctx) => {
-    if (args.confirmGhsa !== args.ghsa) throw new TypeError('confirmGhsa must be the same GHSA id as ghsa.');
+    if ((args.confirmGhsa !== undefined || !isOwnerConnection(ctx.connection)) && args.confirmGhsa !== args.ghsa) throw new TypeError('confirmGhsa must be the same GHSA id as ghsa.');
     return repoTarget(args, ctx);
   },
   read: async (args, ctx, t) => ({ adv: shapeAdvisory(await getAdvisory(ctx, t, args.ghsa)) }),

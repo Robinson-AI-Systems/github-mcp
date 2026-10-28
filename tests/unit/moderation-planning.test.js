@@ -37,7 +37,7 @@ runWriteContract({ label: 'github_comment_hide', definition: def(moderation, 'gi
 runWriteContract({ label: 'github_discussion_manage', definition: def(moderation, 'github_discussion_manage'), args: { ...R, number: 7, action: 'close', reason: 'RESOLVED' }, needsConfirm: true, profile: 'full',
   arrange: (gh, o) => { const st = { nodes: { D_1: { __typename: 'Discussion', id: 'D_1', closed: false, stateReason: null } } }; gql(gh, st, () => { if (ok(o)) st.nodes.D_1 = { ...st.nodes.D_1, closed: true, stateReason: 'RESOLVED' }; }); } });
 // delete an issue
-runWriteContract({ label: 'github_issue_delete', definition: def(moderation, 'github_issue_delete'), args: { ...R, number: 5, confirmNumber: 5 }, needsConfirm: true, production: true, profile: 'full',
+runWriteContract({ label: 'github_issue_delete', definition: def(moderation, 'github_issue_delete'), args: { ...R, number: 5 }, needsConfirm: true, production: true, profile: 'full',
   arrange: (gh, o) => { const st = { nodes: { I_1: { __typename: 'Issue', id: 'I_1', title: 'A problem', number: 5 } } }; gql(gh, st, () => { if (ok(o)) delete st.nodes.I_1; }); } });
 // link a branch
 runWriteContract({ label: 'github_issue_link_branch', definition: def(moderation, 'github_issue_link_branch'), args: { ...R, number: 5, branch: 'fix-5' }, needsConfirm: true, profile: 'full',
@@ -74,7 +74,7 @@ runWriteContract({ label: 'github_org_issue_type_save', definition: def(planning
     gh.when('GET /orgs/{org}/issue-types').reply(200, [type()]);
     gh.when('POST /orgs/{org}/issue-types').reply(200, (req) => { const t = type({ id: 2, node_id: 'IT_2', name: req.body.name, color: req.body.color }); if (ok(o)) gh.when('GET /orgs/{org}/issue-types').reply(200, [type(), t]); return t; });
   } });
-runWriteContract({ label: 'github_org_issue_type_delete', definition: def(planning, 'github_org_issue_type_delete'), args: { org: O, typeId: 1, name: 'Bug' }, needsConfirm: true, production: true, profile: 'full',
+runWriteContract({ label: 'github_org_issue_type_delete', definition: def(planning, 'github_org_issue_type_delete'), args: { org: O, typeId: 1 }, needsConfirm: true, production: true, profile: 'full',
   arrange: (gh, o) => {
     gh.when('GET /orgs/{org}/issue-types').reply(200, [type()]);
     gh.when('GET /search/issues').reply(200, { total_count: 4, incomplete_results: false, items: [] });
@@ -86,7 +86,7 @@ runWriteContract({ label: 'github_org_issue_field_save', definition: def(plannin
     gh.when('GET /orgs/{org}/issue-fields').reply(200, [field()]);
     gh.when('PATCH /orgs/{org}/issue-fields/{issue_field_id}').reply(200, (req) => { const f = field({ options: req.body.options.map((x, i) => ({ id: x.id ?? 60 + i, name: x.name, color: x.color, priority: x.priority })) }); if (ok(o)) gh.when('GET /orgs/{org}/issue-fields').reply(200, [f]); return f; });
   } });
-runWriteContract({ label: 'github_org_issue_field_delete', definition: def(planning, 'github_org_issue_field_delete'), args: { org: O, fieldId: 5, name: 'Priority' }, needsConfirm: true, production: true, profile: 'full',
+runWriteContract({ label: 'github_org_issue_field_delete', definition: def(planning, 'github_org_issue_field_delete'), args: { org: O, fieldId: 5 }, needsConfirm: true, production: true, profile: 'full',
   arrange: (gh, o) => {
     gh.when('GET /orgs/{org}/issue-fields').reply(200, [field()]);
     gh.when('DELETE /orgs/{org}/issue-fields/{issue_field_id}').reply(204, () => { if (ok(o)) gh.when('GET /orgs/{org}/issue-fields').reply(200, []); return null; });
@@ -129,12 +129,27 @@ describe('Y-5 rules', () => {
     expect(() => mergeFieldOptions(cur, [], ['Nope'])).toThrow(/not an option/);
     expect(() => mergeFieldOptions(cur, [{ name: 'high', color: 'red' }], ['High'])).toThrow(/both kept and removed/);
   });
-  it('issue delete needs the number typed twice and sends nothing otherwise', async () => {
+  it('issue delete rejects an explicitly mismatched target confirmation without sending a mutation', async () => {
     const w = await makeWorld({ mode: 'production', profile: 'full' });
     gql(w.gh, { nodes: { I_1: { __typename: 'Issue', id: 'I_1', title: 'A problem', number: 5 } } }, () => null);
     const r = await run(w, 'github_issue_delete', { ...R, number: 5, confirmNumber: 6, confirm: true }).catch(() => ({ done: false }));
     expect(r.done).toBe(false);
     expect(w.gh.graphql.filter((g) => g.query.includes('mutation'))).toHaveLength(0);
+  });
+  it('org-object deletion preserves restricted confirmation and owner-supplied accuracy checks', async () => {
+    for (const delegated of [true, false]) {
+      for (const kind of ['type', 'field']) {
+        const w = await makeWorld({ delegated, mode: 'production', profile: 'full' });
+        w.gh.when('GET /orgs/{org}').reply(200, { login: O });
+        w.gh.when('GET /orgs/{org}/issue-types').reply(200, [type()]);
+        w.gh.when('GET /orgs/{org}/issue-fields').reply(200, [field()]);
+        const args = kind === 'type' ? { org: O, typeId: 1 } : { org: O, fieldId: 5 };
+        const result = await run(w, `github_org_issue_${kind}_delete`, { ...args, ...(delegated ? {} : { name: 'Wrong target' }), confirm: true });
+        expect(result.done).toBe(false);
+        expect(w.gh.calls.filter(c => c.method === 'DELETE')).toHaveLength(0);
+        expect(w.gh.invalid).toEqual([]);
+      }
+    }
   });
   it('a comment from another repository is refused for hiding', async () => {
     const w = await makeWorld({ mode: 'production', profile: 'full' });

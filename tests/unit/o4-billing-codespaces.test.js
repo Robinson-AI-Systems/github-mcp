@@ -119,7 +119,7 @@ function deleteBudgetArrange(gh,outcome){
 }
 runWriteContract({label:'github_billing_delete_budget',
   definition:{tool:recovered.deleteBudget.tool,handler:recovered.deleteBudget.handler},
-  args:{budgetId:b.id,confirmBudgetId:b.id},
+  args:{budgetId:b.id},
   arrange:deleteBudgetArrange,profile:'full',needsConfirm:true,production:true});
 
 for(const c of contracts)
@@ -204,8 +204,8 @@ describe('O-4 real prices, budget safety, marketplace, Copilot and Codespaces',(
     expect(result.preview).toContain('COST UNKNOWN');
     expect(w.gh.calls.filter(x=>x.method==='DELETE')).toHaveLength(0);
   });
-  it('refuses Codespaces list replacements without an explicit irreversible replacement acknowledgement',async()=>{
-    const w=await makeWorld({mode:'production',profile:'full'});
+  it('keeps an explicit restricted grant from replacing Codespaces users without acknowledgement',async()=>{
+    const w=await makeWorld({delegated:true,mode:'production',profile:'full'});
     w.gh.when('GET /orgs/{org}').reply(200,{login:'example-org'});
     const result=await invoke(w,'github_codespace_set_org_access',
       {visibility:'selected_members',usernames:['alice'],confirm:true});
@@ -420,4 +420,27 @@ describe('O-4 end-user authority: a valid but unpriced Copilot license plan',()=
    expect(w.gh.calls.filter(x=>x.method==='DELETE')).toHaveLength(1);
    expect(w.gh.invalid).toEqual([]);
  });
+});
+
+it('executes an owner-selected Codespaces replacement without a duplicate acknowledgement and remains unconfirmed',async()=>{
+  const w=await makeWorld({mode:'production',profile:'full'});
+  w.gh.when('GET /orgs/{org}').reply(200,{login:'example-org'});
+  w.gh.when(membership).reply(200,{state:'active'});
+  w.gh.when(ACCESS).reply(204,null);
+  const result=await invoke(w,'github_codespace_set_org_access',{visibility:'selected_members',usernames:['alice']});
+  expect(result.status).toBe('unconfirmed');
+  expect(result.summary).toContain('COST UNKNOWN');
+  expect(w.gh.calls.filter(x=>x.method==='PUT')).toHaveLength(1);
+  expect(w.gh.invalid).toEqual([]);
+});
+
+it('keeps a caller-selected no-replacement instruction and restricted missing target confirmation from sending writes',async()=>{
+  const owner=await makeWorld({mode:'production',profile:'full'});
+  const result=await invoke(owner,'github_codespace_set_org_access',{visibility:'selected_members',usernames:['alice'],replaceSelectedUsers:false});
+  expect(result.done).toBe(false);
+  expect(owner.gh.calls.filter(x=>x.method==='PUT')).toHaveLength(0);
+  const limited=await makeWorld({delegated:true,mode:'production',profile:'full'});
+  const denied=await invoke(limited,'github_billing_delete_budget',{budgetId:b.id,confirm:true});
+  expect(denied.done).toBe(false);
+  expect(limited.gh.calls.filter(x=>x.method==='DELETE')).toHaveLength(0);
 });

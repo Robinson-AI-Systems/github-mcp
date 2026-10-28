@@ -25,3 +25,11 @@ The shared detector runs on complete provider text before patch, comment, search
 Search fragments and log excerpts may already have been shortened upstream. Those excerpts retain conservative RTC-prefix masking because a complete credential may no longer be visible. They are not byte-exact file reads; use the immutable full-file diagnostic/read for an exact source decision. This prevents fragment-prefix leakage without reinstating false-positive blocks on complete harmless source files.
 
 Line-range reads redact a complete multiline private-key block before selecting lines, retaining the original line numbers. Asking for only the interior of a key cannot bypass the detector by omitting its header.
+
+## Live verification after the correction
+
+PR #448 merged as `75b4d61bf665c1d6a5a066950f53bd9fa4ae8790` after exact-head CI and review resolution. The owner-authorized checked manual workflow [40700781978](https://github.com/Robinson-AI-Systems/github-mcp/actions/runs/40700781978) succeeded; Vercel independently reported the serving domain READY on that source, and the public contract agreed.
+
+The recheck used the unchanged `src/db.js` at ref `4ea56dee0d70505714db946c3217b107175aeb16`, blob `75bafde9d8b812fc9d1c2e520114ebdfa53cd523`. The deployed custom full-text read returned all 98,401 characters, exactly matching a fresh official GitHub read. Its value-free diagnostic returned zero findings and byte_exact_available=true. Four byte windows (offsets 0, 32768, 65536 and 98304) reconstructed all 98,404 bytes, exactly equal to reviewed Git source, SHA-256 `68269a9f450c70294cef467f51c491d3176c7f2577b06c3177ad05e6f8efa131`. The last window was 100 bytes and reported complete=true. The large reply had one canonical full payload, without a duplicate structured copy.
+
+This proves the reported harmless-source defect is corrected live; it does not establish zero false positives for all files. Credential-shaped ambiguous fixtures still use the explicit local/provider fallback described above.

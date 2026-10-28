@@ -462,7 +462,7 @@ Card(s): O-4. The developer's $0/production-OFF TEST rule does not limit an end 
 | `github_billing_get_usage` | Usage and cost for an org or user by product (Actions, Packages, Codespaces, Copilot, LFS) and period, in dollars; premium requests on request | — | N built #201 | I,U | O | R | O-4 built #201 |
 | `github_billing_list_budgets` | Organization budgets with amount, spent so far and whether usage stops at the limit | — | N built #201 | I | O | R | O-4 built #201 |
 | `github_billing_save_budget` | Create or modify a verified provider budget, including unenforced settings through informed owner authorization | C·$*·Prod | N built #201 | I | O | F | O-4 built #201 |
-| `github_billing_delete_budget` | Delete an exact verified organization budget after typed-ID confirmation, metered-cost warning, full-profile production consent and provider absence readback | C·D·$*·Prod | N built #201 | I | O | F | O-4 built #201; authority repair pending |
+| `github_billing_delete_budget` | Delete an exact verified budget with owner one-call execution, unknown-cost disclosure and independent absence readback | C·D·$*·Prod | N built #201 | I | O | F | O-4 built #201; authority repair pending |
 | `github_billing_list_marketplace` | Marketplace apps Chris pays for (plan, price, next billing date); buying is guided only because GitHub has no purchase API (provider UI only) | — | N built #201 | U | O | R | O-4 built #201 |
 | `github_copilot_get_billing` | Copilot plan, seat counts and seat assignments with last activity | — | C built #201 | I | O | R | O-4 built #201 |
 | `github_copilot_add_seats` | Assign Copilot seats with a verified plan price, or disclose unknown recurring pricing under user delegation | C·$·A·M·Prod | F built #201 | I | O | F | O-4 built #201 |
@@ -472,7 +472,7 @@ Card(s): O-4. The developer's $0/production-OFF TEST rule does not limit an end 
 | `github_codespace_create` | Create a codespace for a repo and branch (hourly compute plus storage) (uses your master token when added) | C·$·Prod | C built #201 | U | O,B | F | O-4 built #201 |
 | `github_codespace_set_state` | Start (billed) or stop (saves money) a codespace (uses your master token when added) | C·$*·Prod* | C built #201 | U | O,B | F | O-4 built #201 |
 | `github_codespace_delete` | Delete a codespace (unpushed work is lost) (uses your master token when added) | C·D·Prod | C built #201 | U | O,B | F | O-4 built #201 |
-| `github_codespace_set_org_access` | PUT organization-paid Codespaces access with exact selected-user membership, user-chosen budget enforcement, and explicit UNCONFIRMED 204 until owner UI verifies saved policy | C·A·$*·Prod | N built #201 | I | O | F | O-4 built #201; authority repair pending |
+| `github_codespace_set_org_access` | PUT organization-paid Codespaces access with exact selected-user membership, owner one-call execution and restricted-grant allowances, and explicit UNCONFIRMED 204 until owner UI verifies saved policy | C·A·$*·Prod | N built #201 | I | O | F | O-4 built #201; authority repair pending |
 
 ## Owner: apps and fine-grained tokens (`github_app_*, github_tokenpolicy_*`) — 7
 
@@ -546,15 +546,15 @@ Card(s): Y-5. Acts on text written by other people, so hiding and deleting alway
 | `github_comment_delete` | Delete an issue or review comment (preview shows author and first 120 characters; no undo) | C·D·Prod* | N | I | Op,O | F | Y-5 |
 | `github_comment_hide` | Hide a comment (spam, abuse, off topic, ...) or show it again | C | N | I | Op,O | F | Y-5 |
 | `github_review_comment_edit` | Edit a pull request review comment | P·M* | N | I | Op,O | F | Y-5 |
-| `github_issue_delete` | Permanently delete an issue (admin only; number typed twice; no undo) | C·D·Prod | N | I | Op,O | F | Y-5 |
+| `github_issue_delete` | Permanently delete an issue (admin; optional target confirmation for full owners; no undo) | C·D·Prod | N | I | Op,O | F | Y-5 |
 | `github_discussion_manage` | Close, reopen, edit or delete a discussion, or mark an answer | C·D·Prod* | N | I | Op,O | F | Y-5 |
 | `github_issue_link_branch` | Create a branch linked to an issue or unlink one | C | N | I | Op,O | F | Y-5 |
 | `github_org_list_issue_types` | List a connected organization's issue types with IDs, descriptions, colors and enabled flags; bounded | — | N | I | B,O,Op | R | PAR-2 |
 | `github_org_issue_type_save` | Create or edit an organization issue type | C | N | I | O | F | Y-5 |
-| `github_org_issue_type_delete` | Delete an organization issue type (name typed; no undo) | C·D·Prod | N | I | O | F | Y-5 |
+| `github_org_issue_type_delete` | Delete an organization issue type (optional name accuracy check for full owners; no undo) | C·D·Prod | N | I | O | F | Y-5 |
 | `github_org_list_issue_fields` | List connected organization issue fields, types, visibility and select options; bounded | — | N | I | B,O,Op | R | PAR-2 |
 | `github_org_issue_field_save` | Create or edit an organization issue field; select options keep their ids | C | N | I | O | F | Y-5 |
-| `github_org_issue_field_delete` | Delete an organization issue field and its values (name typed; no undo) | C·D·Prod | N | I | O | F | Y-5 |
+| `github_org_issue_field_delete` | Delete an organization issue field and its values (optional name accuracy check for full owners; no undo) | C·D·Prod | N | I | O | F | Y-5 |
 | `github_issue_set_fields` | Set organization issue field values on an issue | P·M | N | I | Op,O | F | Y-5 |
 | `github_interaction_limit_set` | Limit who may comment or open issues on a repository or organization for a time, or lift it | C | N | I | O | F | Y-5 |
 | `github_repo_autolink_save` | Add an autolink reference (key prefix to URL template) to a repository | C | N | I | O | F | Y-5 |
@@ -569,7 +569,7 @@ Card(s): Y-4. GraphQL only. A project is named by owner and number; GitHub must 
 | `github_project_create` | Create an empty private project board for a connected account, optionally linked to a repository | C | N | I,U | Op,O | F | Y-4 |
 | `github_project_update` | Change a project's title, description, readme, visibility or closed state | P·A* | N | I,U | Op,O | F | Y-4 |
 | `github_project_copy` | Copy a project (fields, views, optionally draft items) under a new title | C | N | I,U | Op,O | F | Y-4 |
-| `github_project_delete` | Delete a project with all items (exact title required; no restore) | C·D·Prod | N | I,U | O | F | Y-4 |
+| `github_project_delete` | Delete a project and its items (optional title accuracy check for full owners; no restore) | C·D·Prod | N | I,U | O | F | Y-4 |
 | `github_project_link` | Link or unlink a project to a repository or team | C | N | I,U | Op,O | F | Y-4 |
 | `github_project_field_save` | Create or edit a project field; select options keep their ids unless removed by name | C | N | I,U | Op,O | F | Y-4 |
 | `github_project_field_delete` | Delete a custom field and its values (preview counts items holding a value) | C·D·Prod | N | I,U | O | F | Y-4 |
@@ -672,7 +672,7 @@ Card(s): U-1, U-2.
 | `github_api_read` | Any eligible pinned GET; Enterprise slug reads require explicit M and current provider-verified enterprise-admin membership | — | N | I,U,P,M | B,O,Op | R | U-1 (PAR-4) |
 | `github_api_write` | Execute eligible pinned non-curated REST writes; Enterprise slug writes require explicit M, provider-verified admin and current scope; unknown cost needs confirmation/user-cap checks | C·$*·Prod*·A*·M* | N | I,U,P,M | B,O,Op | F | U-1 (PAR-4) |
 | `github_graphql_read` | Pinned-schema validated single GraphQL query, typed variables, scoped aliases/fragments/nodes and 500-point/500,000-node cap before sending | — | N | I,U | B,O,Op | R | U-2 built #220 |
-| `github_graphql_write` | One reviewed GraphQL mutation (24 specs: pins, locks, minimize, discussions, linked branches, issue comments and delete, draft state, team review assignment; plus the legacy title and project-field shapes) with ownership proof, before/after read, always-confirmed journal and a recorded undo where one exists | C·Prod·A·M | N | I,U | B,O,Op | F | U-2 built #220 |
+| `github_graphql_write` | One reviewed GraphQL mutation (24 specs: pins, locks, minimize, discussions, linked branches, issue comments and delete, draft state, team review assignment; plus the legacy title and project-field shapes) with ownership proof, before/after read, owner-authorized journal and a recorded undo where one exists | C·Prod·A·M | N | I,U | B,O,Op | F | U-2 built #220 |
 
 How `github_api_write` and `github_graphql_write` stay safe (`docs/designs/BATCH-U.md`):
 
@@ -742,7 +742,7 @@ Card(s): Y-7. Advisory text never appears in a result or the change log (only a 
 | Tool | What it does | Safety | Origin | Cred | Audience | Profile | Card |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `github_security_advisory_save` | Create a draft security advisory or edit one (text stays private; results show only a hash) | P·Prod*·M* | N | I | O | F | Y-7 |
-| `github_security_advisory_publish` | Publish a draft advisory: PUBLIC, no undo, GHSA id typed twice | C·Prod | N | I | O | F | Y-7 |
+| `github_security_advisory_publish` | Publish a draft advisory: PUBLIC, no undo, optional GHSA accuracy check for full owners | C·Prod | N | I | O | F | Y-7 |
 | `github_security_advisory_request_cve` | Request a CVE for an advisory (cannot be withdrawn) | C·Prod | N | I | O | F | Y-7 |
 | `github_security_report_vulnerability` | Privately report a vulnerability to another repository as you | C·M | N | U | O | F | Y-7 |
 | `github_security_code_scanning_default_setup` | Configure or disable code scanning even on paid private repos with actual user consent and unknown-cost disclosure | C·$*·Prod | N | I | O | F | Y-7 |

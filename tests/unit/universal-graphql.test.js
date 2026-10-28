@@ -221,3 +221,18 @@ runWriteContract({
   notifies:['example-org'],advanceClockOnSleep:true,
   arrange:(gh,outcome)=>stubMutation(gh,outcome)
 });
+
+ it('unsupported owner GraphQL contract gives actionable alternatives without claiming a GitHub permission refusal', async () => {
+   const w = await makeWorld({ profile: 'full', mode: 'production' });
+   const result = await dispatch(w, 'github_graphql_write', {
+     owner: 'example-org', repo: 'hello',
+     mutation: 'mutation($input: UpdateProjectV2CollaboratorsInput!) { updateProjectV2Collaborators(input: $input) { clientMutationId } }',
+     variables: { input: { projectId: 'PVT_kwDO12345', collaborators: [] } }
+   });
+   const value = JSON.stringify(result);
+   expect(value).toContain('no implemented ownership/readback contract');
+   expect(value).toContain('github_api_describe');
+   expect(value).toContain('github_where_is_setting');
+   expect(value).not.toContain('refused on purpose');
+   expect(w.gh.calls).toHaveLength(0);
+ });

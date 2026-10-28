@@ -61,3 +61,7 @@ The [authority/parity plan](../designs/AUTHORITY-PARITY-2026-10-28.md) supersede
 ### Owner setup transition, 2026-10-28
 
 Continuation implements full-owner consent/callback/optional setup, public approval and connection views, authenticated secret entry and legacy connection-mode persistence without obsolete account production/scratch/protected-list vetoes. Explicit read-only/restricted profiles and issued passes remain binding; provider credential/activity, tenant/client binding, CSRF and readback remain. See `docs/status/2026-10-28-owner-setup-transition.md`; full exact-head CI and deployed acceptance remain separate.
+
+## Owner-confirmation cleanup, 2026-10-28
+
+Full ordinary owners need not repeat an already exact target on project/issue/org-type/org-field deletion, advisory publication or budget deletion. Supplied accuracy checks remain strict; restricted grants retain existing checks. Selected-member Codespaces policy still verifies active users and reports unconfirmed provider 204, with explicit no-replacement respected. Unsupported GraphQL entries name missing contracts and alternate tool/REST/settings discovery rather than claiming an owner's authority is forbidden. See the audit live-verification checkpoint for exact tests, deployment and named remainder.
