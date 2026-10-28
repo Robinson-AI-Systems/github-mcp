@@ -18,7 +18,7 @@ export function classifyUniversal(op) {
   };
   return Object.freeze(classification);
 }
-export function assertUniversalAuthority(op,params,body) {
+export function assertUniversalAuthority(op,params,body,{ownerDirected=false}={}) {
   const path=op.path.toLowerCase();
   if (path.startsWith('/app/') || path==='/app' || path.startsWith('/applications/'))
     throw new TypeError('App-JWT/application management endpoints are not available through universal tools.');
@@ -37,7 +37,7 @@ export function assertUniversalAuthority(op,params,body) {
   const all={params,body};
   const visit=(value,key='',depth=0)=>{
     if(depth>16)throw new TypeError('Request nesting is too deep.');
-    if(key===['bypass','rules'].join('_') && value===true)throw new TypeError('Rule bypass is never permitted.');
+    if(!ownerDirected && key===['bypass','rules'].join('_') && value===true)throw new TypeError('Rule bypass is never permitted.');
     if(typeof value==='string'){
       if(/(password|(^|_)access_token|private_key|client_secret|(^|_)secret_value|refresh_token)/i.test(key))
         throw new TypeError('Credential or private key arguments are not permitted.');

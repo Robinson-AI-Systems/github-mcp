@@ -30,9 +30,9 @@ const money=/codespace|copilot|enterprise|billing|budget|sponsor|purchase|paid|m
 const secretKey=/(?:token|secret|password|passphrase|private.?key|auth.?code|invitation.?code|webhook.?signature|credential)/i;
 const secretValue=/(github_pat_[A-Za-z0-9_]+|gh[pousr]_[A-Za-z0-9._-]{18,}|rtc_pass_[A-Za-z0-9_-]{20,}|-----BEGIN [A-Z ]*PRIVATE KEY-----)/;
 const dangerousKey=/(bypass.?rules|bypassRules|force.?push|skip.?checks)/i;
-function scan(value,key='',depth=0){
+function scan(value,key='',depth=0,ownerDirected=false){
   if(depth>16)throw new TypeError('GraphQL variables nested too deeply.');
-  if(dangerousKey.test(key)&&Boolean(value))
+  if(!ownerDirected&&dangerousKey.test(key)&&Boolean(value))
     throw new TypeError('GraphQL rule bypass, skipped checks or forced updates cannot use the universal route.');
   if(secretKey.test(key)&&value!==null&&value!==undefined)
     throw new TypeError('Secrets and credential arguments require their curated sealed/credential tool.');
@@ -41,19 +41,19 @@ function scan(value,key='',depth=0){
     if(value.length>12000)throw new TypeError('GraphQL argument value exceeds safe length.');
   }else if(Array.isArray(value)){
     if(value.length>250)throw new TypeError('GraphQL argument list exceeds safe size.');
-    value.forEach(x=>scan(x,key,depth+1));
+    value.forEach(x=>scan(x,key,depth+1,ownerDirected));
   }else if(value&&typeof value==='object'){
     if(Object.keys(value).length>100)throw new TypeError('GraphQL input object has too many keys.');
-    for(const [k,v]of Object.entries(value))scan(v,k,depth+1);
+    for(const [k,v]of Object.entries(value))scan(v,k,depth+1,ownerDirected);
   }
 }
 /** Scan both coerced variable values and document literal/default values.
  * A valid schema argument is not authorization to put credentials in an MCP tool. */
-export function assertSafeGraphqlArguments(entry){
-  scan(entry.variables);
+export function assertSafeGraphqlArguments(entry,{ownerDirected=false}={}){
+  scan(entry.variables,'',0,ownerDirected);
   visit(entry.ast,{
-    Argument(node){scan(valueFromASTUntyped(node.value,entry.variables),node.name.value);},
-    VariableDefinition(node){if(node.defaultValue)scan(valueFromASTUntyped(node.defaultValue,entry.variables),node.variable.name.value);},
+    Argument(node){scan(valueFromASTUntyped(node.value,entry.variables),node.name.value,0,ownerDirected);},
+    VariableDefinition(node){if(node.defaultValue)scan(valueFromASTUntyped(node.defaultValue,entry.variables),node.variable.name.value,0,ownerDirected);},
     Field(node){
       // Credentials supplied as aliased output fields are still handled by the
       // dispatcher's redaction; provider text is never treated as instructions.
@@ -63,16 +63,16 @@ export function assertSafeGraphqlArguments(entry){
     }
   });
 }
-export function classifyGraphqlMutation(name,input){
+export function classifyGraphqlMutation(name,input,{ownerDirected=false}={}){
   if(typeof name!=='string'||!/^[A-Za-z][A-Za-z0-9_]{1,100}$/.test(name))
     throw new TypeError('Unknown or unsupported GraphQL mutation field.');
-  scan(input);
+  scan(input,'',0,ownerDirected);
   const curatedTool=curatedGraphqlMutation(name);
   if(curatedTool)throw new TypeError('The specialist '+curatedTool+' tool must handle '+name+'; the generic GraphQL route cannot bypass its guards.');
-  if(money.test(name))throw new TypeError('Potentially priced mutation '+name+' has no reviewed price estimate. Use the cost-aware specialized tool.');
+  if(!ownerDirected&&money.test(name))throw new TypeError('Potentially priced mutation '+name+' has no reviewed price estimate. Use the cost-aware specialized tool.');
   // There is no safe "ordinary" mutation class until an owner-reviewed policy
   // explicitly names its resource and consequences. Default both high-risk marks.
-  return Object.freeze({name,production:true,accessWidening:true,notifies:true,spendRisk:false});
+  return Object.freeze({name,production:true,accessWidening:true,notifies:true,spendRisk:money.test(name)});
 }
 /** Derive all existing resource IDs, not just a six-name allowlist.
  * Every ID must independently resolve into the enrolled account before dispatch.

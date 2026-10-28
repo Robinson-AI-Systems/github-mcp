@@ -1,5 +1,7 @@
 ## 2026-10-27 — Large MCP JSON response fields live once, never silently disappear
 
+> **Current authority and parity remediation (2026-10-28):** [requirements](OWNER-DECISION-2026-10-27.md), [delivery plan](designs/AUTHORITY-PARITY-2026-10-28.md). Full owner writes disclose/execute/journal/verify in one call; explicit delegated restrictions remain. Older dated statements about owner caps, production ceremony and mandatory merge gates are superseded. Source delivery and live acceptance remain separate.
+
 Owner approved #428 after coding-agent feedback that full schemas and PR bodies were duplicated into both text content and structuredContent. For sufficiently large **public/top-level** tool replies, the complete already-redacted JSON is carried once as `content[0].text`; the structured field retains small scalar/computed navigation metadata and an explicit `full_payload_location` and omitted-field list. Agents needing omitted fields parse the full JSON text; this is a deliberate large-reply contract adjustment, not data loss. Small replies, outputSchema-constrained tools and writes keep their previous envelope. Nested workflow/batch calls retain full structures, and RTC/HTTPS reconstructs complete values before the original 8 KiB/retained-handle enforcement. Existing credential checks and 24h tenant result isolation remain mandatory. Source code branch C-12 must pass exact-head CI and review; no live deployment claimed.
 
 ## 2026-10-27 — Compact MCP responses are defaults, never capability vetoes

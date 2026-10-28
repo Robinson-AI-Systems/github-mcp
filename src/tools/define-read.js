@@ -25,6 +25,11 @@ export function defineRead({ name, description, area, audience, compact, guidanc
   if (typeof handler !== 'function') throw new TypeError(`${name}: handler must be a function.`);
   if (summaryType !== undefined && !SUMMARY_TYPES.includes(summaryType)) throw new TypeError(`${name}: unknown summary type "${summaryType}".`);
   for (const key of ['detail', 'fields']) if (key in properties) throw new TypeError(`${name}: "${key}" is added by the read layer.`);
+  aliases = {
+    ...(Object.hasOwn(properties, 'ref') && !Object.hasOwn(properties, 'branch') ? { ref: ['branch'] } : {}),
+    ...(Object.hasOwn(properties, 'number') && name.startsWith('github_pr_') ? { number: ['pull_number'] } : {}),
+    ...aliases
+  };
   const aliasEntries = Object.entries(aliases).flatMap(([canonical, names]) => {
     if (!Object.hasOwn(properties, canonical) || !Array.isArray(names) || !names.length)
       throw new TypeError(`${name}: aliases need a declared canonical argument.`);

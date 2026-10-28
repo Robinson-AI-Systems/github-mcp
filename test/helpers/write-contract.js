@@ -1,6 +1,8 @@
 // The write contract (B-1): the nine checks every write tool passes, through every door that exists. A tool's test calls
 // `runWriteContract` once with its fixtures; the checks and the doors are the same for every tool, so a tool cannot pass by
 // skipping a safety step the others pass.
+// This matrix tests both selected everyday restrictions and full owner one-call
+// execution; owner-authority.test.js separately proves shipped policy gates and pass isolation.
 //   1 dryRun sends nothing and leaves a preview row            2 without confirm (when needed) nothing changes
 //   3 with confirm: one write, read back, row with request key  4 same call again: replay, no second write
 //   5 read-back mismatch: confirmed false + warning              6 production target: refused on preview, confirm on production
@@ -20,7 +22,7 @@ export const NOW = Date.UTC(2026, 9, 10, 18, 0, 0);
 const ENV = { TOKEN_ENCRYPTION_KEY: crypto.randomBytes(32).toString('base64url') };
 
 /** A fresh world: fake database and GitHub, a fine-grained credential for example-org, and a connection of the given kind. */
-export async function makeWorld({ mode = 'preview', profile = 'everyday', accounts = ['example-org'], gates = [], scratchAccount = false, advanceClockOnSleep = false, packageToken = false, packageUser = false, externalRoutes = [] } = {}) {
+export async function makeWorld({ mode = 'preview', profile = 'everyday', accounts = ['example-org'], gates = [], scratchAccount = false, advanceClockOnSleep = false, packageToken = false, packageUser = false, delegated = false, externalRoutes = [] } = {}) {
   // Long multi-step fixtures must let reserved write slots expire in virtual time.
   // Production spacing remains real; this only advances the fake clock after a simulated sleep.
   let offsetMs = 0;
@@ -45,7 +47,8 @@ export async function makeWorld({ mode = 'preview', profile = 'everyday', accoun
   }
   // Mock-only App transport: obtain an existing fixture user token instead of minting a real App installation token.
   const fixtureCredentials = scratchAccount ? { ...credentials, token: ({ account }) => credentials.token({ account, cred: 'U' }) } : credentials;
-  const connection = Object.freeze({ client_id: 'client-1', default_account: accounts[0], accounts: Object.freeze([...accounts]), mode, profile, listing: 'catalog' });
+  const connection = Object.freeze({ client_id: 'client-1', default_account: accounts[0], accounts: Object.freeze([...accounts]), mode, profile, listing: 'catalog', ...(delegated ? { pass: true,
+    allow_writes: true, allow_access_changes: true, spend_limit_cents: 100000, areas: null, repos: null } : {}) });
   const ctx = { connection, db, env: ENV, credentials: fixtureCredentials, fetch: gh.fetch,
     now: clock, sleep: async (ms) => { if (advanceClockOnSleep) offsetMs += ms; },
     retryAfterBaseValue: 1, gates };
@@ -54,7 +57,8 @@ export async function makeWorld({ mode = 'preview', profile = 'everyday', accoun
 
 // A GraphQL query is a POST but changes nothing; only a mutation counts as a write.
 const writes = (gh) => gh.calls.filter((c) => !['GET', 'HEAD'].includes(c.method) && !(c.route === 'POST /graphql' && !/^\s*mutation\b/.test(String(c.body?.query ?? ''))));
-export const parse = (result) => result.structuredContent ?? JSON.parse(result.content[0].text);
+export const parse = (result) => result.structuredContent?.full_payload_location === 'content[0].text'
+  ? JSON.parse(result.content[0].text) : result.structuredContent ?? JSON.parse(result.content[0].text);
 
 /** The doors that exist today: the handler itself, and the MCP dispatcher. Later batches add `github_call` and the HTTPS API. */
 export function doorsFor(definition) {
@@ -109,11 +113,13 @@ export function runWriteContract({ label, definition, args, arrange, needsConfir
       });
 
       if (needsConfirm) {
-        it('2. without confirm nothing changes, and the answer is a plain "ask first"', async () => {
+        it('2. full owners execute without confirm; restricted profiles ask first', async () => {
           const w = await world({ mode });
           const out = parse(await door.call(w, { ...args }));
-          expect(out).toMatchObject({ done: false, status: 'needs_confirmation', needsConfirmation: true });
-          expect(writes(w.gh)).toEqual([]);
+          expect(out).toMatchObject(profile === 'full'
+            ? { done: true, status: 'applied' }
+            : { done: false, status: 'needs_confirmation', needsConfirmation: true });
+          expect(writes(w.gh)).toHaveLength(profile === 'full' ? expectedWrites : 0);
         });
       }
 
@@ -143,17 +149,22 @@ export function runWriteContract({ label, definition, args, arrange, needsConfir
       });
 
       if (production) {
-        it('6. a production change is refused on a preview connection and needs confirm on a production one', async () => {
+        it('6. owner production executes; restricted profiles honor mode and confirmation', async () => {
           const preview = await world({ mode: 'preview' });
           const refused = await door.call(preview, { ...args, confirm: true });
-          expect(refused.isError).toBe(true);
-          expect(parse(refused)).toMatchObject({ mode: 'PREVIEW', status: 'refused_by_guard', refusedBy: 'mode' });
-          expect(writes(preview.gh)).toEqual([]);
+          if (profile === 'full') {
+            expect(parse(refused)).toMatchObject({ status: 'applied', confirmed: true });
+            expect(writes(preview.gh)).toHaveLength(expectedWrites);
+          } else {
+            expect(refused.isError).toBe(true);
+            expect(parse(refused)).toMatchObject({ mode: 'PREVIEW', status: 'refused_by_guard', refusedBy: 'mode' });
+            expect(writes(preview.gh)).toEqual([]);
+          }
           const live = await world({ mode: 'production' });
           const out = parse(await door.call(live, { ...args }));
-          expect(out).toMatchObject({ mode: 'PRODUCTION', status: 'needs_confirmation' });
-          expect(out.preview).toContain('PRODUCTION');
-          expect(writes(live.gh)).toEqual([]);
+          expect(out).toMatchObject({ mode: 'PRODUCTION', status: profile === 'full' ? 'applied' : 'needs_confirmation' });
+          expect(out.preview ?? out.summary).toContain('PRODUCTION');
+          expect(writes(live.gh)).toHaveLength(profile === 'full' ? expectedWrites : 0);
         });
       } else {
         it('6. a tool that is never production is not refused by the mode', async () => {
@@ -175,13 +186,13 @@ export function runWriteContract({ label, definition, args, arrange, needsConfir
       });
 
       if (accessWidening || notifies.length) {
-        it('8. an access change or a message to outsiders needs confirm and names who is affected', async () => {
+        it('8. access and notification disclosure accompanies owner execution or delegated confirmation', async () => {
           const w = await world({ mode });
           const out = parse(await door.call(w, { ...args }));
-          expect(out).toMatchObject({ status: 'needs_confirmation', needsConfirmation: true });
-          for (const name of notifies) expect(out.preview).toContain(name);
-          if (accessWidening) expect(out.preview).toContain('ACCESS CHANGE');
-          expect(writes(w.gh)).toEqual([]);
+          expect(out).toMatchObject(profile === 'full' ? { status: 'applied' } : { status: 'needs_confirmation', needsConfirmation: true });
+          for (const name of notifies) expect(out.preview ?? out.summary).toContain(name);
+          if (accessWidening) expect(out.preview ?? out.summary).toContain('ACCESS CHANGE');
+          expect(writes(w.gh)).toHaveLength(profile === 'full' ? expectedWrites : 0);
           if (quietArgs) {
             const quiet = await world({ mode });
             const ran = parse(await door.call(quiet, { ...quietArgs }));
@@ -194,8 +205,8 @@ export function runWriteContract({ label, definition, args, arrange, needsConfir
         it('9. a spending change shows its cost from the price table, is refused at $0, and counts toward the limit', async () => {
           const w = await world({ mode, spendLimitCents: 100000 });
           const out = parse(await door.call(w, { ...args }));
-          expect(out.preview).toContain(`$${(spendCents / 100).toFixed(2)}`);
-          expect(out.needsConfirmation).toBe(true);
+          expect(out.preview ?? out.summary).toContain(`$${(spendCents / 100).toFixed(2)}`);
+          if (profile !== 'full') expect(out.needsConfirmation).toBe(true);
           const zero = await world({ mode, gates: gatesFor({ spendLimitCents: 0 }) });
           const refused = parse(await door.call(zero, { ...args, confirm: true }));
           expect(refused).toMatchObject({ status: 'refused_by_guard', refusedBy: 'spend limit' });

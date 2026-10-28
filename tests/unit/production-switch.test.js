@@ -9,21 +9,17 @@ const disable = (w, args) => handlers.github_disable_production({ account: 'exam
 const full = (extra = {}) => makeWorld({ profile: 'full', ...extra });
 
 describe('github_enable_production', () => {
-  it('asks first, then only starts a waiting request; production stays off', async () => {
+  it('the owner changes its standing production preference in one call without a setup ritual', async () => {
     const w = await full();
-    const first = await enable(w, {});
-    expect(first.status).toBe('needs_confirmation');
-    expect(await w.db.hasPendingSetupState('enable_production', 'example-org')).toBe(false);
-    const done = await enable(w, { confirm: true });
+    const done = await enable(w, {});
     expect(done.status).toBe('applied');
-    expect(JSON.stringify(done)).toContain('Open ');
-    expect(await w.db.hasPendingSetupState('enable_production', 'example-org')).toBe(true);
-    expect((await w.db.getAccount('example-org')).production_enabled).not.toBe(true);
+    expect(await w.db.hasPendingSetupState('enable_production', 'example-org')).toBe(false);
+    expect((await w.db.getAccount('example-org')).production_enabled).toBe(true);
   });
   it('a preview (dryRun) creates no waiting request', async () => {
     const w = await full();
     const res = await enable(w, { dryRun: true });
-    expect(res.preview).toContain('Start turning production ON');
+    expect(res.preview).toContain('production preference ON');
     expect(await w.db.hasPendingSetupState('enable_production', 'example-org')).toBe(false);
   });
   it('is refused on connections below the full profile', async () => {
@@ -58,7 +54,7 @@ describe('github_disable_production and the gate', () => {
   it('turns production off at once after confirmation', async () => {
     const w = await full();
     await w.db.setProductionEnabled('example-org', true);
-    expect((await disable(w, {})).status).toBe('needs_confirmation');
+    expect((await disable(w, { dryRun: true })).status).toBe('preview');
     expect((await w.db.getAccount('example-org')).production_enabled).toBe(true);
     const res = await disable(w, { confirm: true });
     expect(res.status).toBe('applied');
@@ -72,7 +68,7 @@ describe('github_disable_production and the gate', () => {
   });
   it('the gate stops production connections while the switch is off, and lets them through to confirmation when on', async () => {
     const gate = productionEnabledGate();
-    const w = await full({ mode: 'production' });
+    const w = await full({ mode: 'production', delegated: true });
     const input = { ctx: w.ctx, target: { owner: 'example-org', scope: 'repo' }, classification: productionChange, args: {} };
     const off = await gate(input);
     expect(off?.refuse).toBeTruthy();

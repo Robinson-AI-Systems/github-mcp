@@ -33,7 +33,7 @@ describe('G-5 release asset deletion', () => {
     expect(changed(w.gh)).toHaveLength(0);
   });
   it('requires production approval when the actual release is published', async () => {
-    const w = await makeWorld({ mode: 'preview', profile: 'full' });
+    const w = await makeWorld({delegated:true, mode: 'preview', profile: 'full' });
     w.gh.when(REL).reply(200, { ...release, draft: false });
     w.gh.when(ASSET).reply(200, file);
     const out = await call(w, { confirm: true });

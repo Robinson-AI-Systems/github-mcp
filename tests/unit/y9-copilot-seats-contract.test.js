@@ -70,7 +70,7 @@ describe('Y-9d genuine delegation for an unpriced paid Copilot team',()=>{
    expect(w.gh.invalid).toEqual([]);
  });
  it('refuses a future-priced Copilot team change when user selected a finite monthly cap',async()=>{
-   const w=await makeWorld({mode:'production',profile:'full',gates:[spendGate()]});
+   const w=await makeWorld({delegated:true,mode:'production',profile:'full',gates:[spendGate()]});
    await w.db.setSpendLimitCents('example-org',10000);
    arrange(w.gh);
    const response=await copilot.handlers.github_copilot_team_seats({...args,confirm:true},w.ctx).then(parse);

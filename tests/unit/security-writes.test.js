@@ -173,8 +173,8 @@ describe('Y-7 rules', () => {
     const w=await makeWorld({ mode:'production', profile:'full',gates:[actualSpendGate()] });
     setupRoutes(w.gh,'ok',true);
     const first=await run(w,'github_security_code_scanning_default_setup',
-      {...R,state:'configured'});
-    expect(first.status).toBe('needs_confirmation');
+      {...R,state:'configured',dryRun:true});
+    expect(first.status).toBe('preview');
     expect(first.preview).toContain('COST UNKNOWN');
     expect(mutations(w)).toHaveLength(0);
     const result=await run(w,'github_security_code_scanning_default_setup',
@@ -184,7 +184,7 @@ describe('Y-7 rules', () => {
     expect(w.gh.invalid).toEqual([]);
   });
   it('honors user-selected $0 for private scanning but allows free public scanning', async () => {
-    const w=await makeWorld({ mode:'production', profile:'full', gates:[actualSpendGate()] });
+    const w=await makeWorld({delegated:true, mode:'production', profile:'full', gates:[actualSpendGate()] });
     await w.db.setSpendLimitCents(O,0);
     setupRoutes(w.gh,'ok',true);
     const blocked=await run(w,'github_security_code_scanning_default_setup',
@@ -213,8 +213,8 @@ describe('Y-7 rules', () => {
         return null;
       });
       const preview=await run(w,'github_security_config_attach',
-        {org:O,configurationId:9,scope});
-      expect(preview.status).toBe('needs_confirmation');
+        {org:O,configurationId:9,scope,dryRun:true});
+      expect(preview.status).toBe('preview');
       expect(preview.preview).toContain('COST UNKNOWN');
       const applied=await run(w,'github_security_config_attach',
         {org:O,configurationId:9,scope,confirm:true});
@@ -233,7 +233,7 @@ describe('Y-7 rules', () => {
     expect(mutations(w)).toHaveLength(1);
   });
   it('an explicit cost ceiling forbids paid configuration on private repositories', async () => {
-    const w=await makeWorld({mode:'production',profile:'full',gates:[actualSpendGate()]});
+    const w=await makeWorld({delegated:true,mode:'production',profile:'full',gates:[actualSpendGate()]});
     await w.db.setSpendLimitCents(O,10000);
     attachArrange(true)(w.gh,'ok');
     const r=await run(w,'github_security_config_attach',
@@ -336,7 +336,7 @@ describe('Y-7 large-org complete security-configuration cursor and readback cont
     expect(w.gh.invalid).toEqual([]);
   });
   it('refuses price-unknown >100 paid attachments with a real user-selected cap before provider PATCH',async()=>{
-    const w=await makeWorld({mode:'production',profile:'full',gates:[actualSpendGate()]});
+    const w=await makeWorld({delegated:true,mode:'production',profile:'full',gates:[actualSpendGate()]});
     await w.db.setSpendLimitCents('example-org',100);
     w.gh.when(CONFIG).reply(200,cfg());
     pagedRepos(w.gh,{lastPrivate:true});

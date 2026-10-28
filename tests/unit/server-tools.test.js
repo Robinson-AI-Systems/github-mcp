@@ -37,7 +37,8 @@ async function build(scope = {}) {
   const run = (name, args) => dispatch({ registry, name, args, connection, db });
   return { db, credentials, connection, run, dispatch };
 }
-const data = (result) => result.structuredContent;
+const data = (result) => result.structuredContent?.full_payload_location === 'content[0].text'
+  ? JSON.parse(result.content[0].text) : result.structuredContent;
 
 describe('github_whoami', () => {
   it('describes the connection and only the accounts it may use, with credential types and no credential', async () => {

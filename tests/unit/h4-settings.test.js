@@ -106,10 +106,9 @@ describe('H-4 security feature and Actions policy safety',()=>{
     expect(s.security_and_analysis.private_vulnerability_reporting).toBe('enabled');
     expect(w.gh.invalid).toEqual([]);
   });
-  it('can enable private paid security when explicitly delegated, preserving other fields',async()=>{
+  it('enables owner-directed private paid security in one call with cost disclosure, preserving other fields',async()=>{
     const w=await makeWorld({mode:'production',profile:'full',gates:[actualSpendGate()]});
     w.gh.when(routes.repo).replySequence([
-      {status:200,body:security('disabled',true)},
       {status:200,body:security('disabled',true)},
       {status:200,body:security('enabled',true)}
     ]);
@@ -117,16 +116,13 @@ describe('H-4 security feature and Actions policy safety',()=>{
     w.gh.when(routes.repoPatch).reply(200,security('enabled',true));
     const first=await call(w,'github_security_set_feature',
       {repo:'hello',feature:'secret_scanning',enabled:true});
-    expect(first.status).toBe('needs_confirmation');
-    expect(first.preview).toContain('COST UNKNOWN');
-    const applied=await call(w,'github_security_set_feature',
-      {repo:'hello',feature:'secret_scanning',enabled:true,confirm:true});
-    expect(applied).toMatchObject({status:'applied',done:true});
+    expect(first).toMatchObject({status:'applied',done:true});
+    expect(first.summary).toContain('COST UNKNOWN');
     expect(w.gh.calls.filter(x=>x.route===routes.repoPatch)).toHaveLength(1);
     expect(w.gh.invalid).toEqual([]);
   });
-  it('refuses private paid activation under an explicit user $0 limit and pass cap',async()=>{
-    const w=await makeWorld({mode:'production',profile:'full',gates:[actualSpendGate()]});
+  it('refuses private paid activation under an explicitly delegated $0 limit and pass cap',async()=>{
+    const w=await makeWorld({mode:'production',profile:'full',delegated:true,gates:[actualSpendGate()]});
     await w.db.setSpendLimitCents('example-org',0);
     w.gh.when(routes.repo).reply(200,security('disabled',true));
     w.gh.when(routes.pvr).reply(200,{enabled:false});
@@ -357,8 +353,8 @@ describe('H-4 source-backed provider security switches and separated Dependabot 
       expect(w.gh.invalid).toEqual([]);
     });
   }
-  it('respects a user-selected zero spend cap on new private security features, but permits turning them off',async()=>{
-    const w=await makeWorld({mode:'production',profile:'full',gates:[actualSpendGate()]});
+  it('respects an explicitly delegated zero spend cap on new private security features',async()=>{
+    const w=await makeWorld({mode:'production',profile:'full',delegated:true,gates:[actualSpendGate()]});
     await w.db.setSpendLimitCents('example-org',0);
     w.gh.when(routes.repo).reply(200,security('disabled',true));
     w.gh.when(routes.pvr).reply(200,{enabled:false});

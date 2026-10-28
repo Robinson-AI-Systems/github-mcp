@@ -22,7 +22,7 @@ async function setup() {
   const run = (name, args, connection = conn()) => createDispatch({}).call(null, { registry, name, args, connection, db });
   return { db, run };
 }
-const out = (r) => r.structuredContent;
+const out = (r) => r.structuredContent?.full_payload_location === 'content[0].text' ? JSON.parse(r.content[0].text) : r.structuredContent;
 
 describe('detail and fields', () => {
   it('returns the summary by default and the whole object with detail=full, marking outsiders\' text untrusted', async () => {

@@ -91,8 +91,8 @@ describe('Projects lifecycle rules', () => {
   it('making a project public needs confirmation and widens access', async () => {
     const w = await makeWorld({ mode: 'preview', profile: 'full' });
     server(w.gh, { state: { project: proj() }, mutate: () => ({}) });
-    const r = await run(w, 'github_project_update', { owner: OWNER, number: 3, public: true });
-    expect(r).toMatchObject({ done: false, needsConfirmation: true });
+    const r = await run(w, 'github_project_update', { owner: OWNER, number: 3, public: true, dryRun: true });
+    expect(r).toMatchObject({ done: false, needsConfirmation: false });
     expect(writesOf(w)).toHaveLength(0);
   });
   it('delete needs the exact title and sends nothing otherwise', async () => {

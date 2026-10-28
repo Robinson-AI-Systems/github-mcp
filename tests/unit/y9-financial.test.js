@@ -35,7 +35,7 @@ describe('Y-9d financial and Copilot integration',()=>{
     }
   });
   it('prevents any hosted-runner update from a PREVIEW connection',async()=>{
-    const w=await makeWorld({mode:'preview',profile:'full'});
+    const w=await makeWorld({delegated:true,mode:'preview',profile:'full'});
     w.gh.when('GET /orgs/{org}/actions/hosted-runners/{hosted_runner_id}')
       .reply(200,{id:18,name:'linux-large',maximum_runners:10,status:'ready'});
     const r=await call(hosted,'github_hosted_runner_manage',w,{runnerId:18,action:'update',name:'safer'});
@@ -53,7 +53,7 @@ describe('Y-9d financial and Copilot integration',()=>{
     expect(w.gh.calls.every(x=>x.method==='GET')).toBe(true);
   });
   it('Cloud agent expansion never starts in PREVIEW',async()=>{
-    const w=await makeWorld({mode:'preview',profile:'full'});
+    const w=await makeWorld({delegated:true,mode:'preview',profile:'full'});
     w.gh.when('GET /orgs/{org}/copilot/coding-agent/permissions')
       .reply(200,{enabled_repositories:'none'});
     const result=await call(copilot,'github_copilot_agent_policy_set',w,
@@ -98,7 +98,7 @@ describe('Y-9d financial and Copilot integration',()=>{
     expect(w.gh.calls.every(x=>x.method==='GET')).toBe(true);
   });
   it('a user-selected $0 limit refuses unknown metered charges',async()=>{
-    const w=await makeWorld({mode:'production',profile:'full',gates:[spendGate()]});
+    const w=await makeWorld({delegated:true,mode:'production',profile:'full',gates:[spendGate()]});
     await w.db.setSpendLimitCents('example-org',0);
     w.gh.when('GET /orgs/{org}/actions/hosted-runners/machine-sizes')
       .reply(200,{machine_sizes:[{id:'4-core'}]});

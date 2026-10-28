@@ -55,9 +55,9 @@ describe('SAML revocation uses the real PostgreSQL replay journal',()=>{
     expect(foreign.status).not.toBe('applied');
     const limited=await dispatch({...conn,profile:'read_only'},{...args,confirm:true});
     expect(limited.status).not.toBe('applied');
-    const preview=await dispatch({...conn,mode:'preview'},{...args,confirm:true});
+    const preview=await dispatch({...conn,mode:'preview',pass:true,allow_writes:true,allow_access_changes:true},{...args,confirm:true});
     expect(preview.status).not.toBe('applied');
-    const pending=await dispatch(conn,args);
+    const pending=await dispatch({...conn,pass:true,allow_writes:true,allow_access_changes:true},args);
     expect(pending.status).toBe('needs_confirmation');
     expect(affected()).toHaveLength(0);
 

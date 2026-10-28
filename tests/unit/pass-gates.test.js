@@ -56,8 +56,8 @@ describe('github_create_pass', () => {
   const call = async (w, args) => parse(await handlers.github_create_pass(args, w.ctx));
   it('previews, then makes a preview pass that the owner can find, list and switch off; the pass itself is never in the reply', async () => {
     const w = await passWorld();
-    const preview = await call(w, { account: 'example-org', repos: ['example-org/app'], days: 3 });
-    expect(preview).toMatchObject({ status: 'needs_confirmation' });
+    const preview = await call(w, { account: 'example-org', repos: ['example-org/app'], days: 3, dryRun: true });
+    expect(preview).toMatchObject({ status: 'preview' });
     expect(preview.preview).toMatch(/preview read_only pass for example-org.*no spending.*no access changes.*3 day/);
     const made = await call(w, { account: 'example-org', repos: ['example-org/app'], days: 3, confirm: true });
     expect(made).toMatchObject({ status: 'applied', confirmed: true });

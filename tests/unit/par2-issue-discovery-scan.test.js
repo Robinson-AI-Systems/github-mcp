@@ -11,6 +11,7 @@ const run = async (world, name, args) => {
   const result = await dispatch({ registry, name, args, connection: world.connection, db: world.db });
   let body;
   try { body = parse(result); } catch { body = result.content?.[0]?.text; }
+  if (body?.full_payload_location === 'content[0].text') body = JSON.parse(result.content[0].text);
   return { result, body };
 };
 const contents = (path, text) => ({
@@ -123,7 +124,7 @@ describe('bounded file secret pattern review', () => {
       { owner: ORG, repo: 'example-repo', paths: ['missing.txt'] });
     expect(notFound.body).toMatchObject({ complete: false, scanned_files: 0,
       skipped: [{ path: 'missing.txt', reason: 'missing_or_not_accessible' }] });
-    expect(JSON.stringify(notFound.body)).not.toContain('clean');
+    expect(notFound.body.repository_clean).toBeNull();
   });
   it('reports incomplete scans, rejects unsafe paths, binary or oversized content and cross-account access', async () => {
     const w = await makeWorld({ profile: 'read_only' });

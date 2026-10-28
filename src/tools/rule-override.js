@@ -1,3 +1,4 @@
+import { isOwnerConnection } from '../core/authority.js';
 // GOD-6 step 6b: a tool that may skip a branch's rules ON PURPOSE. `overridable(spec, { branchOf })` wraps one write tool:
 //  - adds `overrideRules` (+ `overrideReason`) to its arguments;
 //  - while previewing, checks the person may override (own login, switch on, production connection, a reason), reads with the
@@ -22,8 +23,8 @@ export async function planOverride(ctx, args, { owner, repo, branch, ci = null, 
   if (!allowed.ok) return { refuse: allowed.message };
   // A repository on the protected list (pr-only or locked) keeps its green-check merge rule: the override never applies there.
   // If the list cannot be read, fail closed.
-  const listed = await protectedList(ctx.db).then((entries) => matchingEntries(entries, { owner, repo }).length > 0, () => true);
-  if (listed) return { refuse: 'This repository is on the protected list (it moves only through green, exact-head pull requests), so its rules cannot be skipped.' };
+  const listed = !isOwnerConnection(ctx.connection) && await protectedList(ctx.db).then((entries) => matchingEntries(entries, { owner, repo }).length > 0, () => true);
+  if (listed && !isOwnerConnection(ctx.connection)) return { refuse: 'This repository is on the protected list (it moves only through green, exact-head pull requests), so its rules cannot be skipped.' };
   if (!branch) return { refuse: 'Only a branch\'s rules can be skipped this way; this change has no branch.' };
   const octokit = await githubFor({ ...ctx, actor: undefined }, { owner });
   const skipped = await skippedRules(octokit, { owner, repo, branch, ci, approvals }).catch(() => ['branch rules: could not be read']);
@@ -31,7 +32,7 @@ export async function planOverride(ctx, args, { owner, repo, branch, ci = null, 
   // GitHub can enforce rules/checks not visible in this inventory. When the
   // owner explicitly requests an override, submit it under their own credential
   // and let GitHub decide; never silently fall back to the regular write path.
-  return { use: true, skipped, branch, login: allowed.login, reason: args.overrideReason.trim() };
+  return { use: true, skipped, branch, login: allowed.login, reason: args.overrideReason?.trim() || 'User-directed override' };
 }
 
 /** The sentence added to a preview. */

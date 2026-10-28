@@ -54,7 +54,7 @@ export function requestScopedVerifiedAccess(db, token, record) {
 }
 
 /** The max-ten authorized accounts can be checked concurrently; every one must still be live. */
-export async function tenantMcpAccountsLive(db, accounts, mode, env) {
+export async function tenantMcpAccountsLive(db, accounts, mode, env, profile = 'everyday') {
   if (!Array.isArray(accounts) || !accounts.length || accounts.length > 10 ||
       accounts.some(login => typeof login !== 'string' || !login)) return false;
   const rows = await Promise.all(accounts.map(login => db.getAccount(login)));
@@ -65,7 +65,7 @@ export async function tenantMcpAccountsLive(db, accounts, mode, env) {
     Number.isSafeInteger(account.app_id) &&
     account.app_id === Number(env.GITHUB_PILOT_APP_ID) &&
     (mode !== 'production' ||
-      (env.VERCEL_ENV === 'production' && account.production_enabled === true))
+      (env.VERCEL_ENV === 'production' && (profile === 'full' || account.production_enabled === true)))
   ));
 }
 
@@ -124,7 +124,7 @@ export async function resolvePrivateTenantMcpBearer({
     if (!Array.isArray(grant.accounts) || !grant.accounts.length || grant.accounts.length > 10 ||
         !grant.accounts.includes(selectedAccount) ||
         (!isPublic && (grant.accounts.length !== 1 || grant.accounts[0] !== selectedAccount))) return null;
-    if (!await tenantMcpAccountsLive(db, grant.accounts, grant.mode, env)) return null;
+    if (!await tenantMcpAccountsLive(db, grant.accounts, grant.mode, env, grant.profile)) return null;
     // Keep transport events in this tenant's validated SQL namespace. Metrics
     // contain no URL, GitHub subject, repository, token or exception text.
     const providerMetrics=createTenantMetricBuffer(sql);

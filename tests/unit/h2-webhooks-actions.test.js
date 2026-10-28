@@ -59,7 +59,7 @@ async function call(w,name,args){
 }
 describe('H-2 webhook mutation safety and refused paths',()=>{
  it('never sends a DELETE on PREVIEW even with confirmation',async()=>{
-  const w=await makeWorld({mode:'preview',profile:'full'});
+  const w=await makeWorld({delegated:true,mode:'preview',profile:'full'});
   arrange(w.gh,'ok','delete');
   const r=await call(w,'github_webhook_delete',{repo:'hello',hookId:7,confirm:true});
   expect(r.done).toBe(false);

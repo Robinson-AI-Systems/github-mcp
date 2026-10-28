@@ -23,7 +23,7 @@ function arrange(gh,outcome,defaults={}){
   return state;
 }
 runWriteContract({label:'github_label_sync source-to-target',definition:def,args,needsConfirm:true,
-  arrange,expectedWrites:1,profile:'full'});
+  arrange,expectedWrites:1,profile:'full',delegated:true});
 
 async function call(w,args){
   const dispatch=createDispatch({credentials:w.credentials,gates:w.ctx.gates,fetch:w.gh.fetch,now:w.ctx.now,sleep:w.ctx.sleep});
@@ -33,7 +33,7 @@ async function call(w,args){
 const writes=gh=>gh.calls.filter(c=>!['GET','HEAD'].includes(c.method));
 describe('F-2 cross-account label reconciliation',()=>{
   it('plans cross-account mutations without modifying either repository',async()=>{
-    const w=await makeWorld({accounts:['example-org','other-org'],profile:'full'});
+    const w=await makeWorld({accounts:['example-org','other-org'],profile:'full',delegated:true});
     arrange(w.gh,'ok',{destination:[]});
     const result=await call(w,{sourceOwner:'example-org',sourceRepo:'source',
       targets:[{owner:'other-org',repo:'destination'}],dryRun:true});
@@ -42,7 +42,7 @@ describe('F-2 cross-account label reconciliation',()=>{
     expect(writes(w.gh)).toEqual([]);
   });
   it('performs a cross-account change through the per-destination guarded write',async()=>{
-    const w=await makeWorld({accounts:['example-org','other-org'],profile:'full'});
+    const w=await makeWorld({accounts:['example-org','other-org'],profile:'full',delegated:true});
     arrange(w.gh,'ok',{destination:[]});
     const result=await call(w,{sourceOwner:'example-org',sourceRepo:'source',
       targets:[{owner:'other-org',repo:'destination'}],confirm:true});
@@ -53,14 +53,14 @@ describe('F-2 cross-account label reconciliation',()=>{
     expect(w.gh.invalid).toEqual([]);
   });
   it('leaves unrequested destination-only labels untouched',async()=>{
-    const w=await makeWorld({profile:'full'});
+    const w=await makeWorld({profile:'full',delegated:true});
     arrange(w.gh,'ok',{hello:[{id:20,name:'local',color:'123456',description:'Keep'}]});
     const result=await call(w,{...args,confirm:true});
     expect(result).toMatchObject({status:'applied'});
     expect(writes(w.gh).some(c=>c.method==='DELETE')).toBe(false);
   });
   it('will not delete without explicit deleteOthers and confirmation',async()=>{
-    const w=await makeWorld({profile:'full'});
+    const w=await makeWorld({profile:'full',delegated:true});
     arrange(w.gh,'ok',{hello:[{id:20,name:'local',color:'123456',description:'Keep'}]});
     const result=await call(w,{...args,deleteOthers:true});
     expect(result).toMatchObject({status:'needs_confirmation',done:false});
@@ -68,14 +68,14 @@ describe('F-2 cross-account label reconciliation',()=>{
     expect(writes(w.gh)).toEqual([]);
   });
   it('rejects unconnected destination accounts before any write',async()=>{
-    const w=await makeWorld({profile:'full'});
+    const w=await makeWorld({profile:'full',delegated:true});
     arrange(w.gh,'ok');
     const result=await call(w,{...args,targets:[{owner:'foreign-org',repo:'hello'}],confirm:true});
     expect(result.done).toBe(false);
     expect(writes(w.gh)).toEqual([]);
   });
   it('rejects locked destinations and duplicate targets before any provider mutation',async()=>{
-    const w=await makeWorld({accounts:['example-org','robinson-ai-systems'],profile:'full'});
+    const w=await makeWorld({accounts:['example-org','robinson-ai-systems'],profile:'full',delegated:true});
     arrange(w.gh,'ok');
     const result=await call(w,{...args,targets:[{owner:'robinson-ai-systems',repo:'robinsons-toolkit-relay'}],confirm:true});
     expect(result.done).toBe(false);
@@ -85,7 +85,7 @@ describe('F-2 cross-account label reconciliation',()=>{
     expect(writes(w.gh)).toEqual([]);
   });
   it('keeps partial or mismatched target results unconfirmed',async()=>{
-    const w=await makeWorld({profile:'full'});
+    const w=await makeWorld({profile:'full',delegated:true});
     arrange(w.gh,'mismatch');
     const result=await call(w,{...args,confirm:true});
     expect(result).toMatchObject({status:'unconfirmed',done:false});
@@ -95,7 +95,7 @@ describe('F-2 cross-account label reconciliation',()=>{
     expect(writes(w.gh)).toHaveLength(1);
   });
   it('performs explicitly confirmed deletion of a destination-only label and verifies absence',async()=>{
-    const w=await makeWorld({profile:'full'});
+    const w=await makeWorld({profile:'full',delegated:true});
     const state={source:[],hello:[{id:20,name:'local',color:'123456',description:'Extra'}]};
     w.gh.when(route).reply(200,q=>state[q.params.repo]??[]);
     w.gh.when(get).replySequence([
@@ -114,7 +114,7 @@ describe('F-2 cross-account label reconciliation',()=>{
     expect(w.gh.invalid).toEqual([]);
   });
   it('refuses source inventory drift before the first destination mutation',async()=>{
-    const w=await makeWorld({profile:'full'});
+    const w=await makeWorld({profile:'full',delegated:true});
     let sourceReads=0;
     w.gh.when(route).reply(200,q=>{
       if(q.params.repo==='source'){

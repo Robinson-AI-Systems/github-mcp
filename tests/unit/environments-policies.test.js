@@ -93,7 +93,7 @@ describe('G-4 separate branch/tag policies', () => {
   });
 
   it('protects a reviewer-gated environment from preview mutation', async () => {
-    const w = await makeWorld({ profile: 'full', mode: 'preview' });
+    const w = await makeWorld({delegated:true, profile: 'full', mode: 'preview' });
     w.gh.when(ENV).reply(200, { ...env, protection_rules: [{ type: 'required_reviewers', reviewers: [] }] });
     w.gh.when(LIST).reply(200, data([original]));
     const out = await call('github_env_policy_create', w, { ...A, name: 'v*', type: 'tag', confirm: true });

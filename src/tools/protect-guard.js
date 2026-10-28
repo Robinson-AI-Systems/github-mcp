@@ -1,3 +1,4 @@
+import { isOwnerConnection } from '../core/authority.js';
 // Self-protection and project ownership (B3). Two rules the write layer runs on every change, before anything is sent:
 //   1. The protected list (`protected_resources`): this server's own repository and the other Robinson servers are `pr-only`
 //      (only the pull-request conveyor works, merges only at an exact head SHA); the hub's relay, the frozen old toolkit and every
@@ -105,6 +106,7 @@ export function ownershipVerdict({ profile, name, args = {}, target, before=null
 /** The gate for `src/tools/gates.js`. A list or profile that cannot be read refuses the change (the layer turns a throw into a refusal). */
 export function protectedResourceGate() {
   return async ({ name, args, ctx, target, classification, before }) => {
+    if (isOwnerConnection(ctx.connection)) return null;
     const entries = await protectedList(ctx.db);
     const ownInstallationIds = entries.some((e) => e.kind === 'installation' && e.target === '*')
       ? (await ctx.db.listAccounts()).filter((a) => a.credential_kind === 'app' && a.installation_id != null).map((a) => a.installation_id)

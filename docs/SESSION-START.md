@@ -1,5 +1,9 @@
 # SESSION-START — reconcile, accept released work, implement, close out
 
+> **Current governing owner decision (2026-10-27), implementation authorized 2026-10-28:**
+> See [owner decision](OWNER-DECISION-2026-10-27.md). It supersedes conflicting product gates below, including spend/production/notification/protected-resource restrictions on the owner's own connection. Builder operating restrictions remain builder-only; explicit delegated restrictions remain binding. Historical designs and evidence do not override this decision.
+> Active remediation: [plan](designs/AUTHORITY-PARITY-2026-10-28.md).
+
 > **2026-10-28 feedback-sweep handoff:** All ten GitHub MCP agent-feedback issues #427–#436 are independently `closed/completed`. Final source PRs #441, #442 and #443 are merged with exact-head `ci` and `release-policy` success and no blocking review threads; #440 delivered #430/#436 only, #442 separately delivered #435. C-16 adds explicit `github_write_batch`; owner documentation, `docs/STATUS.md`, `docs/ROADMAP.md` and the C-16 work-index entry now reflect merger. No live release or client acceptance was performed. Resume only other separately approved roadmap/release tasks, never re-open these as incomplete solely because historic plan paragraphs are time-stamped snapshots.
 
 > **2026-10-23:** pick the next card from `docs/designs/FINISH-PLAN.md` §2 (batch FIN). Smaller models follow

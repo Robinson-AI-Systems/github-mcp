@@ -1,3 +1,4 @@
+import { isOwnerConnection } from '../core/authority.js';
 // Tools that describe this server and the connection using them (A-5c). Read-only: they read the database and call no GitHub
 // endpoint. They show which credential types exist, never a credential, not even its last characters.
 import { randomBytes, createHash } from 'node:crypto';
@@ -377,31 +378,32 @@ const setupUrl = (ctx) => { try { return `${publicOrigin(ctx.env)}/api/github/se
 const enableProduction = defineGithubWrite({
   name: 'github_enable_production',
   area: 'server', audience: ['O'],
-  description: 'Step 1 of turning production on for an account: you then confirm with your passphrase on the setup page.',
+  description: 'Set the account production preference directly as owner; existing restricted grants keep their own limits.',
   properties: { account: { type: 'string', maxLength: 39 } },
   required: ['account'],
   declarations: { production: 'never', accessWidening: true, confirm: 'always', cred: '—', profiles: ['full'] },
   target: accountTarget,
   read: readAccount,
   classify: ({ args, before }) => (before ? { accessWidening: `production connections could then change ${args.account}\'s real repositories` } : {}),
-  summarize: ({ args, before }) => (before
-    ? `Start turning production ON for ${args.account} (today: ${before.production_enabled ? 'already on' : 'off'}). Nothing changes until you confirm on the setup page within ${PENDING_MINUTES} minutes`
+  summarize: ({ args, before, ctx }) => (before
+    ? isOwnerConnection(ctx.connection) ? `Turn the production preference ON for ${args.account}; full owner instructions already use GitHub authority` : `Start turning production ON for ${args.account} (today: ${before.production_enabled ? 'already on' : 'off'}). Nothing changes until you confirm on the setup page within ${PENDING_MINUTES} minutes`
     : `There is no connected account called "${args.account}"`),
   apply: async ({ args, ctx, before }) => {
     if (!before) throw noAccount(args.account);
+    if (isOwnerConnection(ctx.connection)) { await ctx.db.setProductionEnabled(args.account, true); return; }
     await ctx.db.createSetupState({ state: randomBytes(32).toString('base64url'), purpose: 'enable_production', accountHint: before.login, ttlSeconds: PENDING_MINUTES * 60 });
   },
   readAfter: async ({ args, ctx }) => ({ pending: await ctx.db.hasPendingSetupState('enable_production', args.account), enabled: (await ctx.db.getAccount(args.account))?.production_enabled === true }),
   verify: ({ after }) => after.pending || after.enabled,
   present: ({ args, ctx, after }) => (after.enabled
-    ? { production: 'already ON' }
+    ? { production: 'ON', note: 'Full owner instructions follow GitHub authority; explicit delegated grants remain separate.' }
     : { next_step: `Open ${setupUrl(ctx)}, find "Turn on production", enter ${args.account} and your passphrase, within ${PENDING_MINUTES} minutes.`, expires_in_minutes: PENDING_MINUTES })
 });
 
 const disableProduction = defineGithubWrite({
   name: 'github_disable_production',
   area: 'server', audience: ['O'],
-  description: 'Turn production OFF for an account at once; every production connection to it stops being able to change anything.',
+  description: 'Turn off the standing account production preference for restricted grants; full owner instructions retain GitHub authority.',
   properties: { account: { type: 'string', maxLength: 39 } },
   required: ['account'],
   declarations: { production: 'never', confirm: 'always', cred: '—', profiles: ['full'] },
@@ -415,13 +417,13 @@ const disableProduction = defineGithubWrite({
   },
   readAfter: async ({ args, ctx }) => (await ctx.db.getAccount(args.account))?.production_enabled === true,
   verify: ({ after }) => after === false,
-  present: ({ args }) => ({ production: `OFF for ${args.account}. Turning it on again needs the setup page and your passphrase.` })
+  present: ({ args }) => ({ production: `Standing production preference OFF for ${args.account}. The owner can change it directly; full owner instructions retain GitHub authority.` })
 });
 
 const setSpendLimit = defineGithubWrite({
   name: 'github_set_spend_limit',
   area: 'server', audience: ['O'],
-  description: 'Set an optional monthly spending cap (0 prevents spend); later increases to chosen caps require setup-page authorization.',
+  description: 'Set a standing spending preference; owner full connections may change it directly. Issued pass allowances are separate.',
   properties: { account: { type: 'string', maxLength: 39 }, limitCents: { type: 'integer', minimum: 0, maximum: 100000000, description: 'New monthly limit in cents (1000 = $10.00)' } },
   required: ['account', 'limitCents'],
   declarations: { production: 'never', confirm: 'always', cred: '—', profiles: ['full'] },
@@ -437,7 +439,8 @@ const setSpendLimit = defineGithubWrite({
   },
   readAfter: async ({ args, ctx }) => (await ctx.db.getAccount(args.account))?.spend_limit_cents,
   verify: ({ args, after }) => after === args.limitCents,
-  present: ({ args, after }) => ({ spend_limit: money(after), spend_limit_cents: after, raising_it: `Only the setup page can raise it (account ${args.account}).` })
+  present: ({ after }) => ({ spend_limit: money(after), spend_limit_cents: after,
+    note: 'Standing preference only on full owner connections; existing issued passes keep their separate allowances.' })
 });
 
 

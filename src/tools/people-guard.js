@@ -1,3 +1,4 @@
+import { isOwnerConnection } from '../core/authority.js';
 // The people guard (B4): who a change can reach and whose access it widens. Tools call these helpers from `classify`; the numbers
 // and names come from GitHub and the owner's settings, never from the arguments' say-so.
 //   - Messages (`M`): GitHub notifies people when issues, comments, reviews, assignments, releases and invitations are created. A change
@@ -108,7 +109,8 @@ export function becomesPublic({ what }) {
 
 /** Keeps a tool honest: one declared as widening access always asks, even if its classification came back empty. */
 export function peopleGate() {
-  return async ({ classification, declarations }) => {
+  return async ({ classification, declarations, ctx }) => {
+    if (isOwnerConnection(ctx?.connection)) return null;
     if (declarations?.accessWidening && !classification.accessWidening) return { confirm: 'This tool widens access, so it always asks first.' };
     return null;
   };

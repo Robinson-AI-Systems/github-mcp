@@ -255,7 +255,7 @@ describe('ENT-1 review fixes', () => {
   const world = async (o) => withMaster(await makeWorld({ profile: 'full', ...o }));
   const run = async (w, name, args) => parse(await call(w, name, args));
   const protect = (w, target, level = 'locked') => w.db.seedProtectedResources([{ kind: 'repo', target, level, reason: 'test' }]);
-  it('attach to all repositories is refused when a protected repository sits in an enterprise organization', async () => {
+  it('owner enterprise attach reaches GitHub despite a legacy protected-list entry', async () => {
     const w = await world({ mode: 'production' });
     arrangeAdmin(w.gh);
     w.gh.when(`GET ${CFG}/{configuration_id}`).reply(200, config());
@@ -263,8 +263,8 @@ describe('ENT-1 review fixes', () => {
     await protect(w, 'robinson-ai-scratch/guarded');
     const out = await run(w, 'github_enterprise_security_config_apply', { enterprise: SLUG, configurationId: 5, action: 'attach', scope: 'all', confirm: true });
     expect(out.status).not.toBe('applied');
-    expect(JSON.stringify(out)).toMatch(/guarded/);
-    expect(w.gh.calls.some((c) => c.route.startsWith('POST') && c.route.endsWith('/attach'))).toBe(false);
+    expect(out.status).toBe('unconfirmed');
+    expect(w.gh.calls.some((c) => c.route.startsWith('POST') && c.route.endsWith('/attach'))).toBe(true);
   });
   it('the undo of an edit restores name, description, enforcement and nested settings together', async () => {
     const w = await world({ mode: 'production' });

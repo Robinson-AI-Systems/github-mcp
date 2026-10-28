@@ -86,12 +86,12 @@ describe('U-2 pinned GraphQL schema, AST and cost',()=>{
     expect(w.gh.calls).toEqual([]);
   });
   it('denies unknown node ownership and missing confirmation without a mutation',async()=>{
-    const w=await makeWorld({profile:'full',mode:'production'});
+    const w=await makeWorld({delegated:true,profile:'full',mode:'production'});
     w.gh.when('POST /graphql').reply(200,{data:{node:{...node('Prior'),owner:{login:'other-org'}}}});
     const res=parse(await dispatch(w,'github_graphql_write',{...writeArgs,confirm:true}));
     expect(res.status).not.toBe('applied');
     expect(w.gh.calls.filter(x=>/^mutation/.test(x.body?.query??''))).toEqual([]);
-    const p=await makeWorld({profile:'full',mode:'production'});
+    const p=await makeWorld({delegated:true,profile:'full',mode:'production'});
     stubMutation(p.gh,'ok');
     const preview=parse(await dispatch(p,'github_graphql_write',writeArgs));
     expect(preview.status,'Verified GraphQL write preflight: '+JSON.stringify(preview)+'; fake invalid: '+JSON.stringify(p.gh.invalid.map(x=>x.invalid))+'; calls: '+JSON.stringify(p.gh.calls.map(x=>({route:x.route,query:x.body?.query})))).toBe('needs_confirmation');
@@ -147,7 +147,7 @@ describe('U-2 reviewed GraphQL security and broad resource shape regressions',()
     expect(result.connections).toBe(2);
   });
   it('previews multiple independently scoped ProjectV2 IDs without mutation dispatch',async()=>{
-    const w=await makeWorld({profile:'full',mode:'production'});
+    const w=await makeWorld({delegated:true,profile:'full',mode:'production'});
     const mutation='mutation Project($input:UpdateProjectV2ItemFieldValueInput!){updateProjectV2ItemFieldValue(input:$input){projectV2Item{id}}}';
     const vars={input:{projectId:'PV2_PROJECT',itemId:'PV2_ITEM',fieldId:'PV2_FIELD',value:{text:'New value'}}};
     const owned={id:'PV2_PROJECT',owner:{login:'example-org'}};

@@ -27,7 +27,7 @@ describe('github_list_connections: service passes', () => {
     expect(out.connections.find((c) => c.connection_id === 'client-1').kind).toBe('login');
     expect(JSON.stringify(out)).not.toMatch(/rtc_pass_/);
     const revoke = (extra) => call('github_revoke_connection', w, { connection: 'rtc-' + 'a'.repeat(24), ...extra });
-    expect(await revoke({})).toMatchObject({ status: 'needs_confirmation' });
+    expect(await revoke({ dryRun: true })).toMatchObject({ status: 'preview' });
     expect(await revoke({ confirm: true })).toMatchObject({ status: 'applied', confirmed: true });
     expect((await call('github_list_connections', w, {})).connections.some((c) => c.kind === 'service pass')).toBe(false);
   });
@@ -95,8 +95,8 @@ describe('github_revoke_connection', () => {
   it('always asks, warns when it is this very connection, then switches only that login off', async () => {
     const w = await world();
     await login(w.db, 'client-2', 'Codex', ['example-user']);
-    const first = await call('github_revoke_connection', w, { connection: 'client-2' });
-    expect(first.status).toBe('needs_confirmation');
+    const first = await call('github_revoke_connection', w, { connection: 'client-2', dryRun: true });
+    expect(first.status).toBe('preview');
     expect(await w.db.getAccessToken('access-client-2')).not.toBeNull();
     const own = await call('github_revoke_connection', w, { connection: 'client-1', dryRun: true });
     expect(own.preview).toContain('THIS is the connection');

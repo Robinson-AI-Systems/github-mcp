@@ -51,7 +51,7 @@ describe('G-5 guarded release asset upload', () => {
     }
   });
   it('classifies a published release as production', async () => {
-    const w = await makeWorld({ mode: 'preview', profile: 'full' });
+    const w = await makeWorld({delegated:true, mode: 'preview', profile: 'full' });
     w.gh.when(REL).reply(200, { ...release, draft: false });
     const out = await call(w, { confirm: true });
     expect(out.status).toBe('refused_by_guard');

@@ -1,0 +1,37 @@
+# Authority and replacement parity — 2026-10-28
+
+Branch: `ai/codex/authority-parity-20261028`. Draft PR #445. Plan/requirements published first at `9a305adb234a44d357bfd17d2515af12637bae5b`; implementation verification in progress. No release or live parity claim.
+
+## Implemented source outcome
+
+- Canonical product requirements and review instructions separate builder rules, full owner execution and deliberately restricted grants. Owner inputs, authority guide, catalog and finish-plan entry points corrected; historical authority evidence preserved as explicitly superseded history.
+- Full text reads, immutable blob/byte continuation when retained storage is unavailable, bounded exact UTF-8 reconstruction, and a single full copy of large read/write/composite payloads. RTC reconstructs full canonical JSON; declared output schemas and nested structured values remain intact.
+- Unambiguous branch/ref read and PR number/pull_number read/write aliases, with conflicts rejected before provider requests.
+- Incomplete zero-hit search never establishes absence. Existing local pattern scanning reports its limited engine/coverage; new `github_security_scan_guidance` reads actual repository settings and supplies native protection setup, official remote-engine configuration, and a Robinson Gitleaks CI/local alternative with pinned source/actions, read-only token and redacted output. Nothing is installed or scanned merely by generating guidance.
+- Full owner shared write execution discloses and journals in one call without automatic production/spend/access/notification confirmation. Unknown/unavailable prices are disclosed. Owner production/spending preferences can be changed directly. Actual GitHub refusal, independent readback, uncertain outcomes, request replay, tenant/account and credential binding remain effective.
+- Owner default-branch delete reaches GitHub; expected-head accuracy remains optional for ordinary owner merge/delete. Mandatory green-check merge is retained only for explicitly requested automation/restricted behavior. Owner branch writes keep the actual personal credential rather than forcing the App to implement a duplicate GitHub policy; genuinely App-only operations remain App-only. Fixed write spacing removed for full owners; provider throttles retained.
+- Owner resource/protected-list and project-ref vetoes neutralized in shared/direct guards, issue-transfer destinations and enterprise policy/configuration paths; deliberate bypass keeps provider authority and an audit reason. Universal argument scanners preserve credential protections without a blanket owner bypass prohibition.
+
+## Verification and current checkpoint
+
+Final exact-head CI is still required before merge. Local verification recorded so far: Focused read regression proves 61,421 characters in one full call and complete byte reconstruction after retention failure; owner regression exercises handler, dispatcher and meta-tool paths. Local provider-shape suite passed 21/21. Static repository/index/catalog/lint/write/budget/import/evidence/session checks passed before the final boundary refinements. The broad local run recorded 9,785 passing / 33 failing tests across 284 files while final refinements were being made. Those failures were traced to old expectations and public-envelope clients plus two test edits; after corrections the final boundary/client run passed 273/273 tests across 10 files, with the separate envelope run 66/66. Do not label the earlier broad run green; exact-head CI must run the complete assembled tree. `BASE_SHA=<base> npm run check` passed on the assembled source, including 481 catalog tools and a 4,713-token compact listing within the 5,000-token budget. `git diff --check` passed.
+
+Local PostgreSQL server binaries and Docker are absent; database/browser validation must use the unchanged disposable exact-head CI jobs. No live database or customer credential is used as a substitute. Existing acceptance ledger and prior source/live evidence remain unchanged. The attached reports' full audit Markdown/builder package were not supplied; their missing contents are not claimed reviewed.
+
+## Named remainder, not closed by this PR
+
+1. Exact fresh-content GitHub scanner parity: GitHub documents its engine through official remote MCP. This source supplies honest local and repository alternatives plus exact official setup, not a new claim of proprietary engine equivalence. A server-side authenticated bridge still needs an independently verified provider request/result/permission contract before implementation or parity claims.
+2. Remaining connection/setup UI and legacy state cleanup: `production_enabled`, preview/production labels, pass enrollment pages and older account cap fields still exist for compatibility/restricted profiles. Full owner dispatch no longer inherits those policy gates; review all enrollment/refresh/browser paths before deleting persisted columns or legacy forms. No pass migration or grant widening is inferred.
+3. Reconcile each remaining universal/GraphQL unsupported operation, typed destructive confirmations, protected setup operations and old capability/acceptance row against actual provider/transaction needs. Existing specialized dispatch/readback/secret boundaries must not be removed merely to claim coverage.
+4. Source-bearing checked release, deployed head-to-head read/write/denial/client verification. No manual early release authorization is inferred from coding approval; use the existing checked release policy.
+5. Native Git: [workspace design](../designs/NATIVE-GIT-WORKSPACES.md) includes actual Git worker, conflict/recovery, existing Dokploy initial host, idle-cost assumptions and autoscaling queue/worker/storage architecture. Proposed design only; no worker provisioned or native Git feature delivered by API-only tools.
+
+Continue the same plan; do not reopen prior closed feedback as new work or mark the above remainder complete from source counts.
+
+## First exact-head CI and correction batch
+
+At source `725e0db6814142fbd551825d3c5f029b6f50fdb2`, all three complete unit shards, shapes, RTC, static checks and home-page/fair-use browser groups passed. Two disposable PostgreSQL cases still expected owner mode/confirmation refusal; they now explicitly exercise restricted passes while retaining real journal/concurrent replay assertions. Two sign-in browser cases used a test-client helper that did not reconstruct the new canonical large payload; the helper now follows full_payload_location. No browser assertions were deleted. Full logs for both failed jobs were inspected; incidental expected negative-fixture SQL errors were not misdiagnosed as the cause.
+
+Final review also removed a personal-token reserve on full owners and lets an explicit owner override use the enrolled personal credential despite earlier actor/override preferences; real provider rejection/expiry and restricted grants remain binding. The actor/owner regression selection passed 50/50. New exact-head full CI is required after this combined correction; previous green results are not reused as proof of a different head.
+
+Review thread PRRT_kwDOVD_LK86xHGrT identified an inherited merge summary that counted every observed check as green after owner eligibility became provider-controlled. Both synchronous and background summaries now share actual successful/failed/pending/unknown counts; missing/unreadable CI is explicitly unknown. The focused regression includes two failed non-required checks despite an eligible merge.

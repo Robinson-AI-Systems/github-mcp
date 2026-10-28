@@ -164,8 +164,7 @@ if (directNames.size !== COMPACT_DEVELOPER_TOOLS.length ||
 // actual calls still reach the exact same guarded handlers and per-profile checks.
 const conciseReadSchema = (schema) => schema?.properties
   ? { ...schema, properties: Object.fromEntries(Object.entries(schema.properties).map(([key, spec]) =>
-    [key, typeof spec.description === 'string' && spec.description.length > 18
-      ? { ...spec, description: spec.description.slice(0, 15).trimEnd() + '…' } : spec])) }
+    [key, Object.fromEntries(Object.entries(spec).filter(([field]) => field !== 'description'))])) }
   : schema;
 export const registry = {
   ...baseRegistry,

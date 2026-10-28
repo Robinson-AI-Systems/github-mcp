@@ -41,8 +41,8 @@ describe('GOD-4 personal Codespaces secrets', () => {
     const w = await makeWorld({ profile: 'full', mode: 'preview' });
     await withMaster()(w);
     w.gh.when(`GET /${P}/{secret_name}`).reply(404, { message: 'Not Found' });
-    const out = parse(await secrets.handlers.github_secret_set({ ...ARGS, valueFrom: 'generate', confirm: true }, w.ctx));
-    expect(out.status).toBe('refused_by_guard');
+    const out = parse(await secrets.handlers.github_secret_set({ ...ARGS, valueFrom: 'generate', dryRun: true }, w.ctx));
+    expect(out.status).toBe('preview');
     expect(w.gh.calls.filter((c) => c.method !== 'GET')).toEqual([]);
   });
   it('github_secret_set_repo_access accepts level user in its schema', () => {

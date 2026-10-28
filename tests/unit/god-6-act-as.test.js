@@ -166,6 +166,25 @@ describe('when GitHub refuses the personal token', () => {
     await expect(o.request('POST /repos/{owner}/{repo}/issues', { owner: 'example-org', repo: 'hello', title: 't' })).rejects.toThrow(/SSO/);
     expect(writesOf(v.gh)).toHaveLength(1);
   });
+  it('owner personal credentials use GitHub limits without a server reserve', async () => {
+    const w = await setup({ connection: { profile: 'full' } });
+    await w.db.recordRateState({ account: '~me:4242', resource: 'core', remaining: 50, resetAt: new Date(w.ctx.now() + 3_600_000), blockedUntil: null });
+    w.gh.when('GET /repos/{owner}/{repo}').reply(200, { id: 1 });
+    const o = await githubFor(w.ctx, { owner: 'example-org' });
+    await o.request('GET /repos/{owner}/{repo}', { owner: 'example-org', repo: 'hello' });
+    expect(who(w.gh.calls[0])).toBe('M');
+  });
+  it('an explicit owner override can use the enrolled personal credential despite earlier actor/override defaults', async () => {
+    const { overrideAllowed } = await import('../../src/github/act-as.js');
+    const w = await setup({ connection: { profile: 'full' } });
+    await w.db.setSetting('act_as_me.4242', 'off');
+    await w.db.setSetting('rule_override.4242', 'off');
+    expect(await overrideAllowed(w.ctx, { overrideRules: true })).toMatchObject({ ok: true });
+    const o = await githubFor({ ...w.ctx, forceMe: true }, { owner: 'example-org' });
+    w.gh.when('GET /repos/{owner}/{repo}').reply(200, { id: 1 });
+    await o.request('GET /repos/{owner}/{repo}', { owner: 'example-org', repo: 'hello', request: { robinsonAs: 'me' } });
+    expect(who(w.gh.calls[0])).toBe('M');
+  });
   it('11. a nearly used-up personal allowance uses the app until it resets, on separate rate keys', async () => {
     const w = await setup();
     await w.db.recordRateState({ account: '~me:4242', resource: 'core', remaining: 50, resetAt: new Date(w.ctx.now() + 3_600_000), blockedUntil: null });

@@ -67,6 +67,10 @@ export const searchGitHub=defineRead({
     return {
       type:a.type,query,page,count:items.length,total_count:data.total_count,
       incomplete_results:data.incomplete_results===true,
+      completeness:data.incomplete_results===true?'incomplete':'provider_reported_complete',
+      ...(items.length===0?{absence_verified:false,warning:data.incomplete_results===true
+        ?'GitHub returned an incomplete zero-hit search. This does not establish absence. Narrow the query and retry, or inspect the exact file/tree at a ref.'
+        :'No indexed matches were returned. Search indexing, visibility and query semantics can omit existing content; inspect exact files before asserting absence.'}:{}),
       items,more_possible:page*max<Math.min(data.total_count,1000),
       ...(data.total_count>1000?{github_result_cap:1000}:{})
     };

@@ -65,14 +65,14 @@ describe('GQL-1 enterprise policies and profile', () => {
   it('changes one policy, confirms by reading it back, and offers the old value as undo', async () => {
     const w = withMaster(await makeWorld({ profile: 'full', mode: 'production' }));
     const state = arrange(w.gh);
-    const preview = parse(await call(w, 'github_enterprise_policy_set', { enterprise: SLUG, setting: 'members_can_delete_repositories', value: 'DISABLED' }));
-    expect(preview.status).toBe('needs_confirmation');
+    const preview = parse(await call(w, 'github_enterprise_policy_set', { enterprise: SLUG, setting: 'members_can_delete_repositories', value: 'DISABLED', dryRun: true }));
+    expect(preview.status).toBe('preview');
     expect(state.sent).toEqual([]);
     const done = parse(await call(w, 'github_enterprise_policy_set', { enterprise: SLUG, setting: 'members_can_delete_repositories', value: 'DISABLED', confirm: true }));
     expect(done).toMatchObject({ status: 'applied', confirmed: true });
     expect(state.sent).toEqual([{ enterpriseId: 'E1', settingValue: 'DISABLED' }]);
     expect(w.gh.invalid).toEqual([]);
-    expect((await w.db.getChange(1)).inverse).toMatchObject({ tool: 'github_enterprise_policy_set', args: { setting: 'members_can_delete_repositories', value: 'ENABLED' } });
+    expect((await w.db.getChange(done.logged.id)).inverse).toMatchObject({ tool: 'github_enterprise_policy_set', args: { setting: 'members_can_delete_repositories', value: 'ENABLED' } });
   });
   it('a value the setting does not accept, and a policy already at that value, are refused before anything is sent', async () => {
     const w = withMaster(await makeWorld({ profile: 'full', mode: 'production' }));
@@ -86,18 +86,17 @@ describe('GQL-1 enterprise policies and profile', () => {
   it('turning on a widening policy is flagged as an access change', async () => {
     const w = withMaster(await makeWorld({ profile: 'full', mode: 'production' }));
     arrange(w.gh);
-    const preview = parse(await call(w, 'github_enterprise_policy_set', { enterprise: SLUG, setting: 'default_repository_permission', value: 'ADMIN' }));
+    const preview = parse(await call(w, 'github_enterprise_policy_set', { enterprise: SLUG, setting: 'default_repository_permission', value: 'ADMIN', dryRun: true }));
     expect(JSON.stringify(preview)).toMatch(/default permission/i);
-    expect(preview.status).toBe('needs_confirmation');
+    expect(preview.status).toBe('preview');
   });
-  it('a policy that changes repository access is refused while a protected repository sits in the enterprise; one that does not is allowed', async () => {
+  it('owner enterprise policies use provider authority despite legacy protected-list entries', async () => {
     const w = withMaster(await makeWorld({ profile: 'full', mode: 'production' }));
     const state = arrange(w.gh);
     await w.db.seedProtectedResources([{ kind: 'repo', target: 'robinson-ai-scratch/guarded', level: 'locked', reason: 'test' }]);
     const out = parse(await call(w, 'github_enterprise_policy_set', { enterprise: SLUG, setting: 'default_repository_permission', value: 'ADMIN', confirm: true }));
-    expect(out.status).not.toBe('applied');
-    expect(JSON.stringify(out)).toMatch(/guarded/);
-    expect(state.sent).toEqual([]);
+    expect(out.status).toBe('applied');
+    expect(state.sent).toHaveLength(1);
     const ok = parse(await call(w, 'github_enterprise_policy_set', { enterprise: SLUG, setting: 'organization_projects', value: 'DISABLED', confirm: true }));
     expect(ok.status).toBe('applied');
   });
@@ -105,7 +104,7 @@ describe('GQL-1 enterprise policies and profile', () => {
     const w = withMaster(await makeWorld({ profile: 'full', mode: 'production' }));
     const state = arrange(w.gh, { policy: { allowPrivateRepositoryForkingSetting: 'ENABLED', allowPrivateRepositoryForkingSettingPolicyValue: 'SAME_ORGANIZATION' } });
     const args = { enterprise: SLUG, setting: 'allow_private_repository_forking', value: 'ENABLED', forkingPolicy: 'EVERYWHERE' };
-    const preview = parse(await call(w, 'github_enterprise_policy_set', args));
+    const preview = parse(await call(w, 'github_enterprise_policy_set', { ...args, dryRun: true }));
     expect(JSON.stringify(preview)).toMatch(/EVERYWHERE/);
     expect(JSON.stringify(preview)).toMatch(/SAME_ORGANIZATION/);
     const done = parse(await call(w, 'github_enterprise_policy_set', { ...args, confirm: true }));
@@ -132,8 +131,8 @@ describe('GQL-1 enterprise policies and profile', () => {
   it('profile undo restores every changed field, and offers none when a field was empty before', async () => {
     const w = withMaster(await makeWorld({ profile: 'full', mode: 'production' }));
     arrange(w.gh);
-    await call(w, 'github_enterprise_profile_set', { enterprise: SLUG, description: 'new', location: 'Boulder', confirm: true });
-    expect((await w.db.getChange(1)).inverse).toMatchObject({ tool: 'github_enterprise_profile_set', args: { description: 'old', location: 'Denver' } });
+    const changed = parse(await call(w, 'github_enterprise_profile_set', { enterprise: SLUG, description: 'new', location: 'Boulder', confirm: true }));
+    expect((await w.db.getChange(changed.logged.id)).inverse).toMatchObject({ tool: 'github_enterprise_profile_set', args: { description: 'old', location: 'Denver' } });
     const w2 = withMaster(await makeWorld({ profile: 'full', mode: 'production' }));
     arrange(w2.gh);
     const done = parse(await call(w2, 'github_enterprise_profile_set', { enterprise: SLUG, websiteUrl: 'https://example.test', confirm: true }));

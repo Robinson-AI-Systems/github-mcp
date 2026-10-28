@@ -64,7 +64,7 @@ describe('SCIM replay and authorization with disposable PostgreSQL',()=>{
     const preview=await run(conn,{...args,dryRun:true});
     expect(preview.status).toBe('preview');
     expect(calls()).toHaveLength(0);
-    const notConfirmed=await run(conn,args);
+    const notConfirmed=await run({...conn,pass:true,allow_writes:true,allow_access_changes:true},args);
     expect(notConfirmed.status).toBe('needs_confirmation');
     expect(calls()).toHaveLength(0);
     const foreign=await run({...conn,accounts:['another-org'],
@@ -74,7 +74,7 @@ describe('SCIM replay and authorization with disposable PostgreSQL',()=>{
     const restricted=await run({...conn,profile:'read_only'},{...args,confirm:true});
     expect(restricted?.status).not.toBe('applied');
     expect(calls()).toHaveLength(0);
-    const inactive=await run({...conn,mode:'preview'},{...args,confirm:true});
+    const inactive=await run({...conn,mode:'preview',pass:true,allow_writes:true,allow_access_changes:true},{...args,confirm:true});
     expect(inactive?.status).not.toBe('applied');
     expect(calls()).toHaveLength(0);
 

@@ -144,7 +144,7 @@ describe('U-1 a delete of a single setting is confirmed when it reads back empty
 });
 describe('U-1 refusal and effect uncertainty',()=>{
   it('does not write on preview or when confirmation is absent',async()=>{
-    const w=await makeWorld({profile:'full',mode:'preview'});
+    const w=await makeWorld({delegated:true,profile:'full',mode:'preview'});
     setRead(w,'GET /repos/{owner}/{repo}/interaction-limits',{limit:'existing',expiry:'one_day'});
     const r=parse(await dispatch(w,'github_api_write',api(route,scope,payload)));
     expect(['refused_by_guard','needs_confirmation']).toContain(r.status);
@@ -174,9 +174,9 @@ describe('U-1 actual user authority and uncertain-cost boundary',()=>{
   it('unselected developer budget does not impose a product-spend cap on an unknown-cost operation',async()=>{
     const w=await makeWorld({profile:'full',mode:'production',gates:[spendGate()]});
     setRead(w,'GET /repos/{owner}/{repo}/interaction-limits',{limit:'existing',expiry:'one_day'});
-    const out=parse(await dispatch(w,'github_api_write',api(route,scope,payload)));
-    expect(out.status).toBe('needs_confirmation');
-    expect(out.needsConfirmation).toBe(true);
+    const out=parse(await dispatch(w,'github_api_write',{...api(route,scope,payload),dryRun:true}));
+    expect(out.status).toBe('preview');
+    expect(out.needsConfirmation).toBe(false);
     expect(noChange(w.gh)).toBe(true);
   });
   it('does not misclassify an unknown non-curated write as free by its innocent name',()=>{
@@ -206,7 +206,7 @@ describe('U-1 actual user authority and uncertain-cost boundary',()=>{
     expect(w.gh.calls.filter(x=>x.method==='DELETE')).toHaveLength(1);
   });
   it('refuses unknown future charges under an explicit selected $0 product budget before any PUT',async()=>{
-    const w=await makeWorld({profile:'full',mode:'production',gates:[spendGate()]});
+    const w=await makeWorld({delegated:true,profile:'full',mode:'production',gates:[spendGate()]});
     await w.db.setSpendLimitCents('example-org',0);
     setRead(w,'GET /repos/{owner}/{repo}/interaction-limits',
       {limit:'existing',expiry:'one_day'});
@@ -215,7 +215,7 @@ describe('U-1 actual user authority and uncertain-cost boundary',()=>{
     expect(noChange(w.gh)).toBe(true);
   });
   it('refuses unknown future charges under a selected positive cap while keeping full confirmation for uncapped users',async()=>{
-    const w=await makeWorld({profile:'full',mode:'production',gates:[spendGate()]});
+    const w=await makeWorld({delegated:true,profile:'full',mode:'production',gates:[spendGate()]});
     await w.db.setSpendLimitCents('example-org',50000);
     setRead(w,'GET /repos/{owner}/{repo}/interaction-limits',
       {limit:'existing',expiry:'one_day'});
@@ -225,8 +225,8 @@ describe('U-1 actual user authority and uncertain-cost boundary',()=>{
     const uncapped=await makeWorld({profile:'full',mode:'production',gates:[spendGate()]});
     setRead(uncapped,'GET /repos/{owner}/{repo}/interaction-limits',
       {limit:'existing',expiry:'one_day'});
-    const ready=parse(await dispatch(uncapped,'github_api_write',api(route,scope,payload)));
-    expect(ready).toMatchObject({status:'needs_confirmation',needsConfirmation:true});
+    const ready=parse(await dispatch(uncapped,'github_api_write',{...api(route,scope,payload),dryRun:true}));
+    expect(ready).toMatchObject({status:'preview',needsConfirmation:false});
     expect(ready.preview).toContain('COST UNKNOWN');
     expect(noChange(uncapped.gh)).toBe(true);
   });
@@ -434,14 +434,12 @@ describe('PAR-4 verified enterprise authority in universal REST',()=>{
     expect(denied.status).not.toBe('applied');
     expect(narrow.gh.calls.some(c=>c.route===policy)).toBe(false);
   });
-  it('requires preview, confirmation, no-repeat journal, and honest unconfirmed 204 without GET readback',async()=>{
+  it('offers explicit preview then one-call owner execution, replay and honest unconfirmed 204 without GET readback',async()=>{
     const w=setMaster(await makeWorld({mode:'production',profile:'full',advanceClockOnSleep:true}));
     const preview=parse(await dispatch(w,'github_api_write',{...args,dryRun:true}));
     expect(preview.status).toBe('preview');
     expect(w.gh.calls.some(c=>c.route===policy)).toBe(false);
-    const asked=parse(await dispatch(w,'github_api_write',args));
-    expect(asked.status).toBe('needs_confirmation');
-    const applied=parse(await dispatch(w,'github_api_write',{...args,confirm:true}));
+    const applied=parse(await dispatch(w,'github_api_write',args));
     expect(applied).toMatchObject({status:'unconfirmed',confirmed:false});
     expect(w.gh.calls.filter(c=>c.route===policy)).toHaveLength(1);
     expect(w.gh.invalid).toEqual([]);

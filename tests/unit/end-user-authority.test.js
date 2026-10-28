@@ -11,7 +11,7 @@ const target = { owner: 'example-org' };
 const unknown = { spendCents: 0, spendUnknown: true };
 
 describe('every tool that can cost money is a real action for the end user', () => {
-  it('there are money-capable tools and each one is a real write with a handler, always confirmed', () => {
+  it('there are money-capable tools and each one is a real write with a handler and delegated confirmation metadata', () => {
     expect(spendTools.length).toBeGreaterThanOrEqual(21);
     for (const t of spendTools) {
       expect(typeof registry.handlers[t.name], t.name).toBe('function');
@@ -30,21 +30,23 @@ describe('every tool that can cost money is a real action for the end user', () 
 
 describe('the spend rules protect the end user\'s own choices, for every money-capable tool', () => {
   for (const t of spendTools) {
-    it(`${t.name}: no cap + unknown price → explicit warning and confirmation; own cap → refused; pass with no allowance → refused`, async () => {
+    it(`${t.name}: owner unknown/known cost never adds a cap gate; delegated ceilings remain effective`, async () => {
       const w = await makeWorld({ mode: 'production', profile: 'full', gates: [spendGate()] });
       const gate = spendGate();
       const call = (ctx, classification = unknown) => gate({ name: t.name, args: {}, ctx, target, classification, declarations: t.declarations });
-      // (a) the user set no cap of their own: honest warning, then confirmation (never a developer-rule refusal)
+      // (a) price disclosure is the write lifecycle responsibility; this policy gate is neutral for owners.
       const open = await call(w.ctx);
       expect(open?.refuse, t.name).toBeUndefined();
-      expect(open.confirm).toContain('No maximum future charge');
-      // (b) the user chose a cap: unknown future charges cannot be proven to fit, so it is refused
+      expect(open).toBeNull();
+      // (b) old standing account caps cannot veto a current full-owner instruction.
       await w.db.setSpendLimitCents('example-org', 5000);
       const capped = await call(w.ctx);
-      expect(capped).toMatchObject({ by: 'spend limit' });
-      // (b2) a known price over the remaining cap is refused too
+      expect(capped).toBeNull();
+      // (b2) known prices do not create owner policy gates either; a delegated ceiling still refuses.
       const over = await call(w.ctx, { spendCents: 9000, spendUnknown: false });
-      expect(over).toMatchObject({ by: 'spend limit' });
+      expect(over).toBeNull();
+      const delegate = { ...w.ctx, connection: { ...w.ctx.connection, pass: true, spend_limit_cents: 5000 } };
+      expect(await call(delegate)).toMatchObject({ by: 'spend limit' });
       // (c) a delegation pass with money_limit 0 stays refused
       await w.db.setSpendLimitCents('example-org', 0);
       const pass = { ...w.ctx, connection: { ...w.ctx.connection, pass: true, client_id: 'no-money-pass', spend_limit_cents: 0 } };

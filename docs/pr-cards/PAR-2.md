@@ -26,3 +26,7 @@ GitHub's **official** `run_secret_scanning` is a remote-MCP-only feature backed 
 ## Implementation checkpoint
 
 Plan committed before feature changes. Implementation and synthetic tests checked in; their suites passed on an earlier CI revision, but latest-head required CI and real Muse/provider acceptance must still be verified before merge and deployment. 
+
+## 2026-10-28 remediation — Drift check and current scope
+
+The [authority/parity plan](../designs/AUTHORITY-PARITY-2026-10-28.md) supersedes older owner confirmation/cap/protection acceptance in this card. Reuse existing implementations; complete-read fallback, owner write authority and repository scan guidance are current work. Historical MERGED status does not certify this follow-up or deployed parity. Keep existing completion evidence unchanged; follow-up proof belongs in the dated remediation status.
