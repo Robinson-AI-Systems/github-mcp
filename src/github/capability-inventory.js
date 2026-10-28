@@ -135,6 +135,11 @@ export const COVERED_BY_TOOL = new Map([
   ['updateIpAllowListForInstalledAppsEnabledSetting', 'github_enterprise_policy_set'],
   ['updateIpAllowListUserLevelEnforcementEnabledSetting', 'github_enterprise_policy_set'],
   ['updateEnterpriseOrganizationProjectsSetting', 'github_enterprise_policy_set'],
+  ['createIpAllowListEntry', 'github_ip_allowlist_save'],
+  ['updateIpAllowListEntry', 'github_ip_allowlist_save'],
+  ['deleteIpAllowListEntry', 'github_ip_allowlist_delete'],
+  ['updateNotificationRestrictionSetting', 'github_org_set_notification_restriction'],
+  ['updateOrganizationWebCommitSignoffSetting', 'github_org_update_settings'],
   ['updateEnterpriseProfile', 'github_enterprise_profile_set']
 ]);
 
