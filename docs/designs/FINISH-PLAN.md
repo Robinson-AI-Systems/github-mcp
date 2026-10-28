@@ -11,7 +11,7 @@ single starting point for the remaining work. Each piece has its own complete ca
 finish checklist, so an implementer does not have to make design decisions. If a card and the code disagree, the code
 is the truth: note the difference in the card's drift table and follow the card's intent.
 
-Nothing in this plan is built yet. Status of each card lives in `work-index.json`.
+The October 23 baseline below is historical. Most listed cards were subsequently merged; current source status lives in `work-index.json`. The authority/parity follow-up is separately tracked in AUTHORITY-PARITY-2026-10-28.md; historical card merger does not close it.
 
 ## 1. Where the product stands (2026-10-23, main = 8ed877a)
 
@@ -72,7 +72,7 @@ Do the cards in this order. One card = one PR unless the card says to split. Eac
 | 11 | **GOD-6** (added 2026-10-24) | medium–high, one PR, 6–8 h | "Act as me": with a master token, GitHub records the person instead of the bot; App-only requests stay on the bot. Card: `docs/pr-cards/GOD-6.md`. | No (the switch defaults on) |
 | 12 | **PAR-1** (added 2026-10-24) | light–medium, one PR, 3–4 h | Parity with GitHub's official MCP server (Copilot review, code quality, docs search, bulk project edits, stargazers). Card: `docs/pr-cards/PAR-1.md`. | No |
 
-"Finished" = all eleven cards merged and released, ACC-1's ledger has a recorded outcome (passed, or a named
+"Finished" = all currently approved cards and follow-ups merged and released, ACC-1's ledger has a recorded outcome (passed, or a named
 provider/plan limit) for every row, and `docs/STATUS.md` + this file say so.
 
 ## 3. Rules every card follows (read once)

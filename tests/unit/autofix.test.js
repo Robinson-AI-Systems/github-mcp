@@ -61,8 +61,8 @@ describe('autofix commit', () => {
     expect((await call(w2, { repo: 'app', alertNumber: 3, targetRef: 'fix-branch', confirm: true })).status).not.toBe('applied');
     expect(w2.gh.calls.filter((c) => c.method === 'POST')).toHaveLength(0);
   });
-  it('treats the default branch as production', async () => {
+  it('allows an instructed owner change to the default branch through GitHub', async () => {
     const w = await setup({ status: 'success', description: 'x', started_at: 'y' });
-    expect((await call(w, { repo: 'app', alertNumber: 3, targetRef: 'main', confirm: true })).status).toBe('refused_by_guard');
+    expect((await call(w, { repo: 'app', alertNumber: 3, targetRef: 'main', confirm: true })).status).toBe('applied');
   });
 });

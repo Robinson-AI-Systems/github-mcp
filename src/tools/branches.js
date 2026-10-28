@@ -1,6 +1,8 @@
-// Branches and tags (D-3). Reads: list/get. Changes: create, rename, delete, merge, tag create/delete. The default branch is always read
-// from GitHub, never assumed; deleting it is always refused; tags are always production. A branch or tag is the write's target, so
-// production names, protected branches, project-owned refs and the protected-resource list all see it.
+import { isOwnerConnection } from '../core/authority.js';
+// Branch/tag tools read actual provider state. Full owner instructions reach
+// GitHub, which enforces default-branch and protection rules. Explicit requested
+// cleanup has its own closed-PR/head conditions; expectedHeadSha alone is an
+// independent accuracy check and does not request the cleanup workflow.
 import { listAll } from '../github/client.js';
 import { isPlanLimit } from '../github/plan-limit.js';
 import { defineRead } from './define-read.js';
@@ -135,7 +137,7 @@ const branchRename = defineGithubWrite({
 // Cleanup carries its evidence to the writer boundary and repeats it immediately
 // before DELETE. GitHub has no atomic compare-and-delete operation for references.
 async function cleanupEvidence(args,ctx,target,sha){
-  if(args.expectedHeadSha===undefined&&args.cleanupPrNumber===undefined)return;
+  if(args.cleanupPrNumber===undefined)return;
   if(!args.expectedHeadSha||!args.cleanupPrNumber)throw refusal('Cleanup requires both exact head and closed PR evidence.');
   if(sha!==args.expectedHeadSha)throw refusal('Branch advanced since the cleanup plan; nothing deleted.');
   if(typeof ctx.db?.profileForRepository!=='function')throw refusal('Project ownership policy is unavailable.');
@@ -154,7 +156,7 @@ async function cleanupEvidence(args,ctx,target,sha){
 
 const branchDelete = defineGithubWrite(overridable({
   name: 'github_branch_delete', area: 'branch', audience: ['B'],
-  description: 'Delete a nondefault branch; protected branches require production approval.',
+  description: 'Delete a branch under GitHub permissions; optional expectedHeadSha detects concurrent changes.',
   properties: { owner: OWNER, repo: REPO, branch: NAME, expectedHeadSha: {type:'string',pattern:'^[a-f0-9]{40}$'}, cleanupPrNumber: {type:'integer',minimum:1}, ...OUTSIDE_PROJECT },
   required: ['repo', 'branch'],
   declarations: { production: 'when-target', confirm: 'always' },
@@ -165,10 +167,10 @@ const branchDelete = defineGithubWrite(overridable({
     return {sha,isDefault:(await getRepo(ctx,target.owner,target.repo)).default_branch===args.branch};
   },
   classify: ({ ctx, target }) => productionOf(ctx, target),
-  summarize: ({ args, before, target }) => (before.isDefault ? `${args.branch} is the default branch of ${slug(target.owner, target.repo)}; it can never be deleted` : before.sha
+  summarize: ({ args, before, target }) => (before.sha
     ? `Delete branch ${args.branch} (at ${short(before.sha)}) from ${slug(target.owner, target.repo)}; it can be recreated from that commit` : `There is no branch ${args.branch} in ${slug(target.owner, target.repo)}`),
   apply: async ({ args, ctx, before, target }) => {
-    if (before.isDefault) throw refusal(`${args.branch} is the default branch. Change the default branch first; this tool never deletes it.`);
+    if (before.isDefault && !isOwnerConnection(ctx.connection)) throw refusal(`${args.branch} is the default branch. Change the default branch first; this tool never deletes it.`);
     if (!before.sha) throw refusal(`There is no branch ${args.branch}.`, 404);
     if(args.expectedHeadSha){
       const fresh=await refSha(ctx,target.owner,target.repo,`heads/${args.branch}`);

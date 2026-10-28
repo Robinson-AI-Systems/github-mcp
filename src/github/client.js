@@ -1,3 +1,4 @@
+import { isOwnerConnection } from '../core/authority.js';
 // The only file in the server that imports @octokit/*. Every GitHub call goes through an Octokit built here, so the
 // pinned API version, request keys, write spacing, rate discipline and ETag caching cannot be skipped (A7–A9).
 import crypto from 'node:crypto';
@@ -210,7 +211,7 @@ export async function githubFor(ctx, { owner, cred = 'I', scope } = {}) {
     if (personal) {
       if (forced === 'me') asMe = true;
       else if (forced !== 'app' && !isAppOnly(method, url, query)) {
-        const need = write ? await mustUseAppForBranch({ method, pathname: parsedUrl.pathname, options, query, owner: account, repo: parsedUrl.pathname.split('/')[3], read: readWith('app') }) : null;
+        const need = write && !isOwnerConnection(ctx.connection) ? await mustUseAppForBranch({ method, pathname: parsedUrl.pathname, options, query, owner: account, repo: parsedUrl.pathname.split('/')[3], read: readWith('app') }) : null;
         if (need) note = need.note; else asMe = true;
       }
       if (asMe && forced !== 'me') {
@@ -219,7 +220,7 @@ export async function githubFor(ctx, { owner, cred = 'I', scope } = {}) {
       }
     } else if (forced === 'me' && !place && cred !== 'M') {
       throw new GithubClientError('no_credentials', 'Only your own GitHub login can skip branch rules; add your master token and turn Act as me on.', { account });
-    } else if (place && write && forced !== 'me' && forced !== 'app') {
+    } else if (place && write && !isOwnerConnection(ctx.connection) && forced !== 'me' && forced !== 'app') {
       // An extra place has no app. A change to a branch that has rules is not made by an admin's token on its own: the person
       // must ask to override on purpose. (Tags, releases and similar keep working exactly as in GOD-5.)
       const need = await mustUseAppForBranch({ method, pathname: parsedUrl.pathname, options, query, owner: account, repo: parsedUrl.pathname.split('/')[3], read: readWith('me') });
@@ -258,7 +259,8 @@ export async function githubFor(ctx, { owner, cred = 'I', scope } = {}) {
       }});
       if (write) {
         sent.request = { ...sent.request, retries: 0 }; // a write is never replayed after an error (A8)
-        await takeWriteSlot(ctx.db, `${account}:${actual}`, { sleep: ctx.sleep });
+        if (!isOwnerConnection(ctx.connection))
+          await takeWriteSlot(ctx.db, `${account}:${actual}`, { sleep: ctx.sleep });
       }
       const urlKey = !write && sent.request?.etag ? parsedUrl.pathname + parsedUrl.search : null;
       let cached = null;

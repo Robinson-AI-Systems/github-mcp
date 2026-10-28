@@ -155,10 +155,10 @@ describe('CAP-2 Standard Full diagnosis without token or permission escalation',
     const dispatch=createDispatch({env:w.ctx.env,credentials:w.credentials,fetch:w.gh.fetch});
     const plain=await dispatch({registry,name:'github_check_permissions',args,connection:w.connection,db:w.db});
     expect(plain.structuredContent.checked_areas).toBe(1);
-    expect(plain.structuredContent.accounts[0].effective_access.refusedBy).toContain('profile');
+    expect(parse(plain).accounts[0].effective_access.refusedBy).toContain('profile');
     const meta=await dispatch({registry,name:'github_call',args:{name:'github_check_permissions',args},
       connection:w.connection,db:w.db});
-    expect(meta.structuredContent.accounts[0].effective_access.refusedBy).toContain('profile');
+    expect(parse(meta).accounts[0].effective_access.refusedBy).toContain('profile');
     expect(w.gh.calls).toEqual([]);
     await expect(handlers.github_check_permissions({account:'foreign',tool:'github_pr_merge'},ctx)).rejects.toThrow(/not one/);
   });
@@ -240,10 +240,10 @@ describe('CAP-2 explicit recovery without secret or privilege mutation',()=>{
     expect(reg.accounts[0].recovery.recheck.registeredTool).toBe('github_pr_merge');
     const dispatch=createDispatch({env:w.ctx.env,credentials:w.credentials,fetch:w.gh.fetch});
     const out=await dispatch({registry,name:'github_check_permissions',args,connection:w.connection,db:w.db});
-    expect(out.structuredContent.accounts[0].recovery.capability).toBe('not-tested');
+    expect(parse(out).accounts[0].recovery.capability).toBe('not-tested');
     const viaMeta=await dispatch({registry,name:'github_call',
       args:{name:'github_check_permissions',args},connection:w.connection,db:w.db});
-    expect(viaMeta.structuredContent.accounts[0].recovery.verified).toBe(false);
+    expect(parse(viaMeta).accounts[0].recovery.verified).toBe(false);
     expect(w.gh.calls).toEqual([]);
   });
 });
@@ -331,7 +331,7 @@ describe('CAP-3 exact-operation protected setup handoff without credential excha
     const nested=await dispatch({registry,name:'github_call',
       args:{name:'github_check_permissions',args},connection:w.connection,db:w.db});
     for(const reply of [normal,nested]){
-      expect(reply.structuredContent.accounts[0].additional_setup).toMatchObject({
+      expect(parse(reply).accounts[0].additional_setup).toMatchObject({
         status:'protected-setup',kind:'K'});
     }
     expect(w.gh.calls).toEqual([]);

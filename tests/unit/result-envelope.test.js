@@ -49,7 +49,7 @@ describe('large tool-result dual-channel cost (#428)', () => {
       structuredContent: { text: 'a'.repeat(4000) } };
     expect(deduplicateLargeEnvelope(unmatched)).toBe(unmatched);
   });
-  it('keeps complete structured output for a delegated-write workflow', async () => {
+  it('keeps one complete payload for a delegated-write workflow and restores it for RTC', async () => {
     const db = createFakeDb();
     await db.initSchema();
     const largeText = 'workflow-draft '.repeat(400);
@@ -69,9 +69,9 @@ describe('large tool-result dual-channel cost (#428)', () => {
       registry, name: 'github_test_delegated_write_workflow', args: {}, connection, db
     });
     expect(result.isError).not.toBe(true);
-    expect(result.structuredContent.draft).toBe(largeText);
-    expect(result.structuredContent.appNeedsText).toBe(largeText);
-    expect(result.structuredContent).not.toHaveProperty('full_payload_location');
+    expect(result.structuredContent).toHaveProperty('full_payload_location', 'content[0].text');
+    expect(full(result).draft).toBe(largeText);
+    expect(completeDispatchResult(result).appNeedsText).toBe(largeText);
   });
   it('deduplicates only outer replies, retaining full structured values inside delegated calls', async () => {
     const db = createFakeDb();

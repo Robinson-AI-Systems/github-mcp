@@ -47,6 +47,7 @@ async function call(w,name,args={}){
   const dispatch=createDispatch({credentials:w.credentials,env:w.ctx.env,
     fetch:w.gh.fetch,now:w.ctx.now,sleep:w.ctx.sleep,gates:[]});
   const r=await dispatch({registry,name,args,connection:w.connection,db:w.db});
+  if (r.structuredContent?.full_payload_location === 'content[0].text') return JSON.parse(r.content[0].text);
   return r.structuredContent??(r.isError?{error:r.content?.[0]?.text}:
     JSON.parse(r.content[0].text));
 }

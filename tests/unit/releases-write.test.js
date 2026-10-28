@@ -62,7 +62,7 @@ describe('G-5 release lifecycle safety', () => {
   });
 
   it('requires production connection when publishing directly', async () => {
-    const w = await makeWorld({ mode: 'preview', profile: 'full' });
+    const w = await makeWorld({delegated:true, mode: 'preview', profile: 'full' });
     w.gh.when(BYTAG).reply(404, { message: 'Not Found' });
     const out = await call('github_release_create', w, { ...A, tag: 'v1.0.0', draft: false, confirm: true });
     expect(out).toMatchObject({ status: 'refused_by_guard', refusedBy: 'mode' });

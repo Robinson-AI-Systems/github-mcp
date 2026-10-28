@@ -1,3 +1,4 @@
+import { isOwnerConnection } from '../core/authority.js';
 // CAP-2: static, scoped explanation. This never fetches a bearer, executes a
 // provider action, expands a grant or claims that a registered tool is usable.
 import {isToolVisible} from '../core/registry.js';
@@ -23,6 +24,7 @@ export function effectiveToolAccess({connection,account,tool}){
   const credential={kind:kind??'not-declared',state:stored===null?'unknown':stored?'stored-unverified':'missing',
     note:ADVICE[kind]??'Credential kind and exact provider scopes have not been reviewed for this read tool.'};
   const production=tool.writes!==true?{state:'not-a-write'}
+    :isOwnerConnection(connection)?{state:'provider-enforced',note:'Full owner execution follows GitHub permissions and rules; production marks are disclosure.'}
     :tool.declarations?.production==='always'&&connection.mode!=='production'
       ?{state:'denied',note:'Full does not enable production; independently authorize production per account.'}
       :{state:'guard-required',note:'Classify the exact target and enforce existing production and confirmation gates at execution.'};
@@ -35,7 +37,7 @@ export function effectiveToolAccess({connection,account,tool}){
     profile:{value:connection.profile,status:profileAllowed?'selected':'denied',
       ...(profileAllowed?{}:{how:'Reconnect through the server-owned consent page and explicitly choose Full; existing grants are not silently widened.'})},
     credential,production,resource,policy:{state:'guard-required',
-      note:'Protected resources, spending, notifications and RTC pass limits cannot be bypassed by this diagnostic.'},
+      note:'This diagnostic grants no authority. GitHub rules and explicit delegated limits apply; owner classification is disclosure.'},
     status:refusedBy.length?'denied':'unverified',refusedBy,
     permissionProof:'not-performed',
     note:refusedBy.length?'Only these source-layer denials are known; other provider and policy layers remain unverified.'
@@ -117,7 +119,7 @@ export function accessRecovery({connection,account,tool,missingPermissions=[],op
     actions,unverified:[
       'Exact tenant membership, account ownership and selected resource',
       'Effective provider permissions, GitHub plan/SSO and latest consent',
-      'Protected-resource, spend, confirmation and restricted-pass gates',
+      'GitHub rules, explicitly delegated limits and transaction integrity',
       'Actual guarded operation dispatch and independent provider readback'
     ],
     recheck:{tool:'github_check_permissions',account:account.login,

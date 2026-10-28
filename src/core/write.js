@@ -1,12 +1,12 @@
+import { isOwnerConnection } from './authority.js';
 // Contract-generic write lifecycle (B-1). Imports nothing service-specific: the service supplies how to name the target,
 // read its current state, classify the change, send it, read it back and explain a failure.
 //
-// Every write tool is built with `defineWrite`. The order is fixed and cannot be skipped by a tool:
-//   check the connection and target -> read the current state -> classify (production / access / people / spend) ->
-//   refuse what the connection's mode forbids -> run the guard gates -> preview -> (dryRun stops here) -> ask first when
-//   anything needs confirmation -> claim the request key (an identical request in the same 10 minutes is a replay) ->
-//   send exactly once -> read back and compare -> finish the change-log row (with its inverse, when there is a clean one).
-// Anything the layer cannot decide safely is refused; nothing is sent on a doubt.
+// Every write binds the connection/target, reads state, discloses consequences,
+// journals an immutable intent, sends once, and independently verifies the result.
+// Full ordinary owners execute in one call; explicit dryRun (or confirm:false)
+// requests a preview. Restricted profiles/passes retain their chosen mode and
+// confirmation checks. No path skips credentials, tenant scope or the journal.
 
 const NAME = /^[a-z][a-z0-9_]{1,62}$/;
 const PRODUCTION = ['always', 'when-target', 'never'];
@@ -96,6 +96,7 @@ export function defineWrite(spec) {
 
   async function handler(args, ctx) {
     const connection = ctx?.connection;
+    const ownerDirected = isOwnerConnection(connection);
     const banner = connection?.mode === 'production' ? { mode: 'PRODUCTION' } : { mode: 'PREVIEW' };
     const out = (value, isError = false) => reply({ ...banner, ...value }, isError);
     const refuseOutright = (error) => out({ done: false, status: 'refused', error }, true);
@@ -130,7 +131,7 @@ export function defineWrite(spec) {
     if (typeof price === 'function') {
       try {
         const cents = await price({ args, ctx, target: tgt, before, readFailed });
-        if (cents === null && decl.spend) classification = { ...classification, spendUnknown: true };
+        if (cents === null) classification = { ...classification, spendUnknown: true };
         else if (!Number.isSafeInteger(cents) || cents < 0) priceFailed = true;
         else classification = { ...classification, spendCents: cents };
       } catch { priceFailed = true; }
@@ -142,10 +143,13 @@ export function defineWrite(spec) {
       return out({ done: false, status: 'refused_by_guard', refusedBy: by, error: reason, ...(classification.production ? { production: classification.production } : {}) }, true);
     };
 
-    if (priceFailed) return refuse('spend', 'The cost of this change could not be worked out, so it was refused.');
+    if (priceFailed) {
+      if (!ownerDirected) return refuse('spend', 'The cost of this change could not be worked out, so it was refused.');
+      classification = { ...classification, spendCents: 0, spendUnknown: true };
+    }
 
-    // 1. The connection's mode. A preview connection never carries a production change; a production connection always confirms one.
-    if (classification.production && connection.mode !== 'production') {
+    // 1. Explicitly restricted connections retain their production-mode boundary.
+    if (!ownerDirected && classification.production && connection.mode !== 'production') {
       return refuse('mode', `This is a production change because ${classification.production}, and this connection is in preview mode. To make it, connect again without "Read-only" ticked on the sign-in page (the owner can also turn production on for the account on the setup page).`);
     }
 
@@ -165,11 +169,11 @@ export function defineWrite(spec) {
     if (typeof summary !== 'string' || summary.length > 1024) return refuseOutright('A safe preview could not be produced, so this change was refused.');
     const marks = marksOf(classification);
     const line = marks.length ? `${summary} ${marks.map((m) => `${m}.`).join(' ')}` : summary;
-    const needsConfirm = decl.confirm === 'always' || decl.spend || classification.spendUnknown || !!classification.production || !!classification.accessWidening
-      || classification.notifies.length > 0 || classification.spendCents > 0 || forcedConfirm !== null;
+    const needsConfirm = !ownerDirected && (decl.confirm === 'always' || decl.spend || classification.spendUnknown || !!classification.production || !!classification.accessWidening
+      || classification.notifies.length > 0 || classification.spendCents > 0 || forcedConfirm !== null);
     const preview = { done: false, preview: line, needsConfirmation: needsConfirm && args.confirm !== true, ...(forcedConfirm ? { because: forcedConfirm } : {}) };
 
-    if (args.dryRun === true) {
+    if (args.dryRun === true || (ownerDirected && args.confirm === false)) {
       const previewId = await log({ summary: line, dryRun: true, ...recordFields() });
       return out({ ...preview, status: 'preview', ...(Number.isSafeInteger(previewId) ? { logged: { id: previewId } } : {}) });
     }

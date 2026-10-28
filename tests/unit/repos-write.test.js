@@ -126,7 +126,7 @@ describe('repository changes: extra checks (BATCH-D §4 D-1)', () => {
   it('making a repository public names the risk and is an access change', async () => {
     const w = await makeWorld({ mode: 'production', profile: 'full' });
     seq(w.gh, REPO, [[200, base()]]);
-    const out = await call('github_repo_set_visibility', w, { ...R, visibility: 'public' });
+    const out = await call('github_repo_set_visibility', w, { ...R, visibility: 'public', dryRun: true });
     expect(out.preview).toContain('anyone can read the code and its history, including old commits');
     expect(out.preview).toContain('ACCESS CHANGE');
     expect(out.preview).toContain('PRODUCTION');
@@ -135,12 +135,12 @@ describe('repository changes: extra checks (BATCH-D §4 D-1)', () => {
   it('making a repository private is production but not an access widening', async () => {
     const w = await makeWorld({ mode: 'production', profile: 'full' });
     seq(w.gh, REPO, [[200, base({ visibility: 'public', private: false })]]);
-    const out = await call('github_repo_set_visibility', w, { ...R, visibility: 'private' });
+    const out = await call('github_repo_set_visibility', w, { ...R, visibility: 'private', dryRun: true });
     expect(out.preview).not.toContain('ACCESS CHANGE');
   });
 
   it('github_repo_delete on a pr-only protected repository is refused', async () => {
-    const w = await makeWorld({ mode: 'production', profile: 'full', accounts: ['robinson-ai-systems'], gates: [protectedResourceGate()] });
+    const w = await makeWorld({ mode: 'production', profile: 'full', delegated: true, accounts: ['robinson-ai-systems'], gates: [protectedResourceGate()] });
     seq(w.gh, REPO, [[200, base({ name: 'github-mcp', full_name: 'robinson-ai-systems/github-mcp' })]]);
     const out = await call('github_repo_delete', w, { repo: 'github-mcp', confirm: true });
     expect(out).toMatchObject({ status: 'refused_by_guard', refusedBy: 'protected resource' });

@@ -117,10 +117,90 @@ export const securityScanFiles = defineRead({
       scanned_files: reviewed.length, scanned_bytes: totalBytes, reviewed,
       skipped, findings, finding_count: findings.length,
       complete: !incomplete && skipped.length === 0,
-      engine: 'bounded_common_credential_patterns',
+      setup_guidance: { tool: 'github_security_scan_guidance', arguments: { owner, repo: args.repo } },
+      engine: 'bounded_common_credential_patterns', provider_engine: false, repository_clean: null,
+      provider_alerts: { tool: 'github_security_list_alerts', arguments: { owner, repo: args.repo, kind: 'secret' },
+        note: 'Existing GitHub alerts are provider-backed; they are not a fresh scan of supplied content.' },
       note: 'Only selected GitHub-hosted files and a limited set of patterns were checked. No matches never guarantees safety. This is not GitHub\'s remote MCP secret scan or push protection. Findings do not create GitHub alerts.'
     };
   })
 });
-export const tools = [securityScanFiles.tool];
-export const handlers = { [securityScanFiles.tool.name]: securityScanFiles.handler };
+
+
+// The Robinson fallback is a repository-owned scan, with real provider settings
+// and a concrete, inspectable workflow. It never pretends to be GitHub's
+// proprietary fresh-content engine or to have installed anything.
+export const securityScanGuidance = defineRead({
+  name: 'github_security_scan_guidance', area: 'security', audience: ['B', 'O', 'Op'],
+  description: 'Inspect secret protection settings and prepare repository scanning setup when fresh GitHub MCP engine parity is unavailable.',
+  properties: { owner: OWNER, repo: REPO }, required: ['repo'],
+  handler: (args, ctx) => plain(async () => {
+    const { owner, octokit } = await readerFor(args, ctx);
+    const { data } = await octokit.request('GET /repos/{owner}/{repo}', { owner, repo: args.repo });
+    if (data.full_name?.toLowerCase() !== `${owner}/${args.repo}`.toLowerCase())
+      throw new TypeError('GitHub did not return the requested repository identity.');
+    const settings = data.security_and_analysis ?? {};
+    return {
+      owner, repo: args.repo, provider_engine_available_here: false,
+      parity: 'repository_alternative', installed: false, repository_clean: null,
+      observed: Object.fromEntries(['secret_scanning', 'secret_scanning_push_protection'].map(name =>
+        [name, settings[name]?.status ?? 'not_returned_by_provider'])),
+      native_setup: ['secret_scanning', 'secret_scanning_push_protection'].map(feature => ({
+        tool: 'github_security_set_feature', arguments: { owner, repo: args.repo, feature, enabled: true }
+      })),
+      provider_alerts: { tool: 'github_security_list_alerts', arguments: { owner, repo: args.repo, kind: 'secret' } },
+      official_engine: {
+        url: 'https://api.githubcopilot.com/mcp/',
+        headers: { 'X-MCP-Toolsets': 'secret_protection', 'X-MCP-Tools': 'run_secret_scanning' },
+        steps: ['Connect GitHub remote MCP using your own GitHub authorization.',
+          'Enable Secret Protection for the repository where required by GitHub.',
+          'Ask run_secret_scanning to scan local files or staged changes before pushing.'],
+        documentation: 'https://docs.github.com/en/code-security/how-tos/use-ghas-with-ai-coding-agents/scan-for-secrets-with-github-mcp-server'
+      },
+      robinson_alternative: {
+        name: 'Robinson repository secret scan', engine: 'Gitleaks CLI',
+        file: '.github/workflows/robinson-secret-scan.yml',
+        workflow: repositoryScanWorkflow(),
+        next: 'Review this workflow, commit it through the normal PR tools, run it, then require the robinson-secret-scan check in GitHub rulesets if desired.',
+        local_commands: ['gitleaks dir . --redact=100 --exit-code=1', 'gitleaks git . --redact=100 --exit-code=1'],
+        setup: 'Install the upstream open-source Gitleaks CLI for local commands. This CLI workflow does not use the separately licensed gitleaks-action.',
+        coverage: 'CI scans fetched Git history; local dir scans working files, including uncommitted content. Rule-based detection is not GitHub engine equivalence or proof of absence.',
+        source: 'https://github.com/gitleaks/gitleaks/tree/5f6ec56cfa6f8c67648d863582c7ae2f206d5c1c',
+        cost: 'The scanner is open source. GitHub Actions runner minutes or GitHub Secret Protection may incur provider charges under your account plan.'
+      },
+      remediation: 'Rotate or revoke any exposed credential at its provider. Removing it from the current file does not remove it from Git history.',
+      note: 'Guidance and generated configuration only; no setting, workflow or scan was changed or run.'
+    };
+  })
+});
+
+export function repositoryScanWorkflow() {
+  return `name: Robinson secret scan
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  robinson-secret-scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@90ad2b35f69faf97585ad74d28fa006d2739b7af
+        with:
+          go-version: '1.24.11'
+          cache: false
+      - name: Install pinned open-source scanner
+        run: go install github.com/zricethezav/gitleaks/v8@5f6ec56cfa6f8c67648d863582c7ae2f206d5c1c
+      - name: Scan history without printing secret values
+        run: gitleaks git . --redact=100 --exit-code=1 --no-banner
+`;
+}
+
+export const tools = [securityScanFiles.tool, securityScanGuidance.tool];
+export const handlers = Object.fromEntries([securityScanFiles, securityScanGuidance].map(d => [d.tool.name, d.handler]));

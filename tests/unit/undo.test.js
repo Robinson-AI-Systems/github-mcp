@@ -32,8 +32,8 @@ describe('X-1 undo of a finished change', () => {
     const preview = await run(w, 'github_undo_change', { changeId: 1, dryRun: true });
     expect(preview).toMatchObject({ status: 'preview', undoing: { changeId: 1, runs: 'github_repo_set_archived' } });
     expect(preview.preview).toContain('Unarchive');
-    const ask = await run(w, 'github_undo_change', { changeId: 1 });
-    expect(ask.status).toBe('needs_confirmation');
+    const ask = await run(w, 'github_undo_change', { changeId: 1, dryRun: true });
+    expect(ask.status).toBe('preview');
     expect(patches(w.gh)).toHaveLength(1);
     const done = await run(w, 'github_undo_change', { changeId: 1, confirm: true });
     expect(done).toMatchObject({ status: 'applied', confirmed: true, undoing: { changeId: 1 } });
@@ -126,8 +126,8 @@ describe('X-1 undo of a finished change', () => {
     await w.db.recordChange(row({ inverse: { tool: 'github_repo_set_archived', args: { owner: 'example-org', repo: 'hello', archived: false, confirm: true, dryRun: false } } }));
     expect((await run(w, 'github_undo_change', { changeId: 1, confirm: true })).reason).toContain('not usable');
     seq(w.gh, REPO, [[200, base({ archived: true })]]);
-    const out = await run(w, 'github_undo_change', { changeId: 2 });
-    expect(out.status).toBe('needs_confirmation');
+    const out = await run(w, 'github_undo_change', { changeId: 2, dryRun: true });
+    expect(out.status).toBe('preview');
     expect(patches(w.gh)).toEqual([]);
   });
 });

@@ -1,3 +1,4 @@
+import { isOwnerConnection } from '../core/authority.js';
 // U-2 universal GraphQL: pinned schema, AST-aware read/mutation separation,
 // explicit scoped node preflight and the existing journaled GitHub write lifecycle.
 import {defineRead} from './define-read.js';
@@ -136,7 +137,7 @@ async function readScope(entry,owner,repo,ctx,cred){
 function resolveRead(a,c){
   const owner=ownerFor(a,c),cred=credFor(a);
   const entry=inspectGraphql(a.query,a.variables??{},'query');
-  assertSafeGraphqlArguments(entry);
+  assertSafeGraphqlArguments(entry,{ownerDirected:isOwnerConnection(c.connection)});
   return {owner,cred,repo:a.repo??null,entry};
 }
 function targetWrite(a,c){
@@ -144,7 +145,7 @@ function targetWrite(a,c){
   if(JSON.stringify(a.variables??{}).length>24_000)
     throw new TypeError('GraphQL variables exceed the safe request budget.');
   const entry=inspectGraphql(a.mutation,a.variables??{},'mutation');
-  assertSafeGraphqlArguments(entry);
+  assertSafeGraphqlArguments(entry,{ownerDirected:isOwnerConnection(c.connection)});
   if(REFUSED_MUTATIONS.has(entry.mutation))
     throw new TypeError(entry.mutation+' is refused on purpose: '+REFUSED_MUTATIONS.get(entry.mutation));
   const spec=writeSpec(entry.mutation);
@@ -153,7 +154,7 @@ function targetWrite(a,c){
     throw new TypeError('GraphQL mutation requires an explicitly named, valid repository.');
   if(spec?.scope==='org'&&repo!==undefined)
     throw new TypeError('This organization-level GraphQL mutation takes no repository.');
-  const classification=classifyGraphqlMutation(entry.mutation,entry.input);
+  const classification=classifyGraphqlMutation(entry.mutation,entry.input,{ownerDirected:isOwnerConnection(c.connection)});
   const node=relevantGraphqlNodeId(entry.input,entry);
   if(spec){
     // GraphQL fills in schema defaults (for example `notifyTeam: false`). A default is not a request, so it is not "uncovered".
@@ -335,10 +336,10 @@ const gqlWrite=defineGithubWrite({
   declarations:{production:'always',accessWidening:true,notifies:true,spend:false,confirm:'always',cred:'I,U',profiles:['full']},
   target:(a,c)=>targetWrite(a,c),
   read:async(a,c,t)=>baseline(a,c,t),
-  price:({before})=>{
+  price:({before,target:t})=>{
     if(before?.verified!==true||before?.verifiable!==true)
       throw new TypeError('An independently verifiable scoped GraphQL baseline is required before any write.');
-    return 0;
+    return t.classification?.spendRisk ? null : 0;
   },
   classify:({target:t,before})=>({
     // Reviewed specs never get LESS caution than the generic default (Batch Y decision Y4): access and notification

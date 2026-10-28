@@ -53,7 +53,7 @@ describe('G-4 environment write behavior', () => {
   });
 
   it('gaining required reviewers is classified as production before any write', async () => {
-    const w = await makeWorld({ profile: 'full' });
+    const w = await makeWorld({delegated:true, profile: 'full' });
     seq(w.gh, ROUTE, [[200, simple], [200, simple]]);
     const result = await call('github_env_save', w, { ...R, reviewers: [{ type: 'Team', id: 8 }], confirm: true });
     expect(result).toMatchObject({ status: 'refused_by_guard', refusedBy: 'mode' });
@@ -92,7 +92,7 @@ describe('G-4 environment write behavior', () => {
   });
 
   it('previews deletion as irreversible and refuses a production environment in preview mode', async () => {
-    const w = await makeWorld({ mode: 'preview', profile: 'full' });
+    const w = await makeWorld({delegated:true, mode: 'preview', profile: 'full' });
     seq(w.gh, ROUTE, [[200, simple]]);
     const result = await call('github_env_delete', w, { ...R, environment: 'production', confirm: true });
     expect(result.status).toBe('refused_by_guard');

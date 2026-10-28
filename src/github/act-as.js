@@ -1,3 +1,4 @@
+import { isOwnerConnection } from '../core/authority.js';
 // GOD-6 "Act as me". With a master token added and the switch on, every GitHub call is made with the person's own token, so
 // GitHub records the person (not the Robinson GitHub MCP app). This module decides WHEN that happens (actAsFor), records who
 // acted (createActorLog), keeps branch rules from being skipped by accident (mustUseAppForBranch) and lets an owner or admin
@@ -189,12 +190,12 @@ export const OVERRIDE_ARGS = Object.freeze({
  * Only the person's own GitHub login can be on a bypass list; the app never is. GitHub itself still decides.
  */
 export async function overrideAllowed(ctx, args) {
-  if (typeof args?.overrideReason !== 'string' || args.overrideReason.trim().length < 10) return { ok: false, message: 'Say why you are overriding the rules (overrideReason, 10 to 200 characters).' };
+  if (!isOwnerConnection(ctx.connection) && (typeof args?.overrideReason !== 'string' || args.overrideReason.trim().length < 10)) return { ok: false, message: 'Say why you are overriding the rules (overrideReason, 10 to 200 characters).' };
   const me = await actAsFor(ctx, { cred: 'I' });
   if (!me.on) return { ok: false, message: 'Only your own GitHub login can skip branch rules; add your master token and turn Act as me on.' + (me.reason ? ` (Right now: ${me.reason}.)` : '') };
   const facts = await factsFor(ctx, me.subject);
-  if (facts.override === 'off') return { ok: false, message: 'Overriding branch rules is off on My connection.' };
-  if (ctx.connection?.mode !== 'production') return { ok: false, message: 'Overriding rules needs a production connection.' };
+  if (!isOwnerConnection(ctx.connection) && facts.override === 'off') return { ok: false, message: 'Overriding branch rules is off on My connection.' };
+  if (!isOwnerConnection(ctx.connection) && ctx.connection?.mode !== 'production') return { ok: false, message: 'Overriding rules needs a production connection.' };
   return { ok: true, subject: me.subject, login: me.login };
 }
 

@@ -39,8 +39,8 @@ async function fixture({payerType='Organization',recipientType='User',...options
   return w;
 }
 describe('Sponsors verified entity selection',()=>{
-  // An unreadable paid preflight has no verified price: the existing cost guard
-  // runs first. The read assertions separately prove the underlying refusal.
+  // An unreadable paid preflight fails target/read verification. Unknown pricing
+  // does not replace that real cause with an owner spending refusal.
   for(const payerType of ['User','Organization'])for(const recipientType of ['User','Organization']){
     it('reads '+payerType+' payer and '+recipientType+' recipient without an opposite-type NOT_FOUND',async()=>{
       const w=await fixture({payerType,recipientType});
@@ -57,7 +57,7 @@ describe('Sponsors verified entity selection',()=>{
     expect(await sponsor.handlers.github_sponsor_get({recipient},w.ctx)).toMatchObject({
       active:null,sponsors_listing_available:false,tiers:[]});
     const out=parse(await sponsor.handlers.github_sponsor_set({recipient,action:'start',tierId:'tier-5',confirm:true},w.ctx));
-    expect(out).toMatchObject({done:false,status:'refused_by_guard',refusedBy:'spend'});
+    expect(out).toMatchObject({done:false,status:'refused_by_guard',refusedBy:'read'});
     expect(mutations(w.gh)).toEqual([]);
   });
   for(const listing of [
@@ -69,7 +69,7 @@ describe('Sponsors verified entity selection',()=>{
     const w=await fixture({listing});
     await expect(sponsor.handlers.github_sponsor_get({recipient},w.ctx)).rejects.toThrow(TypeError);
     const out=parse(await sponsor.handlers.github_sponsor_set({recipient,action:'start',tierId:'tier-5',confirm:true},w.ctx));
-    expect(out).toMatchObject({status:'refused_by_guard',refusedBy:'spend'});
+    expect(out).toMatchObject({status:'refused_by_guard',refusedBy:'read'});
     expect(mutations(w.gh)).toEqual([]);
   });
   for(const options of [
@@ -85,7 +85,7 @@ describe('Sponsors verified entity selection',()=>{
     const w=await fixture(options);
     await expect(sponsor.handlers.github_sponsor_get({recipient},w.ctx)).rejects.toThrow(TypeError);
     const out=parse(await sponsor.handlers.github_sponsor_set({recipient,action:'start',tierId:'tier-5',confirm:true},w.ctx));
-    expect(out).toMatchObject({status:'refused_by_guard',refusedBy:'spend'});
+    expect(out).toMatchObject({status:'refused_by_guard',refusedBy:'read'});
     expect(mutations(w.gh)).toEqual([]);
   });
   for(const relationship of [
@@ -97,7 +97,7 @@ describe('Sponsors verified entity selection',()=>{
     const w=await fixture({relationship});
     await expect(sponsor.handlers.github_sponsor_get({recipient},w.ctx)).rejects.toThrow(TypeError);
     const out=parse(await sponsor.handlers.github_sponsor_set({recipient,action:'start',tierId:'tier-5',confirm:true},w.ctx));
-    expect(out).toMatchObject({status:'refused_by_guard',refusedBy:'spend'});
+    expect(out).toMatchObject({status:'refused_by_guard',refusedBy:'read'});
     expect(mutations(w.gh)).toEqual([]);
   });
   it('refuses a changed tier cadence before any payment mutation',async()=>{

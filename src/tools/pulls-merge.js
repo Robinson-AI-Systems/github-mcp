@@ -1,9 +1,9 @@
-// Merging (E-2 part 1): merge at an exact head, merge in the background, and auto-merge. A merge happens only when (1) the caller names
-// the exact head commit it looked at (`expectedHeadSha`), (2) the pull request still has that head, is open and not a draft, and (3) every
-// required check is green at that head (`ciState`, BATCH-E E1). GitHub is then told the same commit (`sha`), so a push that lands in between
-// is refused by GitHub too. The default method is a merge commit. Rules are not bypassed unless the person asks with `overrideRules`
-// (GOD-6): then, and only then, GitHub's own `bypass_rules` option of the background merge is sent, as the person, after a preview that
-// lists the rules being skipped. GitHub still decides whether that person may. No other tool or path sends it (tested).
+import { isOwnerConnection } from '../core/authority.js';
+// Ordinary full-owner merges rely on GitHub's repository rules and permissions.
+// An optional expectedHeadSha is checked and sent to GitHub for race detection.
+// Restricted profiles and requested merge-when-green automation retain their
+// explicit checks. Deliberate bypass is disclosed/journaled as the actual person;
+// GitHub decides whether that credential can bypass the applicable rule.
 import { graphql } from '../github/client.js';
 import { ciState } from '../github/ci-state.js';
 import { defineGithubWrite } from './define-github-write.js';
@@ -29,7 +29,7 @@ async function readPlan(args, ctx, t, { checks = true } = {}) {
   const pr = await missing(async () => (await octokit.request('GET /repos/{owner}/{repo}/pulls/{pull_number}', { owner: t.owner, repo: t.repo, pull_number: args.number, request: { robinsonAs: 'app' } })).data);
   if (!pr) return { pr: null };
   // GOD-6: acting as the person could skip rules the app cannot; the readable reason comes first (see `blockers`).
-  const plan = { actsAsYou: (await actAsFor(ctx, { cred: 'I' })).on, pr: { number: pr.number, state: pr.state, merged: pr.merged, draft: pr.draft, mergeable: pr.mergeable, mergeable_state: pr.mergeable_state, head_sha: pr.head?.sha, head: pr.head?.ref, base: pr.base?.ref, node_id: pr.node_id, title: pr.title, auto_merge: pr.auto_merge ?? null } };
+  const plan = { ownerDirected: isOwnerConnection(ctx.connection), actsAsYou: (await actAsFor(ctx, { cred: 'I' })).on, pr: { number: pr.number, state: pr.state, merged: pr.merged, draft: pr.draft, mergeable: pr.mergeable, mergeable_state: pr.mergeable_state, head_sha: pr.head?.sha, head: pr.head?.ref, base: pr.base?.ref, node_id: pr.node_id, title: pr.title, auto_merge: pr.auto_merge ?? null } };
   if (checks && pr.state === 'open' && !pr.merged) plan.ci = await ciState(octokit, { owner: t.owner, repo: t.repo, baseBranch: pr.base.ref, headSha: pr.head.sha });
   if (args.overrideRules === true && checks) {
     const approvals = await approvalsAt(octokit, t, pr);
@@ -60,7 +60,8 @@ export function blockers(plan, args, { override = false } = {}) {
   // Asked to skip the rules but not allowed to: say no, rather than quietly merging the ordinary way.
   const asked = planOf(args);
   if (asked?.refuse) out.push(`Cannot skip the rules: ${asked.refuse}`);
-  if (pr.head_sha !== args.expectedHeadSha) out.push(`New commits arrived: the head is now ${short(pr.head_sha)}, not ${short(args.expectedHeadSha)}. The checks you saw are out of date; read the pull request again.`);
+  if ((args.expectedHeadSha !== undefined || !plan.ownerDirected) && pr.head_sha !== args.expectedHeadSha) out.push(`New commits arrived: the head is now ${short(pr.head_sha)}, not ${short(args.expectedHeadSha)}. The checks you saw are out of date; read the pull request again.`);
+  if (plan.ownerDirected) return out; // GitHub applies its own draft, checks and rules policy.
   if (pr.draft) out.push('It is a draft. Mark it ready for review first.');
   if (pr.mergeable === false) out.push(`GitHub says it cannot be merged (${pr.mergeable_state ?? 'conflicts'}). Update the branch or resolve conflicts first.`);
   if (override) return out; // the person is skipping the rules on purpose: the preview lists which, GitHub decides
@@ -114,8 +115,8 @@ const asyncPresent = ({ after, response }) => ({ status: response.data.status, .
 
 const prMerge = defineGithubWrite({
   name: 'github_pr_merge', area: 'pr', audience: ['B'],
-  description: 'Merge a PR at the exact head you read, only when required checks are green there. Rules hold unless overrideRules.',
-  properties: PROPS, required: ['repo', 'number', 'expectedHeadSha'],
+  description: 'Merge a PR at the expected head under GitHub permissions and repository rules; optional deliberate override.',
+  properties: PROPS, required: ['repo', 'number'],
   declarations: { production: 'when-target', confirm: 'always' },
   target,
   read: (args, ctx, t) => readPlan(args, ctx, t),
@@ -123,7 +124,7 @@ const prMerge = defineGithubWrite({
   summarize: ({ args, before, target: t }) => {
     const bypass = overriding(args);
     const why = blockers(before, args, { override: bypass });
-    const line = why.length ? `Cannot merge ${label(t, args.number)}: ${why.join(' ')}` : `Merge ${label(t, args.number)} (${before.pr.head} into ${before.pr.base}) at ${short(args.expectedHeadSha)} with ${args.method ?? 'merge'}; ${bypass ? 'rules skipped on purpose' : mergeCount(before)}`;
+    const line = why.length ? `Cannot merge ${label(t, args.number)}: ${why.join(' ')}` : `Merge ${label(t, args.number)} (${before.pr.head} into ${before.pr.base}) at ${short(args.expectedHeadSha ?? before.pr.head_sha)} with ${args.method ?? 'merge'}; ${bypass ? 'rules skipped on purpose' : mergeCount(before)}`;
     return overrideText(args, line);
   },
   apply: async (input) => {
@@ -141,8 +142,8 @@ const prMerge = defineGithubWrite({
 
 const prMergeAsync = defineGithubWrite({
   name: 'github_pr_merge_async', area: 'pr', audience: ['B'],
-  description: 'Merge in the background at the exact checked head; reports merged or pending with a request id. Rules hold unless overrideRules.',
-  properties: PROPS, required: ['repo', 'number', 'expectedHeadSha'],
+  description: 'Request a background merge at the expected head; GitHub decides eligibility and reports merged or pending.',
+  properties: PROPS, required: ['repo', 'number'],
   declarations: { production: 'when-target', confirm: 'always' },
   target,
   read: (args, ctx, t) => readPlan(args, ctx, t),
@@ -150,7 +151,7 @@ const prMergeAsync = defineGithubWrite({
   summarize: ({ args, before, target: t }) => {
     const bypass = overriding(args);
     const why = blockers(before, args, { override: bypass });
-    return overrideText(args, why.length ? `Cannot merge ${label(t, args.number)}: ${why.join(' ')}` : `Merge ${label(t, args.number)} in the background at ${short(args.expectedHeadSha)} with ${args.method ?? 'merge'}; ${bypass ? 'rules skipped on purpose' : mergeCount(before)}`);
+    return overrideText(args, why.length ? `Cannot merge ${label(t, args.number)}: ${why.join(' ')}` : `Merge ${label(t, args.number)} in the background at ${short(args.expectedHeadSha ?? before.pr.head_sha)} with ${args.method ?? 'merge'}; ${bypass ? 'rules skipped on purpose' : mergeCount(before)}`);
   },
   apply: (input) => sendAsync(input, overriding(input.args)),
   readAfter: asyncAfter,

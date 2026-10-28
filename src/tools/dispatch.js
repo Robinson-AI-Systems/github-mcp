@@ -55,8 +55,10 @@ async function readReply({ tool, args, raw, connection, db, mode }) {
     (args?.byteOffset !== undefined || args?.byteLength !== undefined) &&
     value?.encoding === 'base64' && typeof value?.content_base64 === 'string' &&
     value?.byte_length <= 32768;
-  const capped = capText(value, byteWindow ? { textLimit: 48000 } : {});
-  const fit = fitToBudget(capped.value, byteWindow ? 48000 : undefined);
+  const fullFile = tool.name === 'github_content_get' && args?.fullText === true &&
+    shaped?.type === 'file' && typeof value.content === 'string' && Buffer.byteLength(value.content) <= 1_000_000;
+  const capped = capText(value, fullFile ? { textLimit: 1_000_000 } : byteWindow ? { textLimit: 48000 } : {});
+  const fit = fitToBudget(capped.value, fullFile ? 2_000_000 : byteWindow ? 48000 : undefined);
   const notes = {};
   if (unknown.length) notes.unknown_fields = unknown.slice(0, 10);
   if (capped.cut.length || fit.fitted) {
@@ -65,6 +67,16 @@ async function readReply({ tool, args, raw, connection, db, mode }) {
     let kept = false;
     if (owner && typeof db?.putResult === 'function') {
       try { await db.putResult({ handle, connection: String(owner), summary: describeBody(value), body: value }); kept = true; } catch { kept = false; }
+    }
+    // Retention is an optimization, never the only route to complete source.
+    // A file blob SHA is immutable, so continuation survives branch movement.
+    if (tool.name === 'github_content_get' && shaped?.type === 'file' && shaped.sha &&
+        typeof value.content === 'string' && !value.content.includes('[hidden]')) {
+      notes.content_complete = false;
+      notes.continuation = { tool: 'github_content_get', arguments: {
+        owner: args.owner ?? connection.default_account, repo: args.repo, path: shaped.path,
+        blobSha: shaped.sha, byteOffset: 0, byteLength: 32768 },
+        note: 'Read exact base64 byte windows at this immutable blob SHA; advance using next_byte_offset until complete.' };
     }
     notes.kept_result = kept
       ? { handle, what: describeBody(value), ...(fit.fitted && fit.of !== null ? { shown: fit.shown, of: fit.of, ...(fit.shown > 0 ? { next: { page: 2, pageSize: fit.shown } } : {}) } : {}), ...(capped.cut.length ? { text_cut: capped.cut.slice(0, 10) } : {}),
@@ -104,9 +116,7 @@ export function createDispatch({ env = process.env, now = Date.now, fetch = glob
         result={...result,structuredContent:data,content:updated};
       }
       const tool=input.registry?.tools?.find(t=>t.name===input.name);
-      const isWrite=tool?.writes===true&&tool?.writeContract==='defineWrite-v1';
-      return !isWrite&&!tool?.delegatedWrites?.length&&!tool?.outputSchema&&
-        !['github_get_result','github_content_get'].includes(input.name)
+      return !tool?.outputSchema
         ?deduplicateLargeEnvelope(result):result;
     }finally{
       if(box.reserved&&!box.counted){try{await usage.release?.();}catch{/* best effort */}}

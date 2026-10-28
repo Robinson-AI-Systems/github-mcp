@@ -30,14 +30,18 @@ export function looksBinary(buffer) {
 }
 
 export const contentGet = defineRead({
-  name: 'github_content_get', area: 'content', audience: ['B', 'Op'], byteWindow: true,
-  description: 'Read a file\'s text (long text is cut and kept behind a handle) or list a directory, at any branch, tag or commit.',
+  name: 'github_content_get', area: 'content', audience: ['B', 'Op'], byteWindow: true, aliases: { ref: ['branch'] },
+  description: 'Read file text or a directory at a ref. fullText returns bounded full text; byte windows provide exact continuation.',
   properties: { owner: OWNER, repo: REPO, path: { type: 'string', maxLength: 1000, description: 'File or directory path; empty or / for the top level' }, ref: { ...REF, description: 'Branch, tag or commit (default: the default branch)' },
+    blobSha: { type: 'string', pattern: '^[a-fA-F0-9]{40}$', description: 'Read this exact file blob for immutable continuation; do not combine with ref.' },
+    fullText: { type: 'boolean', description: 'Return full text up to the contents API limit (1 MB), with no 4 KB preview cap.' },
     startLine: { type: 'integer', minimum: 1 }, endLine: { type: 'integer', minimum: 1 },
     byteOffset: { type: 'integer', minimum: 0, description: 'Start byte (zero-based). Returns exact base64 bytes, not characters.' },
     byteLength: { type: 'integer', minimum: 1, maximum: 32768, description: 'Read at most this many bytes (up to 32768); defaults to 32768 when byteOffset is given.' } },
   required: ['repo'],
   handler: (args, ctx) => plain(async () => {
+    if (args.fullText === true && (args.startLine !== undefined || args.byteOffset !== undefined || args.byteLength !== undefined))
+      throw new TypeError('fullText cannot be combined with line or byte ranges.');
     if ((args.startLine === undefined) !== (args.endLine === undefined) ||
         (args.startLine !== undefined && (args.endLine < args.startLine || args.endLine - args.startLine >= 100)))
       throw new TypeError('Supply both startLine and endLine, covering at most 100 lines.');
@@ -47,7 +51,11 @@ export const contentGet = defineRead({
     const { owner, octokit } = await readerFor(args, ctx);
     const path = String(args.path ?? '').replace(/^\/+|\/+$/g, '');
     const query = { owner, repo: args.repo, path, ...(args.ref ? { ref: args.ref } : {}) };
-    const { data } = await octokit.request('GET /repos/{owner}/{repo}/contents/{path}', query);
+    if (args.blobSha && args.ref) throw new TypeError('blobSha cannot be combined with ref.');
+    const { data: raw } = args.blobSha
+      ? await octokit.request('GET /repos/{owner}/{repo}/git/blobs/{file_sha}', { owner, repo: args.repo, file_sha: args.blobSha })
+      : await octokit.request('GET /repos/{owner}/{repo}/contents/{path}', query);
+    const data = args.blobSha ? { ...raw, type: 'file', path } : raw;
     if (Array.isArray(data)) return { path, type: 'dir', count: data.length, items: data.map((e) => ({ name: e.name, path: e.path, type: e.type, size: e.size })) };
     if (data.type === 'symlink' || data.type === 'submodule') return { path: data.path, type: data.type, target: data.target ?? data.submodule_git_url ?? null, sha: data.sha };
     const base = { path: data.path, type: 'file', size: data.size, sha: data.sha, html_url: data.html_url };

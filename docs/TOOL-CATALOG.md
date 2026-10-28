@@ -1,9 +1,11 @@
 <!-- Native MCP tools/list catalog is complete across standard nextCursor pages (40 tools/page). Its original 22,000-token ceiling applies to each complete response; meta search/describe/call remain available independently. Implemented in F-1 PR #167 with real issue capabilities. -->
+
+> **Current authority and parity remediation (2026-10-28):** [requirements](OWNER-DECISION-2026-10-27.md), [delivery plan](designs/AUTHORITY-PARITY-2026-10-28.md). Full owner writes disclose/execute/journal/verify in one call; explicit delegated restrictions remain. Older dated statements about owner caps, production ceremony and mandatory merge gates are superseded. Source delivery and live acceptance remain separate.
 # Tool catalog
 
 **C-13 pinned ZIP and universal read selectors (2026-10-27, PR #440):** `github_content_snapshot` fetches a repository ZIP at an exact commit SHA into the existing 24-hour tenant-scoped result store. `github_get_result({handle,byteOffset,byteLength})` returns ≤32768 original bytes in base64 with total length, next offset, SHA-256 and EOF; a metadata-only read never returns ZIP base64. ZIPs are checked against path, entry count, expansion, symlink and credential scanner limits before storage. Generic read tools gain dotted `fields` projection; server tools retain their existing handler-owned selectors. Rate metadata #435 is not implemented by this PR; no release or real-client acceptance is claimed.
 
-**C-12 large-result efficiency (2026-10-27, PR #439 in review):** long prose/schema/file data is available once in the complete JSON text response; small scalar metadata and normal structured collections remain in `structuredContent`. When `full_payload_location` is `content[0].text`, parse that JSON to retrieve the omitted large text field without further calls. Small results, credential protection, authorization, RTC result handles and write responses are unchanged. No deployment is implied by the PR.
+**C-12 large-result efficiency (historical 2026-10-27 delivery):** Historical delivery: long prose/schema/file data is available once in the complete JSON text response; small scalar metadata and normal structured collections remain in `structuredContent`. When `full_payload_location` is `content[0].text`, parse that JSON to retrieve the omitted large text field without further calls. Small results, credential protection, authorization, RTC result handles and write responses are unchanged. No deployment is implied by the PR.
 
 **C-7 owner override parity:** `github_pr_merge` and `github_pr_merge_async` now submit an explicitly requested bypass with the authenticated person's credential even when best-effort rule discovery reports none. The compact `github_workflow_merge_when_green` accepts `overrideRules` and `overrideReason` and uses the same guarded writer. Ordinary merges still enforce CI/reviews; a deliberate bypass may pass local preflight only so GitHub can decide. Confirmations, scoped credentials, explicit protected-resource policies, exact-head and once-only safeguards are unchanged. Provider rejection is not silently retried as the App.
 
@@ -21,16 +23,10 @@ Restricted preview RTC successful replies revalidate service pass and scratch ow
 
 Every tool this server will have, by area — the product scope. The implementing model builds exactly these; anything
 else goes in `docs/ROADMAP.md` and the PR report, and universal tools (last section) provide guarded access only where their actual credential, classification and request support permits. Endpoint-level completeness remains unproven; see [MAXIMUM-AUTHORITY](designs/MAXIMUM-AUTHORITY.md). Counts are checked by `python3 scripts/count-catalog.py` (run by `npm run check` and CI since A-1, #1). When a
-tool merges, its Card cell gains `built #<PR>`. Built so far: **411 cataloged tools** (every row below is in the registry, `src/tools/index.js`; `scripts/count-catalog.py` and `scripts/check-writes.mjs` fail the build if a tool and its row disagree)
+tool merges, its Card cell gains `built #<PR>`. Built so far: **481 cataloged tools** (every row below is in the registry, `src/tools/index.js`; `scripts/count-catalog.py` and `scripts/check-writes.mjs` fail the build if a tool and its row disagree)
 and holds the two A-5 tools, the B-3 protected-list reader the two B-2 production-switch tools and the B-4 spend-limit tool. Since B-5 every result of these tools is shaped (`src/tools/util.js`) and failures are explained by `src/tools/errors.js`. Since B-6 a connection sees only the tools its profile allows (`tools/list` and by-name calls). Every write tool below is built with `defineGithubWrite` (B-1, #16, `src/tools/define-github-write.js`) and pass the nine write-contract checks (`test/helpers/write-contract.js`); the two B-2 tools are the first (`src/tools/server.js`).
 
-**Safety** (enforced by the trust layer, `docs/designs/BATCH-B.md`):
-`—` reads only · `P` preview available (`dryRun`), no confirmation needed for ordinary targets · `C` always needs
-`confirm: true` · `D` destructive or irreversible · `Prod` always production (needs a production connection and
-`confirm`) · `Prod*` production only when the target is (default branch, protected branch, production environment, org
-scope — B-2 decides) · `A` widens someone's access (always `confirm`; `A*` only for some uses, e.g. making something
-public) · `M` notifies people (`confirm` when it reaches anyone outside Chris's own accounts; B-4) · `$` raises spend
-(dollar estimate, `confirm`, refused while the account's spend limit is $0; `$*` only for some uses).
+**Safety metadata and scoped behavior:** `—` reads only; `P` supports optional dryRun; `D` describes destructive effects; `Prod`/`Prod*` describe production scope; `A`/`A*` describe access changes; `M` describes notifications; `$`/`$*` describe billing. `C` retains the restricted-profile confirmation declaration checked against source. On a full ordinary owner connection these marks are disclosure, not automatic confirmation or refusal. Explicitly restricted profiles/passes retain their chosen mode, access and spend limits. GitHub applies provider rules; journal/replay/readback and credential isolation apply to everyone.
 
 **Origin:** `C` the old toolkit had it (`robinsons-toolkit-mcp` namespace `github`; port to the new conventions, never
 copy code) · `F` the old toolkit had it **with a bug or a missing guard**, fixed here (`docs/audits/2026-10-10-research.md`
@@ -403,7 +399,7 @@ Card(s): H-3.
 | `github_deploykey_add` | Add a deploy key (public key only; write access is access-widening and production) | C·A·Prod* | F | I | O | F | H-3 built #194 |
 | `github_deploykey_delete` | Remove a deploy key | C·Prod | C | I | O | F | H-3 built #194 |
 
-## Security features and alerts; Actions settings (`github_security_*, github_actions_*settings`) — 10
+## Security features and alerts; Actions settings (`github_security_*, github_actions_*settings`) — 11
 
 Card(s): H-4.
 
@@ -413,6 +409,7 @@ Card(s): H-4.
 | `github_security_set_feature` | Enable/disable all provider-supported repo security switches: direct security_and_analysis PATCH, Dependabot PUT/DELETE and private-reporting PUT/DELETE, with paid/private notices, bypass access consent and exact independent readback | C·$*·Prod | F | I | O | F | H-4 built #195/#196/#224 |
 | `github_security_list_alerts` | Dependabot, code scanning or secret scanning alerts for a repo or org (kind chosen by argument) | — | C | I | O,B,Op | R | H-4 built #195/#196/#224 |
 | `github_security_scan_files` | Inspect up to 12 chosen GitHub-hosted files for common secret patterns; redacted locations only, not GitHub's full proprietary scan or local uncommitted changes | — | N | I | B,O,Op | R | PAR-2 |
+| `github_security_scan_guidance` | Inspect provider secret protection and prepare Robinson repository CI/local scanning plus official remote-engine connection steps | — | N | I | B,O,Op | R | PAR-2 |
 | `github_security_get_alert` | One alert in plain words (secret scanning: the secret itself is never returned) | — | F | I | O,B | R | H-4 built #195/#196/#224 |
 | `github_security_update_alert` | Dismiss, resolve or reopen an alert with a reason | C·Prod | C | I | O,B | E | H-4 built #195/#196/#224 |
 | `github_security_list_advisories` | Repository security advisories, or global advisories by package | — | C | I | O,B | R | H-4 built #195/#196/#224 |
@@ -873,7 +870,7 @@ Card(s): PAR-1. Code Quality findings come from GitHub's own analysis (not marke
 
 ## Totals
 
-**Totals:** 480 tools: 474 hand-built + 6 universal (`github_api_*`, `github_graphql_*`), plus guided settings for every
+**Totals:** 481 tools: 475 hand-built + 6 universal (`github_api_*`, `github_graphql_*`), plus guided settings for every
 dashboard-only owner setting. By profile (lowest profile that has the tool): read_only 158, everyday adds 83
 (everyday lists 240), full adds 113 (full lists 396). In compact mode (`docs/designs/BATCH-C.md`) an agent
 loads only about 25 tools up front (meta-tools, whoami, universal search, workflows) and reaches the rest through
@@ -900,7 +897,7 @@ loads only about 25 tools up front (meta-tools, whoami, universal search, workfl
 | Branch protection and rulesets | 9 |
 | Webhooks | 8 |
 | Collaborators and deploy keys | 7 |
-| Security features and alerts; Actions settings | 10 |
+| Security features and alerts; Actions settings | 11 |
 | Owner: organization and members | 12 |
 | Owner: teams and roles | 9 |
 | Owner: billing, budgets, Copilot and Codespaces | 14 |
@@ -924,7 +921,7 @@ loads only about 25 tools up front (meta-tools, whoami, universal search, workfl
 | GitHub Enterprise | 13 |
 | Master-token families: Copilot Spaces, Classroom, Marketplace and more | 17 |
 | Code quality and GitHub help | 4 |
-| **Total** | **480** |
+| **Total** | **481** |
 
 <!-- #108: experimental RTC HTTPS reader bridges only server/meta read tools using existing guarded dispatch; RTC 1 certification is not claimed. -->
 
@@ -946,3 +943,9 @@ B-5 provider permission hints: only explicit read/write/admin entries are eligib
 **C-15 credential-scoped GitHub rate observations (#435):** Read, write, and nested responses may have compact `meta.github_rate.items` with observed `account`, credential kind, GitHub resource, remaining budget where not expired, reset time, primary/secondary cooldown and `source` (`fresh` for this operation's headers, `cached` for an existing DB throttle). Unknown rates are omitted. Actual GitHub App, personal login, God Mode, optional package, notifications and U token budgets use independent database keys; no rate-only GitHub calls are added. A composed workflow may report multiple credential/resource observations; never treat a prior quota as current merely because it was cached.
 
 **C-16 guarded sequential write batch (#431):** `github_write_batch` is separate from read-only `github_batch` and executes 1–20 ordered delegated writes per call, with stable `batchKey` and per-step `confirm`/`dryRun`. Prior *confirmed* outputs can be referenced only as bounded safe scalars such as `{"$from":0,"path":"sha"}` for exact-head commit preconditions. PostgreSQL `gh_write_batches` retains a SHA-256 intent and scoped active lease plus only safe per-item receipts, never original source, credentials or raw arguments; completed writes replay without GitHub writes, a stale pending outcome requires explicit reconciliation and a new plan for remaining actions. Each inner writer executes with its original user-delegated authority, profiles, gates, journal and fresh readback. This is not an atomic transaction/rollback. The 20-item and 43-second call bounds are only transport/continuation limits, not account permissions or irreversible caps.
+
+## 2026-10-28 replacement contract update
+
+Large text, lists and object payloads have one full JSON copy in `content[0].text`; compact structured metadata declares `full_payload_location` and `omitted_fields`. Navigation and small status/identity fields remain structured. Nested dispatch and schema-declared outputs retain complete structured data; RTC reconstructs the full canonical payload before its own size checks. Small replies retain compatibility.
+
+`github_content_get` accepts `fullText`, immutable `blobSha` continuation and `branch` as an alias for `ref`. PR reads/writes accept `pull_number` as an alias for canonical `number`; conflicting values fail before provider requests. `github_security_scan_guidance` supplies repo-specific native/official-engine setup and a Robinson repository scanner workflow without claiming installation or equivalent detection.

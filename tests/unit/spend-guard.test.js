@@ -122,7 +122,7 @@ describe('user delegation versus service-pass limits for metered billing', () =>
     const unknown = { spendCents: 0, spendUnknown: true };
     const target = { owner: 'example-org' };
     const user = await gate({ name: 'github_metered', args: {}, ctx: w.ctx, target, classification: unknown, declarations: { spend: true } });
-    expect(user.confirm).toContain('No maximum future charge');
+    expect(user).toBeNull();
     const passCtx = { ...w.ctx, connection: { ...w.ctx.connection, pass: true, client_id: 'issued-pass', spend_limit_cents: 5000 } };
     const limited = await gate({ name: 'github_metered', args: {}, ctx: passCtx, target, classification: unknown, declarations: { spend: true } });
     expect(limited).toMatchObject({ by: 'pass spend allowance' });
@@ -136,20 +136,19 @@ describe('github_set_spend_limit', () => {
   const lower = (w, limitCents, extra = {}) => handlers.github_set_spend_limit({ account: 'example-org', limitCents, ...extra }, w.ctx).then(parse);
   it('lowers the limit (and to zero), and shows dollars', async () => {
     const w = await world(5000, { profile: 'full' });
-    expect((await lower(w, 1000)).status).toBe('needs_confirmation');
+    expect((await lower(w, 1000, { dryRun: true })).status).toBe('preview');
     const res = await lower(w, 1000, { confirm: true });
     expect(res).toMatchObject({ status: 'applied', confirmed: true });
     expect(res.result.spend_limit).toBe('$10.00');
     expect((await w.db.getAccount('example-org')).spend_limit_cents).toBe(1000);
     expect((await lower(w, 0, { confirm: true })).status).toBe('applied');
   });
-  it('refuses to raise it, pointing at the setup page', async () => {
+  it('lets the owner raise a standing preference directly', async () => {
     const w = await makeWorld({ profile: 'full', gates: [spendGate()] });
     await w.db.setSpendLimitCents('example-org', 1000);
     const res = await lower(w, 2000, { confirm: true });
-    expect(res).toMatchObject({ status: 'refused_by_guard', refusedBy: 'spend limit' });
-    expect(res.error).toContain('setup page');
-    expect((await w.db.getAccount('example-org')).spend_limit_cents).toBe(1000);
+    expect(res).toMatchObject({ status: 'applied', confirmed: true });
+    expect((await w.db.getAccount('example-org')).spend_limit_cents).toBe(2000);
   });
   it('is refused on the read-only profile and for accounts outside the connection', async () => {
     const ro = await makeWorld({ profile: 'read_only', gates: [spendGate()] });

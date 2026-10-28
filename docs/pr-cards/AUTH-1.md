@@ -53,3 +53,7 @@ the guide and mark the row "provider UI only" in the audit and in `docs/TOOL-CAT
   `tests/unit/end-user-authority.test.js`, dashboard-map correction (project workflows), catalog note (Marketplace purchase is provider UI only),
   END-USER-AUTHORITY.md OPEN section marked done item by item. No tool needed to change: the product already performed every item.
 - The ACC-1 live row (one paid-capable tool previewed on scratch) stays for ACC-1.
+
+## 2026-10-28 remediation — Drift check and current scope
+
+The [authority/parity plan](../designs/AUTHORITY-PARITY-2026-10-28.md) supersedes older owner confirmation/cap/protection acceptance in this card. Reuse existing implementations; complete-read fallback, owner write authority and repository scan guidance are current work. Historical MERGED status does not certify this follow-up or deployed parity. Keep existing completion evidence unchanged; follow-up proof belongs in the dated remediation status.

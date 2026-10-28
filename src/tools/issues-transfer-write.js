@@ -1,3 +1,4 @@
+import { isOwnerConnection } from '../core/authority.js';
 // F-1: transfer an issue across two separately verified repositories.
 // A transfer changes ownership and may notify watchers, so it always confirms.
 import { graphql } from '../github/client.js';
@@ -41,7 +42,7 @@ export const issueTransfer = defineGithubWrite({
       throw refusal('Destination account is outside the connected GitHub accounts.');
     // The normal write gates protect the source. Repeat the protected-resource
     // check for the destination, which would otherwise be invisible to them.
-    const entries = await protectedList(ctx.db);
+    const entries = isOwnerConnection(ctx.connection) ? [] : await protectedList(ctx.db);
     const decision = protectionVerdict({ entries, name: 'github_issue_transfer',
       args, target: dest, classification: {} });
     if (decision?.refuse) throw refusal(`Destination is protected: ${decision.refuse}`);

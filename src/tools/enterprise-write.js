@@ -1,3 +1,4 @@
+import { isOwnerConnection } from '../core/authority.js';
 // ENT-1 (writes): GitHub Enterprise settings through the person's master token (credential M). Every write proves the
 // person administers the enterprise, previews and confirms like any production change, and is read back from GitHub.
 // Not built: the Copilot coding-agent policy write (PUT/POST/DELETE .../copilot/policies/coding_agent). The pinned GitHub
@@ -130,6 +131,7 @@ const defaultsOf = async (gh, t, id) => {
 // organizations are looked up and the attach is refused when a protected repository lives in one (or the list is too long to check).
 const ORGS_QUERY = 'query($slug: String!) { enterprise(slug: $slug) { organizations(first: 100) { totalCount nodes { login } } } }';
 export async function protectedInside(gh, ctx, t) {
+  if (isOwnerConnection(ctx.connection)) return null;
   const entries = (await protectedList(ctx.db)).filter((e) => e.kind === 'repo');
   if (!entries.length) return null;
   const orgs = (await graphql(gh, ORGS_QUERY, { slug: t.enterprise }))?.enterprise?.organizations;

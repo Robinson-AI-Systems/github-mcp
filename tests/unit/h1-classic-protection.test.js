@@ -152,7 +152,7 @@ describe('H-1 classic protection complete-object safety',()=>{
   expect(w.gh.calls.filter(c=>c.route===routes.put)).toHaveLength(0);
  });
  it('cannot quietly remove protection using a preview connection',async()=>{
-  const w=await makeWorld({mode:'preview',profile:'full'});
+  const w=await makeWorld({delegated:true,mode:'preview',profile:'full'});
   arrange(w.gh,'ok','remove');
   const r=await call(w,'github_protection_remove',{repo:'hello',branch:'main',confirm:true});
   expect(r.done).toBe(false);

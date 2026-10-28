@@ -11,7 +11,7 @@ const pr = (extra = {}) => ({ number: 7, title: 'T', state: 'open', draft: false
 async function run(world, name, args) {
   const dispatch = createDispatch({ credentials: world.credentials, gates: [], fetch: world.gh.fetch, now: world.ctx.now, sleep: async () => {} });
   const result = await dispatch({ registry, name, args, connection: world.connection, db: world.db });
-  return { result, body: result.isError ? null : (result.structuredContent ?? parse(result)) };
+  return { result, body: result.isError ? null : parse(result) };
 }
 const world = () => makeWorld({ profile: 'read_only' });
 const run1 = (name, status, conclusion, extra = {}) => ({ id: 1, name, status, conclusion, started_at: '2026-10-11T00:00:00Z', app: { id: 15368 }, ...extra });

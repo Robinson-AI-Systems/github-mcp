@@ -1,3 +1,4 @@
+import { isOwnerConnection } from '../core/authority.js';
 // B4 spending: the developer's $0 budget is NOT an end-user product restriction.
 // Users may choose an explicit monthly limit; otherwise price-known or price-unknown
 // actions are available under their delegated production/approval policy with a truthful warning.
@@ -51,6 +52,7 @@ export async function spendStatus(ctx, login) {
 /** The gate for `src/tools/gates.js`. It also enforces "the spend limit tool can only lower the limit". */
 export function spendGate() {
   return async ({ name, args, ctx, target, classification, declarations }) => {
+    if (isOwnerConnection(ctx.connection)) return null;
     if (name === 'github_set_spend_limit') {
       const status = await spendStatus(ctx, target.owner);
       if (status?.limitEnabled && Number.isSafeInteger(args.limitCents) && args.limitCents > status.limitCents) {

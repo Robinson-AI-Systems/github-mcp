@@ -127,8 +127,8 @@ describe('Y-2 every reviewed mutation, end to end on the fake GitHub (WU-Y2b)', 
       it('previews, then applies once and confirms by an independent re-read', async () => {
         const w = await world();
         const state = server(w.gh, row);
-        const preview = await run(w, 'github_graphql_write', argsFor(row));
-        expect(preview.status, JSON.stringify(preview)).toBe('needs_confirmation');
+        const preview = await run(w, 'github_graphql_write', argsFor(row, { dryRun: true }));
+        expect(preview.status, JSON.stringify(preview)).toBe('preview');
         expect(mutations(w.gh)).toHaveLength(0);
         const done = await run(w, 'github_graphql_write', argsFor(row, { confirm: true }));
         expect(done.status, JSON.stringify(done)).toBe('applied');

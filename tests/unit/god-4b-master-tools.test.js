@@ -94,7 +94,7 @@ describe('GOD-4 B reads and the missing master token', () => {
     expect(JSON.stringify(create)).toMatch(/ACCESS CHANGE/);
     const edit = parse(await call(spaces, 'github_copilot_space_save', w, { spaceNumber: 4, baseRole: 'reader', dryRun: true }));
     expect(JSON.stringify(edit)).toMatch(/PUBLICLY READABLE/);
-    expect(edit.needsConfirmation).toBe(true);
+    expect(edit.needsConfirmation).toBe(false);
     const quiet = parse(await call(spaces, 'github_copilot_space_save', w, { spaceNumber: 4, name: 'x', dryRun: true }));
     expect(JSON.stringify(quiet)).not.toMatch(/PUBLICLY/);
   });

@@ -191,7 +191,7 @@ describe('P-2 project G1–G20 readiness and safe fix routing',()=>{
     expect(x.rows.find(r=>r.id==='G19').evidence).toContain('user identities');
   });
   it('readable private-repository paid scanning never bypasses zero spending policy',async()=>{
-    const w=await makeWorld({mode:'production',profile:'full'});
+    const w=await makeWorld({delegated:true,mode:'production',profile:'full'});
     arrange(w.gh,{repoState:{private:true},
       security:{secret_scanning:{status:'disabled'}}});
     const x=parse(await invoke(w,{spec,fixRow:'G15',fixFeature:'secret_scanning',confirm:true}));

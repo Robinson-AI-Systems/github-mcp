@@ -204,7 +204,7 @@ async function readEnvelope({tool,args,value,connection,db}){
 // A change has already happened (or been previewed/refused) by the time we answer, so the reply is sent as it is: it must not be
 // withheld because the pass was revoked a moment later. The canonical write layer has screened and shaped the body.
 async function writeReply({output,connection}){
-  const body=output?.structuredContent;
+  const body=completeDispatchResult(output);
   if(!body||typeof body!=='object')return {status:503,body:rtcError('service_error'),final:true};
   const status=body.status;
   if(status==='refused'||status==='refused_by_guard'){

@@ -1,3 +1,4 @@
+import { isOwnerConnection } from '../core/authority.js';
 // U-1: universal REST is intentionally narrower than raw octokit: every request is
 // pinned-schema validated, scoped, curated-first, and sent through the normal client.
 import { defineRead } from './define-read.js';
@@ -67,7 +68,7 @@ function resolve(a,c,methods,writing=false) {
   const params=a.params??{};
   // Validate and classify BEFORE any credential or provider request.
   validateRest(op,params,a.body);
-  assertUniversalAuthority(op,params,a.body);
+  assertUniversalAuthority(op,params,a.body,{ownerDirected:isOwnerConnection(c.connection)});
   if(writing) {
     const curated=curatedTool(op);
     if(curated) throw new TypeError('The specialized '+curated+' tool must be used for this operation; universal access cannot bypass its checks.');

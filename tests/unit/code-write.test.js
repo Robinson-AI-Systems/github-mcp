@@ -264,12 +264,12 @@ describe('file and ref changes: extra checks (BATCH-D §4 D-2)', () => {
       expect(out.error).toContain('moved since the preview');
       expect(w.gh.graphql).toEqual([]);
     });
-    it('a tag move is production; the default branch of a pr-only repository is refused even with confirm', async () => {
-      const w = await makeWorld({ profile: 'full' });
+    it('a delegated tag move honors mode; a supplied protection gate still refuses a default-branch move', async () => {
+      const w = await makeWorld({ profile: 'full', delegated: true });
       arrange(w.gh);
       const tag = await call('github_git_update_ref', w, { ...R, ref: 'tags/v1', sha: B, confirm: true });
       expect(tag).toMatchObject({ status: 'refused_by_guard', refusedBy: 'mode' });
-      const p = await makeWorld({ profile: 'full', mode: 'production', accounts: ['robinson-ai-systems'], gates: [protectedResourceGate()] });
+      const p = await makeWorld({ profile: 'full', delegated: true, mode: 'production', accounts: ['robinson-ai-systems'], gates: [protectedResourceGate()] });
       arrange(p.gh);
       mainIsDefault(p.gh);
       const out = await call('github_git_update_ref', p, { repo: 'github-mcp', ref: 'heads/main', sha: B, force: true, confirm: true });

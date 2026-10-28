@@ -186,7 +186,7 @@ describe('O-4 real prices, budget safety, marketplace, Copilot and Codespaces',(
     expect(w.gh.calls.filter(x=>x.method==='DELETE')).toHaveLength(0);
   });
   it('enforces an explicitly selected $0 product cap on unknown future budget deletion',async()=>{
-    const w=await makeWorld({mode:'production',profile:'full',gates:[spendGate()]});
+    const w=await makeWorld({delegated:true,mode:'production',profile:'full',gates:[spendGate()]});
     await w.db.setSpendLimitCents('example-org',0);
     deleteBudgetArrange(w.gh,'ok');
     const result=await invoke(w,'github_billing_delete_budget',
@@ -213,7 +213,7 @@ describe('O-4 real prices, budget safety, marketplace, Copilot and Codespaces',(
     expect(w.gh.calls.filter(x=>x.method==='PUT')).toHaveLength(0);
   });
   it('refuses Codespaces cost-unknown expansion under a user-selected cap',async()=>{
-    const w=await makeWorld({mode:'production',profile:'full',gates:[spendGate()]});
+    const w=await makeWorld({delegated:true,mode:'production',profile:'full',gates:[spendGate()]});
     await w.db.setSpendLimitCents('example-org',5000);
     w.gh.when('GET /orgs/{org}').reply(200,{login:'example-org'});
     const result=await invoke(w,'github_codespace_set_org_access',
@@ -260,10 +260,7 @@ describe('O-4 Codespaces access: all three write doors despite missing provider 
       expect(preview.preview).toContain('COST UNKNOWN');
       expect(preview.preview).toContain('ACCESS CHANGE');
       expect(w.gh.calls.filter(x=>x.method==='PUT')).toHaveLength(0);
-      const noConsent=parse(await door.call(w,args));
-      expect(noConsent.status).toBe('needs_confirmation');
-      expect(w.gh.calls.filter(x=>x.method==='PUT')).toHaveLength(0);
-      const first=parse(await door.call(w,{...args,confirm:true}));
+      const first=parse(await door.call(w,args));
       expect(first).toMatchObject({done:false,status:'unconfirmed',confirmed:false});
       expect(first.result).toMatchObject({acknowledged:true,verified:false});
       expect(w.gh.calls.filter(x=>x.method==='PUT')).toHaveLength(1);
@@ -273,7 +270,7 @@ describe('O-4 Codespaces access: all three write doors despite missing provider 
       expect(w.gh.calls.filter(x=>x.method==='PUT')).toHaveLength(1);
     });
     it(door.name+': PREVIEW and no privilege escalation deny before provider write',async()=>{
-      const w=await makeWorld({mode:'preview',profile:'full',gates:[spendGate()]});
+      const w=await makeWorld({delegated:true,mode:'preview',profile:'full',gates:[spendGate()]});
       arrange(w);
       const denied=parse(await door.call(w,{...args,confirm:true}));
       expect(denied).toMatchObject({status:'refused_by_guard',refusedBy:'mode'});
@@ -323,8 +320,8 @@ describe('O-4 end-user authority: provider-allowed unenforced budget controls',(
    expect(dry.preview).toMatch(/COST UNKNOWN/);
    expect(dry.preview).toMatch(/UNENFORCED/);
    expect(w.gh.calls.filter(x=>x.method==='POST')).toHaveLength(0);
-   const waiting=await invoke(w,'github_billing_save_budget',args);
-   expect(waiting.status).toBe('needs_confirmation');
+   const waiting=await invoke(w,'github_billing_save_budget',{...args,dryRun:true});
+   expect(waiting.status).toBe('preview');
    expect(w.gh.calls.filter(x=>x.method==='POST')).toHaveLength(0);
    const applied=await invoke(w,'github_billing_save_budget',{...args,confirm:true});
    expect(applied).toMatchObject({done:true,status:'applied',confirmed:true});
@@ -335,7 +332,7 @@ describe('O-4 end-user authority: provider-allowed unenforced budget controls',(
    expect(w.gh.invalid).toEqual([]);
  });
  it('refuses an unenforced budget under a real user-selected finite cap',async()=>{
-   const w=await makeWorld({mode:'production',profile:'full',gates:[spendGate()]});
+   const w=await makeWorld({delegated:true,mode:'production',profile:'full',gates:[spendGate()]});
    await w.db.setSpendLimitCents('example-org',10000);
    arrangeCreate(w.gh);
    const denied=await invoke(w,'github_billing_save_budget',{...args,confirm:true});
@@ -355,7 +352,7 @@ describe('O-4 end-user authority: provider-allowed unenforced budget controls',(
  });
  it('protects finite caps and delegated passes against disabling budget enforcement',async()=>{
    for(const limited of ['user','pass']){
-     const w=await makeWorld({mode:'production',profile:'full',gates:[spendGate()]});
+     const w=await makeWorld({delegated:true,mode:'production',profile:'full',gates:[spendGate()]});
      if(limited==='user')await w.db.setSpendLimitCents('example-org',5000);
      else w.ctx.connection={...w.ctx.connection,pass:true,client_id:'limited-owner-pass',
        spend_limit_cents:10000};
@@ -402,7 +399,7 @@ describe('O-4 end-user authority: a valid but unpriced Copilot license plan',()=
    expect(w.gh.invalid).toEqual([]);
  });
  it('does not allow an unknown price to bypass an explicit user spending ceiling',async()=>{
-   const w=await makeWorld({mode:'production',profile:'full',gates:[spendGate()]});
+   const w=await makeWorld({delegated:true,mode:'production',profile:'full',gates:[spendGate()]});
    await w.db.setSpendLimitCents('example-org',9000);
    arrange(w.gh);
    const result=await invoke(w,'github_copilot_add_seats',{usernames:['alice'],confirm:true});
