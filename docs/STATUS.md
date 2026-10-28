@@ -1,3 +1,7 @@
+## 2026-10-27 — C-16 guarded sequential write batch (#431)
+
+Issue #431 is implemented on `ai/chatgpt/c-16-guarded-sequential-write-batch-20261027` as a separate planned write-orchestration bundle. Explicit `github_write_batch` composes existing guarded writes in order, with safe confirmed scalar dependencies, bounded per-item results, and an additive PostgreSQL parent journal/lease that refuses double submissions, cross-tenant replay or uncertain re-execution. The existing `github_batch` remains read-only. Dedicated unit and disposable-PostgreSQL tests and exact-head CI are pending; no release, live user writes or issue closure claimed. PR #441/#432/#433 were completed independently; #435 remains in separate PR #442.
+
 ## 2026-10-26 — C-6 faster guarded PR lane (#418, final review pending)
 
 Owner-approved developer workflow throughput improvement: standard PR open with no labels directly delegates to the existing guarded writer rather than duplicating repo/PR inventory, exact-head merge prep reads independent repo/PR evidence concurrently, and stack preparation reads 3 PRs at a time while keeping ordered validation and a single guarded write. Synthetic scheduling improvements range 25–67%, **not** live traffic performance. Source head `7bb96acc` passed all required `ci` and `release-policy`, full unit, DB, RTC, browser, shapes and check; final docs head and merge still require exact-head checks. `docs/status/2026-10-26-c-6-fast-pr-lane.md` and card C-6 preserve test evidence and deferred live acceptance. No production release initiated.

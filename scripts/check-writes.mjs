@@ -50,6 +50,18 @@ export function checkWrites(tools, catalog) {
     if (!Array.isArray(tool.audience) || !tool.audience.length) failures.push(`${tool.name}: tool without an audience (B, O, Op)`);
     else if (row && !sameSet(tool.audience, row.audience.split(',').map((a) => a.trim()))) failures.push(`${tool.name}: audience is ${tool.audience.join(',')} but the catalog says ${row.audience}`);
     if (!tool.writes) {
+      if(tool.name==='github_write_batch'){
+        const p=tool.inputSchema?.properties;
+        if(!tool.passthrough||!tool.usesRegistry||tool.boundsResult!==true||
+          !sameSet(tool.delegatedWrites??[],['*'])||
+          !p?.steps||!p?.batchKey||!p?.confirm||!p?.dryRun||
+          tool.annotations?.readOnlyHint!==false||
+          tool.annotations?.destructiveHint!==true||
+          !sameSet(tool.profiles??[],['everyday','full'])||
+          row?.safety!=='as the tool'||row?.profile!=='E')
+          failures.push(tool.name+': write batch requires durable intent, bounded steps, confirmed dispatched guards and a truthful as-the-tool catalog row.');
+        continue;
+      }
       if(tool.name==='github_undo_change'&&tool.passthrough===true&&tool.usesRegistry===true){
         // X-1: the opposite is a stored defineWrite tool run through the dispatcher, so the target keeps every guard.
         const p=tool.inputSchema?.properties;
