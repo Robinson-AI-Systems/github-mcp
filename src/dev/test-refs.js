@@ -1,5 +1,6 @@
+import { isOwnerConnection } from '../core/authority.js';
 // V-3 shared guards for run-owned test refs on any allowed repository. A V-3 run is a plain run (no seed
-// scenario) bound to ONE host repository; it never touches production, default or protected refs, and it
+// scenario) bound to ONE host repository; fixture ref/ownership restrictions remain, and it
 // stops before the cleanup inventory (50 rows) could become truncated.
 import { RUN_ID } from './ledger.js';
 import { missing, octo, refusal } from '../tools/github-write.js';
@@ -19,7 +20,7 @@ export function assertRunName(runId) {
   }
 }
 export function previewOnly(ctx) {
-  if (ctx.connection?.mode !== 'preview') throw new TypeError('Developer tools never change production connections.');
+  if (!isOwnerConnection(ctx.connection) && ctx.connection?.mode !== 'preview') throw new TypeError('Developer tools never change production connections.');
 }
 export const runIdentity = (ctx, { owner, repo, runId }) => ({
   runId, account: owner, connection: ctx.connection.client_id, owner, repo

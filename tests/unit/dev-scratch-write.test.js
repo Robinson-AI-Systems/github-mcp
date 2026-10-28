@@ -34,11 +34,23 @@ describe('V-1 scratch-account preflight and durable execution',()=>{
     expect(w.gh.calls).toEqual([]);
     expect(await w.db.getDevRun({id:RUN,account:'example-org',connection:'client-1'})).toBeNull();
   });
-  it('refuses production mode even for the verified scratch fixture, before any read',async()=>{
+  it('preserves production-mode restriction for non-owner scratch connections before any read',async()=>{
     const w=await makeWorld({scratchAccount:true,mode:'production'});
     const out=parse(await def.handler({runId:RUN,name:NAME,confirm:true},w.ctx));
     expect(out.status).toBe('refused');
     expect(w.gh.calls).toEqual([]);
+  });
+  it('executes the full owner scratch lifecycle entry in production mode and records exact origin',async()=>{
+    const w=await makeWorld({scratchAccount:true,mode:'production',profile:'full'});arrange(w.gh,'ok');
+    const out=parse(await def.handler({runId:RUN,name:NAME},w.ctx));
+    expect(out).toMatchObject({status:'applied',confirmed:true});
+    expect(w.gh.calls.filter(c=>c.method==='POST')).toHaveLength(1);
+    expect(w.gh.invalid).toEqual([]);
+  });
+  it('does not mistake a full-profile restricted pass for its owner',async()=>{
+    const w=await makeWorld({scratchAccount:true,mode:'production',profile:'full',delegated:true});
+    const out=parse(await def.handler({runId:RUN,name:NAME},w.ctx));
+    expect(out.status).toBe('refused');expect(w.gh.calls).toEqual([]);
   });
   it('validates trusted App installation, org type and all-repo selection',async()=>{
     const w=await makeWorld({scratchAccount:true});

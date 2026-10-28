@@ -339,6 +339,8 @@ Card(s): G-6.
 
 ## Developer tools (`github_dev_*`) — 15
 
+Full ordinary owners can use developer workflows in either connection mode. Verified scratch enrollment and exact run provenance remain required; explicit passes and other profiles retain their selected restrictions.
+
 Card(s): V-1 … V-5. The owner alone can enable an exact Organization as `is_scratch` through the authenticated setup page after live All-repositories App verification; no connection/tool argument can elevate this flag. Preview-only (contract §10): every `github_dev_*` tool refuses production targets before reading anything, records every object it creates in a run, and tags it `rtc_run=<runId>` (`docs/designs/BATCH-V.md`).
 
 | Tool | What it does | Safety | Origin | Cred | Audience | Profile | Card |

@@ -1,3 +1,4 @@
+import { isOwnerConnection } from '../core/authority.js';
 // V-1: real scratch-only scenarios, with shared run-owned branch/file mutation helpers.
 import { defineGithubWrite } from './define-github-write.js';
 import { missing, octo, ownerOf, refusal } from './github-write.js';
@@ -43,7 +44,7 @@ export const seed=defineGithubWrite({
     url:{type:'string',minLength:12,maxLength:2048,description:'webhook-target only: public HTTPS address of the app that will receive the test webhook'}},
   required:['repo','runId','scenario'],declarations:{production:'never'},
   target:(args,ctx)=>{
-    if(ctx.connection?.mode!=='preview')throw new TypeError('Developer scenarios cannot run in production mode.');
+    if(!isOwnerConnection(ctx.connection)&&ctx.connection?.mode!=='preview')throw new TypeError('Developer scenarios cannot run in production mode.');
     if((args.scenario==='webhook-target')!==(args.url!==undefined))
       throw new TypeError('Give url for the webhook-target scenario, and only for it.');
     return {owner:ownerOf(args,ctx),repo:args.repo,scope:'repo'};
