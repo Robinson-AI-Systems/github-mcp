@@ -69,6 +69,8 @@ describe('C-13 pinned repository ZIP as a connection-owned binary handle', () =>
     expect((await run(w, 'github_content_snapshot', { repo: 'hello', ref: SHA })).isError).toBe(true);
     served.bytes = buildZip([{ name: 'repo/secret', data: 'ghp_FAKE0123456789abcdefgh' }]);
     expect((await run(w, 'github_content_snapshot', { repo: 'hello', ref: SHA })).isError).toBe(true);
+    served.bytes = buildZip([{ name: 'repo/binary-token', data: Buffer.from('\u0000ghp_FAKE0123456789abcdefgh') }]);
+    expect((await run(w, 'github_content_snapshot', { repo: 'hello', ref: SHA })).isError).toBe(true);
     w.gh.when('GET /repos/{owner}/{repo}/zipball/{ref}').reply(404, { message: 'Not Found' });
     expect((await run(w, 'github_content_snapshot', { repo: 'hello', ref: SHA })).isError).toBe(true);
   });

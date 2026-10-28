@@ -44,7 +44,7 @@ function projected(value, fields) {
  */
 async function readReply({ tool, args, raw, connection, db, mode }) {
   const shaped = shapeResult(summarized(tool, args, raw), { mode });
-  const { value, unknown } = Array.isArray(args?.fields) && args.fields.length && tool.name !== 'github_get_result'
+  const { value, unknown } = Array.isArray(args?.fields) && args.fields.length && tool.area !== 'server'
     ? projected(shaped, args.fields) : { value: shaped, unknown: [] };
   if (containsCredential(JSON.stringify(value))) return fail('The result was withheld because it looked like it contained a credential.');
   if (tool.keepsResult === false) return { content: [{ type: 'text', text: JSON.stringify(value) }], structuredContent: value };

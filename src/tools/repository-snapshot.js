@@ -3,7 +3,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { defineRead } from './define-read.js';
 import { plain, readerFor } from './github-read.js';
 import { downloadPublicAsset } from '../github/public-url.js';
-import { listZip, readEntry, looksLikeText } from '../core/zip-reader.js';
+import { listZip, readEntry } from '../core/zip-reader.js';
 import { containsCredential } from './util.js';
 
 const limits = { compressed: 16 * 1048576, expanded: 40 * 1048576, entries: 500 };
@@ -32,7 +32,7 @@ const definition = defineRead({
     if (!files.length) throw new TypeError('The repository ZIP has no files.');
     for (const entry of files) {
       const data = readEntry(bytes, entry);
-      if (looksLikeText(data) && containsCredential(data.toString('utf8')))
+      if (containsCredential(data.toString('utf8')))
         throw new TypeError('The archive contains credential-shaped text and cannot be returned exactly.');
     }
     const connection = ctx.connection.client_id ?? ctx.connection.pass_id;

@@ -1,6 +1,8 @@
 <!-- Native MCP tools/list catalog is complete across standard nextCursor pages (40 tools/page). Its original 22,000-token ceiling applies to each complete response; meta search/describe/call remain available independently. Implemented in F-1 PR #167 with real issue capabilities. -->
 # Tool catalog
 
+**C-13 pinned ZIP and universal read selectors (2026-10-27, PR #440):** `github_content_snapshot` fetches a repository ZIP at an exact commit SHA into the existing 24-hour tenant-scoped result store. `github_get_result({handle,byteOffset,byteLength})` returns ≤32768 original bytes in base64 with total length, next offset, SHA-256 and EOF; a metadata-only read never returns ZIP base64. ZIPs are checked against path, entry count, expansion, symlink and credential scanner limits before storage. Generic read tools gain dotted `fields` projection; server tools retain their existing handler-owned selectors. Rate metadata #435 is not implemented by this PR; no release or real-client acceptance is claimed.
+
 **C-12 large-result efficiency (2026-10-27, PR #439 in review):** long prose/schema/file data is available once in the complete JSON text response; small scalar metadata and normal structured collections remain in `structuredContent`. When `full_payload_location` is `content[0].text`, parse that JSON to retrieve the omitted large text field without further calls. Small results, credential protection, authorization, RTC result handles and write responses are unchanged. No deployment is implied by the PR.
 
 **C-7 owner override parity:** `github_pr_merge` and `github_pr_merge_async` now submit an explicitly requested bypass with the authenticated person's credential even when best-effort rule discovery reports none. The compact `github_workflow_merge_when_green` accepts `overrideRules` and `overrideReason` and uses the same guarded writer. Ordinary merges still enforce CI/reviews; a deliberate bypass may pass local preflight only so GitHub can decide. Confirmations, scoped credentials, explicit protected-resource policies, exact-head and once-only safeguards are unchanged. Provider rejection is not silently retried as the App.
@@ -752,7 +754,7 @@ Card(s): Y-7. Advisory text never appears in a result or the change log (only a 
 | `github_security_config_detach` | Detach the configuration from named repositories | C·Prod | N | I | O | F | Y-7 |
 | `github_security_config_delete` | Delete a verified configuration (exact name, no undo) only with complete cursor-paginated attached-repository inventory; unreadable/capped lists never silently count as empty | C·Prod | N | I | O | F | Y-7 |
 
-## Background jobs, archives and autofix (`github_job_*, github_artifact_read, github_content_read_archive, github_security_*sbom*, github_code_scanning_autofix_*`) — 8
+## Background jobs, archives and autofix (`github_job_*, github_artifact_read, github_content_read_archive, github_security_*sbom*, github_code_scanning_autofix_*`) — 9
 
 Card(s): Y-8. A slow GitHub operation returns a `job_id` at once; `github_job_status` asks GitHub once per call (not more than every 10 seconds) and never waits, and the finished result is kept as an ordinary result handle. Artifacts and repository snapshots are opened on the server (50 MB zipped, 200 MB unpacked, 500 files, no unsafe names or links); binary files show only name, size and SHA-256 and the signed download address is never returned. `github_release_upload_asset` also accepts a build artifact (`artifactId`, optional `entry`) as its source. Wiki editing is in its own section below.
 
@@ -762,6 +764,7 @@ Card(s): Y-8. A slow GitHub operation returns a `job_id` at once; `github_job_st
 | `github_job_cancel` | Stop tracking a pending slow job | P | N | — | B,Op | F | Y-8 |
 | `github_artifact_read` | List the files of a build artifact or read one text file | — | N | I | B,Op | R | Y-8 |
 | `github_content_read_archive` | List or read files inside a repository snapshot at a ref | — | N | I | B,Op | R | Y-8 |
+| `github_content_snapshot` | Pin an exact GitHub commit and return a tenant-scoped ZIP result handle for binary byte windows and checksum verification | — | N | I | B,Op | R | C-13 |
 | `github_security_export_sbom` | The software parts list (SBOM) of a repository | — | N | I | B,Op | R | Y-8 |
 | `github_security_sbom_report_start` | Ask GitHub to build an SBOM report in the background (job) | — | N | I | B,Op | R | Y-8 |
 | `github_code_scanning_autofix_start` | Ask GitHub to suggest a fix for a code scanning alert (job) | P | N | I | B,Op | F | Y-8 |
@@ -868,7 +871,7 @@ Card(s): PAR-1. Code Quality findings come from GitHub's own analysis (not marke
 
 ## Totals
 
-**Totals:** 477 tools: 471 hand-built + 6 universal (`github_api_*`, `github_graphql_*`), plus guided settings for every
+**Totals:** 478 tools: 472 hand-built + 6 universal (`github_api_*`, `github_graphql_*`), plus guided settings for every
 dashboard-only owner setting. By profile (lowest profile that has the tool): read_only 158, everyday adds 83
 (everyday lists 240), full adds 113 (full lists 396). In compact mode (`docs/designs/BATCH-C.md`) an agent
 loads only about 25 tools up front (meta-tools, whoami, universal search, workflows) and reaches the rest through
@@ -919,7 +922,7 @@ loads only about 25 tools up front (meta-tools, whoami, universal search, workfl
 | GitHub Enterprise | 13 |
 | Master-token families: Copilot Spaces, Classroom, Marketplace and more | 17 |
 | Code quality and GitHub help | 4 |
-| **Total** | **477** |
+| **Total** | **478** |
 
 <!-- #108: experimental RTC HTTPS reader bridges only server/meta read tools using existing guarded dispatch; RTC 1 certification is not claimed. -->
 
