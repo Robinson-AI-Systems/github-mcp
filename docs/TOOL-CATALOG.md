@@ -831,7 +831,7 @@ Card(s): ENT-1. Every tool uses the person's **master token** (credential `M`, w
 | `github_enterprise_security_config_apply` | Attach a configuration to all repositories, or set which new repositories get it by default | C·$*·Prod | N | M | O | F | ENT-1 |
 | `github_enterprise_dependabot_access_set` | Change Dependabot's default repository access level, or add or remove repositories it may access | C·A·Prod | N | M | O | F | ENT-1 |
 | `github_enterprise_actions_settings_set` | Change one enterprise Actions setting: cache retention, cache storage limit, or an OIDC custom property | C·Prod | N | M | O | F | ENT-1 |
-| `github_enterprise_policy_set` | Change one enterprise-wide member policy (repository deletion, visibility, forking, default permission, purchases...); read back | C·$·A·Prod | N | M | O | F | GQL-1 |
+| `github_enterprise_policy_set` | Change enterprise two-factor, IP allow-list, deploy-key, repository creation or member policy; provider-admin proof and readback | C·$·A·Prod | N | M | O | F | GQL-1 |
 | `github_enterprise_profile_set` | Edit the enterprise profile: name, description, location, website or security contact email; read back | C·Prod | N | M | O | F | GQL-1 |
 
 ## Master-token families: Copilot Spaces, Classroom, Marketplace and more (`github_copilot_space_*, github_classroom_*, ...`) — 17

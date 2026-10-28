@@ -126,6 +126,14 @@ export const COVERED_BY_TOOL = new Map([
   ['updateEnterpriseMembersCanMakePurchasesSetting', 'github_enterprise_policy_set'],
   ['updateEnterpriseMembersCanUpdateProtectedBranchesSetting', 'github_enterprise_policy_set'],
   ['updateEnterpriseMembersCanViewDependencyInsightsSetting', 'github_enterprise_policy_set'],
+  ['updateEnterpriseTwoFactorAuthenticationRequiredSetting', 'github_enterprise_policy_set'],
+  ['updateEnterpriseTwoFactorAuthenticationDisallowedMethodsSetting', 'github_enterprise_policy_set'],
+  ['updateEnterpriseDeployKeySetting', 'github_enterprise_policy_set'],
+  ['updateEnterpriseRepositoryProjectsSetting', 'github_enterprise_policy_set'],
+  ['updateEnterpriseMembersCanCreateRepositoriesSetting', 'github_enterprise_policy_set'],
+  ['updateIpAllowListEnabledSetting', 'github_enterprise_policy_set'],
+  ['updateIpAllowListForInstalledAppsEnabledSetting', 'github_enterprise_policy_set'],
+  ['updateIpAllowListUserLevelEnforcementEnabledSetting', 'github_enterprise_policy_set'],
   ['updateEnterpriseOrganizationProjectsSetting', 'github_enterprise_policy_set'],
   ['updateEnterpriseProfile', 'github_enterprise_profile_set']
 ]);

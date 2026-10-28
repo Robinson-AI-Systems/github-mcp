@@ -1,0 +1,11 @@
+# Parity completion after the audit correction
+
+Owner instruction: implement remaining work in coherent large chunks, perform pre-release acceptance as available, then release the finished combined implementation and run live acceptance. No intermediate release is authorized by this workflow. Starting main 6f33f0e9 (#449), serving/live 75b4d61b (#448); #449 is merged and exact-head CI/review passed, superseding its earlier pending checkpoint paragraphs. Core audit read/redaction corrections are already verified live.
+
+Current branch ai/codex/parity-completion-20261028. Plan amendment recorded before source. Initial outcome is verified administrative contracts, truthful fallback routing and owner-facing legacy cleanup; portable native Git follows under the same completion plan. No new deployment, grant, expense or paid/destructive test has occurred.
+
+## First implementation chunk
+
+Eight previously unsupported enterprise policy mutations implemented using the pinned provider schema, including real repositoryDeployKeySetting/repositoryProjectsSetting readbacks rather than inherited claims that no read existed. Existing administrator credential/account binding retained; exact ownerId required for IP policies. Focused policy/setup selection passed 303/303, following 157/157 for the initial five-contract subset. The first added IP fixture used an enterprise-only mutation-name regex and was corrected to recognize the actual IP request; provider-shape assertions remain enabled. Setup HTML now correctly labels legacy restricted-grant settings and full-owner authority. Required assembled static and exact-head CI/review are pending; no release.
+
+Official scanning contract investigation: GitHub Docs describes fresh scanning as remote-MCP-only, with ephemeral findings absent from REST/GraphQL alert APIs. Public upstream source does not publish that remote tool contract. No verified server bridge or proprietary-equivalence claim is manufactured; existing generated Robinson Gitleaks workflow, local commands and provider setup remain the concrete alternative. Reference: https://docs.github.com/en/code-security/how-tos/use-ghas-with-ai-coding-agents/scan-for-secrets-with-github-mcp-server (checked 2026-10-28).
