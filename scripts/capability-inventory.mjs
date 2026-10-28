@@ -40,7 +40,7 @@ export function printReport(catalog) {
     '- GraphQL mutations with no write specification (not covered): ' + of(s.byState.missing),
     '- Not yet classified: ' + of(s.byState.unresolved),
     '- Provider-retired: ' + of(s.byState['provider-retired']) + '; provider-UI-only: ' + of(s.byState['provider-UI-only']),
-    '- Refused on purpose (reason recorded per row): ' + of(s.byState['refused-by-design']),
+    '- Legacy unsupported contracts (refused-by-design key retained; engineering backlog, not owner policy): ' + of(s.byState['refused-by-design']),
     '- Rows with unresolved official-source conflicts: ' + of(s.unresolvedConflictRows) + '; rows whose conflict has a written resolution: ' + of(s.resolvedConflictRows),
     '- Operations with at least one credential type decided from official evidence: ' + of(s.operationsWithADecision) + ' (what GitHub documents, not what a connection can do); individual credential decisions left unknown, each with its reason: ' + s.unknownCredentialDecisions,
     'Categories overlap (a row can be unclassified and a universal candidate), so they do not sum to the denominator.',

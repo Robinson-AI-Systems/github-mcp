@@ -38,7 +38,9 @@ describe('GQL-1 group 2: issues, labels, reviews, reactions, discussions', () =>
       const out = await run(w, { mutation: MUTATION(name, type), variables: { input }, owner: 'example-org', repo: 'hello', confirm: true })
         .catch((e) => ({ status: 'error', message: String(e?.message ?? e) }));
       expect(out.status).not.toBe('applied');
-      expect(JSON.stringify(out)).toMatch(/refused on purpose/);
+      expect(JSON.stringify(out)).toMatch(/no implemented ownership\/readback contract/);
+      expect(JSON.stringify(out)).toContain('github_api_describe');
+      expect(JSON.stringify(out)).toContain('github_where_is_setting');
       expect(w.gh.calls.filter((c) => /^\s*mutation\b/.test(c.body?.query ?? ''))).toHaveLength(0);
     }
   });

@@ -55,3 +55,7 @@ All 15 remaining standalone queue obligations were reconciled, preserving 55 rec
 | RTC-DIRECT | Genuine short-lived service RTC pass remains; current OAuth grant is not an RTC pass. |
 
 Final local repository check and publication-base comparison passed. Additional target-accuracy/restricted-grant/unsupported-contract regressions passed 379/379 across two files. Required remote exact-head CI, review and merge are still pending for the owner-confirmation cleanup; content-protection live evidence above remains valid independently.
+
+The capability inventory/report also retains its legacy refused-by-design machine key for compatibility while explicitly exposing these rows as missing verified contracts with concrete discovery/setup recovery. It no longer says there is no next action or asks for an already-given owner decision. Historical risk notes do not establish a new provider refusal.
+
+PR #449 first exact-head CI passed every database/browser/RTC/shape/static family and two unit shards; the remaining shard failed exactly two assertions expecting retired GraphQL refusal wording. Both now require truthful missing-contract explanation and actionable discovery/setup guidance while retaining no-mutation checks. Capability-inventory recovery tests passed 11/11. Previously indexed CI-FAST-1 was independently reconciled to already-merged #426, exact-head green checks/resolved review and observed passing-overrun/retained artifact logs; its work-index entry is now MERGED without a new implementation claim.

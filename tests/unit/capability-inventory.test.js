@@ -211,3 +211,17 @@ describe('CAP-5 capability report', () => {
     expect(printReport(changed)).toContain('Verified against a real account: 7 of');
   });
 });
+
+it('legacy unsupported mutation inventory exposes engineering recovery rather than permanent owner-policy refusal', async () => {
+  const inventory = buildCapabilityInventory({ registryTools: registry.tools });
+  const pending = inventory.operations.filter(row => row.state === 'refused-by-design');
+  expect(pending.length).toBeGreaterThan(0);
+  for (const row of pending) {
+    expect(row.implementation.reason).toContain('Missing verified ownership/readback contract');
+    expect(row.delivery.nextAction).toContain('github_api_describe');
+    expect(row.delivery.nextAction).not.toContain('None:');
+  }
+  const { printReport } = await import('../../scripts/capability-inventory.mjs');
+  expect(printReport(inventory)).toContain('engineering backlog, not owner policy');
+  expect(printReport(inventory)).not.toContain('Refused on purpose');
+});

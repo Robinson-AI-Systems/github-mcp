@@ -6,7 +6,7 @@ Owner approved the ten reported real-world improvements and requested implementa
 
 ## 2026-10-27 — CI-FAST-1 30-second warn-only feedback and parallel browser verification
 
-Owner authorized a 30-second *soft* feedback target without punishing slow-but-passing tests. Required browser specs will be partitioned into independent Postgres-backed CI jobs, with one-to-one coverage checks. Store per-job measured durations and overrun notices in GitHub Actions summaries and 14-day artifacts. Actual failed tests, hard timeouts and the aggregate exact-head gate remain mandatory. End-to-end 30-second pipeline feedback remains aspirational and measured separately. [CI-FAST-1](pr-cards/CI-FAST-1.md).
+Merged #426; exact green checks, resolved review and observed retained timing/overrun evidence are reconciled on the card. Owner authorized a 30-second *soft* feedback target without punishing slow-but-passing tests. Required browser specs are partitioned into independent Postgres-backed CI jobs, with one-to-one coverage checks. Store per-job measured durations and overrun notices in GitHub Actions summaries and 14-day artifacts. Actual failed tests, hard timeouts and the aggregate exact-head gate remain mandatory. End-to-end 30-second pipeline feedback remains aspirational and measured separately. [CI-FAST-1](pr-cards/CI-FAST-1.md).
 
 
 ## 2026-10-27 — C-9 authenticated MCP hot-path speedup

@@ -31,7 +31,9 @@ describe('GQL-1 Projects v2 coverage', () => {
       const out = await run(w, { mutation: MUTATION(name, type), variables: { input }, owner: 'example-org', confirm: true })
         .catch((e) => ({ status: 'error', message: String(e?.message ?? e) }));
       expect(out.status).not.toBe('applied');
-      expect(JSON.stringify(out)).toMatch(/refused on purpose/);
+      expect(JSON.stringify(out)).toMatch(/no implemented ownership\/readback contract/);
+      expect(JSON.stringify(out)).toContain('github_api_describe');
+      expect(JSON.stringify(out)).toContain('github_where_is_setting');
       expect(sent(w.gh)).toHaveLength(0);
     }
   });
