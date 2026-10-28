@@ -11,7 +11,8 @@ RUN rm -f /etc/apt/sources.list.d/debian.sources \
  && chown node:node /data
 WORKDIR /app
 COPY package.json ./package.json
-COPY src/github/content-protection.js ./src/github/content-protection.js
+COPY src/github/content-protection.js src/github/open-secret-rules.js src/github/secret-literals.js src/github/custom-secret-rules.js src/github/scanner-policy.js src/github/file-protection.js ./src/github/
+COPY vendor/gitleaks/ ./vendor/gitleaks/
 COPY src/native-git/commands.js src/native-git/protocol.js ./src/native-git/
 COPY workers/native-git/ ./workers/native-git/
 USER node

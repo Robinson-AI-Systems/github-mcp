@@ -23,7 +23,7 @@ Restricted preview RTC successful replies revalidate service pass and scratch ow
 
 Every tool this server will have, by area — the product scope. The implementing model builds exactly these; anything
 else goes in `docs/ROADMAP.md` and the PR report, and universal tools (last section) provide guarded access only where their actual credential, classification and request support permits. Endpoint-level completeness remains unproven; see [MAXIMUM-AUTHORITY](designs/MAXIMUM-AUTHORITY.md). Counts are checked by `python3 scripts/count-catalog.py` (run by `npm run check` and CI since A-1, #1). When a
-tool merges, its Card cell gains `built #<PR>`. Built so far: **491 cataloged tools** (every row below is in the registry, `src/tools/index.js`; `scripts/count-catalog.py` and `scripts/check-writes.mjs` fail the build if a tool and its row disagree)
+tool merges, its Card cell gains `built #<PR>`. Built so far: **494 cataloged tools** (every row below is in the registry, `src/tools/index.js`; `scripts/count-catalog.py` and `scripts/check-writes.mjs` fail the build if a tool and its row disagree)
 and holds the two A-5 tools, the B-3 protected-list reader the two B-2 production-switch tools and the B-4 spend-limit tool. Since B-5 every result of these tools is shaped (`src/tools/util.js`) and failures are explained by `src/tools/errors.js`. Since B-6 a connection sees only the tools its profile allows (`tools/list` and by-name calls). Every write tool below is built with `defineGithubWrite` (B-1, #16, `src/tools/define-github-write.js`) and pass the nine write-contract checks (`test/helpers/write-contract.js`); the two B-2 tools are the first (`src/tools/server.js`).
 
 **Safety metadata and scoped behavior:** `—` reads only; `P` supports optional dryRun; `D` describes destructive effects; `Prod`/`Prod*` describe production scope; `A`/`A*` describe access changes; `M` describes notifications; `$`/`$*` describe billing. `C` retains the restricted-profile confirmation declaration checked against source. On a full ordinary owner connection these marks are disclosure, not automatic confirmation or refusal. Explicitly restricted profiles/passes retain their chosen mode, access and spend limits. GitHub applies provider rules; journal/replay/readback and credential isolation apply to everyone.
@@ -407,7 +407,7 @@ Card(s): H-3.
 | `github_deploykey_add` | Add a deploy key (public key only; write access is access-widening and production) | C·A·Prod* | F | I | O | F | H-3 built #194 |
 | `github_deploykey_delete` | Remove a deploy key | C·Prod | C | I | O | F | H-3 built #194 |
 
-## Security features and alerts; Actions settings (`github_security_*, github_actions_*settings`) — 11
+## Security features and alerts; Actions settings (`github_security_*, github_actions_*settings`) — 14
 
 Card(s): H-4.
 
@@ -417,6 +417,9 @@ Card(s): H-4.
 | `github_security_set_feature` | Enable/disable all provider-supported repo security switches: direct security_and_analysis PATCH, Dependabot PUT/DELETE and private-reporting PUT/DELETE, with paid/private notices, bypass access consent and exact independent readback | C·$*·Prod | F | I | O | F | H-4 built #195/#196/#224 |
 | `github_security_list_alerts` | Dependabot, code scanning or secret scanning alerts for a repo or org (kind chosen by argument) | — | C | I | O,B,Op | R | H-4 built #195/#196/#224 |
 | `github_security_scan_files` | Inspect up to 12 chosen GitHub-hosted files for common secret patterns; redacted locations only, not GitHub's full proprietary scan or local uncommitted changes | — | N | I | B,O,Op | R | PAR-2 |
+| `github_secret_scanner` | Compact direct scanner gateway: settings, scan/preview, configure, rollback and profile offers; inner guards apply | as the tool | N | I | B,O,Op | R | PAR-2 |
+| `github_security_scanner_get_settings` | Read this repository's rules, receipts and portable profile; optionally preview an offer to another authorized repository | — | N | I | B,O,Op | R | PAR-2 |
+| `github_security_scanner_configure` | Revision-bound tuning with a reason, pinned-file retests and journaled receipt; exact-file exceptions only, owner only | P | N | I | O | F | PAR-2 |
 | `github_security_scan_guidance` | Inspect provider secret protection and prepare Robinson repository CI/local scanning plus official remote-engine connection steps | — | N | I | B,O,Op | R | PAR-2 |
 | `github_security_get_alert` | One alert in plain words (secret scanning: the secret itself is never returned) | — | F | I | O,B | R | H-4 built #195/#196/#224 |
 | `github_security_update_alert` | Dismiss, resolve or reopen an alert with a reason | C·Prod | C | I | O,B | E | H-4 built #195/#196/#224 |
@@ -882,7 +885,7 @@ Card(s): PAR-1. Code Quality findings come from GitHub's own analysis (not marke
 
 ## Totals
 
-**Totals:** 491 tools: 485 hand-built + 6 universal (`github_api_*`, `github_graphql_*`), plus guided settings for every
+**Totals:** 494 tools: 488 hand-built + 6 universal (`github_api_*`, `github_graphql_*`), plus guided settings for every
 dashboard-only owner setting. By profile (lowest profile that has the tool): read_only 158, everyday adds 83
 (everyday lists 240), full adds 113 (full lists 396). In compact mode (`docs/designs/BATCH-C.md`) an agent
 loads only about 25 tools up front (meta-tools, whoami, universal search, workflows) and reaches the rest through
@@ -909,7 +912,7 @@ loads only about 25 tools up front (meta-tools, whoami, universal search, workfl
 | Branch protection and rulesets | 9 |
 | Webhooks | 8 |
 | Collaborators and deploy keys | 7 |
-| Security features and alerts; Actions settings | 11 |
+| Security features and alerts; Actions settings | 14 |
 | Owner: organization and members | 13 |
 | Owner: teams and roles | 9 |
 | Owner: billing, budgets, Copilot and Codespaces | 14 |
@@ -933,7 +936,7 @@ loads only about 25 tools up front (meta-tools, whoami, universal search, workfl
 | GitHub Enterprise | 16 |
 | Master-token families: Copilot Spaces, Classroom, Marketplace and more | 17 |
 | Code quality and GitHub help | 4 |
-| **Total** | **491** |
+| **Total** | **494** |
 
 <!-- #108: experimental RTC HTTPS reader bridges only server/meta read tools using existing guarded dispatch; RTC 1 certification is not claimed. -->
 

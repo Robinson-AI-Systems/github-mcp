@@ -552,6 +552,11 @@ export function createFakeDb({ clock = Date.now } = {}) {
       if (typeof key !== 'string' || !/^[a-z][a-z0-9_.]{0,62}$/.test(key)) throw new TypeError('A setting key is lowercase words.');
       settings.set(key, structuredClone(value));
     },
+    async compareAndSetSetting(key, expectedRevision, value) {
+      if(typeof key!=='string'||!/^[a-z][a-z0-9_.]{0,62}$/.test(key)||!Number.isSafeInteger(expectedRevision)||expectedRevision<0||value?.revision!==expectedRevision+1)throw new TypeError('A valid setting key and successive revision are required.');
+      const old=settings.get(key);if((old?.revision??0)!==expectedRevision)return null;
+      settings.set(key,structuredClone(value));return structuredClone(value);
+    },
     async listProtectedResources() {
       return [...protectedRows.values()].map((r) => ({ ...r })).sort((a, b) => (a.kind + a.target).localeCompare(b.kind + b.target));
     },

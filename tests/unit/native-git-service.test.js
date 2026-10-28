@@ -34,7 +34,7 @@ async function opened() {
  expect(result.status, JSON.stringify(result)).toBe('applied'); return result.result.workspace_id;
 }
 it('verifies internal signatures, expiry, fixed origin and non-write grants', async () => {
- const lease = JSON.stringify({ version: 1, action: 'inspect', expiresAt: w.ctx.now() + 60000 });
+ const lease = JSON.stringify({ version: 2, action: 'inspect', expiresAt: w.ctx.now() + 60000 });
  expect(verifyWorkerBody(lease, signWorkerBody(lease, KEY), KEY, w.ctx.now()).action).toBe('inspect');
  expect(() => verifyWorkerBody(lease, signWorkerBody(lease + 'x', KEY), KEY, w.ctx.now())).toThrow(/authorization/);
  expect(() => verifyWorkerBody(lease, signWorkerBody(lease, KEY), KEY, w.ctx.now() + 60001)).toThrow(/Expired/);
@@ -98,7 +98,7 @@ it('never releases another request’s active workspace lock when a busy request
  const { nativeConnection } = await import('../../src/native-git/client.js');
  const row = await w.db.getJob(id, nativeConnection(w.ctx)); const backend = JSON.parse(row.provider_ref).worker;
  const binding = requests.find(r => r.action === 'open').binding;
- const body = JSON.stringify({ version: 1, action: 'inspect', binding, workspace_id: backend, expiresAt: w.ctx.now() + 60000 });
+ const body = JSON.stringify({ version: 2, scannerPolicy:{settings:{additionalRules:[],disabledRules:[],suppressions:[]},revision:0}, action: 'inspect', binding, workspace_id: backend, expiresAt: w.ctx.now() + 60000 });
  const statuses = await Promise.all(Array.from({ length: 5 }, async () => {
   const response = await fetch(origin + '/v1/workspace', { method: 'POST', body, headers: { 'x-robinson-signature': signWorkerBody(body, KEY) } }); await response.text(); return response.status;
  }));
@@ -114,4 +114,13 @@ it('executes a real MCP clone with only a public verification key on the worker'
  const id = await opened(); expect(id).toMatch(/^job_/);
  const state = parse(await invoke('github_git_workspace_read', { workspace_id: id, operation: 'status' })); expect(state.state).toBe('ready');
  expect(requests.every(r => !Object.hasOwn(r, 'signingKey'))).toBe(true);
+});
+
+it('brokers current repository scanner rules into signed worker calls and protects native file reads',async()=>{
+ const {scannerSettingKey}=await import('../../src/github/scanner-policy.js');
+ await w.db.setSetting(scannerSettingKey('example-org','hello'),{revision:1,settings:{additionalRules:[{id:'custom_initial_word',label:'Synthetic native fixture marker',type:'prefix',prefix:'ini',alphabet:'alnum',minLength:4,maxLength:30}],disabledRules:[],suppressions:[]},history:[]});
+ const id=await opened();const report=parse(await invoke('github_git_workspace_read',{workspace_id:id,operation:'protection_check',options:{path:'file.txt'}}));
+ expect(report.findings).toMatchObject([{rule:'custom_initial_word'}]);expect(report.policy_revision).toBe(1);
+ expect((await invoke('github_git_workspace_read',{workspace_id:id,operation:'read_file',options:{path:'file.txt'},byteLength:32768})).isError).toBe(true);
+ expect(requests.at(-1).scannerPolicy.revision).toBe(1);expect(requests.at(-1).scannerPolicy.settings.additionalRules[0].id).toBe('custom_initial_word');
 });

@@ -1322,6 +1322,20 @@ export function createDb(sql = productionSql()) {
       await sql`INSERT INTO server_settings (setting, value, updated_at) VALUES (${key}, ${JSON.stringify(value)}::jsonb, now())
         ON CONFLICT (setting) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`;
     },
+    /** Atomic revision-bound non-secret setting update. Absent rows start at revision zero. */
+    async compareAndSetSetting(key, expectedRevision, value) {
+      if(typeof key!=='string'||!/^[a-z][a-z0-9_.]{0,62}$/.test(key)||!Number.isSafeInteger(expectedRevision)||expectedRevision<0||value?.revision!==expectedRevision+1)throw new TypeError('A valid setting key and successive revision are required.');
+      const rows=await sql`INSERT INTO server_settings (setting,value,updated_at)
+        SELECT ${key}, ${JSON.stringify(value)}::jsonb, now() WHERE ${expectedRevision}=0
+        ON CONFLICT (setting) DO UPDATE SET value=EXCLUDED.value,updated_at=now()
+        WHERE (server_settings.value->>'revision')::bigint=${expectedRevision}
+        RETURNING value`;
+      if(rows[0])return rows[0].value;
+      if(expectedRevision===0)return null;
+      const updated=await sql`UPDATE server_settings SET value=${JSON.stringify(value)}::jsonb,updated_at=now()
+        WHERE setting=${key} AND (value->>'revision')::bigint=${expectedRevision} RETURNING value`;
+      return updated[0]?.value??null;
+    },
     /** The protected list, sorted. `kind` is 'repo' (target `owner/name`, lowercase) or 'installation' (an installation number or `*` for all of this server's own Apps). */
     async listProtectedResources() {
       const rows = await sql`SELECT kind, target, level, reason, updated_at FROM protected_resources ORDER BY kind, target`;

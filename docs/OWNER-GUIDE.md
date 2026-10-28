@@ -1,5 +1,8 @@
 # Owner guide — what you can ask for
 
+**Repository scanner profiles:** `github_secret_scanner` is the compact direct entry for settings, scan/preview, configure, rollback and profile offers. Each repository has independent settings. Changes require a reason and pinned before/after retests; exact file/finding exceptions are visible and version-bound. [Guide](SECRET-SCANNER.md) explains the baseline, receipts and limits. This new source needs its dated release evidence before live use is assumed.
+
+
 > **Current authority and parity remediation (2026-10-28):** [requirements](OWNER-DECISION-2026-10-27.md), [delivery plan](designs/AUTHORITY-PARITY-2026-10-28.md). Full owner writes disclose/execute/journal/verify in one call; explicit delegated restrictions remain. Older dated statements about owner caps, production ceremony and mandatory merge gates are superseded. Source delivery and live acceptance remain separate.
 
 **Developer workflows (2026-10-28 correction):** A full ordinary owner connection can create/seed/test/inspect/clean developer fixtures in either connection mode. Verified scratch App enrollment, exact run ownership and cleanup origin checks still apply. Explicit delegated/profile restrictions remain; changing connection mode is not required solely to use these tools.

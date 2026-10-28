@@ -1,4 +1,5 @@
-import { redactPreservingLines } from '../github/content-protection.js';
+import {registerFileView} from '../github/content-protection.js';
+import {protectRepositoryFile} from '../github/file-protection.js';
 // Files, commits and git data, read side (D-2 part 1). Big answers are bounded here (a file's text, a tree, a patch) and then again by the
 // result rules (C-1): nothing is returned whole when it is large. Reads only.
 import { listAll } from '../github/client.js';
@@ -6,7 +7,7 @@ import { defineRead } from './define-read.js';
 import { globToRegExp } from './production-guard.js';
 import { githubDownloadPage, safeGithubDownloadRedirect } from './safe-download-link.js';
 import { plain, readerFor } from './github-read.js';
-import { containsCredential, contentProtectionReport, redact } from './util.js';
+import {redact} from './util.js';
 
 const OWNER = { type: 'string', maxLength: 39, description: 'GitHub account (default: the connection\'s default account)' };
 const REPO = { type: 'string', minLength: 1, maxLength: 100 };
@@ -64,10 +65,14 @@ export const contentGet = defineRead({
       return { ...base, content: null, note: `This file is ${data.size} bytes, too large to read through the contents API. Use github_content_get_archive_link or open the link.`, download_url: data.download_url };
     }
     const buffer = Buffer.from(data.content, 'base64');
+    if(buffer.length>MAX_TEXT_BYTES)throw new TypeError('File exceeds the complete inspection limit.');
+    const text=buffer.toString('utf8');
+    const protectedFile=await protectRepositoryFile(ctx,{owner,repo:args.repo,path,sha:data.sha,source:text});
+    const protection=protectedFile.report;
     if (args.byteOffset !== undefined || args.byteLength !== undefined) {
       // Check the entire decoded file before splitting/encoding: checking the
       // requested window alone could leak a token split across two windows.
-      if (containsCredential(buffer.toString('utf8')))
+      if (!protection.byte_exact_available)
         throw new TypeError('Byte-exact retrieval is blocked by content protection for credential-shaped content. Call github_content_protection_check with the same repository, path and blobSha to identify the matching rule and locations without exposing values.');
       const at = args.byteOffset ?? 0;
       if (at > buffer.length) throw new TypeError('byteOffset exceeds the file size.');
@@ -77,17 +82,17 @@ export const contentGet = defineRead({
         next_byte_offset: at + chunk.length, complete: at + chunk.length === buffer.length };
     }
     if (looksBinary(buffer)) return { ...base, binary: true, content: null, note: 'This is a binary file, so its content is not shown.', download_url: data.download_url };
-    const text = buffer.toString('utf8');
-    const protection = contentProtectionReport(text);
-    if (protection.total_findings) base.content_protection = { text_redacted: true, content_exact: false,
-      byte_exact_available: false, total_findings: protection.total_findings,
+    if (protection.total_findings) base.content_protection = { text_redacted: !protection.byte_exact_available, content_exact: protection.byte_exact_available,
+      byte_exact_available: protection.byte_exact_available, total_findings: protection.total_findings,excepted_findings:protection.excepted_findings,policy_revision:protection.policy_revision,
       diagnostic: { tool: 'github_content_protection_check', arguments: { owner, repo: args.repo, path, blobSha: data.sha } } };
     if (args.startLine !== undefined) {
-      const lines = redactPreservingLines(text).split('\n');
+      const lines = protectedFile.lines.split('\n');
+      const view=lines.slice(args.startLine-1,args.endLine).join('\n');registerFileView(view,text);
       return { ...base, start_line: args.startLine, end_line: Math.min(args.endLine, lines.length),
-        total_lines: lines.length, content: lines.slice(args.startLine - 1, args.endLine).join('\n') };
+        total_lines: lines.length, content: view };
     }
-    return { ...base, content: text };
+    registerFileView(protectedFile.text,text);
+    return { ...base, content: protectedFile.text };
   })
 });
 
@@ -95,7 +100,7 @@ export const contentProtectionCheck = defineRead({
   name: 'github_content_protection_check', area: 'content', audience: ['B', 'O', 'Op'],
   description: 'Explain file protection matches by rule and location, without values; prepare a safe false-positive report and exact local retrieval guidance.',
   properties: { owner: OWNER, repo: REPO, path: { type: 'string', minLength: 1, maxLength: 1000 }, ref: REF,
-    blobSha: { type: 'string', pattern: '^[a-fA-F0-9]{40}$' } }, required: ['repo', 'path'],
+    blobSha: { type: 'string', pattern: '^[a-fA-F0-9]{40}$' },rule:{type:'string',maxLength:80},findingOffset:{type:'integer',minimum:0},maxFindings:{type:'integer',minimum:1,maximum:100} }, required: ['repo', 'path'],
   handler: (args, ctx) => plain(async () => {
     if (args.blobSha && args.ref) throw new TypeError('blobSha cannot be combined with ref.');
     const { owner, octokit } = await readerFor(args, ctx);
@@ -108,9 +113,10 @@ export const contentProtectionCheck = defineRead({
     if (buffer.length > MAX_TEXT_BYTES) throw new TypeError('File exceeds the diagnostic limit.');
     if (!Buffer.from(buffer.toString('utf8')).equals(buffer)) return { owner, repo: args.repo, path: args.path,
       inspected: false, note: 'This file is not valid UTF-8; inspect it locally with Git. No text-location claim is made.' };
+    const protectedFile=await protectRepositoryFile(ctx,{owner,repo:args.repo,path:args.path,sha:data.sha,source:buffer.toString('utf8'),findingRule:args.rule,findingOffset:args.findingOffset??0,maxFindings:args.maxFindings??30});
     return { owner, repo: args.repo, path: args.path, sha: data.sha, inspected: true,
-      ...contentProtectionReport(buffer.toString('utf8')),
-      next: 'Check these locations in your own editor. Share only this value-free report and a harmless minimal example with your agent to correct the matching rule, then retest this immutable blob. No repository-wide bypass or secret values are needed.',
+      ...protectedFile.report,
+      next: 'Check these locations locally. Use github_secret_scanner settings/configure to add repository rules or a reasoned exact path/blob/fingerprint exception, then retest this immutable blob. No secret value or blanket output bypass is needed.',
       provider_blob_api: `https://api.github.com/repos/${owner}/${args.repo}/git/blobs/${data.sha}`,
       exact_local_retrieval: { clone: { program: 'git', args: ['clone', '--', `https://github.com/${owner}/${args.repo}.git`, 'repository'] },
         read: { program: 'git', args: ['-C', 'repository', 'cat-file', 'blob', data.sha], save_stdout_to_local_file: true },
