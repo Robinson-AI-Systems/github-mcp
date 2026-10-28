@@ -1,6 +1,6 @@
 // Tools that describe this server and the connection using them (A-5c). Read-only: they read the database and call no GitHub
 // endpoint. They show which credential types exist, never a credential, not even its last characters.
-import { randomBytes } from 'node:crypto';
+import { randomBytes, createHash } from 'node:crypto';
 import {RetainedResultNotFound} from '../core/result-errors.js';
 import { GITHUB_API_VERSION } from '../github/client.js';
 import { GithubClientError, formatDenver } from '../github/errors.js';
@@ -183,6 +183,28 @@ async function getResult(args, ctx) {
   const owner = ctx.connection.client_id ?? ctx.connection.pass_id;
   const row = owner ? await ctx.db.getResult(args.handle, String(owner)) : null;
   if (!row) throw new RetainedResultNotFound();
+  // A verified repository ZIP is opaque binary; never page its stored base64.
+  if (row.body?.type === 'archive') {
+    if (args.fields?.length || args.page !== undefined || args.pageSize !== undefined || args.offset !== undefined)
+      throw new TypeError('Archive byte windows cannot use fields, pages or character offsets.');
+    const { content_base64, sha256, total_bytes, owner, repo, sha } = row.body;
+    if (typeof content_base64 !== 'string' || !/^[a-f0-9]{64}$/.test(sha256 ?? ''))
+      throw new TypeError('The retained archive is unverifiable.');
+    if (args.byteOffset === undefined && args.byteLength === undefined)
+      return { handle: args.handle, type: 'archive', owner, repo, sha, sha256,
+        total_bytes, encoding: 'zip', complete: false, next_byte_offset: 0, expires: when(row.expires_at) };
+    const full = Buffer.from(content_base64, 'base64');
+    if (full.length !== total_bytes || createHash('sha256').update(full).digest('hex') !== sha256)
+      throw new TypeError('Retained ZIP checksum mismatch; make a fresh snapshot.');
+    const offset = args.byteOffset ?? 0;
+    if (offset > full.length) throw new TypeError('Archive byteOffset exceeds file length.');
+    const bytes = full.subarray(offset, offset + (args.byteLength ?? 32768));
+    return { handle: args.handle, type: 'archive', owner, repo, sha, sha256,
+      encoding: 'base64', content_base64: bytes.toString('base64'),
+      byte_offset: offset, byte_length: bytes.length, total_bytes: full.length,
+      next_byte_offset: offset + bytes.length, complete: offset + bytes.length === full.length,
+      expires: when(row.expires_at) };
+  }
   // Byte windows are explicit, complete file retrieval. The retained content
   // has already passed shaping and belongs only to this authenticated connection.
   if (args.byteOffset !== undefined || args.byteLength !== undefined) {
@@ -306,7 +328,7 @@ const readTools = [
         handle: { type: 'string', pattern: '^res_[A-Za-z0-9_-]{20,64}$', maxLength: 70 }, page: { type: 'integer', minimum: 1, maximum: 100000 },
         pageSize: { type: 'integer', minimum: 1, maximum: RULES.maxPageSize, description: `Default ${RULES.pageSize}` }, fields: FIELDS,
         offset: { type: 'integer', minimum: 0, maximum: 100000000, description: 'Start long text this many characters in' },
-        byteOffset: { type: 'integer', minimum: 0, description: 'Exact byte offset of retained file content (zero-based)' },
+        byteOffset: { type: 'integer', minimum: 0, description: 'Exact byte offset of retained file or repository ZIP (zero-based)' },
         byteLength: { type: 'integer', minimum: 1, maximum: 32768, description: 'Exact bytes to read, up to 32768 (default 32768)' }
       },
       required: ['handle'],
