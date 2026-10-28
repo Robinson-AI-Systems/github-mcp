@@ -23,6 +23,15 @@ on:
         type: boolean
         required: true
         default: false
+      manual_release:
+        description: 'Owner-authorized additional checked release'
+        type: boolean
+        required: false
+        default: false
+      expected_main_sha:
+        description: 'Exact reviewed main SHA for an additional release'
+        type: string
+        required: false
   pull_request:
     types: [opened, synchronize, reopened, edited]
   push:
@@ -56,7 +65,7 @@ jobs:
     if: >-
       github.ref == 'refs/heads/main' &&
       (github.event_name == 'schedule' ||
-       (github.event_name == 'workflow_dispatch' && inputs.recover_missed_daily == true && github.actor == 'christcr2012' && github.triggering_actor == 'christcr2012'))
+       (github.event_name == 'workflow_dispatch' && (inputs.recover_missed_daily == true || inputs.manual_release == true) && github.actor == 'christcr2012' && github.triggering_actor == 'christcr2012'))
     needs: policy
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -72,4 +81,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           RECOVER_MISSED_DAILY: ${{ inputs.recover_missed_daily }}
+          MANUAL_RELEASE: ${{ inputs.manual_release }}
+          EXPECTED_MAIN_SHA: ${{ inputs.expected_main_sha }}
         run: node .github/release/promote-live.mjs

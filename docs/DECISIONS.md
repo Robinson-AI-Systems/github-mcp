@@ -620,3 +620,7 @@ The owner approved issue #431's explicit sequential batching but rejected produc
 ## 2026-10-28 — C-16 source and review verification addendum
 
 The earlier 2026-10-27 owner-authority decision remains unchanged. Its required exact-head gates were subsequently satisfied: PR #443 passed required `ci` and `release-policy` at source head `fa49ffe85f28f876e39e30a84043ea898b37a88c`, both review threads were handled and resolved, the custom guarded merge confirmed merged, and issue #431 was independently verified closed/completed. This does not approve a live deployment or waive existing production/credential gates.
+
+### 2026-10-28 — Explicit additional release and worker ownership
+
+The owner explicitly authorized an unscheduled manual release, followed by continued authority/parity and native Git implementation. Additional manual promotion uses an owner-only workflow input and exact main SHA; it retains trusted green checks, fast-forward history and idempotent receipts without removing or rewriting the daily receipt. Routine daily release frequency remains unchanged. Dokploy/server belong to a friend: production Git workers and durable state must instead live under Robinson AI Systems control; that server is optional development infrastructure only. No paid worker service is activated by this decision.

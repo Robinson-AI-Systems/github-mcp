@@ -46,7 +46,7 @@ test('one checked fast-forward daily; reruns and unchanged heads skip', () => {
 test('real atomic git promotion, read-back and second same-day update refusal', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'release-policy-'));
   const cwd = process.cwd(), fetchBefore = globalThis.fetch;
-  const keys = ['GITHUB_REPOSITORY', 'GITHUB_REF', 'GITHUB_EVENT_NAME', 'GH_TOKEN'];
+  const keys = ['GITHUB_REPOSITORY', 'GITHUB_REF', 'GITHUB_EVENT_NAME', 'GH_TOKEN', 'GITHUB_ACTOR', 'GITHUB_TRIGGERING_ACTOR', 'MANUAL_RELEASE', 'EXPECTED_MAIN_SHA'];
   const before = keys.map(k => process.env[k]);
   const git = (...args) => execFileSync('git', args, { cwd: dir, encoding: 'utf8', stdio: 'pipe' }).trim();
   try {
@@ -96,6 +96,23 @@ test('real atomic git promotion, read-back and second same-day update refusal', 
     assert.equal(git('ls-remote', 'origin', 'refs/heads/live').split(/\s+/)[0], checked);
     process.env.GITHUB_EVENT_NAME = 'workflow_dispatch';
     await assert.rejects(run({ repository: 'example/repo', requiredChecks: ['ci'] }), /Scheduled/);
+    const third = git('rev-parse', 'HEAD');
+    Object.assign(process.env, { GITHUB_ACTOR: 'christcr2012', GITHUB_TRIGGERING_ACTOR: 'christcr2012',
+      MANUAL_RELEASE: 'true', EXPECTED_MAIN_SHA: checked });
+    await assert.rejects(run(policy), /Main moved/);
+    process.env.EXPECTED_MAIN_SHA = third;
+    globalThis.fetch = async () => ({ ok: true, json: async () => ({ total_count: 1,
+      check_runs: [{ ...good, head_sha: third, conclusion: 'failure' }] }) });
+    await assert.rejects(run(policy), /check failed/);
+    assert.equal(git('ls-remote', 'origin', 'refs/heads/live').split(/\s+/)[0], checked);
+    globalThis.fetch = async () => ({ ok: true, json: async () => ({ total_count: 1,
+      check_runs: [{ ...good, head_sha: third }] }) });
+    await run(policy);
+    assert.equal(git('ls-remote', 'origin', 'refs/heads/live').split(/\s+/)[0], third);
+    assert.equal(git('ls-remote', 'origin', 'refs/tags/manual-live-promotion/' + third).split(/\s+/)[0], third);
+    assert.equal(git('ls-remote', 'origin', 'refs/tags/live-promotion/' + denverDay()).split(/\s+/)[0], checked);
+    globalThis.fetch = async () => { throw Error('already released target must not run again'); };
+    await run(policy);
   } finally {
     process.chdir(cwd); globalThis.fetch = fetchBefore;
     keys.forEach((key, i) => { if (before[i] === undefined) delete process.env[key]; else process.env[key] = before[i]; });
@@ -166,4 +183,16 @@ test('successful no-change run records a receipt and suppresses later developmen
     keys.forEach((key, i) => { if (before[i] === undefined) delete process.env[key]; else process.env[key] = before[i]; });
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test('additional manual release requires owner identity and an exact target', async () => {
+  const { authorizedReleaseInvocation } = await import('./promote-live.mjs');
+  const env = { GITHUB_REPOSITORY: 'example/repo', GITHUB_REF: 'refs/heads/main',
+    GITHUB_EVENT_NAME: 'workflow_dispatch', GITHUB_ACTOR: 'christcr2012', GITHUB_TRIGGERING_ACTOR: 'christcr2012',
+    MANUAL_RELEASE: 'true', EXPECTED_MAIN_SHA: main, GH_TOKEN: 'fixture' };
+  assert.equal(authorizedReleaseInvocation(env, 'example/repo'), true);
+  for (const change of [{ GITHUB_ACTOR: 'other' }, { GITHUB_TRIGGERING_ACTOR: 'other' },
+    { EXPECTED_MAIN_SHA: '' }, { EXPECTED_MAIN_SHA: 'main' }, { MANUAL_RELEASE: 'false' },
+    { GITHUB_REF: 'refs/heads/live' }, { GITHUB_REPOSITORY: 'other/repo' }, { GH_TOKEN: '' }])
+    assert.equal(authorizedReleaseInvocation({ ...env, ...change }, 'example/repo'), false);
 });
