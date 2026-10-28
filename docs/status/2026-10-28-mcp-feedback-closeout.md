@@ -17,3 +17,7 @@ For PRs #441, #442 and #443, required `ci` and `release-policy` were observed **
 Historical C-13 grouped #435 on paper, but PR #440 only delivered #430/#436; #435 was delivered and closed separately in C-15/PR #442. The work index now marks C-13/C-14/C-15/C-16 merged with their actual PRs; plans, owner guide, status, roadmap and database notes reflect checked source acceptance.
 
 **Remaining outside this completed issue sweep:** standard checked release under the repository's existing policy (no manual release authorized here), installed connector tool refresh, real-world client/agent smoke tests and performance measurement. No production data, customer messaging, payment or external-project settings were changed. This PR modifies documentation only.
+
+## Status-file history rule respected
+
+Per `AGENTS.md`'s session-ending rules, `docs/STATUS.md` is left **byte-for-byte unchanged** by this documentation closeout. Its pre-merge `#431 still pending` entry remains a truthful historical source checkpoint, not the current issue state. This newly dated status note is the canonical fresh completion update; the work index and C-16 acceptance checklist record the live checked merge and closure. Older roadmap paragraphs are likewise preserved and followed by the separately dated closeout. No historical entry was rewritten.

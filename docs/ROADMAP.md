@@ -184,11 +184,11 @@ The owner asked for dedicated readers for org issue types and issue fields and o
 
 ## 2026-10-27 — #435 isolated credential-rate observability
 
-C-15 separately delivers issue #435 instead of attributing it to PR #440; provider-specific accurate rate hints touch actual-credential selection and nested dispatcher. After branch reconciliation and concurrent timing-fixture fixes, final source `2a9b028a71ebc3e562824ba868199c9e5a6b2d30` passed both required checks; PR #442 merged and #435 was independently verified closed/completed. No new GitHub rate-budget HTTP requests, credentials or production activation.
+C-15 separately delivers issue #435 instead of attributing it to PR #440; provider-specific accurate rate hints touch actual-credential selection and nested dispatcher. Exact-head source `a06114958d01210fdd8cc325561f0db8c86f2823` passed `ci` and `release-policy`, two review threads resolved, but branch/main reconciliation, final merge and independent closeout are pending. No new GitHub rate-budget HTTP requests, credentials or production activation.
 
 ## 2026-10-27 — C-16 explicit guarded sequential writes (#431)
 
-C-16 is the final outstanding coding-agent improvement, separated from the already-merged C-14 and C-15 PR workflow and credential-rate bundles. A pre-source C-16 plan records the exact one-call branch → commit/push → PR success, per-step delegated authority, secure nested references, no invented rollback, Postgres lease/replay protection and tenant isolation. Source and fake/real-PG tests are authored. Up to 20 write steps per call is only a finite bounded transport/page size; after a soft time budget, the identical stable key safely continues fully read-back-confirmed steps. PR #443 exact source `fa49ffe85f28f876e39e30a84043ea898b37a88c` passed `ci` plus `release-policy`; both blocking threads were resolved, PR merged at main `32d5bfb3ed94dfbd365fd8fe59ab2701e98cb5cc`, and #431 independently read closed/completed. No live release or user data changes.
+C-16 is the final outstanding coding-agent improvement, separated from the already-merged C-14 and C-15 PR workflow and credential-rate bundles. A pre-source C-16 plan records the exact one-call branch → commit/push → PR success, per-step delegated authority, secure nested references, no invented rollback, Postgres lease/replay protection and tenant isolation. Source and fake/real-PG tests are authored. Up to 20 write steps per call is only a finite bounded transport/page size; after a soft time budget, the identical stable key safely continues fully read-back-confirmed steps. CI/review/merge and independent issue closure remain pending, with no live release or user data changes.
 
 ## 2026-10-28 — Closing the ten-issue MCP feedback sweep
 
