@@ -153,7 +153,8 @@ export function createDispatch({ env = process.env, now = Date.now, fetch = glob
     // nested tool calls and output-schema declarations required by clients.
     // Workflows with delegated mutations also use RTC writeReply, which has
     // no companion text field. Their full structured status must survive.
-    return topLevel && !isWrite && !tool.delegatedWrites?.length && !tool.outputSchema
+    return topLevel && !isWrite && !tool.delegatedWrites?.length && !tool.outputSchema &&
+      !['github_get_result', 'github_content_get'].includes(name)
       ? deduplicateLargeEnvelope(shaped) : shaped;
   }
   return dispatch;
