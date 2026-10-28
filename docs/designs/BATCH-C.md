@@ -81,6 +81,10 @@ Owner-approved response to real-world agent issue #427: ordinary file/log/PR res
 
 Owner-approved issues #429/#434: read definitions may declare validated server-side aliases for historically inconsistent agent arguments, including `github_commit_list(ref|branch)` and `github_pr_get(number|pull_number)` / `github_pr_list_files(number|pull_number)`. Equivalent values work, conflicting values fail; `github_describe_tool` displays only the preferred canonical spelling with aliases documented separately. A small, read-only `github_tool_manifest` lists only permitted direct/compact tools and their deterministic per-tool interface versions, sorted content hash and explicit changelog hash. It does not expose ungranted write tools or full schemas. Fixture tests exercise direct, `github_call`, batch, missing values, conflicts, and profile filtering; exact-head required CI/review gates still apply. Card: `docs/pr-cards/C-11.md`.
 
+### C-12 — Large JSON tool payload transmitted only once (2026-10-27)
+
+Owner-approved #428 corrects the former dual serialization of a large result into both MCP content text and structuredContent. Preserve full shaped, credential-screened JSON in `content[0].text`, with small structured scalars and a machine-readable `full_payload_location` / `omitted_fields` declaration for large payloads. Small messages and outputSchema-guarded tools keep their historical dual form. Apply compacting only at the **top-level public boundary** so nested workflows and `github_batch` still process full authorized structures; RTC reconstructs the whole value from that same verified text before its own bounded response/handle logic. Tests compare wire bytes, exact JSON reconstruction, direct/call/batch/RTC, redact and 25 KB base64 continuation. C-12 card in `docs/pr-cards/C-12.md`; feature source is not merged or deployed until exact-head green.
+
 ## 5. Stop-and-ask points
 
 1. The SDK lacks annotations or structured output (C1 false): build the rest; record the gap; amend.

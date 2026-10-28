@@ -15,7 +15,8 @@ async function world(profile = 'full', extra = {}) {
   const run = (name, args, reg = registry) => dispatch({ registry: reg, name, args, connection: w.connection, db: w.db });
   return { ...w, run };
 }
-const data = (r) => r.structuredContent;
+const data = (r) => r.structuredContent?.full_payload_location === 'content[0].text'
+  ? JSON.parse(r.content[0].text) : r.structuredContent;
 
 describe('github_search_tools', () => {
   it('finds tools by plain words, with kind and safety marks', async () => {
@@ -45,6 +46,22 @@ describe('github_search_tools', () => {
 });
 
 describe('github_describe_tool', () => {
+  it('keeps a large schema once in text and preserves a compact describe summary', async () => {
+    const w = await world();
+    const props = Object.fromEntries(Array.from({ length: 14 }, (_, i) =>
+      ['option_' + i, { type: 'string', description: 'Detailed option semantics '.repeat(5) }]));
+    const candidate = defineRead({ name: 'github_fixture_schema_large', description: 'Fixture for a large schema.',
+      properties: props, handler: async () => ({ ready: true }) });
+    const reg = mergeNamespaces([meta, { tools: [candidate.tool], handlers: {
+      [candidate.tool.name]: candidate.handler } }]);
+    const response = await w.run('github_describe_tool', { name: candidate.tool.name }, reg);
+    expect(response.isError).not.toBe(true);
+    expect(response.structuredContent).not.toHaveProperty('arguments');
+    expect(response.structuredContent.full_payload_location).toBe('content[0].text');
+    expect(data(response).arguments.properties).toHaveProperty('option_13');
+    expect(Buffer.byteLength(JSON.stringify(response))).toBeLessThan(
+      Buffer.byteLength(JSON.stringify({ ...response, structuredContent: data(response) })) * 0.75);
+  });
   it('gives the arguments and safety of a read and of a change', async () => {
     const w = await world();
     const read = data(await w.run('github_describe_tool', { name: 'github_recent_changes' }));

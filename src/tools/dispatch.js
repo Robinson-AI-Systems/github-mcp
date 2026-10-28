@@ -9,6 +9,7 @@ import { randomBytes } from 'node:crypto';
 import { validateArgs } from '../core/validate.js';
 import {RetainedResultNotFound} from '../core/result-errors.js';
 import { capText, describeBody, fitToBudget, projectFields } from '../core/result-rules.js';
+import { deduplicateLargeEnvelope } from '../core/result-envelope.js';
 import { summarize } from './summaries.js';
 import { isToolVisible } from '../core/registry.js';
 import { passRefusal } from '../rtc/pass-scope.js';
@@ -148,7 +149,13 @@ export function createDispatch({ env = process.env, now = Date.now, fetch = glob
       shaped = { ...shaped, structuredContent: body, content: [{ type: 'text', text: JSON.stringify(body) }] };
     }
     if (containsCredential(JSON.stringify(shaped))) return fail('The result was withheld because it looked like it contained a credential.');
-    return shaped;
+    // Only public/top-level replies get compact metadata. Keep full JSON for
+    // nested tool calls and output-schema declarations required by clients.
+    // Workflows with delegated mutations also use RTC writeReply, which has
+    // no companion text field. Their full structured status must survive.
+    return topLevel && !isWrite && !tool.delegatedWrites?.length && !tool.outputSchema &&
+      !['github_get_result', 'github_content_get'].includes(name)
+      ? deduplicateLargeEnvelope(shaped) : shaped;
   }
   return dispatch;
 }
