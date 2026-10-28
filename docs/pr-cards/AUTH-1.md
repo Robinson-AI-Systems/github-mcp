@@ -65,3 +65,7 @@ Continuation implements full-owner consent/callback/optional setup, public appro
 ## Owner-confirmation cleanup, 2026-10-28
 
 Full ordinary owners need not repeat an already exact target on project/issue/org-type/org-field deletion, advisory publication or budget deletion. Supplied accuracy checks remain strict; restricted grants retain existing checks. Selected-member Codespaces policy still verifies active users and reports unconfirmed provider 204, with explicit no-replacement respected. Unsupported GraphQL entries name missing contracts and alternate tool/REST/settings discovery rather than claiming an owner's authority is forbidden. See the audit live-verification checkpoint for exact tests, deployment and named remainder.
+
+## Developer lifecycle authority correction, 2026-10-28
+
+A real pre-release full-owner scratch-create call exposed the remaining production-mode veto. Create/seed, shared test refs/forwarders, cleanup inspection and cleanup now allow full ordinary owners in either mode using the existing shared owner predicate. Explicit passes and non-owner profiles retain their selected restrictions. Scratch App enrollment and exact durable run/cleanup provenance remain binding. Seven developer test files passed 407 tests, including actual full-owner create/seed/test-branch/cleanup; the refused live probe created nothing. This is source proof, not live acceptance. Exact-head checks/review/merge and combined release remain required.

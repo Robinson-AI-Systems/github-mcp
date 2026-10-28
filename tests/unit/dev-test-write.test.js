@@ -121,3 +121,10 @@ describe('V-3 draft PR guards', () => {
     expect(bad.gh.calls.filter((c) => c.route === 'POST /repos/{owner}/{repo}/pulls')).toEqual([]);
   });
 });
+
+it('full owner creates a journal-bound test branch in production mode',async()=>{
+  const w=await makeWorld({mode:'production',profile:'full'});arrangeBranch(w.gh,'ok');
+  const result=await run(create,w,{});
+  expect(result).toMatchObject({status:'applied',confirmed:true});
+  expect(w.gh.invalid).toEqual([]);
+});

@@ -232,3 +232,11 @@ describe('three exact-head stacked draft PRs',()=>{
     expect(w.gh.calls.some(x=>/\/merge$|\/dispatches$/.test(x.path))).toBe(false);
   });
 });
+
+it('full owner seeds a verified scratch scenario from production mode with exact journal provenance',async()=>{
+  const w=await makeWorld({scratchAccount:true,mode:'production',profile:'full'});arrange('repo-basic')(w.gh,'ok');
+  const result=parse(await def.handler({repo:REPO,runId:ID,scenario:'repo-basic'},w.ctx));
+  expect(result).toMatchObject({status:'applied',confirmed:true});
+  expect((await w.db.listDevObjects({runId:ID,account:OWNER,connection:'client-1'})).map(o=>o.object_type).sort()).toEqual(['label','repo','workflow_file']);
+  expect(w.gh.invalid).toEqual([]);
+});

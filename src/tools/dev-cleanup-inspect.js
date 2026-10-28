@@ -1,3 +1,4 @@
+import { isOwnerConnection } from '../core/authority.js';
 import { redact } from './util.js';
 // V-2 read-only remote cleanup rehearsal. No freeze, closing PRs or DELETE.
 import {ownerOf,octo,refusal} from './github-write.js';
@@ -67,7 +68,7 @@ async function auditBirthDrift(args,ctx,{owner,state,github}){
     default_branch_commit_unchanged:unchanged,...delta};
 }
 export async function inspectCleanupPreview(args,ctx){
-    if(ctx.connection?.mode!=='preview')
+    if(!isOwnerConnection(ctx.connection)&&ctx.connection?.mode!=='preview')
       throw new TypeError('Developer cleanup inspection is preview-only.');
     const requested=ownerOf(args,ctx);
     const owner=ctx.connection?.accounts?.find(a=>a.toLowerCase()===requested.toLowerCase());

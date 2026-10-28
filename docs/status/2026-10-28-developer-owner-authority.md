@@ -1,0 +1,7 @@
+# Owner authority in development workflows
+
+PR #452 merged at 71c303f1 after exact-head ci 40742015618 and release-policy 40742015588 passed, with no review threads. No combined release yet.
+
+A pre-release scratch fixture call exposed an obsolete product restriction: github_dev_create_scratch_repo refuses solely because the full owner's connection is production. Complete the developer lifecycle correction (create/seed/test refs/forwarders/cleanup inspection and cleanup), allowing full ordinary owners in either mode. Keep explicit pass/profile restrictions, verified scratch App enrollment, exact durable run provenance, cleanup origin checks and real GitHub enforcement. Tests must demonstrate actual owner execution and restricted rejection. This implements the already approved owner-authority scope, not a new feature. The refused live call created nothing.
+
+Implemented all six remaining local mode checks using the shared isOwnerConnection predicate. Full-profile service passes remain restricted. The scratch organization's obsolete production flag no longer overrides a full owner's instruction, while scratch designation, active all-repository App enrollment and run provenance remain required. Actual owner create, scenario seed, test-branch and cleanup regressions were added alongside existing denials. No rejected test was removed. Focused developer tests and committed-tree npm run check are required before publication; exact-head remote CI and review before merge.

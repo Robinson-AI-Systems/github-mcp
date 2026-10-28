@@ -1,3 +1,4 @@
+import { isOwnerConnection } from '../core/authority.js';
 // V-2 guarded scratch teardown. Live calls require independently authorized connected OAuth.
 import { defineGithubWrite } from './define-github-write.js';
 import { ownerOf } from './github-write.js';
@@ -14,7 +15,7 @@ const cleanup=defineGithubWrite({
   properties:{owner:OWNER,repo:REPO,runId:RUN},required:['repo','runId'],
   declarations:{production:'never',confirm:'always'},
   target:(args,ctx)=>{
-    if(ctx.connection?.mode!=='preview')throw new TypeError('Developer cleanup requires preview-only connection.');
+    if(!isOwnerConnection(ctx.connection)&&ctx.connection?.mode!=='preview')throw new TypeError('Developer cleanup requires preview-only connection.');
     return {owner:ownerOf(args,ctx),repo:args.repo,scope:'repo'};
   },
   read:(args,ctx,target)=>readCleanupRun(ctx,target.owner,args.repo,args.runId),

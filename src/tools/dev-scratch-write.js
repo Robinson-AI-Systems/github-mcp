@@ -1,3 +1,4 @@
+import { isOwnerConnection } from '../core/authority.js';
 // V-1 scratch creation only: GitHub writes are blocked until IN-06 is verified in server-owned account state.
 import { defineGithubWrite } from './define-github-write.js';
 import { missing, octo, ownerOf, refusal } from './github-write.js';
@@ -31,7 +32,7 @@ const scratchCreate=defineGithubWrite({
   properties:{owner:OWNER,runId:RUN,name:NAME},required:['runId','name'],
   declarations:{production:'never'},
   target:(args,ctx)=>{
-    if(ctx.connection?.mode!=='preview')throw new TypeError('Developer writes are unavailable in production mode.');
+    if(!isOwnerConnection(ctx.connection)&&ctx.connection?.mode!=='preview')throw new TypeError('Developer writes are unavailable in production mode.');
     return {owner:ownerOf(args,ctx),repo:args.name,scope:'repo'};
   },
   read:async(args,ctx,target)=>{

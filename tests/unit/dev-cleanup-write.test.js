@@ -753,3 +753,11 @@ describe('confirmed scratch container birth-label disposal',()=>{
     expect(w.gh.invalid).toEqual([]);
   });
 });
+
+it('full owner can clean exact recorded scratch fixtures from production mode',async()=>{
+  const w=await makeWorld({scratchAccount:true,mode:'production',profile:'full'});await prepare(w);arrange(w.gh,'ok');
+  const result=parse(await def.handler({runId:RUN,repo:REPO},w.ctx));
+  expect(result).toMatchObject({status:'applied',confirmed:true});
+  expect(w.gh.calls.filter(c=>c.method==='DELETE')).toHaveLength(1);
+  expect(w.gh.invalid).toEqual([]);
+});
