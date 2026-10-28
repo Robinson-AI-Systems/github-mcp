@@ -14,6 +14,10 @@ export function deduplicateLargeEnvelope(reply, { threshold = 1600 } = {}) {
       typeof reply.structuredContent !== 'object' || Array.isArray(reply.structuredContent) ||
       reply.content?.length !== 1 || reply.content[0]?.type !== 'text') return reply;
   const body = reply.structuredContent;
+  // A retained result is already a bounded preview with a continuation handle.
+  // Preserve its historical structured shape for existing clients; deduplicating
+  // the preview would hide fields that callers use to resume the full result.
+  if (body.kept_result) return reply;
   const full = JSON.stringify(body);
   if (Buffer.byteLength(full) < threshold || reply.content[0].text !== full) return reply;
   const fields = {};
