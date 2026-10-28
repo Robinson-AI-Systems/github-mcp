@@ -45,7 +45,7 @@ copy code) · `F` the old toolkit had it **with a bug or a missing guard**, fixe
 never collides with the Vercel or Neon server's tools in the same chat; `scripts/count-catalog.py` enforces it.
 
 
-## Server about itself (`github_*`) — 24
+## Server about itself (`github_*`) — 25
 
 Card(s): A-5, B-2, B-3, B-8, C-1, C-2, R-1, O-1, X-1. Meta-tools, connection and safety settings. Compact listing (`docs/designs/BATCH-C.md`) starts here.
 
@@ -71,6 +71,7 @@ Card(s): A-5, B-2, B-3, B-8, C-1, C-2, R-1, O-1, X-1. Meta-tools, connection and
 | `github_describe_tool` | Full instructions and arguments for one tool | — | N | — | B,O,Op | R | C-2 built #26 |
 | `github_call` | Run any tool in the profile by name, through the same guards | as the tool | N | — | B,O,Op | R | C-2 built #26 |
 | `github_batch` | Up to 10 read calls in one round trip | — | N | — | B,O,Op | R | C-2 built #26 |
+| `github_write_batch` | 1–20 sequential owner-authorized guarded writes, confirmed scalar references, durable replay-safe and itemized stop-on-error outcomes | as the tool | N | I | B,Op | E | C-16 #431 |
 | `github_get_result` | Page through kept results; explicit `byteOffset`/`byteLength` returns up to 32 KiB of original retained file bytes as base64 | — | N | — | B,O,Op | R | C-1 built #25; RTC scoped single read #148 |
 | `github_create_pass` | Make a short-lived preview pass for the HTTPS API and Robinson's Toolkit (read-only unless changes are allowed; $0; no access changes; shown once on the setup page) | C | N | — | O | F | R-1 built #225 |
 | `github_where_is_setting` | Structured steps (link, numbered actions, expected result, read-back check) for any GitHub setting with no API | — | N | — | O | R | B-8 built #24 |
@@ -872,7 +873,7 @@ Card(s): PAR-1. Code Quality findings come from GitHub's own analysis (not marke
 
 ## Totals
 
-**Totals:** 479 tools: 473 hand-built + 6 universal (`github_api_*`, `github_graphql_*`), plus guided settings for every
+**Totals:** 480 tools: 474 hand-built + 6 universal (`github_api_*`, `github_graphql_*`), plus guided settings for every
 dashboard-only owner setting. By profile (lowest profile that has the tool): read_only 158, everyday adds 83
 (everyday lists 240), full adds 113 (full lists 396). In compact mode (`docs/designs/BATCH-C.md`) an agent
 loads only about 25 tools up front (meta-tools, whoami, universal search, workflows) and reaches the rest through
@@ -880,7 +881,7 @@ loads only about 25 tools up front (meta-tools, whoami, universal search, workfl
 
 | Section | Tools |
 | --- | --- |
-| Server about itself | 24 |
+| Server about itself | 25 |
 | Repositories | 22 |
 | Files, commits and git data | 17 |
 | Branches and tags | 9 |
@@ -923,7 +924,7 @@ loads only about 25 tools up front (meta-tools, whoami, universal search, workfl
 | GitHub Enterprise | 13 |
 | Master-token families: Copilot Spaces, Classroom, Marketplace and more | 17 |
 | Code quality and GitHub help | 4 |
-| **Total** | **479** |
+| **Total** | **480** |
 
 <!-- #108: experimental RTC HTTPS reader bridges only server/meta read tools using existing guarded dispatch; RTC 1 certification is not claimed. -->
 
@@ -943,3 +944,5 @@ B-5 provider permission hints: only explicit read/write/admin entries are eligib
 **C-8 request-path latency (source-only until checked release):** `github_whoami` concurrently reads independent enrolled account rate evidence, obtains master-token status once per request and reuses the personal rate lookup. The authenticated tenant MCP provider wrapper buffers coarse, anonymous provider outcome/latency events per HTTP request, then awaits one tenant-isolated PostgreSQL upsert in route cleanup instead of one telemetry write after **every** GitHub HTTP response. It does not cache GitHub checks or permissions, change login/admission controls, skip telemetry, or alter the response/result/guard contract. Synthetic benchmarks are not production latency evidence. See `docs/pr-cards/C-8.md`.
 
 **C-15 credential-scoped GitHub rate observations (#435):** Read, write, and nested responses may have compact `meta.github_rate.items` with observed `account`, credential kind, GitHub resource, remaining budget where not expired, reset time, primary/secondary cooldown and `source` (`fresh` for this operation's headers, `cached` for an existing DB throttle). Unknown rates are omitted. Actual GitHub App, personal login, God Mode, optional package, notifications and U token budgets use independent database keys; no rate-only GitHub calls are added. A composed workflow may report multiple credential/resource observations; never treat a prior quota as current merely because it was cached.
+
+**C-16 guarded sequential write batch (#431):** `github_write_batch` is separate from read-only `github_batch` and executes 1–20 ordered delegated writes per call, with stable `batchKey` and per-step `confirm`/`dryRun`. Prior *confirmed* outputs can be referenced only as bounded safe scalars such as `{"$from":0,"path":"sha"}` for exact-head commit preconditions. PostgreSQL `gh_write_batches` retains a SHA-256 intent and scoped active lease plus only safe per-item receipts, never original source, credentials or raw arguments; completed writes replay without GitHub writes, a stale pending outcome requires explicit reconciliation and a new plan for remaining actions. Each inner writer executes with its original user-delegated authority, profiles, gates, journal and fresh readback. This is not an atomic transaction/rollback. The 20-item and 43-second call bounds are only transport/continuation limits, not account permissions or irreversible caps.
