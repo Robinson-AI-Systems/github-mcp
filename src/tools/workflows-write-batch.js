@@ -57,7 +57,7 @@ function validateReferences(value,index,depth=0){
   const keys=Object.keys(value);
   if(keys.some(k=>['__proto__','constructor','prototype'].includes(k)))
     throw new TypeError('Unsafe field name in step arguments.');
-  if('$from' in value||'path' in value&&keys.length===2){
+  if(Object.hasOwn(value,'$from')){
     if(!marker(value)||value.$from<0||value.$from>=index||
       !/^(?:result\.)?[a-z_]{2,24}$/.test(value.path)||
       !SAFE_FIELDS.has(value.path.replace(/^result\./,'')))

@@ -37,6 +37,7 @@ export function createFakeDb({ clock = Date.now } = {}) {
   const rates = new Map();
   const etags = new Map();
   const changes = [];
+  const batches = new Map();
   const settings = new Map();
   const protectedRows = new Map();
   const knownProjects = new Map();
@@ -603,6 +604,36 @@ export function createFakeDb({ clock = Date.now } = {}) {
       const row = { id: ++changeId, at: new Date(clock()), ...c, before: c.before && JSON.parse(c.before), after: c.after && JSON.parse(c.after), inverse: c.inverse && JSON.parse(c.inverse), github_request_id: c.githubRequestId };
       changes.push(row);
       return row.id;
+    },
+    // In-memory contract mirror: no await between read, claim and state mutation.
+    async claimWriteBatch({key,connection,account,intentHash,lease}) {
+      if(!/^[a-f0-9]{64}$/.test(key??'')||!/^[a-f0-9]{64}$/.test(intentHash??'')||
+        !connection||!account||!lease)throw new TypeError('Invalid batch claim.');
+      let row=batches.get(key);
+      if(!row){
+        row={connection,account,intentHash,status:'running',lease,until:clock()+120000,items:[]};
+        batches.set(key,row);
+        return {claimed:true,status:'running',items:[]};
+      }
+      if(row.connection!==connection||row.account!==account)
+        return {claimed:false,status:'denied',items:[]};
+      if(row.intentHash!==intentHash)return {claimed:false,status:'conflict',items:[]};
+      if(['complete','uncertain'].includes(row.status))
+        return {claimed:false,status:row.status,items:structuredClone(row.items)};
+      if(row.until!==null&&row.until>clock())
+        return {claimed:false,status:'in_progress',items:[]};
+      row.lease=lease;row.until=clock()+120000;row.status='running';
+      return {claimed:true,status:'running',items:structuredClone(row.items)};
+    },
+    async saveWriteBatch({key,connection,account,lease,items,status}) {
+      const row=batches.get(key);
+      if(!row||row.connection!==connection||row.account!==account||row.lease!==lease||
+        row.until===null||row.until<=clock()||row.status!=='running')return false;
+      if(!['running','partial','complete','uncertain'].includes(status)||!Array.isArray(items)||
+        items.length>8||JSON.stringify(items).length>16000)throw new TypeError('Invalid batch receipts.');
+      row.items=structuredClone(items);row.status=status;
+      if(status!=='running'){row.lease=null;row.until=null;}
+      return true;
     },
     async claimChange(change) {
       const c = normalizeChange({ ...change, dryRun: false, confirmed: null });
