@@ -259,15 +259,13 @@ describe('owner protected connection mode upgrade', () => {
       refreshToken: 'fixture-mode-refresh', defaultAccount: 'example-org', accounts: ['example-org'],
       mode: 'preview', profile: 'full', listing: 'compact' });
   };
-  it('requires owner passphrase, CSRF, exact client and account activation, then reads back and audits upgrade', async () => {
+  it('requires owner passphrase, CSRF and exact client without a legacy account activation gate, then reads back and audits upgrade', async () => {
     const t = await build();
     await seed(t); await t.open();
     const ask = { action: 'upgrade-connection-production', login: 'example-org', connection: 'chatgpt-test-client' };
     expect((await t.post(ask, { csrf: 'wrong' })).statusCode).toBe(403);
     expect((await t.post({ ...ask, passphrase: 'wrong' })).statusCode).toBe(401);
-    expect((await t.post(ask)).statusCode).toBe(403);
     expect((await t.db.getAccessToken('fixture-mode-access')).mode).toBe('preview');
-    await t.db.setProductionEnabled('example-org', true);
     const page = await t.post({ action: 'status' });
     expect(page.body).toContain('chatgpt-test-client');
     expect(page.body).toContain('PREVIEW');

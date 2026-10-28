@@ -31,3 +31,23 @@ export function deduplicateLargeEnvelope(reply, { threshold = 1600 } = {}) {
     full_payload_location: 'content[0].text', full_payload_format: 'json',
     omitted_fields: omitted.slice(0, 20) } };
 }
+
+/** Reconstruct the declared canonical payload for trusted server-side consumers. */
+export function completeDispatchResult(output) {
+  const value = output?.structuredContent;
+  if (value?.full_payload_location !== 'content[0].text') return value;
+  if (value.full_payload_format !== 'json' || output.content?.length !== 1 ||
+      output.content[0]?.type !== 'text') throw new Error('Incomplete canonical result');
+  const parsed = JSON.parse(output.content[0].text);
+  if (!parsed || typeof parsed !== 'object') throw new Error('Invalid canonical result');
+  return parsed;
+}
+
+/** Writers must preserve a guarded refusal instead of replacing it with unknown. */
+export function guardedResultBody(output) {
+  const value = completeDispatchResult(output);
+  if (!output?.isError) return value ?? null;
+  return { ...(value && typeof value === 'object' ? value : {}),
+    status: value?.status ?? 'refused',
+    error: value?.error ?? 'The guarded tool refused or failed; inspect its result before retrying.' };
+}

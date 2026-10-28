@@ -57,3 +57,7 @@ the guide and mark the row "provider UI only" in the audit and in `docs/TOOL-CAT
 ## 2026-10-28 remediation — Drift check and current scope
 
 The [authority/parity plan](../designs/AUTHORITY-PARITY-2026-10-28.md) supersedes older owner confirmation/cap/protection acceptance in this card. Reuse existing implementations; complete-read fallback, owner write authority and repository scan guidance are current work. Historical MERGED status does not certify this follow-up or deployed parity. Keep existing completion evidence unchanged; follow-up proof belongs in the dated remediation status.
+
+### Owner setup transition, 2026-10-28
+
+Continuation implements full-owner consent/callback/optional setup, public approval and connection views, authenticated secret entry and legacy connection-mode persistence without obsolete account production/scratch/protected-list vetoes. Explicit read-only/restricted profiles and issued passes remain binding; provider credential/activity, tenant/client binding, CSRF and readback remain. See `docs/status/2026-10-28-owner-setup-transition.md`; full exact-head CI and deployed acceptance remain separate.

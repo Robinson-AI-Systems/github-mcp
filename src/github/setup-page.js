@@ -14,7 +14,7 @@ import { canonicalSetupUrl } from './setup-canonical.js';
 import { renderSetup, resultPage } from './setup-html.js';
 import { summarizeConnectorReadiness } from './oauth-readiness.js';
 import { PRODUCTION_NAMES_KEY, cleanNames, productionNames, productionReason } from '../tools/production-guard.js';
-import { matchingEntries, protectedList } from '../tools/protect-guard.js';
+import { protectedList } from '../tools/protect-guard.js';
 import { DEFAULT_ZONE, ZONE_SETTING, validZone } from '../core/time-zone.js';
 import { OWN_PEOPLE_KEY, cleanLogins, extraOwnPeople } from '../tools/people-guard.js';
 import { spendStatus } from '../tools/spend-guard.js';
@@ -277,13 +277,8 @@ export function createSetupHandlers({ db, credentials, oneTimeStore, env = proce
     try {
       const row = await db.getAccount(request.account);
       if (!row) return await fail(404, 'That account is no longer set up on the server.');
-      if (scope.level === 'repo' || scope.level === 'environment') {
-        const hits = matchingEntries(await protectedList(db), { owner: scope.owner, repo: scope.repo });
-        if (hits.length) return await fail(403, `${scope.owner}/${scope.repo} is on your protected list, so secrets cannot be changed there from here.`);
-      }
       const ctx = { connection: { default_account: row.login, accounts: [row.login], mode: 'production', profile: 'full' }, db, credentials, fetch, now: Date.now, sleep: (ms) => new Promise((r) => setTimeout(r, ms)) };
       const production = await productionReason(ctx, { owner: scope.owner, ...(scope.repo ? { repo: scope.repo } : {}), ...(scope.environment ? { environment: scope.environment } : {}), scope: scope.level === 'org' ? 'org' : 'repo' });
-      if (production && row.production_enabled !== true) return await fail(403, `This is a production change (${production}) and production is off for ${row.login}.`);
       const octokit = await githubFor(ctx, { owner: row.login });
       await putSecret(octokit, scope, value, { visibility: scope.visibility, selectedRepositoryIds: scope.selectedRepositoryIds });
       const routes = secretRoutes(scope);
@@ -466,7 +461,7 @@ export function createSetupHandlers({ db, credentials, oneTimeStore, env = proce
     await db.setProductionEnabled(row.login, true);
     await db.recordChange({ account: row.login, mode: 'setup', tool: 'setup_confirm_production', target: row.login, summary: `Production turned ON for ${row.login} from the setup page`,
       production: true, accessWidening: true, confirmed: true }).catch(() => {});
-    return page(200, { result: `Production is now ON for ${row.login}. Connections made in production mode can change its real repositories, always asking you first.` });
+    return page(200, { result: `Production is now ON for ${row.login}. Full owner connections follow your instructions and GitHub permissions; explicitly restricted connections keep their chosen limits.` });
   }
 
   /** This action inherits passphrase lockout, CSRF and exact Origin guards
@@ -673,7 +668,7 @@ export function createSetupHandlers({ db, credentials, oneTimeStore, env = proce
       c.accounts.length !== 1 || c.accounts[0] !== account || c.default_account !== account))
       return page(403, { result: 'Only a FULL/PREVIEW custom connection for exactly this one account can be upgraded. Nothing changed.' });
     const row = await db.getAccount(account);
-    if (!row?.production_enabled) return page(403, { result: 'Production is not enabled for that account. Nothing changed.' });
+    if (!row) return page(403, { result: 'The connected account is no longer enrolled. Nothing changed.' });
     const count = await db.upgradeConnectionProductionMode(id, account);
     if (count !== old.length) return page(409, { result: 'The connection changed concurrently. Reload its status before trying again.' });
     const after = (await db.listUpgradeableConnections()).filter((c) => c.client_id === id && c.kind === 'connector');
@@ -682,7 +677,7 @@ export function createSetupHandlers({ db, credentials, oneTimeStore, env = proce
       summary: (verified ? '' : 'UNCONFIRMED: ') + 'Owner upgraded a single-account full-profile custom connector to PRODUCTION; credentials unchanged',
       production: true, accessWidening: true, confirmed: verified }).catch(() => {});
     return page(verified ? 200 : 503, { result: verified
-      ? `Connection ${id} is now PRODUCTION for ${account}. Ask ChatGPT for github_whoami to verify. All later writes retain independent confirmation and permission checks.`
+      ? `Connection ${id} is now PRODUCTION for ${account}. Ask ChatGPT for github_whoami to verify. Later writes retain GitHub permission checks, journaling and independent readback.`
       : 'Upgrade readback was inconclusive. Check the connection before attempting again.' });
   }
 

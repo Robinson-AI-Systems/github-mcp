@@ -305,3 +305,15 @@ describe('W-2 exact-head and one-step stack conveyor',()=>{
     expect(writes(f)).toHaveLength(0);
   });
 });
+
+it('merge workflow returns the actual guarded refusal instead of unknown', async () => {
+  const f=fixture();
+  const call=f.ctx.callTool;
+  f.ctx.callTool=async(name,args)=>name==='github_pr_merge'
+    ? {isError:true,structuredContent:{status:'refused_by_guard',refusedBy:'provider permission',error:'GitHub rejected the credential.'}}
+    : call(name,args);
+  const got=body(await mergeWorkflows.github_workflow_merge_when_green({repo:'app',number:4,
+    expectedHeadSha:A,confirm:true},f.ctx));
+  expect(got).toMatchObject({done:false,status:'not_applied',underlying_status:'refused_by_guard',
+    refusedBy:'provider permission',error:'GitHub rejected the credential.'});
+});

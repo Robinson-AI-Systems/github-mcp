@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { deduplicateLargeEnvelope } from '../../src/core/result-envelope.js';
+import { deduplicateLargeEnvelope, guardedResultBody } from '../../src/core/result-envelope.js';
 import { completeDispatchResult } from '../../src/rtc/http.js';
 import { createDispatch } from '../../src/tools/dispatch.js';
 import { mergeNamespaces } from '../../src/core/registry.js';
@@ -97,4 +97,11 @@ describe('large tool-result dual-channel cost (#428)', () => {
     expect(response.structuredContent.body).toBeUndefined();
     expect(full(response).body).toHaveLength(3500);
   });
+});
+
+it('preserves structured refusal details for workflow callers', () => {
+  expect(guardedResultBody({isError:true,structuredContent:{status:'refused_by_guard',
+    refusedBy:'read-only profile',error:'No write grant.'}})).toEqual({
+    status:'refused_by_guard',refusedBy:'read-only profile',error:'No write grant.'});
+  expect(guardedResultBody({isError:true})).toMatchObject({status:'refused'});
 });

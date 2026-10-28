@@ -175,7 +175,7 @@ function managePage(res, m) {
         (m.master.actAs ? '<h3>Act as me</h3>' +
           `<p id="act-as-state">GitHub shows: <strong>${m.master.actAs.on && !m.master.actAs.expired && !m.master.actAs.rejected ? 'you' + (m.master.actAs.login ? ' (' + h(m.master.actAs.login) + ')' : '') : 'the Robinson GitHub MCP app'}</strong>${m.master.actAs.expired ? ' <small>(your master token ran out; add a new one)</small>' : m.master.actAs.rejected ? ' <small>(GitHub rejected your master token; add a new one)</small>' : ''}</p>` +
           act('act_as_me', m.master.actAs.on ? 'Act as me: turn off' : 'Act as me: turn on', { value: m.master.actAs.on ? 'off' : 'on', plain: true, id: 'act-as-me' }) +
-          '<p><small>When on, GitHub records you as the one who made each change. Checks that only an app may post, and changes to branches with rules, still come from the app.</small></p>' +
+          '<p><small>When on, operations use your enrolled GitHub login where supported. Operations that require the App still use it. GitHub enforces your actual permissions and repository rules.</small></p>' +
           `<p id="rule-override-state">Allow overriding branch rules: <strong>${m.master.actAs.ruleOverride ? 'on' : 'off'}</strong></p>` +
           act('rule_override', m.master.actAs.ruleOverride ? 'Allow overriding branch rules: turn off' : 'Allow overriding branch rules: turn on', { value: m.master.actAs.ruleOverride ? 'off' : 'on', plain: true, id: 'rule-override' }) +
           '<p><small>When on, your assistant can skip a branch\'s rules for one change at a time, only when it asks to, shows you which rules, and you confirm. GitHub still decides whether you may.</small></p>' : '') +
