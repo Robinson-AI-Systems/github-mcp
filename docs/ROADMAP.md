@@ -185,3 +185,7 @@ The owner asked for dedicated readers for org issue types and issue fields and o
 ## 2026-10-27 — #435 isolated credential-rate observability
 
 C-15 separately delivers issue #435 instead of attributing it to PR #440; provider-specific accurate rate hints touch actual-credential selection and nested dispatcher. Exact-head source `a06114958d01210fdd8cc325561f0db8c86f2823` passed `ci` and `release-policy`, two review threads resolved, but branch/main reconciliation, final merge and independent closeout are pending. No new GitHub rate-budget HTTP requests, credentials or production activation.
+
+## 2026-10-27 — C-16 explicit guarded sequential writes (#431)
+
+C-16 is the final outstanding coding-agent improvement, separated from the already-merged C-14 and C-15 PR workflow and credential-rate bundles. A pre-source C-16 plan records the exact one-call branch → commit/push → PR success, per-step delegated authority, secure nested references, no invented rollback, Postgres lease/replay protection and tenant isolation. Source and fake/real-PG tests are authored. Up to 20 write steps per call is only a finite bounded transport/page size; after a soft time budget, the identical stable key safely continues fully read-back-confirmed steps. CI/review/merge and independent issue closure remain pending, with no live release or user data changes.

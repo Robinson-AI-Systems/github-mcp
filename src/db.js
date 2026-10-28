@@ -22,6 +22,7 @@ export const SCHEMA_TABLES = Object.freeze([
   'rtc_pass_grants',
   'login_attempts',
   'change_log',
+  'gh_write_batches',
   'one_time_secrets',
   'gh_rate_state',
   'gh_write_slots',
@@ -335,6 +336,24 @@ export function createDb(sql = productionSql()) {
       await sql`CREATE INDEX IF NOT EXISTS change_log_request_key ON change_log (request_key, at)`;
       // One real (non-preview) write per request key, enforced by the database so two instances cannot both claim it (B-1).
       await sql`CREATE UNIQUE INDEX IF NOT EXISTS change_log_request_once ON change_log (request_key) WHERE dry_run = FALSE AND request_key IS NOT NULL`;
+      // C-16: durable connection-scoped sequential write intent/receipts.
+      // Only the intent SHA-256 and safe per-item read-back references are stored;
+      // no original arguments, source bytes, user text or credentials.
+      await sql`CREATE TABLE IF NOT EXISTS gh_write_batches (
+        batch_id TEXT PRIMARY KEY,
+        connection TEXT NOT NULL,
+        account TEXT NOT NULL,
+        intent_hash TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'running'
+          CHECK (status IN ('running','partial','complete','uncertain')),
+        lease_id TEXT,
+        lease_until TIMESTAMPTZ,
+        items JSONB NOT NULL DEFAULT '[]'::jsonb,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      )`;
+      await sql`CREATE INDEX IF NOT EXISTS gh_write_batches_scope
+        ON gh_write_batches (connection, account, status)`;
       await sql`CREATE TABLE IF NOT EXISTS one_time_secrets (
         id TEXT PRIMARY KEY,
         account TEXT,
@@ -1402,6 +1421,55 @@ export function createDb(sql = productionSql()) {
      * Claims a request key for one real write. Exactly one caller gets `{ claimed: true, id }` (the unique index decides, so
      * two server instances cannot both); every other caller gets the existing row so it can report a replay.
      */
+    /** Atomic insert-or-lease claim for a sequential write plan.
+     * Concurrent callers cannot both run: only one holds the active lease;
+     * older completed receipts and uncertain steps are immutable and replay-safe.
+     */
+    async claimWriteBatch({key,connection,account,intentHash,lease}) {
+      if (![key,intentHash].every(v=>typeof v==='string'&&/^[a-f0-9]{64}$/.test(v)) ||
+          !connection||!account||typeof lease!=='string'||lease.length>80)
+        throw new TypeError('A batch claim needs scoped identities and a stable SHA-256 intent.');
+      const created=await sql`INSERT INTO gh_write_batches
+        (batch_id,connection,account,intent_hash,status,lease_id,lease_until)
+        VALUES (${key},${connection},${account},${intentHash},'running',${lease},now()+interval '120 seconds')
+        ON CONFLICT (batch_id) DO NOTHING RETURNING batch_id`;
+      if(created.length)return {claimed:true,status:'running',items:[]};
+      const rows=await sql`SELECT connection,account,intent_hash,status,items,lease_until
+        FROM gh_write_batches WHERE batch_id=${key}`;
+      const current=rows[0];
+      if(!current||current.connection!==connection||current.account!==account)
+        return {claimed:false,status:'denied',items:[]};
+      if(current.intent_hash!==intentHash)return {claimed:false,status:'conflict',items:[]};
+      if(['complete','uncertain'].includes(current.status))
+        return {claimed:false,status:current.status,items:current.items};
+      const resumed=await sql`UPDATE gh_write_batches
+        SET lease_id=${lease},lease_until=now()+interval '120 seconds',status='running',updated_at=now()
+        WHERE batch_id=${key} AND connection=${connection} AND account=${account}
+          AND intent_hash=${intentHash} AND status IN ('running','partial')
+          AND (lease_until IS NULL OR lease_until<=now())
+        RETURNING items`;
+      if(resumed.length)return {claimed:true,status:'running',items:resumed[0].items};
+      return {claimed:false,status:'in_progress',items:[]};
+    },
+    /** Save each pre-send intent and post-readback receipt under the SAME
+     * connection/account/active lease. Failure prevents the next write.
+     */
+    async saveWriteBatch({key,connection,account,lease,items,status}) {
+      if(!['running','partial','complete','uncertain'].includes(status) ||
+          !Array.isArray(items)||items.length>20)throw new TypeError('Invalid batch outcome.');
+      const json=JSON.stringify(items);
+      if(json.length>50000)throw new TypeError('Batch receipts exceed safe bound.');
+      const end=status!=='running';
+      const rows=await sql`UPDATE gh_write_batches SET items=${json}::jsonb,
+        status=${status},lease_id=CASE WHEN ${end} THEN NULL ELSE lease_id END,
+        lease_until=CASE WHEN ${end} THEN NULL ELSE lease_until END,
+        updated_at=now()
+        WHERE batch_id=${key} AND connection=${connection} AND account=${account}
+          AND lease_id=${lease} AND lease_until>now() AND status='running'
+        RETURNING batch_id`;
+      return rows.length===1;
+    },
+
     async claimChange(change) {
       const c = normalizeChange({ ...change, dryRun: false, confirmed: null });
       if (!c.requestKey) throw new TypeError('claimChange needs a request key.');

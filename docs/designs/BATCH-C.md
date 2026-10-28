@@ -100,3 +100,7 @@ Owner-approved #428 corrects the former dual serialization of a large result int
 ## Amendments
 
 (Dated entries only.)
+
+### C-16 — Explicit guarded sequential write batching (2026-10-27)
+
+The former `github_batch` stays a read-only multi-read interface. `github_write_batch` is a separate direct orchestration tool that uses the canonical dispatcher per mutation and the existing `defineWrite-v1` protections and positive readbacks. A stable `batchKey` hashes the normalized intent and connection scope; `gh_write_batches` provides atomic cross-instance claims, a finite lease, pre-send step intent, and bounded safe receipts. A stale `started` step is an uncertain provider mutation and must be reconciled, never repeated automatically. A completed step is never re-issued on duplicate submission. Safe prior scalar references allow branch create → exact-head tree commit/push → verified new PR in one outer MCP invocation; the last PR read/revision check is independent of the create receipt. Failed steps stop later work and report exactly what is committed, refused or uncertain, without claiming GitHub rollbacks. This adds no GitHub authorization or spend ceiling; the 20-step call size and soft 43-second budget are finite transport limits with safe same-key continuation. All DB migrations are additive, and only disposable PostgreSQL is used in tests. Plan: `docs/pr-cards/C-16.md`.
