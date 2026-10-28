@@ -81,6 +81,30 @@ describe('C-16 guarded sequential write batch',()=>{
     expect(again.status).toBe('stopped');
     expect(f.calls).toHaveLength(2);
   });
+  it('does not accept a successful PR create as applied when the read-back HEAD races',async()=>{
+    const f=harness({work:async(name,args,calls,answers)=>
+      name==='github_pr_get'?reply({number:17,state:'open',head:'topic',head_sha:'c'.repeat(40),base:'main'}):
+      name==='github_workflow_open_pr'?reply({status:'pr_opened',done:true,number:17}):answers[name]});
+    const r=await guardedWriteBatch(input(),f.ctx);
+    expect(r.status).toBe('reconciliation_required');
+    expect(r).toMatchObject({completed:2,items:[
+      {status:'applied'},{status:'applied'},{status:'uncertain'}]});
+    expect(f.calls.map(c=>c.name)).toEqual(['github_branch_create',
+      'github_content_commit_git_data','github_workflow_open_pr','github_pr_get']);
+    const repeat=await guardedWriteBatch(input(),f.ctx);
+    expect(repeat.status).toBe('reconciliation_required');
+    expect(f.calls).toHaveLength(4);
+  });
+  it('does not mark a completed PR write when independent provider read is unreadable',async()=>{
+    const f=harness({work:async(name,args,calls,answers)=>
+      name==='github_pr_get'?{isError:true,structuredContent:{error:'forbidden'}}:
+      name==='github_workflow_open_pr'?reply({status:'pr_opened',done:true,number:17}):answers[name]});
+    const r=await guardedWriteBatch(input(),f.ctx);
+    expect(r.status).toBe('reconciliation_required');
+    expect(r.items.at(-1).status).toBe('uncertain');
+    expect(f.calls.map(x=>x.name)).toEqual(['github_branch_create',
+      'github_content_commit_git_data','github_workflow_open_pr','github_pr_get']);
+  });
   it('an interrupted possibly applied step is marked uncertain and cannot be automatically resent',async()=>{
     const f=harness({work:async(name,args,calls,answers)=>{
       if(name==='github_content_commit_git_data')throw new Error('connection lost after send');

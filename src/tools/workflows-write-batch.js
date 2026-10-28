@@ -171,6 +171,10 @@ function outcome(r){
   return {status:'uncertain',reason:'The writer reported '+redact(String(body.status??'unknown')).slice(0,70)+
     '; no automatic retry is safe without independent reconciliation.'};
 }
+function unverifiedPr(reason){
+  return {structuredContent:{status:'unverified',done:false,
+    reason:'Independent GitHub PR verification failed: '+String(reason).slice(0,150)}};
+}
 async function settlePrOpen(result,callArgs,ctx,prior){
   const original=resultBody(result);
   if(result?.isError||original?.status!=='pr_opened'||!Number.isInteger(original.number))
@@ -181,10 +185,12 @@ async function settlePrOpen(result,callArgs,ctx,prior){
     owner:callArgs.owner,repo:callArgs.repo,number:original.number});
   const p=resultBody(read);
   if(read?.isError||p?.number!==original.number||p.state!=='open'||
-    p.head!==callArgs.head||!SHA.test(p.head_sha??''))return result;
+    p.head!==callArgs.head||!SHA.test(p.head_sha??''))
+    return unverifiedPr('PR readback unavailable or branch/number/state disagree.');
   const latest=[...prior].reverse().find(x=>x.status==='applied'&&
     x.name==='github_content_commit_git_data'&&x.reference?.branch_head);
-  if(latest&&p.head_sha!==latest.reference.branch_head)return result;
+  if(latest&&p.head_sha!==latest.reference.branch_head)
+    return unverifiedPr('New PR head differs from the independently confirmed prior commit.');
   if(!Array.isArray(callArgs.labels)||callArgs.labels.length===0)
     return {structuredContent:{status:'existing',done:true,number:p.number,
       head_sha:p.head_sha,head:p.head,base:p.base,html_url:p.html_url}};
@@ -198,7 +204,7 @@ async function settlePrOpen(result,callArgs,ctx,prior){
       observed.number===p.number&&observed.head_sha===p.head_sha)return next;
     if(next?.isError||observed?.status!=='labels_applied')break;
   }
-  return next;
+  return unverifiedPr('PR labels could not be independently confirmed.');
 }
 async function checkPrefix(checked,items,ctx){
   // Before resuming an interrupted batch, prove the last observed branch head
@@ -320,7 +326,7 @@ export async function guardedWriteBatch(args,ctx){
     }
     if(step.name==='github_workflow_open_pr'){
       try{result=await settlePrOpen(result,callArgs,ctx,items);}
-      catch{/* No extra write or false verification after read failure. */}
+      catch{result=unverifiedPr('The verification read was interrupted.');}
     }
     const observed=outcome(result);
     const row=item(i,step,observed.status,{...observed,
