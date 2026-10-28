@@ -54,8 +54,8 @@ Document first, then assemble coherent read/parity and authority changes with fo
 - [x] Argument/search behavior and honest scanning alternatives verified in source tests; proprietary scanner parity is not claimed.
 - [x] Shared owner write authority verified through handler, dispatcher and meta-tool source tests.
 - [x] Tool-specific authority and settings/connection transition implemented and source-verified (#447, #449); post-release live proof remains.
-- [ ] Unfinished work reconciled and implemented where eligible.
-- [x] Required checks, review and merge for #445–#451; administrative completion must still pass its own exact-head CI/review.
+- [x] Eligible unfinished implementation reconciled and merged through #453. Native ingress and individually gated live acceptance remain named external prerequisites.
+- [x] Required exact-head checks, review and merge for #445–#453. Combined checked release 40743480147 is serving READY 53df99ef.
 - [x] Deployed head-to-head audit read/search/scanner/alias/denial acceptance; exact evidence in the audit checkpoint. Broader paid/client/RTC acceptance remains individually tracked.
 
 ## Concrete follow-up after the first implementation outcome
@@ -81,3 +81,7 @@ This is the same approved audit/parity/native-Git scope. Do not label implementa
 ## Assembled implementation checkpoint
 
 #449 completed owner confirmation cleanup and corrected CI-FAST-1 accounting; #450 delivered eight enterprise policy contracts and setup wording; #451 delivered portable native Git with exact-head full CI and actual container smoke. The final administrative group adds organization/enterprise IP entry lifecycle and organization notification/signoff settings. Exact source, tests and remaining deployment prerequisites are recorded in docs/status/2026-10-28-admin-contract-completion.md. Older progress paragraphs above describe their dated state, not current missing implementation. The remaining provider-private fresh secret scanner has a concrete Robinson/repository alternative rather than a fabricated matching API. Advanced native Git capabilities requiring executable hooks, LFS/submodules or signing have actionable local setup guidance.
+
+## Current delivery state after combined release
+
+Implementation through #453 is released on independently READY 53df99ef. [Combined evidence](../status/2026-10-28-combined-release.md) records actual complete/byte reads, administrative previews, scratch create/delete, PKCE/header/unauthenticated denial and cleanup. The deployed native worker is internally healthy, but external HTTPS ingress times out and the current account lacks host-wide networking authority. Hosted native Git remains unavailable until that route exists; do not represent Docker health or source tests as end-to-end acceptance. Proprietary scan and advanced Git alternatives remain explicit. The existing 15 external acceptance obligations retain their individual prerequisites.

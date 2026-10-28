@@ -1,6 +1,6 @@
 # Native Git worker: operations, deployment and migration
 
-This is actual native Git execution, separate from GitHub's git-data API. Source is under verification; a configured URL alone does not prove the worker is deployed or accepted. Use `github_git_workspace_read` with `operation: capabilities` to check the signed worker response, native Git version and explicit limits. The dated parity-completion checkpoint records source/CI/release evidence.
+This is actual native Git execution, separate from GitHub's git-data API. Source is merged, CI/image-tested and released. Initial Dokploy container is healthy but external HTTPS ingress is blocked; hosted clone/push acceptance is not complete. A configured URL alone does not prove reachability or acceptance. Use `github_git_workspace_read` with `operation: capabilities` to check the signed worker response, native Git version and explicit limits. The dated parity-completion checkpoint records source/CI/release evidence.
 
 ## User workflow
 
@@ -42,3 +42,15 @@ LFS, submodules, executable hooks/filters, signing, custom remotes, arbitrary sh
 ## Acceptance before production claims
 
 Unit tests use real local Git/bare repositories, signed HTTP and fake GitHub identity/permissions. Job-store contract also runs against disposable PostgreSQL. Full exact-head ci/release-policy and Native Git worker image must pass. The final approved combined release then needs a real service-issued connection, deployed worker Git/image/MCP source, exact disposable owned repository, clone/edit/commit/push plus independent GitHub readback, denial/replay/conflict/recovery and cleanup. Source and image tests do not replace that live proof.
+
+## External route acceptance and current blocker
+
+See [combined release evidence](status/2026-10-28-combined-release.md). Before sending repository credentials, verify the public route from outside the host:
+
+```sh
+curl --fail --show-error "$WORKER_ORIGIN/health"
+```
+
+Expect HTTP 200 with service=robinson-native-git and protocol=1. Then call github_git_workspace_read with operation=capabilities and require worker.ready=true plus the actual native Git version. Do not open another clone to troubleshoot an unavailable route. Healthy Docker status alone proves only internal health.
+
+If it times out, the authorized host/network operator must provide publicly reachable TLS routing to this project's native-git service on port 3000, or an owned outbound tunnel. Verify DNS, the TLS proxy/tunnel and the service route; a generated sslip.io hostname does not open the host's firewall/NAT or tunnel ingress. Keep Docker/host administration private. When the origin changes, set NATIVE_GIT_WORKER_URL and deploy that configuration through the checked release process; retain the public key pin and persistent data. Existing project-level connection permissions cannot grant missing server-wide/network authority. Backing-volume capacity monitoring remains an operator prerequisite for ongoing active use.

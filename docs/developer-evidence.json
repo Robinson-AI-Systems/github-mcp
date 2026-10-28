@@ -23,13 +23,12 @@
       "source": "deployment_provider",
       "service": "robinson-github-mcp",
       "origin": "https://github.robinsonaisystems.com",
-      "commit": "b555df19ff79dac90f720ff92d2c4ec8b05f92ec",
+      "commit": "53df99ef8b10d8c7351aa5eae4ee7cc867c8f228",
       "transport": "deployment_api",
       "observations": [
         "vercel_ready",
-        "production_deployment_dpl_matches_live_sha_2026_10_23",
         "independent_provider_metadata",
-        "2026-10-24: Vercel production deployment for live b555df1 READY (provenance by Vercel API; no identifier recorded here)"
+        "2026-10-28: Serving alias independently READY at 53df99ef after checked manual release 40743480147; public contract independently agrees."
       ]
     },
     {
@@ -38,15 +37,12 @@
       "source": "custom_service",
       "service": "robinson-github-mcp",
       "origin": "https://github.robinsonaisystems.com",
-      "commit": "b555df19ff79dac90f720ff92d2c4ec8b05f92ec",
+      "commit": "53df99ef8b10d8c7351aa5eae4ee7cc867c8f228",
       "transport": "native_mcp",
       "observations": [
-        "authenticated_initialize",
-        "tools_list",
-        "github_whoami",
-        "2026_10_23_github_call_and_github_get_result_used_throughout_acceptance_on_this_commit",
-        "2026-10-24: github_whoami, deploy key, webhook, gist, Enterprise, Codespaces secret, export and Copilot Space calls ran through the saved service-issued connection on the live origin",
-        "2026-10-24 PUB-4/PUB-6: Claude client on public sign-in connection (My connection page present) at live cb0ced61 via github.robinsonaisystems.com: whoami PRODUCTION/full, accounts christcr2012 + robinson-ai-scratch, master token listed; reads (repo list, PR list with untrusted marking) returned real data; repo create returned a preview needing confirmation (no write); account outside the connection refused before reaching GitHub (client:outside_scope); OAuth metadata issuer is the new domain"
+        "2026-10-28: Authenticated github_call through existing service-issued native MCP connection: content full/byte/diagnostic, organization IP inventory, notification/signoff previews, native workspace list/capabilities, scratch repository create/delete.",
+        "One canonical full payload and compact structured location pointer on 98401-character immutable source read.",
+        "Native capabilities correctly report setup_required; no externally usable Git worker is claimed."
       ]
     },
     {
@@ -97,12 +93,11 @@
       "source": "custom_service",
       "service": "robinson-github-mcp",
       "origin": "https://github.robinsonaisystems.com",
-      "commit": "b555df19ff79dac90f720ff92d2c4ec8b05f92ec",
+      "commit": "53df99ef8b10d8c7351aa5eae4ee7cc867c8f228",
       "transport": "native_mcp",
       "observations": [
-        "run-owned scratch protection, ruleset, release draft, test branches and topics removed or restored with independent readback",
-        "old merged working branches in the product repository remain (agent environment cannot delete them); on owner checklist",
-        "2026-10-24: all acceptance fixtures (3 scratch repositories, 1 personal repository, gist, webhook, deploy key, enterprise configuration, secret, Space) deleted; export archive deletion accepted, independently verified gone on 2026-10-26 by custom MCP dry-run already-gone preview plus private link HTTP 404; historical export record remains"
+        "2026-10-28: Exact session-created private scratch repository rtc-native-git-accept-20261028 deleted by custom MCP journal 2772, independently GET 404. No native workspace opened.",
+        "Disposable public DCR client used for PKCE comparison issued no secret/token; no sign-in completed. Its unused registration remains subject to existing 30-day stale-client cleanup."
       ]
     }
   ]

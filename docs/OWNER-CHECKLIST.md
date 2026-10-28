@@ -1,5 +1,8 @@
 # Chris's checklist — only the things that need you
 
+- [ ] **Native Git HTTPS route (2026-10-28):** worker source is released and the existing Dokploy container is healthy, but its generated public origin times out. An authorized network operator must route an HTTPS hostname to this project's native-git:3000 (reachable proxy or owned outbound tunnel), without exposing host/Docker administration. Current account is denied server-wide controls; no usable Cloudflare account selector was available. See [exact evidence and re-entry](status/2026-10-28-combined-release.md) and [route verification](NATIVE-GIT-OPERATIONS.md). Once reachable, agents can finish scratch clone/push/readback/disposal without another product implementation.
+
+
 **Owner decision pending — private `github-mcp` (2026-10-26).** No change may be made until Chris explicitly approves the conversion after checking that GitHub Team or higher is needed to retain private branch protections, a GitHub Actions usage estimate against the account's paid-plan included allowance and the current $0 overage cap, and a plan to grant David2024patton authorized access to the new private repo. His existing public fork would remain public. Documentation of the current licensing status is separate.
 
 Everything an AI agent can do, test or verify on your behalf, it does. This page lists the **only** things that
