@@ -613,7 +613,7 @@ Card(s): P-1 … P-3. P-1 implementation in PR #206: additive, versioned known_p
 | `github_profile_get` | One profile: repos, production branches and environments, required checks, workflows with write access, owned settings | — | N | — | B,O | R | P-1 built #206 |
 | `github_profile_draft` | Turn what an agent found in a codebase (workflows, branches, environments, required checks) into a draft profile and APP-NEEDS text | — | N | — | B,O | R | P-3 built #209 |
 
-## Workflows (`github_workflow_*`) — 17
+## Workflows (`github_workflow_*`) — 18
 
 Card(s): P-2, P-3, W-1 … W-7. P-2 built in PR #207 as a non-read-only composed workflow: inspection is read-only, but a single explicitly named repair invokes an existing independently guarded write. Never claim unverified process rows or unreadable provider settings are healthy. Whole jobs in one call, answered in plain English with `structuredContent` (`docs/designs/BATCH-W.md`). W-3/W-4 add verified review disposition and CI recovery workflows; their genuine deployed acceptance remains queued. W-1 and W-2 were implemented together in PR #210; status is read-only, while open/merge workflows delegate to the existing journaled and independently guarded writers. A staged PR open or stack progresses one write at a time and requires a fresh call for the next step.
 
@@ -872,7 +872,7 @@ Card(s): PAR-1. Code Quality findings come from GitHub's own analysis (not marke
 
 ## Totals
 
-**Totals:** 478 tools: 472 hand-built + 6 universal (`github_api_*`, `github_graphql_*`), plus guided settings for every
+**Totals:** 479 tools: 473 hand-built + 6 universal (`github_api_*`, `github_graphql_*`), plus guided settings for every
 dashboard-only owner setting. By profile (lowest profile that has the tool): read_only 158, everyday adds 83
 (everyday lists 240), full adds 113 (full lists 396). In compact mode (`docs/designs/BATCH-C.md`) an agent
 loads only about 25 tools up front (meta-tools, whoami, universal search, workflows) and reaches the rest through
@@ -917,13 +917,13 @@ loads only about 25 tools up front (meta-tools, whoami, universal search, workfl
 | Projects v2 lifecycle | 15 |
 | Public profiles, following and star lists | 13 |
 | Project profiles | 3 |
-| Workflows | 17 |
+| Workflows | 18 |
 | Everything else on GitHub: the universal tools | 6 |
 | Batch Y-9d financial and Copilot operations | 17 |
 | GitHub Enterprise | 13 |
 | Master-token families: Copilot Spaces, Classroom, Marketplace and more | 17 |
 | Code quality and GitHub help | 4 |
-| **Total** | **478** |
+| **Total** | **479** |
 
 <!-- #108: experimental RTC HTTPS reader bridges only server/meta read tools using existing guarded dispatch; RTC 1 certification is not claimed. -->
 

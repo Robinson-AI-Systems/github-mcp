@@ -1,6 +1,6 @@
 ## 2026-10-27 — C-14 PR CI failures and native merge arming (#432/#433)
 
-PR #441 on branch `ai/chatgpt/c-14-pr-ci-visibility-20261027` combines exact-head failed CI job/step/annotation/error excerpts with a provider-native auto-merge inspector. Acceptance was committed before code. First head `dd75ca5` passed release-policy, but check CI and two unit shards failed on roadmap-index drift, compact catalog token inventory and registry inventory. All three specific mismatches are being repaired together in this commit without weakening tests or bypassing checks. Exact final-head CI/review/merge/issue closeout remain pending. #435 is separate; #431 remains open. No deploy or production changes.
+PR #441 on branch `ai/chatgpt/c-14-pr-ci-visibility-20261027` combines exact-head failed CI job/step/annotation/error excerpts with a provider-native auto-merge inspector. Acceptance was committed before code. First head `dd75ca5` passed release-policy, but check CI and two unit shards failed on roadmap-index drift, compact catalog token inventory and registry inventory. The next run exposed the remaining catalog count and 15-token compact listing difference. These are being repaired without weakening tests or bypassing checks. Exact final-head CI/review/merge/issue closeout remain pending. #435 is separate; #431 remains open. No deploy or production changes.
 
 ## 2026-10-26 — C-6 faster guarded PR lane (#418, final review pending)
 
