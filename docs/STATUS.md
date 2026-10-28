@@ -833,7 +833,7 @@ open obligations, original fixture ownership, approvals and deployment provenanc
     "requiredRevision": "1fa4298d69041d1bc988e2ee4f693cff954a76b3",
     "task": "Independently accept only owner-approved real-provider Y-9d mutation(s) with exact cost/security disclosure, single-send, replay, readback and cleanup where reversible; no blanket requirement to incur expense.",
     "procedure": "docs/pr-cards/Y-9.md; docs/designs/BATCH-Y.md; docs/END-USER-AUTHORITY.md",
-    "gates": "BLOCKED until explicit operation/target/cost/production approval by owner, correct U/I permission and production-enabled connection, source-bearing READY, protected resource clearance and individually confirmed disposable billing/capability fixture. Never spend merely to close acceptance.",
+    "gates": "Exact disposable operation/target/cost approval, current actual provider permission/entitlement, independently READY source and reversible cleanup where available. No product production-enabled/protected-list/second-owner-confirmation prerequisite. Builder no-spend and no real security-policy mutation without exact authorization remain binding.",
     "dependsOn": [
       "GITHUB-Y9D-HOSTED-READ",
       "GITHUB-Y9D-COPILOT-ORG-READ",
@@ -862,12 +862,12 @@ open obligations, original fixture ownership, approvals and deployment provenanc
     "requiredRevision": "efe8e928991f0da72cf4e1db7d2d56f44fee0084",
     "task": "Accept authorized disposable budget DELETE with exact target, unknown-future-charge disclosure, one-send/replay, absence readback and preservation of other budgets. Full owners need no repeated ID; restricted grants retain checks.",
     "procedure": "docs/pr-cards/O-4.md; docs/END-USER-AUTHORITY.md",
-    "gates": "Reviewed owner-confirmation cleanup deployed READY and exact disposable budget destruction authorization; no existing spending ceiling may be deleted merely as a test.",
+    "gates": "Historical disposable-budget destruction scenario. OWNER-CHECKLIST records the 2026-10-23 decision that provider not-found behavior was sufficient and no further budget testing was requested. Resume only if owner explicitly reopens an exact disposable budget test; never delete a real spending ceiling.",
     "dependsOn": [
       "GITHUB-O4-AUTH-PREVIEW"
     ],
     "status": "BLOCKED",
-    "lastEvidence": "2026-10-17: Source engineering exact-head required ci, 2 unit shards, DB, RTC, shapes, check, release-policy verified green and merged. Production GitHub MCP READY still runs a79f0864; no actual provider write, spend, approval, production enablement or real-feature live acceptance occurred.",
+    "lastEvidence": "2026-10-28: source owner-confirmation correction is released READY 53df99ef, with exact-head source contract tests. No budget was deleted as a test. Owner 2026-10-23 no-further-budget-testing decision retained (OWNER-CHECKLIST); historical provider write acceptance is not relabeled passed or made a new owner task.",
     "nextAction": "After the cleanup is released, use an expressly disposable budget and approved deletion/cleanup scope; no real spending-protection deletion is inferred from code approval."
   },
   {
@@ -902,7 +902,7 @@ open obligations, original fixture ownership, approvals and deployment provenanc
     "requiredRevision": "0539a4d4ec3feaf24457f70d0df818647ced6bba",
     "task": "With independent exact owner consent, accept one disposable private paid security feature/configuration mutation including user-selected cap denial, explicit uncapped charge disclosure, single provider send, state readback and reversible cleanup.",
     "procedure": "docs/pr-cards/Y-7.md; docs/pr-cards/H-4.md; docs/END-USER-AUTHORITY.md",
-    "gates": "BLOCKED: private plan entitlement, exact disposable target, explicit cost/PRODUCTION/feature approval, existing permissions and cleanup must be verified. Developer $0 and no paid mutations remain binding to engineering agent.",
+    "gates": "Actual private feature entitlement, exact disposable target and explicit cost/feature approval, provider permissions and reversible cleanup. A chosen capped pass is required for capped-delegate denial. Full owners need no additional server production/protected/spend toggle. Builder no paid mutations without exact authorization remains binding.",
     "dependsOn": [
       "GITHUB-Y7-AUTH-PREVIEW"
     ],
@@ -928,7 +928,7 @@ open obligations, original fixture ownership, approvals and deployment provenanc
     "requiredRevision": "ee44da0e7b73f26dca247e0e17c3738796a9d3ec",
     "task": "Accept a genuine otherwise-eligible non-curated provider write with potentially unknown future cost, independent owner delegation, explicit billing warning, chosen spending cap/pass enforcement, no bypass of curated/secret endpoints, one-send journal and readback or honest UNCONFIRMED result.",
     "procedure": "docs/pr-cards/Y-1.md; docs/pr-cards/U-1.md; docs/END-USER-AUTHORITY.md",
-    "gates": "BLOCKED: exact disposable operation/path/body, independently approved full PRODUCTION principal, provider plan/credential, cost exposure, protected scope and any reversible cleanup. Do not spend or change customer/live data for acceptance.",
+    "gates": "Exact disposable operation/path/body and actual provider principal/entitlement. Existing read/write/revert proof retained; a separately issued explicit narrow or capped service pass is still required for its denial scenario. No implicit expense, customer-data mutation, production-toggle or protected-list clearance requirement on a full owner.",
     "dependsOn": [
       "GITHUB-U1-AUTH-PREVIEW"
     ],
@@ -1093,7 +1093,7 @@ open obligations, original fixture ownership, approvals and deployment provenanc
     "gates": "Saved developer connection; scratch organization or disposable fixture named rtc-acc1-<date>-<n> only; never overrideRules on a real repository; no spend.",
     "dependsOn": [],
     "status": "BLOCKED",
-    "lastEvidence": "2026-10-26 evening MDT, custom service-issued GitHub MCP, PRODUCTION/full, live 12d108dc507a2ebf093fa5bbb94d812ea2d72993 and Vercel READY at github.robinsonaisystems.com. github_whoami independently reported acting_as=you (personal master login) while connected full/PRODUCTION. Prior scratch writes were recorded on 2026-10-24; still no independently observed owner-controlled Act-as-me switch OFF, read-only account grant, or app-only check-run write on an exact owned scratch fixture. None was changed in this session.",
+    "lastEvidence": "2026-10-28 READY 53df99ef custom MCP: exact disposable private scratch repo created (journal 2762) and deleted (2772), both confirmed and acting_as christcr2012 (you); independent GET 404. The Act-as-me switch OFF, App-only check-run and separate read-only grant remain unverified. Useful current connector settings were not changed.",
     "nextAction": "Prerequisite: owner enables a disposable secondary connection to test read-only and switches Act-as-me OFF and back ON on My connection, plus an exact approved disposable scratch check-run fixture. Verify App actor independently; do not change the owner's existing working settings without approval."
   },
   {
@@ -1117,7 +1117,7 @@ open obligations, original fixture ownership, approvals and deployment provenanc
     "gates": "Saved developer connection; scratch organization or disposable fixture named rtc-acc1-<date>-<n> only; never overrideRules on a real repository; no spend.",
     "dependsOn": [],
     "status": "BLOCKED",
-    "lastEvidence": "2026-10-28 READY 75b4d61b: actual Accept:text/html GET /, /privacy and /connection all 200 with CSP, nosniff and same-origin referrer policy. Unauthenticated MCP initialize 401 with WWW-Authenticate. PKCE replay/refresh-family and per-person usage remain unverified live; unit/DB/browser CI is separate.",
+    "lastEvidence": "2026-10-28 independently READY 53df99ef: pages /, /privacy, /connection returned 200 with CSP/nosniff/same-origin referrer. Unauthenticated MCP initialize 401 with WWW-Authenticate. Disposable public client (no secret/token/sign-in): same request plain PKCE 403/no provider redirect, S256 302 to GitHub. Refresh-family replay and per-person usage remain unverified; do not mark the whole row passed.",
     "nextAction": "Use a disposable real OAuth client for non-S256 denial and refresh-family replay, plus authorized usage fixture. Never replay or revoke the working connector."
   },
   {
@@ -1130,6 +1130,17 @@ open obligations, original fixture ownership, approvals and deployment provenanc
     "procedure": "Read src/db.js at 4ea56dee via official/custom fullText, diagnose blob 75bafde9d8b812fc9d1c2e520114ebdfa53cd523, reconstruct four immutable byte windows and compare reviewed source/hash.",
     "gates": "Source-bearing independently verified serving READY release; ordinary authorized reads only.",
     "lastEvidence": "2026-10-28 READY 75b4d61b, checked manual release run 40700781978: official/custom 98401 characters identical; diagnostic 0 findings; four byte windows reconstruct 98404 bytes exactly equal to Git source, SHA256 68269a9f450c70294cef467f51c491d3176c7f2577b06c3177ad05e6f8efa131. One canonical full payload; prior 20 harmless RTC matches corrected. See docs/CONTENT-PROTECTION.md."
+  },
+  {
+    "id": "GITHUB-NATIVE-GIT-WORKER",
+    "requiredRevision": "53df99ef8b10d8c7351aa5eae4ee7cc867c8f228",
+    "status": "BLOCKED",
+    "priority": 1,
+    "task": "Verify externally reachable signed native Git worker, then exact disposable clone/edit/commit/push/provider readback, stale-generation denial, immutable replay, conflict/recovery and disposal.",
+    "procedure": "docs/NATIVE-GIT-OPERATIONS.md; docs/status/2026-10-28-combined-release.md",
+    "gates": "An authorized network operator must route public HTTPS to the existing Dokploy native-git service on port 3000 (reachable TLS proxy or owned outbound tunnel), then signed capabilities must return ready=true. Exact session-owned private scratch fixture, no paid capacity or alteration of useful grants.",
+    "lastEvidence": "2026-10-28 READY MCP 53df99ef; worker built exact source and Docker reports running/healthy, native Git 2.39.5. Generated compose has expected Traefik route and dokploy-network. External HTTPS times out; signed capabilities honestly ready=false. Current Dokploy account is denied server-wide settings; Cloudflare tooling supplied no usable account selector. No clone or provider credential sent. Scratch fixture removed and independently 404.",
+    "dependsOn": []
   }
 ]
 ```

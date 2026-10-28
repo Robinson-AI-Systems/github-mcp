@@ -17,7 +17,7 @@
 - [x] `github_security_scan_files` accepts only an enrolled repository + explicit paths/ref (not raw code, credentials or arbitrary URLs), obtains file content through the existing authenticated GitHub client and scans *server-side*. A finite cap limits files, bytes, time, binary/symlink/large files; all incomplete scans are clearly marked.
 - [x] A credential detection engine recognizes bounded high-confidence token/private-key patterns; findings contain only rule, path, line and remediation — **never** original token values, snippets, file content, or logs. No repository writes, alerts, stored scan payloads or client-supplied secret strings.
 - [x] Tests cover positive and negative synthetic fixtures, fake GitHub request shapes, cross-account rejection, invalid paths, oversize, binary and unreadable files, findings redaction and the registry/tool discoverability.
-- [ ] Update `docs/TOOL-CATALOG.md`, roadmap/status, handoff and relevant tests; required CI and release-policy are green on exact-head reviewed PR before merge. No independent production release without the release policy.
+- [x] Catalog, roadmap/status, handoff and tests reconciled; exact-head CI/release-policy and reviews passed through #453. Combined checked release 40743480147 serves READY 53df99ef. Actual proof and named remaining native ingress/fixture prerequisites are in docs/status/2026-10-28-combined-release.md.
 
 ## Honest boundaries
 
@@ -38,3 +38,7 @@ The first authorized audit release exposed RTC schema names being redacted and e
 ## Owner-approved native Git expansion, 2026-10-28
 
 Five native workspace tools connect the existing MCP lifecycle to a portable signed-HTTP worker running real Git, using tenant/connection-bound job metadata and per-request provider authorization. Scope, commands, limits, advanced local alternatives and migration/acceptance procedure are in docs/NATIVE-GIT-OPERATIONS.md. Existing API-only and scanner work remains separately evidenced; this expansion does not close proprietary scanner equivalence. The owner directs implementation/pre-release tests first, one combined checked release afterward, then live acceptance. Native source/image/live proof must remain distinct.
+
+### Combined delivery and live boundary
+
+#449–#453 are merged and released together after source checks. Large full/byte reads, value-free false-positive diagnostics, organization IP inventory, security-setting dry runs, scratch repository create/delete, headers, unauthenticated denial and PKCE method checks were exercised on READY 53df99ef. The native image is deployed and internally healthy with Git 2.39.5, but external ingress times out. Hosted native clone/push is still blocked on an authorized network route, not declared passed. See the combined release checkpoint and operations re-entry recipe.
