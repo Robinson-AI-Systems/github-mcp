@@ -2552,14 +2552,17 @@
         "C-15"
       ],
       "card": "docs/pr-cards/C-16.md",
-      "status": "IN_PROGRESS",
+      "status": "MERGED",
       "migration": "additive gh_write_batches",
       "budget": 0,
       "units": [
         "C-16"
       ],
       "readiness": "READY",
-      "ownerInputs": []
+      "ownerInputs": [],
+      "pr": [
+        443
+      ]
     }
   ],
   "gatewayBoundary": {

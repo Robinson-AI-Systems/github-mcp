@@ -1,5 +1,7 @@
 # SESSION-START — reconcile, accept released work, implement, close out
 
+> **2026-10-28 feedback-sweep handoff:** All ten GitHub MCP agent-feedback issues #427–#436 are independently `closed/completed`. Final source PRs #441, #442 and #443 are merged with exact-head `ci` and `release-policy` success and no blocking review threads; #440 delivered #430/#436 only, #442 separately delivered #435. C-16 adds explicit `github_write_batch`; owner documentation, `docs/STATUS.md`, `docs/ROADMAP.md` and the C-16 work-index entry now reflect merger. No live release or client acceptance was performed. Resume only other separately approved roadmap/release tasks, never re-open these as incomplete solely because historic plan paragraphs are time-stamped snapshots.
+
 > **2026-10-23:** pick the next card from `docs/designs/FINISH-PLAN.md` §2 (batch FIN). Smaller models follow
 > `docs/pr-cards/SOL-GUIDE.md`; the rest of this file is the detailed procedure behind it.
 

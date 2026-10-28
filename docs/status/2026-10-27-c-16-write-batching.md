@@ -7,3 +7,7 @@ This is source only, with exact-head required CI, database tests, review, merge,
 ## Post-source integration
 
 A true two-parent Git commit integrates the already-merged C-14/C-15 main history before opening the C-16 PR; new `gh_write_batches` is additive and requires only disposable/local Postgres tests at this stage. Runtime behavior still delegates every authorized GitHub write; the product does not gain an independent refusal/approval authority over its owner. Real-world acceptance and production release are not part of this checked PR.
+
+## Verified merged closeout (2026-10-28 UTC)
+
+PR #443 merged at source head `fa49ffe85f28f876e39e30a84043ea898b37a88c` after both required `ci` and `release-policy` succeeded on that exact head. Workflow `40640116922` completed all eleven jobs successfully, including three unit shards, real disposable PostgreSQL, RTC, three browser shards, shapes, check and aggregate CI. Two review threads were resolved after fixing in-flight receipt replacement and independent PR verification failures. Issue #431 was independently verified closed/completed, and main merge commit is `32d5bfb3ed94dfbd365fd8fe59ab2701e98cb5cc`. No production deployment, live customer mutation or real-world agent acceptance was performed. Other original feedback issues #427–#436 were separately verified closed/completed. All source acceptance is documented in C-16; this is a distinct paperwork-only closeout.

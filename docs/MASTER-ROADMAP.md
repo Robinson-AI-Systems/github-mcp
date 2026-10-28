@@ -1,5 +1,7 @@
 # MASTER ROADMAP — the one handoff
 
+**2026-10-28 agent-feedback closeout:** Issues #427–#436 are all independently closed/completed, with PRs #440–#443 merged under exact-head required CI and review gates. C-16 `github_write_batch` has accepted source and disposable-Postgres tests; it is **not** a claim of a new live deployment or real-client smoke test. See `docs/status/2026-10-28-mcp-feedback-closeout.md` and the normal policy-governed release plan. The FIN roadmap below remains the product's other-work roadmap.
+
 ## Start here (2026-10-23): the finish plan
 
 **Everything left to finish the product is in [FINISH-PLAN](designs/FINISH-PLAN.md)**, with one ready-to-implement card
