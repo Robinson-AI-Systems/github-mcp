@@ -1,6 +1,6 @@
 ## 2026-10-27 — C-15 scoped provider-rate metadata (#435)
 
-A separate planned branch `ai/chatgpt/c-15-scoped-rate-metadata-20261027` implements request-observed GitHub rate hints through the canonical response dispatcher, with independent App, user, personal, God Mode and optional credential budgets. Fresh header observations are labelled separately from persisted throttling; no rate-only GitHub requests or production changes. Test and CI validation, merge and independent #435 closure remain pending. #430/#436 were merged separately in PR #440; #431 remains open.
+A separate planned branch `ai/chatgpt/c-15-scoped-rate-metadata-20261027` implements request-observed GitHub rate hints through the canonical response dispatcher, with independent App, user, personal, God Mode and optional credential budgets. Fresh header observations are labelled separately from persisted throttling; no rate-only GitHub requests or production changes. First required CI showed a header-regex regression and metadata-loss on deduplicated RTC payloads; both review findings and lint failures have been corrected for a fresh exact-head run. Merge and independent #435 closure remain pending. #430/#436 were merged separately in PR #440; #431 remains open.
 
 ## 2026-10-26 — C-6 faster guarded PR lane (#418, final review pending)
 

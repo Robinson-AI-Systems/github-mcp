@@ -32,11 +32,6 @@ export async function takeWriteSlot(db, installationKey, { maxWaitMs = DEFAULT_M
   return slot.waitMs;
 }
 
-function number(value) {
-  const n = Number(value);
-  return value !== undefined && value !== null && value !== '' && Number.isFinite(n) ? n : null;
-}
-
 /**
  * Remembers what a response's headers say about the rate limit. A block is recorded when GitHub says the budget is
  * spent (`x-ratelimit-remaining: 0`) or sends `retry-after` with a 403/429 (the secondary limit).
@@ -62,7 +57,9 @@ export async function assertNotBlocked(db, account, resource, {onBlocked} = {}) 
 
 export function rateLimited(account, resource, until) {
   // GOD-6: a request made as the person is counted against the person's own GitHub allowance, kept under the key "~me:<id>".
-  const who = String(account).startsWith('~me:') ? 'your own GitHub login' : account;
+  const optional=/^~cred:([UKPM]):(.+)$/.exec(String(account));
+  const who=String(account).startsWith('~me:')?'your own GitHub login':
+    optional?`${optional[2]} (${{U:'user',K:'notifications',P:'package',M:'God Mode'}[optional[1]]} credential)`:account;
   return new GithubClientError('rate_limited',
     `GitHub asked us to slow down for ${who} (${resource} limit). Try again after ${formatDenver(until)}.`,
     { reason: 'github_limit', resource, reset_at: until.toISOString(), reset_display: formatDenver(until) });
@@ -71,7 +68,7 @@ export function rateLimited(account, resource, until) {
 /** A bounded observation of GitHub's actual response headers, without guessed quotas. */
 export function rateFromHeaders(headers,{status=200,fallbackResource='core',now=Date.now}={}){
   const h=Object.fromEntries(Object.entries(headers??{}).map(([k,v])=>[k.toLowerCase(),v]));
-  const quota=(v)=>v!==undefined&&v!==null&&/^\\d+$/.test(String(v))&&Number.isSafeInteger(Number(v))?Number(v):null;
+  const quota=(v)=>v!==undefined&&v!==null&&/^\d+$/.test(String(v))&&Number.isSafeInteger(Number(v))?Number(v):null;
   const remaining=quota(h['x-ratelimit-remaining']);
   const reset=quota(h['x-ratelimit-reset']);
   const retry=quota(h['retry-after']);

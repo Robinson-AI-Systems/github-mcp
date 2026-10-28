@@ -6,6 +6,14 @@ const head=(remaining,resource='core')=>({
   'x-ratelimit-remaining':String(remaining),'x-ratelimit-reset':String(Math.floor((NOW+60000)/1000)),
   'x-ratelimit-resource':resource});
 describe('C-15 provider-header observations',()=>{
+  it('persists the actual primary reset and remaining without another GitHub request',async()=>{
+    const writes=[];const db={recordRateState:async row=>writes.push(row)};
+    const row=await recordRate(db,'org',head(0),{now:()=>NOW});
+    expect(writes).toHaveLength(1);
+    expect(row).toMatchObject({resource:'core',remaining:0,
+      resetAt:new Date(NOW+60000),blockedUntil:new Date(NOW+61000)});
+    expect(writes[0].account).toBe('org');
+  });
   it.each([['core',12],['search',4],['graphql',123]])('observes %s fresh remaining and reset without additional provider traffic', (resource,remaining)=>{
     const o=rateFromHeaders(head(remaining,resource),{now:()=>NOW});
     expect(o).toMatchObject({resource,remaining,resetAt:new Date(NOW+60000)});
@@ -90,7 +98,22 @@ describe('C-15 shared canonical dispatcher final response',()=>{
     expect(r.structuredContent).toMatchObject({result:'parent',meta:{github_rate:{items:[{remaining:7,source:'fresh'}]}}});
     expect(JSON.parse(r.content[0].text)).toEqual(r.structuredContent);
   });
-  it('omits unknown metadata from a read with zero provider observations',async()=>{
+  it('keeps rate meta in the full payload that RTC restores after large-text deduplication',async()=>{
+    const registry={tools:[{name:'github_testing_large',area:'test',annotations:{readOnlyHint:true},
+      inputSchema:{type:'object',additionalProperties:false}}],handlers:{
+        github_testing_large:async(_,ctx)=>{
+          ctx.rateObservations.record({account:'org',credential:'app',resource:'core',
+            observation:rateFromHeaders(head(5),{now:()=>NOW})});
+          return {body:'text'.repeat(600)};
+        }
+      }};
+    const r=await dispatch({registry,name:'github_testing_large',args:{},connection,db:{}});
+    expect(r.structuredContent).toMatchObject({full_payload_location:'content[0].text',
+      meta:{github_rate:{items:[{remaining:5,source:'fresh'}]}}});
+    expect(JSON.parse(r.content[0].text)).toMatchObject({body:'text'.repeat(600),
+      meta:{github_rate:{items:[{remaining:5}]}}});
+  });
+  it('shares metadata with direct reads when known',async()=>{
     const f=fixture();const r=await dispatch({registry:f.registry,name:'github_testing_child',args:{},connection,db:{}});
     expect(r.structuredContent.meta.github_rate.items[0].remaining).toBe(7);
   });
