@@ -145,3 +145,16 @@ it('allows exact byte windows for harmless RTC identifiers after detector correc
   const report=value(await call(w,'github_content_protection_check',{repo:'hello',path:'src/db.js',blobSha:sha}));
   expect(report).toMatchObject({total_findings:0,byte_exact_available:true});
 });
+
+it('protects a private-key body before selecting line windows, preserving original line numbers',async()=>{
+  const key=['-----BEGIN '+'PRIVATE KEY-----','YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXo=','-----END PRIVATE KEY-----'].join('\n');
+  const source='first\n'+key+'\nlast\n';
+  const w=await makeWorld({profile:'read_only'});
+  w.gh.when('GET /repos/{owner}/{repo}/contents/{path}').reply(200,{...file,size:Buffer.byteLength(source),content:Buffer.from(source).toString('base64')});
+  const middle=value(await call(w,'github_content_get',{repo:'hello',path:'key-fixture',ref:sha,startLine:3,endLine:3}));
+  expect(middle).toMatchObject({start_line:3,end_line:3,total_lines:6,content:'[hidden]'});
+  expect(middle.content_protection.content_exact).toBe(false);
+  expect(JSON.stringify(middle)).not.toContain('YWJjZGVm');
+  const tail=value(await call(w,'github_content_get',{repo:'hello',path:'key-fixture',ref:sha,startLine:5,endLine:5}));
+  expect(tail.content).toBe('last');
+});

@@ -1,3 +1,4 @@
+import { redactPreservingLines } from '../github/content-protection.js';
 // Files, commits and git data, read side (D-2 part 1). Big answers are bounded here (a file's text, a tree, a patch) and then again by the
 // result rules (C-1): nothing is returned whole when it is large. Reads only.
 import { listAll } from '../github/client.js';
@@ -82,7 +83,7 @@ export const contentGet = defineRead({
       byte_exact_available: false, total_findings: protection.total_findings,
       diagnostic: { tool: 'github_content_protection_check', arguments: { owner, repo: args.repo, path, blobSha: data.sha } } };
     if (args.startLine !== undefined) {
-      const lines = text.split('\n');
+      const lines = redactPreservingLines(text).split('\n');
       return { ...base, start_line: args.startLine, end_line: Math.min(args.endLine, lines.length),
         total_lines: lines.length, content: lines.slice(args.startLine - 1, args.endLine).join('\n') };
     }

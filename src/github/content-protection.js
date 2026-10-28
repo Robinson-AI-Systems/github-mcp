@@ -45,3 +45,10 @@ export const containsCredential = text => redact(text) !== String(text);
 
 /** Provider excerpts can already end mid-credential; keep conservative prefix protection there. */
 export const redactExcerpt = text => redact(text).replace(/rtc_pass_[A-Za-z0-9_-]+/g, HIDDEN);
+
+/** Protect complete multiline values before selecting original file lines. */
+export function redactPreservingLines(text) {
+  let out=String(text);
+  for(const pattern of TOKEN_SHAPES) out=out.replace(pattern,match=>match.split('\n').map(line=>line.length?HIDDEN:'').join('\n'));
+  return out;
+}
