@@ -11,6 +11,7 @@ describe('tool registry', () => {
       'github_repo_list', 'github_repo_get', 'github_repo_find', 'github_repo_get_insights', 'github_repo_get_traffic', 'github_repo_list_activity', 'github_repo_get_custom_properties',
       ...['create', 'create_from_template', 'update_settings', 'set_visibility', 'set_default_branch', 'rename', 'set_archived', 'transfer', 'delete', 'fork', 'sync_fork', 'set_custom_properties', 'star'].map((n) => `github_repo_${n}`),
       'github_git_workspace_open', 'github_git_workspace_read', 'github_git_workspace_run', 'github_git_workspace_close', 'github_git_workspace_list',
+      'github_playground_execute', 'github_playground_read', 'github_playground_cancel',
       'github_content_get', 'github_content_protection_check', 'github_content_get_tree', 'github_content_get_archive_link', 'github_content_check_codeowners', 'github_commit_list', 'github_commit_get', 'github_commit_compare', 'github_commit_list_prs', 'github_git_get_ref', 'github_git_get_commit',
       'github_content_put_file', 'github_content_delete_file', 'github_content_push_files', 'github_content_edit_files', 'github_commit_comment', 'github_git_update_ref', 'github_content_commit_git_data',
       'github_branch_list', 'github_branch_get', 'github_tag_list', 'github_branch_create', 'github_branch_rename', 'github_branch_delete', 'github_branch_merge', 'github_tag_create', 'github_tag_delete',

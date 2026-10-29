@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated": "2026-10-28",
+  "updated": "2026-10-29",
   "order": [
     "A",
     "B",
@@ -2577,6 +2577,27 @@
       "ownerInputs": [],
       "pr": [
         443
+      ]
+    },
+    {
+      "id": "PLAY-1",
+      "title": "Robinson Playground integrated coding workspaces",
+      "batch": "FIN",
+      "design": "docs/CODING-WORKSPACES.md",
+      "dependencies": [
+        "PAR-2"
+      ],
+      "card": "docs/pr-cards/PLAY-1.md",
+      "status": "IN_PROGRESS",
+      "migration": "none",
+      "budget": 800,
+      "units": [
+        "PLAY-1"
+      ],
+      "readiness": "READY",
+      "ownerInputs": [],
+      "pr": [
+        476
       ]
     }
   ],

@@ -12,7 +12,7 @@ async function atomic(path,value){const temp=path+'.'+randomBytes(8).toString('h
 export class CodingRuntime {
  constructor({root,binding,uid=1000,gid=1000,now=Date.now,maxLogBytes=32*1024*1024,idleMs=4*3600000,resources}={}){
   if(process.getuid?.()!==0)throw fail('isolation_required','Run the supervisor as the isolated container root; commands always use a different unprivileged UID.');
-  if(!isAbsolute(root??'')||!ID.test(binding??'')||uid!==1000||gid!==1000||!Number.isSafeInteger(maxLogBytes)||maxLogBytes<1024||maxLogBytes>64*1024*1024||idleMs!==4*3600000)throw fail('invalid_configuration','Invalid isolated workspace configuration.');
+  if(!isAbsolute(root??'')||!ID.test(binding??'')||uid!==1000||gid!==1000||!Number.isSafeInteger(maxLogBytes)||maxLogBytes<1024||maxLogBytes>64*1024*1024||!Number.isSafeInteger(idleMs)||idleMs<60000||idleMs>86400000)throw fail('invalid_configuration','Invalid isolated workspace configuration.');
   Object.assign(this,{root:resolve(root),binding,uid,gid,now,maxLogBytes,idleMs});this.active=new Map();this.lastActivity=now();this.expired=false;this.stopping=false;this.leaseWrites=Promise.resolve();this.resources=resources??createResourceMonitor({root:this.root});
  }
  async init(){
@@ -45,17 +45,18 @@ export class CodingRuntime {
   try{
    const receipt={id,intent,state:'starting',startedAt:this.now(),exitCode:null,signal:null,bytes:0,untrusted:true};await atomic(p.receipt,receipt);
    const log=await open(p.log,'wx',0o600);
+   if(this.stopping||this.expired){await log.close();await atomic(p.receipt,{...receipt,state:'failed',reason:'runtime_stopped',finishedAt:this.now()});throw fail('workspace_expired','Runtime stopped before command spawn.');}
    // Explicit environment: no inherited host/provider/control secrets or process credentials.
    const env={PATH:'/usr/local/bin:/usr/bin:/bin',HOME:join(this.root,'home'),TMPDIR:'/tmp',LANG:'C.UTF-8',CI:'1',TERM:'dumb',PLAYWRIGHT_BROWSERS_PATH:'/opt/playwright',DATABASE_URL:'postgresql://workspace@127.0.0.1:5432/postgres'};
    let child;try{child=spawn(argv[0],argv.slice(1),{cwd:directory,uid:this.uid,gid:this.gid,env,detached:true,stdio:['ignore','pipe','pipe']});}catch(e){await log.close();throw e;}
    slot.child=child;let chain=Promise.resolve(),bytes=0,logFailed=false;
-   const kill=reason=>{slot.reason??=reason;try{process.kill(-child.pid,'SIGKILL');}catch{/* Already ended. */}};
+   const kill=reason=>{slot.reason??=reason;try{process.kill(-child.pid,'SIGKILL');}catch{/* Already ended. */}child.stdout.destroy();child.stderr.destroy();};
    slot.kill=kill;slot.timer=setTimeout(()=>kill('timeout'),timeoutMs);slot.timer.unref();
    const collect=chunk=>{if(bytes+chunk.length>this.maxLogBytes){kill('log_limit_exceeded');return;}bytes+=chunk.length;chain=chain.then(()=>log.write(chunk)).catch(()=>{logFailed=true;kill('log_storage_failed');});};
    child.stdout.on('data',collect);child.stderr.on('data',collect);
    // Both spawn errors and close settle through this one receipt update.
-   let spawnFailed=false;child.once('error',()=>{spawnFailed=true;});
-   slot.done=new Promise(resolveDone=>child.once('close',(code,signal)=>{clearTimeout(slot.timer);try{process.kill(-child.pid,'SIGKILL');}catch{/* No background descendants. */}
+   let spawnFailed=false,drainTimer;child.once('error',()=>{spawnFailed=true;});child.once('exit',()=>{try{process.kill(-child.pid,'SIGKILL');}catch{/* Original group already ended. */}drainTimer=setTimeout(()=>kill('detached_output_still_open'),1000);drainTimer.unref();});
+   slot.done=new Promise(resolveDone=>child.once('close',(code,signal)=>{clearTimeout(slot.timer);clearTimeout(drainTimer);try{process.kill(-child.pid,'SIGKILL');}catch{/* No background descendants. */}
     chain.then(async()=>{await log.sync();await log.close();Object.assign(receipt,{state:spawnFailed?'failed':slot.reason||signal||code!==0?'failed':'completed',exitCode:code,signal:signal??null,reason:spawnFailed?'executable_unavailable':slot.reason??(logFailed?'log_storage_failed':null),finishedAt:this.now(),bytes});await atomic(p.receipt,receipt);}).catch(()=>{receipt.state='uncertain';}).finally(()=>{this.active.delete(id);resolveDone();});
    }));
    receipt.state='running';// Do not overwrite a completed receipt after a very short child exits.

@@ -99,3 +99,5 @@ Owner approved finishing the operational remainder in priority order. Version th
 ### Owner-authorized full coding environment, 2026-10-29
 
 The owner expands native workspace scope to a full isolated development environment with per-workspace8vCPU/8GiB/150GB targets. Deliver execution, dependency/build/test/browser/database/service support, honest measured capacity, complete result retrieval, credential/tenant separation and idle cleanup before claiming replacement of a VM. This changes the earlier Git-only boundary; it does not authorize executing untrusted repository commands in the shared Git worker. [Finite implementation plan and infrastructure prerequisites](../status/2026-10-29-coding-workspace-expansion.md).
+
+The newly approved integrated Playground expansion is tracked independently as [PLAY-1](PLAY-1.md), leaving historical PAR-2 work merged while honestly recording remaining engineering.

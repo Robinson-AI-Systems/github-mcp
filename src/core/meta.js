@@ -37,7 +37,9 @@ export function searchTools(tools, { query, area, audience, limit = 10 } = {}) {
         if (name.includes(w)) score += 4;
         else if (name.some((n) => n.startsWith(w) || w.startsWith(n))) score += 2;
         if (areaWords.includes(w)) score += 2;
-        if (description.includes(w)) score += 1;
+        // A literal capability word must outrank an incidental name prefix
+        // (for example runtime must not be buried beneath every *_run tool).
+        if (description.includes(w)) score += 3;
       }
       if (!score) continue;
     }
