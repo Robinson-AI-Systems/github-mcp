@@ -1,0 +1,157 @@
+{
+  "version": 1,
+  "source": "0af2bd93832d5806f9ddcfed6d6c9f77b3265799",
+  "observedVercelState": "READY",
+  "checkedRelease": 40909299141,
+  "implementationPRs": [
+    469,
+    470
+  ],
+  "finalSourceCI": 40908828677,
+  "finalMainCI": 40909260198,
+  "workerImage": 40908828678,
+  "defaultWorker": "Dokploy",
+  "protocol": 3,
+  "workspaceLease": "idle-v1",
+  "concurrentRequests": 8,
+  "resourceConfiguration": {
+    "sharedMemoryDefault": "2g",
+    "cpuCeilingDefault": 2,
+    "cpuConfigurable": true,
+    "persistentVolumeRetained": true,
+    "hostCgroupsIndependentlyRead": false,
+    "guaranteedDiskQuotaOrSSD": false
+  },
+  "firstAttempt": {
+    "confirmedClones": 7,
+    "unconfirmedClones": 1,
+    "cause": "Owner-tenant daily job allowance reached32; no eighth clone was admitted. Same-intent replay sent no clone.",
+    "correctiveOwnerTenantDailyAllowance": 128
+  },
+  "freshEightLanes": [
+    {
+      "lane": 0,
+      "openJournal": 4291,
+      "writeJournal": 4298,
+      "closeJournal": 4306,
+      "cloneHead": "675c55eee70c2806013460baf46749ff65bc9088",
+      "fileHash": "8f52cf02258f48d828db4544f357ef7fbdb187bc6528c56ab120a3163e351430",
+      "exactBytesVerified": true,
+      "idleTimeoutMs": 14400000,
+      "generationAfterWrite": 1
+    },
+    {
+      "lane": 1,
+      "openJournal": 4290,
+      "writeJournal": 4299,
+      "closeJournal": 4307,
+      "cloneHead": "675c55eee70c2806013460baf46749ff65bc9088",
+      "fileHash": "3ab6924fa8036425ff014926f1ae27dbde754ea7003dc857cf0f63963e35818b",
+      "exactBytesVerified": true,
+      "idleTimeoutMs": 14400000,
+      "generationAfterWrite": 1
+    },
+    {
+      "lane": 2,
+      "openJournal": 4293,
+      "writeJournal": 4300,
+      "closeJournal": 4308,
+      "cloneHead": "675c55eee70c2806013460baf46749ff65bc9088",
+      "fileHash": "82bd6dd6a3ec009be3c29ed687bfceed80c62c6970bbef7499f68b8fe91d0f6f",
+      "exactBytesVerified": true,
+      "idleTimeoutMs": 14400000,
+      "generationAfterWrite": 1
+    },
+    {
+      "lane": 3,
+      "openJournal": 4292,
+      "writeJournal": 4301,
+      "closeJournal": 4309,
+      "cloneHead": "675c55eee70c2806013460baf46749ff65bc9088",
+      "fileHash": "d5c4ea8af73fd2920b96a3a2cca33f194b50ee48b552eecadcdfa7ce0417726d",
+      "exactBytesVerified": true,
+      "idleTimeoutMs": 14400000,
+      "generationAfterWrite": 1
+    },
+    {
+      "lane": 4,
+      "openJournal": 4294,
+      "writeJournal": 4302,
+      "closeJournal": 4311,
+      "cloneHead": "675c55eee70c2806013460baf46749ff65bc9088",
+      "fileHash": "ec7e0cf3a2891957ba4ff1b39f36ed1523e28e7f08bb3fc20934d606a2945ab8",
+      "exactBytesVerified": true,
+      "idleTimeoutMs": 14400000,
+      "generationAfterWrite": 1
+    },
+    {
+      "lane": 5,
+      "openJournal": 4295,
+      "writeJournal": 4303,
+      "closeJournal": 4310,
+      "cloneHead": "675c55eee70c2806013460baf46749ff65bc9088",
+      "fileHash": "47e2d912ffb58c54ad3ed27bd1cd7f844e2dffdae61823abbf8482c15fee7042",
+      "exactBytesVerified": true,
+      "idleTimeoutMs": 14400000,
+      "generationAfterWrite": 1
+    },
+    {
+      "lane": 6,
+      "openJournal": 4296,
+      "writeJournal": 4304,
+      "closeJournal": 4312,
+      "cloneHead": "675c55eee70c2806013460baf46749ff65bc9088",
+      "fileHash": "cc3ace4010ce0fb979853894ebdd9e0d9292df8a041a3ce68240694afb5e644c",
+      "exactBytesVerified": true,
+      "idleTimeoutMs": 14400000,
+      "generationAfterWrite": 1
+    },
+    {
+      "lane": 7,
+      "openJournal": 4297,
+      "writeJournal": 4305,
+      "closeJournal": 4313,
+      "cloneHead": "675c55eee70c2806013460baf46749ff65bc9088",
+      "fileHash": "506e351f256739d793c4c896c905de09a4810eea0e4eb32d065880e475fdce95",
+      "exactBytesVerified": true,
+      "idleTimeoutMs": 14400000,
+      "generationAfterWrite": 1
+    }
+  ],
+  "oldHostContinuity": {
+    "openJournal": 4264,
+    "writeJournal": 4265,
+    "closeJournal": 4266,
+    "fileHash": "ffd430f25a03f35f7338246bbc1822e5738d8f5689b03912f2218f9718f59b01",
+    "headBeforeAndAfter": "c09c2c7d115717255384f20e15da204fe61c1a3f",
+    "generationBeforeAndAfter": 1,
+    "metadataBytes": 170,
+    "dataHost": "Render",
+    "providerDefaultAfter": "Dokploy"
+  },
+  "nativePush": {
+    "commit": "675c55eee70c2806013460baf46749ff65bc9088",
+    "parent": "c09c2c7d115717255384f20e15da204fe61c1a3f",
+    "addJournal": 4276,
+    "commitJournal": 4277,
+    "pushJournal": 4278,
+    "independentAppRefAndParentVerified": true,
+    "sameIntentReplay": true
+  },
+  "dokployPersistence": {
+    "fileHashBeforeAndAfter": "3ab6924fa8036425ff014926f1ae27dbde754ea7003dc857cf0f63963e35818b",
+    "headBeforeAndAfter": "c09c2c7d115717255384f20e15da204fe61c1a3f",
+    "generationBeforeAndAfter": 1,
+    "freshVolumes": false,
+    "actualSourceAfter": "0af2bd93832d5806f9ddcfed6d6c9f77b3265799"
+  },
+  "cleanup": {
+    "explicitWorkspaceCloses": 17,
+    "runOwnedActiveAcrossAllSchemas": 0,
+    "repositoryDeleteJournal": 4314,
+    "independentSameAppGET": 404,
+    "closedCloneReplayHistorical": true,
+    "legacyActiveRowsRetained": 2,
+    "renderDiskOrServiceDeleted": false
+  }
+}

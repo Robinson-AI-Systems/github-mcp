@@ -84,3 +84,6 @@ Cutover CI repair: the first full unit run hit its existing hard watchdog, so th
 ## Native worker host continuity correction, 2026-10-29
 
 The first cutover inventory inspected only the default schema; isolated tenants retained two old active workspace rows. Preserve the two hosts and route stored workspaces to their original configured origin while new clones use Dokploy. Compact host pins, explicit previous-origin/cutover metadata for old rows, no arbitrary origin/fallback, real two-worker Git preservation/replay/close and fail-closed route tests are required. The earlier zero-active inference is withdrawn; see [host continuity record](../status/2026-10-29-native-worker-host-routing.md). Finish operational proof before claiming full cutover.
+
+
+Dokploy migration accepted for new workspaces on READY0af2bd93832d5806f9ddcfed6d6c9f77b3265799: matching actual worker source, signed eight-request idle-v1, eight fresh parallel clone/write/exact-read lanes, independent native push SHA/parent, persistent uncommitted bytes and exact cleanup passed. Previous-host continuity was also exercised live with a disposable Render marker. Two older workspace rows remain on Render during a non-destructive drain; retirement is pending, not a completed cancellation. See [final cutover record](../status/2026-10-29-dokploy-native-cutover.md).

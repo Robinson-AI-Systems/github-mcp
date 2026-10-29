@@ -6,7 +6,7 @@ This is the current list of external inputs, not a new approval request. Existin
 
 The custom connector is serving at https://github.robinsonaisystems.com with authenticated owner operations, PR/CI/review tools and native Git clone/edit/commit/fetch/merge/push. Public availability was approved; do not ask the owner to approve public sign-in again or reinstall the working connector as a routine test. Native Git needs no official connector. Package read/delete/restore proof and current person/App actor proof are retained; do not request replacement credentials without an actual missing permission. Current end-user authority, genuine delegated restrictions, mobile browser tests and optional Hub independence remain requirements.
 
-This release changes new native workspaces to a four-hour **idle** timeout. Authorized workspace activity renews the selected window; close removes the workspace. Existing workspaces keep their original stated duration. Application tests still run in GitHub Actions or a separate development environment.
+This release changes new native workspaces to a four-hour **idle** timeout. Authorized workspace activity renews the selected window; close removes the workspace. Existing workspaces keep their original stated duration. Application tests still run in GitHub Actions or a separate development environment. New workspaces now use Dokploy with signed eight-request capacity; older Render workspaces retain their original host during a safe drain. Render is not yet cancelled. See [actual cutover/cleanup evidence](status/2026-10-29-dokploy-native-cutover.md).
 
 ## Operational items still outstanding
 
@@ -18,7 +18,6 @@ The authoritative [acceptance ledger](STATUS.md) and [ID-by-ID prerequisite revi
 
 ## Choices that remain optional
 
-- **Dokploy hosting return:** the operator corrected generated hostnames to the public ingress address. HTTPS health and unsigned rejection verify; source provenance is recorded. Before a cutover, agents must verify signed four-request capacity, retained verifier/storage and exact workspace continuity. Keep Render and its disk until then. CPU sizing remains flexible; do not infer dedicated resources, SSD backing or a volume quota from total host capacity.
 - **Paid-feature acceptance:** use already eligible hosted-runner/private-security fixtures where available. An operation with additional cost needs a specific cost proposal and approval; do not buy a plan, activate billable features or widen real users merely to complete a test.
 - **Budget deletion:** the owner declined further tests on 2026-10-23. Preserve that decision. Its historical unpassed row is not a current owner task and must not be reopened automatically.
 - **Other clients:** Meta Muse/Muse Code onboarding can be tested if those clients are wanted. Use the homepage's current public client information and the user's own protected GitHub consent; existing browser tests do not manufacture fresh client acceptance.
