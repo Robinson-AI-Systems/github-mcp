@@ -1,0 +1,10 @@
+# Native Git switch, parallel agents and final reconciliation
+
+Plan committed before source changes. Outcome: branch switching has an explicit discoverable argument contract and actionable preflight errors; separate workspaces can execute in parallel on the existing Render plan without weakening same-workspace exclusion, generation/replay or scanner isolation. Reconcile current documentation and stabilize the unrelated database timing test without lowering its allocation-spacing assertion.
+
+1. Reproduce the reported switch preflight failure through the dispatcher. Accept unambiguous branch/name/ref spellings, reject disagreement before any mutation, report safe validation/worker busy reasons, and independently verify the checked-out branch. Cover real Git, dispatcher, replay and invalid inputs.
+2. Verify independent-workspace HTTP concurrency and same-workspace exclusion. Raise reviewed initial capacity from one to two only on the existing compute/disk, test bounded overload and retry guidance, and observe live metrics before claiming workload capacity. No paid upgrade, distributed queue or autoscaling claim.
+3. Replace wall-clock-dependent DB remaining-delay assertions with a controlled-time allocation proof retaining real Postgres concurrency and the original >=900/<=1100 ms invariant. Reconcile obsolete top-level plan/status claims against completed source and dated live evidence, retaining historical findings.
+4. Run focused checks, assembled check and exact-head CI/release policy/image, self-review and normal PR merge; release only the finished implementation. Deploy the worker on the checked source while respecting active work, then accept switch aliases/replay/denial and two isolated scratch workspaces. Remove exact fixtures. Reassess the existing acceptance ledger; do not fabricate new grants, buy entitlements or delete useful policy as tests.
+
+Remaining operator durability work: encrypted off-host backup destination/key custody and a verified restoration schedule remain distinct from retained Dokploy storage and Render disk snapshots. Do not represent local snapshot code as an operating backup service.
