@@ -1,0 +1,157 @@
+{
+  "snapshot": "2be90c626875c258cb20999cf36033a9404e3a0aeb9a4bfcf449575c68cf3596",
+  "deployed": "ac0d2805aacb7554ac81a0fb6a7b512471ce3969",
+  "deploymentState": "READY",
+  "tasks": [
+    {
+      "id": "GITHUB-GOD6-ACT-AS",
+      "requiredRevision": "08fbc15d1433ec0abce15fe7ce5eefd5a783790a",
+      "disposition": "RECHECK_EXTERNAL_GATE",
+      "outcome": "DEFERRED",
+      "evidence": "2026-10-28 READY 53df99ef custom MCP: exact disposable private scratch repo created (journal 2762) and deleted (2772), both confirmed and acting_as christcr2012 (you); independent GET 404. The Act-as-me switch OFF, App-only check-run and separate read-only grant remain unverified. Useful current connector settings were not changed. 2026-10-29 on READY 454f6d4d: disposable repository creation acted as the person; App-only check creation independently read back app.slug=robinson-github-mcp and exact seed head, completed/success. Exact fixtures cleaned on READY c02b1998. OFF/read-only setting matrix still requires a separately disposable credential-setting fixture; this row remains incomplete.",
+      "prerequisite": "Disposable credential-setting fixture/grant for switch OFF/read-only cases; person-actor evidence retained, and App-only actor independently verified 2026-10-29.",
+      "remedy": "Reconciled checked global no-daily-quota and resource-admission implementation, actual Dokploy primary/legacy Render routing, available grants and disposable fixtures. No new entitlement, revoked useful grant, human sign-in or declined budget deletion is manufactured.",
+      "nextAction": "Disposable credential-setting fixture/grant for switch OFF/read-only cases; person-actor evidence retained, and App-only actor independently verified 2026-10-29."
+    },
+    {
+      "id": "GITHUB-GOD6-RULE-OVERRIDE",
+      "requiredRevision": "08fbc15d1433ec0abce15fe7ce5eefd5a783790a",
+      "disposition": "RECHECK_EXTERNAL_GATE",
+      "outcome": "DEFERRED",
+      "evidence": "2026-10-26 evening MDT, custom service-issued GitHub MCP, PRODUCTION/full, live 12d108dc507a2ebf093fa5bbb94d812ea2d72993 and Vercel READY at github.robinsonaisystems.com. Existing 2026-10-24 scratch PR proved normal merge denial, deliberate override preview, GitHub permission denial and later authorized bypass/merge; newly released C-7 fixes local empty-rule veto and preserves user approval. Missing protected-list denial is not inferred from tests, and no bypass was attempted against a real repository.",
+      "prerequisite": "Exact disposable rules/PR fixture plus restricted grant; do not change real production rules as a test.",
+      "remedy": "Reconciled checked global no-daily-quota and resource-admission implementation, actual Dokploy primary/legacy Render routing, available grants and disposable fixtures. No new entitlement, revoked useful grant, human sign-in or declined budget deletion is manufactured.",
+      "nextAction": "Exact disposable rules/PR fixture plus restricted grant; do not change real production rules as a test."
+    },
+    {
+      "id": "GITHUB-HARD1-SIGNIN-NO-CAP",
+      "requiredRevision": "b555df19ff79dac90f720ff92d2c4ec8b05f92ec",
+      "disposition": "RECHECK_EXTERNAL_GATE",
+      "outcome": "DEFERRED",
+      "evidence": "2026-10-26 evening MDT, custom service-issued GitHub MCP, PRODUCTION/full, live 12d108dc507a2ebf093fa5bbb94d812ea2d72993 and Vercel READY at github.robinsonaisystems.com. Saved MCP grant and browser CI prove continued connected access and synthetic sign-in coverage, not a genuinely new OAuth sign-in after the cap change. No disposable new app/client consent was performed.",
+      "prerequisite": "Genuinely new human OAuth sign-in; existing connected access is not fresh sign-in evidence.",
+      "remedy": "Reconciled checked global no-daily-quota and resource-admission implementation, actual Dokploy primary/legacy Render routing, available grants and disposable fixtures. No new entitlement, revoked useful grant, human sign-in or declined budget deletion is manufactured.",
+      "nextAction": "Genuinely new human OAuth sign-in; existing connected access is not fresh sign-in evidence."
+    },
+    {
+      "id": "GITHUB-PRIVATE-USER-PASS-SCOPE",
+      "requiredRevision": "3df082605de3a91f3e32affd385e88ba90df95d2",
+      "disposition": "RECHECK_EXTERNAL_GATE",
+      "outcome": "DEFERRED",
+      "evidence": "Superseded 2026-10-24: the private-pilot sign-in was retired on 2026-10-23 (PUB-6 rebuild); public tenants are covered by tests/db/pub-6-public-connect.test.js and tests/unit/private-user-pass-downscope.test.js. No live run needed.",
+      "prerequisite": "Separately narrowed current public OAuth grant; do not recreate retired pilot mode or narrow the useful owner grant.",
+      "remedy": "Reconciled checked global no-daily-quota and resource-admission implementation, actual Dokploy primary/legacy Render routing, available grants and disposable fixtures. No new entitlement, revoked useful grant, human sign-in or declined budget deletion is manufactured.",
+      "nextAction": "Separately narrowed current public OAuth grant; do not recreate retired pilot mode or narrow the useful owner grant."
+    },
+    {
+      "id": "GITHUB-PUB5-HEADERS-LIMITS",
+      "requiredRevision": "08fbc15d1433ec0abce15fe7ce5eefd5a783790a",
+      "disposition": "RECHECK_EXTERNAL_GATE",
+      "outcome": "DEFERRED",
+      "evidence": "2026-10-28 independently READY 53df99ef: pages /, /privacy, /connection returned 200 with CSP/nosniff/same-origin referrer. Unauthenticated MCP initialize 401 with WWW-Authenticate. Disposable public client (no secret/token/sign-in): same request plain PKCE 403/no provider redirect, S256 302 to GitHub. Refresh-family replay and per-person usage remain unverified; do not mark the whole row passed.",
+      "prerequisite": "Disposable refresh-token family for replay/revocation and per-person usage UI readback; existing header/PKCE evidence retained.",
+      "remedy": "Reconciled checked global no-daily-quota and resource-admission implementation, actual Dokploy primary/legacy Render routing, available grants and disposable fixtures. No new entitlement, revoked useful grant, human sign-in or declined budget deletion is manufactured.",
+      "nextAction": "Disposable refresh-token family for replay/revocation and per-person usage UI readback; existing header/PKCE evidence retained."
+    },
+    {
+      "id": "GITHUB-Y7-AUTH-PREVIEW",
+      "requiredRevision": "c552ab893f63675fbc841818ccc702b4885ff693",
+      "disposition": "RECHECK_EXTERNAL_GATE",
+      "outcome": "DEFERRED",
+      "evidence": "Earlier (2026-10-18): free-plan private security reads refused by GitHub with the plan reason; no purchase suggested. 2026-10-24 04:45 MDT on live 8ed877a, PRODUCTION/full, scratch org on the Enterprise trial, private fixture rtc-acc1-20261024-2: github_security_get_settings returned the full private security inventory (all disabled); github_security_list_alerts kind=code refused truthfully (HTTP 403 'Code Security must be enabled', names security events read), kind=dependabot without a repo refused locally. Fixture deleted. Not exercised: organization security attachments and the 100-entry case (needs paid-flagged organization configurations).",
+      "prerequisite": "Eligible organization security attachments/100-entry inventory plus separate restricted grant; preserve existing private-inventory/dry-run evidence.",
+      "remedy": "Reconciled checked global no-daily-quota and resource-admission implementation, actual Dokploy primary/legacy Render routing, available grants and disposable fixtures. No new entitlement, revoked useful grant, human sign-in or declined budget deletion is manufactured.",
+      "nextAction": "Eligible organization security attachments/100-entry inventory plus separate restricted grant; preserve existing private-inventory/dry-run evidence."
+    },
+    {
+      "id": "GITHUB-Y9D-HOSTED-READ",
+      "requiredRevision": "1fa4298d69041d1bc988e2ee4f693cff954a76b3",
+      "disposition": "RECHECK_EXTERNAL_GATE",
+      "outcome": "DEFERRED",
+      "evidence": "2026-10-28 actual custom MCP on independently READY 75b4d61b rechecked scratch hosted runners. GitHub returned 404: GitHub hosted runners are not supported for this organization. No paid entitlement, plan or settings changed. Eligible successful inventory remains unverified.",
+      "prerequisite": "Eligible hosted-runner provider entitlement; earlier actual provider refusal remains, no purchase authorized.",
+      "remedy": "Reconciled checked global no-daily-quota and resource-admission implementation, actual Dokploy primary/legacy Render routing, available grants and disposable fixtures. No new entitlement, revoked useful grant, human sign-in or declined budget deletion is manufactured.",
+      "nextAction": "Eligible hosted-runner provider entitlement; earlier actual provider refusal remains, no purchase authorized."
+    },
+    {
+      "id": "GITHUB-Y9D-SAFETY-DENIAL",
+      "requiredRevision": "1fa4298d69041d1bc988e2ee4f693cff954a76b3",
+      "disposition": "RECHECK_EXTERNAL_GATE",
+      "outcome": "DEFERRED",
+      "evidence": "2026-10-26 evening MDT, custom service-issued GitHub MCP, PRODUCTION/full, live 12d108dc507a2ebf093fa5bbb94d812ea2d72993 and Vercel READY at github.robinsonaisystems.com. The required authentic narrow, user-capped and production-off connections are not in this saved full/PRODUCTION grant. The dependent hosted runner check remains provider/plan-limited (GITHUB-Y9D-HOSTED-READ BLOCKED). Prior source tests do not substitute for the required live denial matrix. No paid or production mutation was attempted.",
+      "prerequisite": "Deliberately restricted/read-only/capped grant and eligible fixture, not the full owner grant.",
+      "remedy": "Reconciled checked global no-daily-quota and resource-admission implementation, actual Dokploy primary/legacy Render routing, available grants and disposable fixtures. No new entitlement, revoked useful grant, human sign-in or declined budget deletion is manufactured.",
+      "nextAction": "Deliberately restricted/read-only/capped grant and eligible fixture, not the full owner grant."
+    },
+    {
+      "id": "GITHUB-O4-AUTH-BUDGET-WRITE",
+      "requiredRevision": "efe8e928991f0da72cf4e1db7d2d56f44fee0084",
+      "disposition": "RECHECK_EXTERNAL_GATE",
+      "outcome": "DEFERRED",
+      "evidence": "2026-10-28: source owner-confirmation correction is released READY 53df99ef, with exact-head source contract tests. No budget was deleted as a test. Owner 2026-10-23 no-further-budget-testing decision retained (OWNER-CHECKLIST); historical provider write acceptance is not relabeled passed or made a new owner task.",
+      "prerequisite": "Owner declined further budget deletion tests; retain that decision, no new owner task or real ceiling deletion.",
+      "remedy": "Reconciled checked global no-daily-quota and resource-admission implementation, actual Dokploy primary/legacy Render routing, available grants and disposable fixtures. No new entitlement, revoked useful grant, human sign-in or declined budget deletion is manufactured.",
+      "nextAction": "Owner declined further budget deletion tests; retain that decision, no new owner task or real ceiling deletion."
+    },
+    {
+      "id": "GITHUB-O4-AUTH-CODESPACES-WRITE",
+      "requiredRevision": "efe8e928991f0da72cf4e1db7d2d56f44fee0084",
+      "disposition": "RECHECK_EXTERNAL_GATE",
+      "outcome": "DEFERRED",
+      "evidence": "2026-10-17: Source engineering exact-head required ci, 2 unit shards, DB, RTC, shapes, check, release-policy verified green and merged. Production GitHub MCP READY still runs a79f0864; no actual provider write, spend, approval, production enablement or real-feature live acceptance occurred.",
+      "prerequisite": "Exact disposable organization/user policy fixture and independent administrative UI readback without inferred billable widening.",
+      "remedy": "Reconciled checked global no-daily-quota and resource-admission implementation, actual Dokploy primary/legacy Render routing, available grants and disposable fixtures. No new entitlement, revoked useful grant, human sign-in or declined budget deletion is manufactured.",
+      "nextAction": "Exact disposable organization/user policy fixture and independent administrative UI readback without inferred billable widening."
+    },
+    {
+      "id": "GITHUB-U1-AUTH-METERED-WRITE",
+      "requiredRevision": "ee44da0e7b73f26dca247e0e17c3738796a9d3ec",
+      "disposition": "RECHECK_EXTERNAL_GATE",
+      "outcome": "DEFERRED",
+      "evidence": "2026-10-23 on live 1ddf6ac, PRODUCTION/full: PUT /orgs/{org}/interaction-limits on robinson-ai-scratch previewed with the explicit COST UNKNOWN billing warning, confirmed and applied (GitHub 200); read-back honestly reported UNCONFIRMED (GitHub shows expires_at, not the expiry sent); DELETE reverted it (GitHub 204; its empty read-back was then accepted as confirmation by the fix in #317). Not yet shown: a chosen user spending cap or narrow pass actually enforced, which needs the owner to set a cap. Stays BLOCKED on that.",
+      "prerequisite": "Exact approved metered fixture and explicit cost authorization; unknown cost disclosure does not authorize builder spending.",
+      "remedy": "Reconciled checked global no-daily-quota and resource-admission implementation, actual Dokploy primary/legacy Render routing, available grants and disposable fixtures. No new entitlement, revoked useful grant, human sign-in or declined budget deletion is manufactured.",
+      "nextAction": "Exact approved metered fixture and explicit cost authorization; unknown cost disclosure does not authorize builder spending."
+    },
+    {
+      "id": "GITHUB-Y7-AUTH-PRIVATE-PAID-WRITE",
+      "requiredRevision": "0539a4d4ec3feaf24457f70d0df818647ced6bba",
+      "disposition": "RECHECK_EXTERNAL_GATE",
+      "outcome": "DEFERRED",
+      "evidence": "2026-10-17: Source engineering exact-head required ci, 2 unit shards, DB, RTC, shapes, check, release-policy verified green and merged. Production GitHub MCP READY still runs a79f0864; no actual provider write, spend, approval, production enablement or real-feature live acceptance occurred.",
+      "prerequisite": "Eligible private security fixture, explicit feature/cost authorization and actual independent provider readback.",
+      "remedy": "Reconciled checked global no-daily-quota and resource-admission implementation, actual Dokploy primary/legacy Render routing, available grants and disposable fixtures. No new entitlement, revoked useful grant, human sign-in or declined budget deletion is manufactured.",
+      "nextAction": "Eligible private security fixture, explicit feature/cost authorization and actual independent provider readback."
+    },
+    {
+      "id": "GITHUB-Y9D-OWNER-AUTH-WRITES",
+      "requiredRevision": "1fa4298d69041d1bc988e2ee4f693cff954a76b3",
+      "disposition": "RECHECK_EXTERNAL_GATE",
+      "outcome": "DEFERRED",
+      "evidence": "2026-10-16: PR #233 source head 395a54e passed CI/contract fakes and merged. Live release, new App permission grants and genuine provider acceptance not yet proven.",
+      "prerequisite": "Exact approved disposable hosted-runner fixture and provider entitlement/cost authorization for actual mutation.",
+      "remedy": "Reconciled checked global no-daily-quota and resource-admission implementation, actual Dokploy primary/legacy Render routing, available grants and disposable fixtures. No new entitlement, revoked useful grant, human sign-in or declined budget deletion is manufactured.",
+      "nextAction": "Exact approved disposable hosted-runner fixture and provider entitlement/cost authorization for actual mutation."
+    },
+    {
+      "id": "GITHUB-NATIVE-REVOCATION",
+      "requiredRevision": "5a0ca5d2992bc576c5fdcc88525fb1eb95943fc9",
+      "disposition": "RECHECK_EXTERNAL_GATE",
+      "outcome": "DEFERRED",
+      "evidence": "2026-10-15 restored adapter: Reconnected useful service grant works; no separately disposable revocation grant available. Next: Disposable service-issued grant and exact revocation authority. Prepare authorized disposable grant; never revoke useful new connection as a test.",
+      "prerequisite": "Separately disposable native service grant for revocation/renewal proof; retain current working grant.",
+      "remedy": "Reconciled checked global no-daily-quota and resource-admission implementation, actual Dokploy primary/legacy Render routing, available grants and disposable fixtures. No new entitlement, revoked useful grant, human sign-in or declined budget deletion is manufactured.",
+      "nextAction": "Separately disposable native service grant for revocation/renewal proof; retain current working grant."
+    },
+    {
+      "id": "GITHUB-RTC-DIRECT",
+      "requiredRevision": "5a0ca5d2992bc576c5fdcc88525fb1eb95943fc9",
+      "disposition": "RECHECK_EXTERNAL_GATE",
+      "outcome": "DEFERRED",
+      "evidence": "2026-10-15 restored adapter: Working adapter OAuth is not an RTC pass; contract remains RTC0 restricted subset. Next: Exact-origin short-lived read-only nonproduction service-owned RTC pass. Use protected owner setup/authorized runner when approved; never substitute OAuth.",
+      "prerequisite": "Separate disposable scoped direct RTC pass for the outstanding denial/lifecycle matrix; reuse existing direct proof only for its recorded cases.",
+      "remedy": "Reconciled checked global no-daily-quota and resource-admission implementation, actual Dokploy primary/legacy Render routing, available grants and disposable fixtures. No new entitlement, revoked useful grant, human sign-in or declined budget deletion is manufactured.",
+      "nextAction": "Separate disposable scoped direct RTC pass for the outstanding denial/lifecycle matrix; reuse existing direct proof only for its recorded cases."
+    }
+  ]
+}

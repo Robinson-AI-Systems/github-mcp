@@ -1,6 +1,6 @@
-## 2026-10-29 — all-user native resource admission in progress
+## 2026-10-29 — global job and native capacity repairs live
 
-Daily job quotas are merged and live at `63b6b5849537a35fbd43e0247de47e70f76691be` (checked release40924604299, independently READY). The next coherent repair removes fixed native request and metadata slot counts for all users in favor of measured worker headroom. See [resource admission handoff](status/2026-10-29-native-resource-admission.md) for source tests, rollout requirements and precise live evidence. Dokploy is the primary worker; Render is retained only for routed legacy workspaces.
+PR472 removes daily job quotas for every client/tenant. PR473 replaces fixed native request/workspace counts with measured memory, storage and responsiveness admission, retaining one operation per workspace and four-hour default inactivity cleanup. Both are merged and live at independently READY `ac0d2805aacb7554ac81a0fb6a7b512471ce3969`, with matching Dokploy worker source and maintenance cleared. Twelve authenticated clone/write/exact-read/close lanes and native commit/push/independent ref/parent verification passed; exact fixtures are gone. See [source, CI, release and cleanup evidence](status/2026-10-29-native-resource-admission.md). Render remains only for two unrelated older workspaces; preserve both disks until safe drain. External fleet installation, independent off-host backup and the existing15 required/2 optional acceptance prerequisites remain explicit. No additional paid resources or approvals were introduced.
 
 ## Current handoff — 2026-10-28
 
@@ -297,7 +297,7 @@ open obligations, original fixture ownership, approvals and deployment provenanc
     "requiredRevision": "b51cda454f01720b3c638f83b9766b30eceaa9fb",
     "task": "Re-run exact classic branch protection read against an eligible private scratch repository, without modifying visibility or paying for an upgrade",
     "procedure": "docs/pr-cards/H-1.md",
-    "gates": "BLOCKED \u2014 PROVIDER PLAN: GitHub private-repo protected branch features require an eligible tier; scratch account remains on current plan, production OFF, spend $0",
+    "gates": "BLOCKED — PROVIDER PLAN: GitHub private-repo protected branch features require an eligible tier; scratch account remains on current plan, production OFF, spend $0",
     "dependsOn": [],
     "status": "PASSED",
     "lastEvidence": "2026-10-23 08:30-09:10 MDT on live 66741a46 (Vercel READY dpl_9xRm6z1CJnfoUDxsrmTGzygs3sJB), custom service-issued MCP, PRODUCTION/full, scratch org robinson-ai-scratch on a free 30-day Enterprise trial. With the Enterprise trial: github_protection_set on private robinson-ai-scratch/rtc-accept-ci-oct23 main (1 approving review, no force push/deletion) applied; github_protection_get read it back exactly; github_protection_remove applied with absence readback. Also earlier today on a private Pro personal repo with required checks (checks body, no 422) then removed and the repo deleted.",
@@ -309,7 +309,7 @@ open obligations, original fixture ownership, approvals and deployment provenanc
     "requiredRevision": "b51cda454f01720b3c638f83b9766b30eceaa9fb",
     "task": "Re-run scoped private-repository ruleset inventory when GitHub plan legitimately permits it",
     "procedure": "docs/pr-cards/H-1.md",
-    "gates": "BLOCKED \u2014 PROVIDER PLAN: private-repo governance access unavailable on current GitHub plan; no subscription change approved",
+    "gates": "BLOCKED — PROVIDER PLAN: private-repo governance access unavailable on current GitHub plan; no subscription change approved",
     "dependsOn": [],
     "status": "PASSED",
     "lastEvidence": "2026-10-23 08:30-09:10 MDT on live 66741a46 (Vercel READY dpl_9xRm6z1CJnfoUDxsrmTGzygs3sJB), custom service-issued MCP, PRODUCTION/full, scratch org robinson-ai-scratch on a free 30-day Enterprise trial. github_ruleset_save on private rtc-accept-ci-oct23 with enforcement evaluate (needs Enterprise) applied, then github_ruleset_delete applied. github_ruleset_list reads returned count 0 complete on private repos. Found and fixed (PR #306): ruleset read-back default-parameter mismatch.",
@@ -382,7 +382,7 @@ open obligations, original fixture ownership, approvals and deployment provenanc
     "requiredRevision": "674fea131e0eb0002f474bb8f529d0f619011286",
     "task": "Independently exercise new H-1 classic complete-object set and remove using isolated public scratch, including preserve-other-controls, readback and exact cleanup",
     "procedure": "docs/pr-cards/H-1.md",
-    "gates": "Source #188 merged; requires reviewed source in READY live, explicit production-enabled test credential and independent per-operation confirmation. Current live PREVIEW/production OFF: no mutation authorized. Private H-1 403 remains BLOCKED \u2014 PROVIDER PLAN.",
+    "gates": "Source #188 merged; requires reviewed source in READY live, explicit production-enabled test credential and independent per-operation confirmation. Current live PREVIEW/production OFF: no mutation authorized. Private H-1 403 remains BLOCKED — PROVIDER PLAN.",
     "dependsOn": [
       "GITHUB-H1-PUBLIC-READ"
     ],
@@ -733,7 +733,7 @@ open obligations, original fixture ownership, approvals and deployment provenanc
     "dependsOn": [],
     "status": "PASSED",
     "lastEvidence": "2026-10-16 genuine connected custom GitHub Cloud MCP acceptance: production Vercel alias github-mcp-chris-projects-de6cd1bf.vercel.app independently resolved READY dpl_FfGNUDzo7vwjExCgD5YYWZZt47Rv, serving live revision a79f08643241d727b38da87b7713728baad39746; required U-1 cf09aab182c7bc6d5e80196adb03f605731201a5 verified as live ancestor (ahead 2/behind 0). Real enrolled OAuth principal PREVIEW/full, I-only robinson-ai-scratch, production OFF, spend $0. github_api_search discovered pinned GitHub REST v2026-03-10 orgs/get, github_api_describe showed GET /orgs/{org} required path only; github_api_read GET 200 returned scoped org login robinson-ai-scratch, numeric org identity 341263172, free plan, 2FA false, default repo read. Independently fetched through specialized github_org_get and confirmed same org identity, plan, 2FA, default permission. Explicit foreign org path under enrolled account refused BEFORE provider call; unknown path/query parameter refused before provider call. No mutation, production activation, spend, secret or cleanup.",
-    "nextAction": "ACCEPTED \u2014 genuine source-bearing READY custom-service pinned REST search/describe/read/negative-scope validation independently established. Any U-1 uncurated write still requires separate owner authority per GITHUB-U1-REST-WRITE."
+    "nextAction": "ACCEPTED — genuine source-bearing READY custom-service pinned REST search/describe/read/negative-scope validation independently established. Any U-1 uncurated write still requires separate owner authority per GITHUB-U1-REST-WRITE."
   },
   {
     "id": "GITHUB-U1-REST-WRITE",
@@ -968,7 +968,7 @@ open obligations, original fixture ownership, approvals and deployment provenanc
     "dependsOn": [],
     "status": "PASSED",
     "lastEvidence": "2026-10-18 post-plan genuine custom PREVIEW/full on independent READY Vercel live f1397503 (dpl_C3uAZsQN2NbZAVWzREFbH2V4chxH), enrolled robinson-ai-scratch I/U, production OFF. Actual scratch private Dependabot GET refused HTTP403 because alerts disabled, with accepted named vulnerability alerts(read); code scanning GET 403 because Advanced Security not enabled, with named security events(read). Both B-5 explanations say endpoint entries are NOT proof of missing grants; advise conditional comparison, not blanket consent. Independent github_check_permissions(security) returned missing=[]/permissions_ok=true, confirming refusal is provider feature/plan not unapproved App grant. Explicit GET /user/packages using P failed local client:no_credentials (separate missing P setup, no imaginary boolean/schema-only grant). Foreign repository owner refused client:outside_scope before GitHub. No raw headers fabricated, existing synthetic boolean parser tests are distinct. Zero writes, grants, spend, OAuth resets or fixture changes.",
-    "nextAction": "ACCEPTED \u2014 genuine source-bearing provider permission-header formatter and credential/scope failure guidance validated after B-5 release, independently compared with real existing grants. Package delete/restore acceptance remains separately queued as GITHUB-G6-PACKAGE-AUTH; no further App grant is inferred."
+    "nextAction": "ACCEPTED — genuine source-bearing provider permission-header formatter and credential/scope failure guidance validated after B-5 release, independently compared with real existing grants. Package delete/restore acceptance remains separately queued as GITHUB-G6-PACKAGE-AUTH; no further App grant is inferred."
   },
   {
     "id": "GITHUB-PRIVATE-USER-PASS-SCOPE",
@@ -976,7 +976,7 @@ open obligations, original fixture ownership, approvals and deployment provenanc
     "requiredRevision": "3df082605de3a91f3e32affd385e88ba90df95d2",
     "status": "BLOCKED",
     "task": "Historical private-pilot pass scope scenario was retired by public per-person OAuth. Verify equivalent explicit account/repository/permission restriction on the supported current grant path; do not recreate retired pilot mode.",
-    "procedure": "docs/pr-cards/PUB-2.md \u2014 2026-10-21 restricted private-user passes correction; tests/unit/private-user-pass-downscope.test.js for source cases.",
+    "procedure": "docs/pr-cards/PUB-2.md — 2026-10-21 restricted private-user passes correction; tests/unit/private-user-pass-downscope.test.js for source cases.",
     "gates": "A disposable currently supported narrowed grant with exact account/repository scope; no reset or widening of existing grants.",
     "dependsOn": [],
     "lastEvidence": "Superseded 2026-10-24: the private-pilot sign-in was retired on 2026-10-23 (PUB-6 rebuild); public tenants are covered by tests/db/pub-6-public-connect.test.js and tests/unit/private-user-pass-downscope.test.js. No live run needed.",
@@ -1149,7 +1149,7 @@ open obligations, original fixture ownership, approvals and deployment provenanc
     "task": "Verify externally reachable signed native Git worker, then exact disposable clone/edit/commit/push/provider readback, stale-generation denial, immutable replay, conflict/recovery and disposal.",
     "procedure": "docs/NATIVE-GIT-OPERATIONS.md; docs/status/2026-10-29-dokploy-native-cutover.md; historical Render proof linked there",
     "gates": "Owner-approved Dokploy project and retained persistent volume; signed protocol-3 route and host continuity for old Render jobs; all-tenant inventory; exact run-owned private scratch fixture; no unrelated resource or useful-grant changes.",
-    "lastEvidence": "Dokploy migration/idle/native lifecycle proof retained: docs/status/2026-10-29-dokploy-native-cutover.md (READY0af2bd93, signed max8/idle-v1, eight fresh clone/write/read lanes, push/ref/parent/replay and persistence;17 fixtures closed, delete4314/independent404). Two older Render jobs remain on the previous-host route; retirement still awaits safe drain/migration. Owner now requires no daily job-creation quota service-wide; source/CI/release/live proof tracked in docs/status/2026-10-29-no-daily-job-quota.md. Existing accepted lifecycle proof is retained; new quota acceptance is not yet claimed.",
+    "lastEvidence": "READY ac0d2805aacb7554ac81a0fb6a7b512471ce3969 and matching Dokploy worker: PR472/473 remove daily quotas and fixed native request/workspace counts for all users. Signed resource-aware/null capacity, twelve live clones/writes/exact reads with four-hour idle renewal, native push4394 independently verified ref/commit/parent, all twelve closes, deletion4408 and independent404; no run-owned jobs remain. Four unrelated workspaces retained, two legacy Render. See docs/status/2026-10-29-native-resource-admission.md and sanitized per-lane proof; source, release and client evidence separated. External off-host backup/fleet installation remain unverified.",
     "dependsOn": []
   }
 ]
