@@ -1,6 +1,6 @@
 # Authority alignment and GitHub MCP replacement plan
 
-Owner-authorized 2026-10-28. Status: audit/parity implementation and scanner tuning are merged and released; Render native lifecycle is accepted. See [live proof](../status/2026-10-28-render-native-git-acceptance.md) and [active switch/concurrency follow-through](../status/2026-10-28-native-git-follow-through.md). Historical checkpoints below do not reopen completed work.
+Owner-authorized 2026-10-28. Status: audit/parity implementation and scanner tuning are merged and released; Render native lifecycle is accepted. See [live proof](../status/2026-10-28-render-native-git-acceptance.md) and [completed switch/concurrency follow-through](../status/2026-10-28-native-git-follow-through.md). Historical checkpoints below do not reopen completed work.
 
 ## Governing intent
 

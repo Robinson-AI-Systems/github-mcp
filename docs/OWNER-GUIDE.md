@@ -1,6 +1,6 @@
 # Owner guide — what you can ask for
 
-Current release checkpoint: audit/parity and scanner changes are live on `8004b9e`; native Git runs on Render. Historical source/daily-release qualifiers below are dated delivery notes, not a current claim those merged tools are unavailable. Consult the latest [live evidence](status/2026-10-28-render-native-git-acceptance.md).
+Current release checkpoint: audit/parity and scanner changes are live; switch/concurrency follow-through is verified on `0d752439`. Native Git runs on Render with two simultaneous workspace requests on the same plan. Historical source/daily-release qualifiers below are dated delivery notes, not a current claim those merged tools are unavailable. Consult the latest [live evidence](status/2026-10-28-render-native-git-acceptance.md).
 
 **Repository scanner profiles:** `github_secret_scanner` is the compact direct entry for settings, scan/preview, configure, rollback and profile offers. Each repository has independent settings. Changes require a reason and pinned before/after retests; exact file/finding exceptions are visible and version-bound. [Guide](SECRET-SCANNER.md) explains the baseline, receipts and limits. This is live; [dated acceptance](status/2026-10-28-render-native-git-acceptance.md) records repository tuning, rollback and worker policy tests.
 
