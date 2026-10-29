@@ -17,3 +17,9 @@ export function signNativeWorkerBody(body, env = process.env) {
  }
  return 'ed25519:' + sign(null, Buffer.from(body), signingKey(env)).toString('base64url');
 }
+
+// Purpose-separated claims; a coding container receives only the public verifier.
+export function signCodingWorkerBody(body,env=process.env){
+ const claim=JSON.parse(body);if(claim.purpose!=='robinson-coding/v1'||Object.hasOwn(claim,'credential'))throw new TypeError('Invalid coding lease.');
+ return 'ed25519:'+sign(null,Buffer.from(body),signingKey(env)).toString('base64url');
+}

@@ -1162,3 +1162,6 @@ Custom GitHub MCP opened PR #440. The exact-head first CI failed due to missing 
 ## 2026-10-28 authority/parity remediation
 
 Owner-approved follow-up is tracked in [the active plan](designs/AUTHORITY-PARITY-2026-10-28.md) and `docs/status/2026-10-28-authority-parity.md`. Earlier completed cards and dated acceptance evidence are historical; they do not establish current parity or close this follow-up.
+
+
+2026-10-29 Playground follow-through: owner-approved integrated coding scope is IN_PROGRESS under [PLAY-1](pr-cards/PLAY-1.md); command adapter source and real-image verification are tracked in [the connector checkpoint](status/2026-10-29-playground-connector.md). This is not a new live acceptance pass or a claim of completed provisioning/preview/lifecycle.

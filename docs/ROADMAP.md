@@ -198,3 +198,5 @@ All original improvement issues **#427–#436** are now independently closed/com
 ## 2026-10-29 — approved full coding workspace expansion
 
 Owner requests development execution, tests, disposable PostgreSQL and preview services in isolated per-workspace environments, targeting8vCPU/8GiB/150GB. This scope is approved under PAR-2; the advance plan, real infrastructure prerequisites and source/deployment/benchmark distinctions are in [the current expansion record](status/2026-10-29-coding-workspace-expansion.md). No superiority or running allocation is claimed before verification.
+
+Playground follow-through now has its own owner-approved [PLAY-1](pr-cards/PLAY-1.md) card: accessible agent command execution/result retrieval and the unfinished integrated allocation/files/preview/revocation lifecycle. Original merged PAR-2 work is not uncounted.

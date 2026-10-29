@@ -3,6 +3,10 @@ on:
   pull_request:
     paths:
       - 'workers/coding-workspace/**'
+      - 'src/playground/**'
+      - 'src/tools/playground.js'
+      - 'src/native-git/**'
+      - 'test/helpers/playground-world.js'
       - 'workers/native-git/resources.js'
       - 'src/github/content-protection.js'
       - 'src/github/open-secret-rules.js'
@@ -22,6 +26,11 @@ jobs:
         with:
           persist-credentials: false
       - name: Build dedicated coding image
-        run: docker build --pull -f workers/coding-workspace/Dockerfile -t robinson-coding:test .
+        run: docker build --pull --target runtime-smoke -f workers/coding-workspace/Dockerfile -t robinson-coding:test .
       - name: Test credential-free commands, database, browser and isolation in the real image
         run: docker run --rm --network none --read-only --cap-drop ALL --cap-add SETUID --cap-add SETGID --cap-add KILL --cap-add CHOWN --cap-add DAC_OVERRIDE --security-opt no-new-privileges --memory 2g --cpus 2 --tmpfs /tmp:rw,nosuid,nodev,size=1g,mode=1777 robinson-coding:test node --test workers/coding-workspace/smoke.test.js
+
+      - name: Build CI-only connector integration stage
+        run: docker build --target connector-test -f workers/coding-workspace/Dockerfile -t robinson-coding-connector:test .
+      - name: Exercise real MCP command tools against actual unprivileged commands
+        run: docker run --rm --network none --read-only --cap-drop ALL --cap-add SETUID --cap-add SETGID --cap-add KILL --cap-add CHOWN --cap-add DAC_OVERRIDE --security-opt no-new-privileges --memory 2g --cpus 2 --tmpfs /tmp:rw,nosuid,nodev,size=1g,mode=1777 robinson-coding-connector:test
