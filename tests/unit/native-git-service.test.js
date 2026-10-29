@@ -1,5 +1,5 @@
 import { it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
@@ -326,4 +326,78 @@ it('binds fresh stable clone intents to the full connection and repository',asyn
  const foreign=parse(await invoke('github_git_workspace_open',args,{...w.connection,client_id:'other-client'}));
  expect(foreign.status).toBe('applied');expect(foreign.result.workspace_id).not.toBe(first.result.workspace_id);
  expect(requests.filter(r=>r.action==='open')).toHaveLength(2);
+});
+
+it('renews both idle deadlines on authorized reads and writes beyond the original deadline',async()=>{
+ const first=parse(await invoke('github_git_workspace_open',{repo:'hello',leaseMinutes:1,requestKey:'idle-active'}));
+ const id=first.result.workspace_id, original=first.result.expires_at;
+ w.advanceClock(40000);
+ const read=parse(await invoke('github_git_workspace_read',{workspace_id:id,operation:'read_file',options:{path:'file.txt'},byteLength:64}));
+ expect(read.expires_at).toBe(w.ctx.now()+60000);expect(read.idle_timeout_ms).toBe(60000);
+ expect((await w.db.getJob(id,nativeConnection(w.ctx))).expires_at.getTime()).toBe(read.expires_at);
+ w.advanceClock(40000);expect(w.ctx.now()).toBeGreaterThan(original);
+ const written=parse(await invoke('github_git_workspace_run',{workspace_id:id,operation:'write_file',expectedGeneration:0,options:{path:'file.txt',base64:Buffer.from('active').toString('base64')}}));
+ expect(written.status).toBe('applied');expect(written.result.workspace.generation).toBe(1);
+ expect(written.result.workspace.expires_at).toBe(w.ctx.now()+60000);
+ const row=await w.db.getJob(id,nativeConnection(w.ctx));expect(row.expires_at.getTime()).toBe(written.result.workspace.expires_at);
+ const meta=JSON.parse(await readFile(join(dir,'storage',JSON.parse(row.provider_ref).worker,'workspace.json'),'utf8'));
+ expect(meta).toMatchObject({idleTimeoutMs:60000,lastActivityAt:w.ctx.now(),expiresAt:w.ctx.now()+60000,generation:1});
+});
+it('inventory, health checks and foreign or revoked access never renew an idle workspace',async()=>{
+ const first=parse(await invoke('github_git_workspace_open',{repo:'hello',leaseMinutes:1,requestKey:'idle-expire'})),id=first.result.workspace_id;
+ const row=await w.db.getJob(id,nativeConnection(w.ctx)),backend=JSON.parse(row.provider_ref).worker;
+ w.advanceClock(40000);
+ await invoke('github_git_workspace_list',{});await invoke('github_git_workspace_read',{operation:'capabilities'});
+ await fetch(origin+'/health');
+ expect((await invoke('github_git_workspace_read',{workspace_id:id,operation:'status'},{...w.connection,client_id:'foreign'})).isError).toBe(true);
+ w.gh.when('GET /repos/{owner}/{repo}').reply(403,{message:'Access revoked'});
+ expect((await invoke('github_git_workspace_read',{workspace_id:id,operation:'status'})).isError).toBe(true);
+ expect((await w.db.getJob(id,nativeConnection(w.ctx))).expires_at.getTime()).toBe(first.result.expires_at);
+ w.advanceClock(21000);expect(await w.db.getJob(id,nativeConnection(w.ctx))).toBeNull();
+ const cleanup=new NativeGitWorker({root:join(dir,'storage'),authorize:async()=>false,now:w.ctx.now});
+ expect(await cleanup.prune()).toEqual({removed:1});await expect(readFile(join(dir,'storage',backend,'workspace.json'))).rejects.toMatchObject({code:'ENOENT'});
+});
+it('adopts a legacy workspace without changing its original idle duration or reviving it after expiry',async()=>{
+ const binding={authority:'b'.repeat(32),connection:nativeConnection(w.ctx),owner:'example-org',repo:'hello'};
+ const worker=new NativeGitWorker({root:join(dir,'storage'),authorize:async()=>true,now:w.ctx.now,allowLocalFixtures:true});
+ const opened=await worker.create(binding,{requestKey:'legacy-idle',fixtureRemote:bare,ttlMs:60000});
+ const path=join(dir,'storage',opened.workspace_id,'workspace.json'),meta=JSON.parse(await readFile(path,'utf8'));
+ delete meta.idleTimeoutMs;delete meta.lastActivityAt;await writeFile(path,JSON.stringify(meta));
+ const id='job_1234567890abcdef';await w.db.createJob({id,connection:nativeConnection(w.ctx),owner:'example-org',repo:'hello',kind:'native-git-workspace',providerRef:JSON.stringify({authority:binding.authority,worker:opened.workspace_id}),ttlMinutes:1});
+ w.advanceClock(40000);const renewed=parse(await invoke('github_git_workspace_read',{workspace_id:id,operation:'status'}));
+ expect(renewed.idle_timeout_ms).toBe(60000);expect(renewed.expires_at).toBe(w.ctx.now()+60000);
+ expect(JSON.parse((await w.db.getJob(id,nativeConnection(w.ctx))).provider_ref).idleTimeoutMs).toBe(60000);
+ w.advanceClock(40000);expect(parse(await invoke('github_git_workspace_read',{workspace_id:id,operation:'status'})).state).toBe('ready');
+ w.advanceClock(61000);expect((await invoke('github_git_workspace_read',{workspace_id:id,operation:'status'})).isError).toBe(true);
+ await expect(worker.touch(opened.workspace_id,binding,60000)).rejects.toThrow(/expired/);
+});
+it('accepts legacy signed protocol-2 requests without silently renewing their fixed database lease',async()=>{
+ const first=parse(await invoke('github_git_workspace_open',{repo:'hello',leaseMinutes:1,requestKey:'legacy-wire'}));
+ const opened=requests.find(r=>r.action==='open'),row=await w.db.getJob(first.result.workspace_id,nativeConnection(w.ctx));
+ w.advanceClock(40000);
+ const body=JSON.stringify({version:2,expiresAt:w.ctx.now()+60000,action:'inspect',binding:opened.binding,workspace_id:JSON.parse(row.provider_ref).worker,scannerPolicy:opened.scannerPolicy});
+ const response=await fetch(origin+'/v1/workspace',{method:'POST',body,headers:{'x-robinson-signature':signWorkerBody(body,KEY)}});
+ expect(response.status).toBe(200);expect((await response.json()).expires_at).toBe(first.result.expires_at);
+});
+
+it('defaults new workspaces to four idle hours without treating the worker limit as reserved resources',async()=>{
+ const opened=parse(await invoke('github_git_workspace_open',{repo:'hello',requestKey:'four-hour-default'}));
+ expect(opened.result.idle_timeout_ms).toBe(4*60*60000);
+ expect(opened.result.expires_at).toBe(w.ctx.now()+4*60*60000);
+});
+
+it('rejects protocol-3 mutations without a matching signed idle window before Git changes anything',async()=>{
+ const id=await opened(),openRequest=requests.find(r=>r.action==='open'),row=await w.db.getJob(id,nativeConnection(w.ctx));
+ const body=JSON.stringify({version:3,expiresAt:w.ctx.now()+60000,action:'run',binding:openRequest.binding,workspace_id:JSON.parse(row.provider_ref).worker,operation:'branch_create',options:{branch:'must-not-exist'},expectedGeneration:0,requestKey:'missing-idle',allowWrite:true,scannerPolicy:openRequest.scannerPolicy});
+ const response=await fetch(origin+'/v1/workspace',{method:'POST',body,headers:{'x-robinson-signature':signWorkerBody(body,KEY)}});
+ expect(response.status).toBe(400);expect((await response.json()).reason).toContain('idle timeout');
+ const state=parse(await invoke('github_git_workspace_read',{workspace_id:id,operation:'status'}));expect(state.generation).toBe(0);
+ const refs=parse(await invoke('github_git_workspace_read',{workspace_id:id,operation:'refs'}));expect(refs.stdout).not.toContain('must-not-exist');
+});
+it('does not clear an existing mutation lock when idle renewal is refused',async()=>{
+ const id=await opened(),row=await w.db.getJob(id,nativeConnection(w.ctx)),backend=JSON.parse(row.provider_ref).worker;
+ const lock=join(dir,'storage',backend,'mutation.lock');await writeFile(lock,'operator-owned-lock');
+ const refused=await invoke('github_git_workspace_read',{workspace_id:id,operation:'status'});expect(refused.isError).toBe(true);
+ expect(await readFile(lock,'utf8')).toBe('operator-owned-lock');
+ await rm(lock);expect(parse(await invoke('github_git_workspace_read',{workspace_id:id,operation:'status'})).state).toBe('ready');
 });

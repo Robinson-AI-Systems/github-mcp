@@ -1,6 +1,6 @@
 // Internal worker transport, never a user-supplied URL or host command.
 import { createHmac, timingSafeEqual, createHash, createPublicKey, verify } from 'node:crypto';
-export const WORKER_PROTOCOL = 2;
+export const WORKER_PROTOCOL = 3;
 export function workerKey(key) {
  if (typeof key === 'string' && key.startsWith('ed25519:')) {
   const parsed = createPublicKey({ key: Buffer.from(key.slice(8), 'base64'), format: 'der', type: 'spki' });
@@ -23,7 +23,7 @@ export function verifyWorkerBody(body, signature, key, now = Date.now()) {
   if (!timingSafeEqual(Buffer.from(signature, 'hex'), Buffer.from(signWorkerBody(body, key), 'hex'))) throw new TypeError('Invalid worker authorization.');
  }
  const data = JSON.parse(body);
- if (data.version !== WORKER_PROTOCOL || !Number.isSafeInteger(data.expiresAt) || data.expiresAt <= now || data.expiresAt > now + 90000) throw new TypeError('Expired or invalid worker lease.');
+ if (![2, WORKER_PROTOCOL].includes(data.version) || !Number.isSafeInteger(data.expiresAt) || data.expiresAt <= now || data.expiresAt > now + 90000) throw new TypeError('Expired or invalid worker lease.');
  if (!['capabilities', 'open', 'inspect', 'read', 'run', 'close'].includes(data.action)) throw new TypeError('Unsupported worker action.');
  return data;
 }

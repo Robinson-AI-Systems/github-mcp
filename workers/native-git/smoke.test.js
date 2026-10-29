@@ -14,7 +14,8 @@ test('packaged image clones, commits, pushes, verifies and restores native Git s
   await mkdir(seed); git('init', '-b', 'main'); git('config', 'user.name', 'Fixture'); git('config', 'user.email', 'fixture@example.test'); await writeFile(join(seed, 'file.txt'), 'base\n'); git('add', 'file.txt'); git('commit', '-m', 'base'); git('clone', '--bare', seed, bare);
   const binding = { authority: 'image-fixture', connection: 'image-connection', owner: 'example-org', repo: 'hello' }; const root = join(dir, 'storage');
   const worker = new NativeGitWorker({ root, authorize: async () => true, allowLocalFixtures: true });
-  const opened = await worker.create(binding, { requestKey: 'image-open', fixtureRemote: bare }); assert.equal(opened.state, 'ready'); let generation = 0;
+  const opened = await worker.create(binding, { requestKey: 'image-open', fixtureRemote: bare }); assert.equal(opened.state, 'ready');
+  const lease=await worker.touch(opened.workspace_id,binding,4*60*60000); assert.equal(lease.idle_timeout_ms,4*60*60000); assert.equal(lease.expires_at,lease.last_activity_at+4*60*60000); let generation = 0;
   for (const [operation, args] of [['write_file', { path: 'binary.dat', base64: 'AP8B' }], ['add', { paths: ['binary.dat'] }], ['commit', { message: 'image commit' }], ['push', { branch: 'main' }]]) {
    const result = await worker.execute(opened.workspace_id, binding, { operation, args, requestKey: operation, expectedGeneration: generation++ }); assert.equal(result.status, 'applied'); if (operation === 'push') assert.equal(result.remote_verified, true);
   }

@@ -38,9 +38,11 @@ export async function nativeRecord(ctx, id, { allowDisposed = false } = {}) {
  const meta = JSON.parse(row.provider_ref);
  if (!/^git_[a-f0-9]{32}$/.test(meta.worker ?? '') || !/^[a-f0-9]{32}$/.test(meta.authority ?? '')) throw new TypeError('Invalid stored workspace identity.');
  await authorizeNativeRepo(ctx, row.owner, row.repo);
- return { row, binding: { authority: meta.authority, connection: nativeConnection(ctx), owner: row.owner, repo: row.repo }, worker: meta.worker };
+ const idleTimeoutMs = meta.idleTimeoutMs ?? new Date(row.expires_at).getTime() - new Date(row.created_at).getTime();
+ if (!Number.isSafeInteger(idleTimeoutMs) || idleTimeoutMs < 60000 || idleTimeoutMs > 86400000) throw new TypeError('Invalid stored workspace idle timeout.');
+ return { row, job: { id, idleTimeoutMs }, binding: { authority: meta.authority, connection: nativeConnection(ctx), owner: row.owner, repo: row.repo }, worker: meta.worker };
 }
-export async function callNativeWorker(ctx, { binding, action, workspace_id, operation, options, requestKey, expectedGeneration, allowWrite = false, network = false }) {
+export async function callNativeWorker(ctx, { binding, action, workspace_id, operation, options, requestKey, expectedGeneration, allowWrite = false, network = false, job, renewLease = true }) {
  const url = workerUrl(ctx.env);
  const scannerPolicy=binding?await loadScannerPolicy(ctx.db,binding.owner,binding.repo):null;
  let credential;
@@ -49,7 +51,10 @@ export async function callNativeWorker(ctx, { binding, action, workspace_id, ope
   credential = result.personal?.token ?? result.token;
   if (typeof credential !== 'string' || !credential) throw new TypeError('GitHub network authorization is unavailable.');
  }
- const body = JSON.stringify({ version: WORKER_PROTOCOL, expiresAt: (ctx.now ?? Date.now)() + 60000, binding, action, workspace_id, operation, options, requestKey, expectedGeneration, allowWrite, ...(scannerPolicy?{scannerPolicy:{settings:scannerPolicy.settings,revision:scannerPolicy.revision}}:{}), ...(credential ? { credential } : {}) });
+ const activeJob = job && renewLease && !['capabilities','close'].includes(action);
+ if (activeJob && !await ctx.db.renewNativeGitJob(job.id, nativeConnection(ctx), { idleTimeoutMs: job.idleTimeoutMs }))
+  throw Object.assign(new TypeError('Workspace metadata expired or is unavailable; nothing was sent to the worker.'), {safeMessage:true,safeCode:'native_workspace_expired'});
+ const body = JSON.stringify({ ...(activeJob ? {idleTimeoutMs:job.idleTimeoutMs} : {}), version: WORKER_PROTOCOL, ...(!renewLease ? {renewLease:false} : {}), expiresAt: (ctx.now ?? Date.now)() + 60000, binding, action, workspace_id, operation, options, requestKey, expectedGeneration, allowWrite, ...(scannerPolicy?{scannerPolicy:{settings:scannerPolicy.settings,revision:scannerPolicy.revision}}:{}), ...(credential ? { credential } : {}) });
  const failure = (code, message, status) => Object.assign(new TypeError(message), {
   safeMessage: true, nativeCode: code,safeCode:code,safeRetryable:code==='native_busy', ...(status ? { status } : {})
  });
@@ -86,6 +91,12 @@ export async function callNativeWorker(ctx, { binding, action, workspace_id, ope
   throw failure(busy ? 'native_busy' : 'native_http', busy
    ? 'Native Git worker is busy. After the active operation finishes, inspect state and retry the same intent.'
    : `Native Git worker returned HTTP ${response.status}${reason ? ': ' + reason : '.'} Inspect state before a new intent.`, response.status);
+ }
+ if (activeJob) {
+  if (data.idle_timeout_ms !== job.idleTimeoutMs || !Number.isSafeInteger(data.last_activity_at) || data.expires_at !== data.last_activity_at + job.idleTimeoutMs || data.expires_at <= (ctx.now ?? Date.now)() || data.last_activity_at > (ctx.now ?? Date.now)() + 90000)
+   throw failure('native_response', 'Worker did not confirm the workspace idle lease. Update the worker before retrying; inspect the original intent.');
+  if (!await ctx.db.renewNativeGitJob(job.id, nativeConnection(ctx), {idleTimeoutMs:job.idleTimeoutMs,expiresAt:data.expires_at}))
+   throw failure('native_metadata', 'Worker answered, but workspace expiry metadata could not be synchronized. Inspect the same workspace and intent before retrying.');
  }
  return data;
 }

@@ -113,6 +113,16 @@ export function createFakeDb({ clock = Date.now } = {}) {
       if (!JOB_ID.test(id ?? '') || !row || row.connection_id !== connection || !connection || row.expires_at.getTime() <= clock()) return null;
       return { ...row };
     },
+    async renewNativeGitJob(id, connection, { idleTimeoutMs, expiresAt = null }) {
+      if (!JOB_ID.test(id ?? '') || typeof connection !== 'string' || !connection || !Number.isSafeInteger(idleTimeoutMs) || idleTimeoutMs < 60000 || idleTimeoutMs > 86400000 || expiresAt !== null && !Number.isSafeInteger(expiresAt)) throw new TypeError('Invalid native idle lease.');
+      const row=jobs.get(id);
+      if (!row || row.connection_id!==connection || row.kind!=='native-git-workspace' || row.state!=='pending' || row.expires_at.getTime()<=clock()) return null;
+      const meta=JSON.parse(row.provider_ref);
+      if (meta.idleTimeoutMs!==undefined && meta.idleTimeoutMs!==idleTimeoutMs || expiresAt!==null && (expiresAt<=clock() || expiresAt>clock()+idleTimeoutMs+90000)) return null;
+      meta.idleTimeoutMs=idleTimeoutMs;row.provider_ref=JSON.stringify(meta);row.updated_at=new Date(clock());
+      row.expires_at=new Date(Math.max(row.expires_at.getTime(),expiresAt??clock()+idleTimeoutMs));
+      return {...row};
+    },
     async listNativeGitWorkspaces(connection, { after = null, limit = 10 } = {}) {
       if (typeof connection !== 'string' || !connection) return [];
       if (after !== null && !JOB_ID.test(after) || !Number.isSafeInteger(limit) || limit < 1 || limit > 20) throw new TypeError('Invalid workspace inventory page.');

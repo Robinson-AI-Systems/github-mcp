@@ -544,6 +544,20 @@ export function createDb(sql = productionSql()) {
         FROM gh_async_jobs WHERE id = ${id} AND connection_id = ${connection} AND expires_at > now()`;
       return rows[0] ?? null;
     },
+    /** Renew only an active connection-bound native workspace; never revive a closed/expired job. */
+    async renewNativeGitJob(id, connection, { idleTimeoutMs, expiresAt = null }) {
+      if (!JOB_ID.test(id ?? '') || typeof connection !== 'string' || !connection || !Number.isSafeInteger(idleTimeoutMs) || idleTimeoutMs < 60000 || idleTimeoutMs > 86400000 || expiresAt !== null && !Number.isSafeInteger(expiresAt)) throw new TypeError('Invalid native idle lease.');
+      const expiry = expiresAt === null ? null : new Date(expiresAt).toISOString();
+      const rows = await sql`UPDATE gh_async_jobs SET
+        provider_ref=jsonb_set(provider_ref::jsonb,'{idleTimeoutMs}',to_jsonb(${idleTimeoutMs}::bigint))::text,
+        expires_at=GREATEST(expires_at,COALESCE(${expiry}::timestamptz,now()+make_interval(secs=>${idleTimeoutMs / 1000}))),updated_at=now()
+        WHERE id=${id} AND connection_id=${connection} AND kind='native-git-workspace' AND state='pending' AND expires_at>now()
+          AND CASE WHEN kind='native-git-workspace' THEN (provider_ref::jsonb->>'idleTimeoutMs' IS NULL OR provider_ref::jsonb->>'idleTimeoutMs'=${String(idleTimeoutMs)}) ELSE FALSE END
+          AND (${expiry}::timestamptz IS NULL OR (${expiry}::timestamptz>now() AND ${expiry}::timestamptz<=now()+make_interval(secs=>${idleTimeoutMs / 1000 + 90})))
+        RETURNING id,expires_at,provider_ref`;
+      return rows[0] ?? null;
+    },
+
     /** Connection-bound native workspace inventory; metadata is reauthorized before tools return it. */
     async listNativeGitWorkspaces(connection, { after = null, limit = 10 } = {}) {
       if (typeof connection !== 'string' || !connection) return [];

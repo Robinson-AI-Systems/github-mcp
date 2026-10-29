@@ -22,7 +22,7 @@ export function nativeGitServer({ root, key, now = Date.now, allowLocalFixtures 
    const chunks = []; let bytes = 0;
    for await (const chunk of req) { bytes += chunk.length; if (bytes > 2 * 1024 * 1024) return send(413, { error: 'request_too_large' }); chunks.push(chunk); }
    claim = verifyWorkerBody(Buffer.concat(chunks).toString('utf8'), req.headers['x-robinson-signature'], key, now());
-   if (claim.action === 'capabilities') return send(200, { ready: true, protocol: WORKER_PROTOCOL, native_git: execFileSync('git', ['--version'], { encoding: 'utf8', timeout: 2000 }).trim(), max_concurrent: maxConcurrent });
+   if (claim.action === 'capabilities') return send(200, { ready: true, protocol: WORKER_PROTOCOL, native_git: execFileSync('git', ['--version'], { encoding: 'utf8', timeout: 2000 }).trim(), max_concurrent: maxConcurrent, workspace_lease: 'idle-v1' });
    if(!claim.scannerPolicy||!Number.isSafeInteger(claim.scannerPolicy.revision)||claim.scannerPolicy.revision<0)throw new TypeError('Protocol 2 requires the current repository scanner policy; update the control plane and worker together.');
    const policy=scannerSettings(claim.scannerPolicy?.settings??defaultScannerSettings());
    return await withRepositoryProtection(policy.additionalRules.filter(r=>!policy.disabledRules.includes(r.id)),async()=>{
@@ -35,12 +35,21 @@ export function nativeGitServer({ root, key, now = Date.now, allowLocalFixtures 
     authorize: async (binding, { write }) => JSON.stringify(binding) === expected && claim.expiresAt > now() && (!write || claim.allowWrite === true),
     credential: async () => { if (typeof claim.credential !== 'string' || !claim.credential) throw new TypeError('Missing short-lived network authorization.'); return claim.credential; }
    });
+   if (['open','run','close'].includes(claim.action) && claim.allowWrite !== true) throw new TypeError('Workspace mutation requires an authorized write lease.');
+   const sliding = claim.version === 3 && claim.action !== 'close' && !(claim.action === 'inspect' && claim.renewLease === false);
+   if (sliding && (!Number.isSafeInteger(claim.idleTimeoutMs) || claim.idleTimeoutMs < 60000 || claim.idleTimeoutMs > 86400000)) throw new TypeError('Invalid workspace idle timeout.');
+   if (sliding && claim.action === 'open' && claim.options?.ttlMs !== claim.idleTimeoutMs) throw new TypeError('Clone idle timeout must match its signed lease.');
+   if (sliding && claim.action !== 'open') await worker.touch(claim.workspace_id, claim.binding, claim.idleTimeoutMs);
    let result;
    switch (claim.action) {
     case 'open': if (claim.allowWrite !== true) throw new TypeError('Workspace creation requires an authorized cache lease.'); result = await worker.create(claim.binding, { ...claim.options, requestKey: claim.requestKey, ...(allowLocalFixtures && fixtureRemote ? { fixtureRemote: fixtureRemote(claim.binding) } : {}) }); break;
     case 'inspect': result = await worker.inspect(claim.workspace_id, claim.binding, claim.options?.worktree); break;
     case 'read': case 'run': if (!(claim.action === 'read' ? READ_OPERATIONS : WRITE_OPERATIONS).includes(claim.operation)) throw new TypeError('Operation does not match its lease action.'); result = await worker.execute(claim.workspace_id, claim.binding, { operation: claim.operation, args: claim.options ?? {}, requestKey: claim.requestKey, expectedGeneration: claim.expectedGeneration }); break;
     case 'close': result = await worker.close(claim.workspace_id, claim.binding); break;
+   }
+   if (sliding) {
+    const lease = await worker.touch(lockKey, claim.binding, claim.idleTimeoutMs, { admitted: true });
+    result = { ...result, ...lease };
    }
    return send(200, result);
    });

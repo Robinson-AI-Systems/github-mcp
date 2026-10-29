@@ -62,10 +62,10 @@ export class NativeGitWorker {
     if (await realpath(dir) !== dir) throw new TypeError('Workspace storage must not be a symlink.');
     const meta = await json(join(dir, 'workspace.json'));
     if (meta.binding !== bindingHash(binding)) throw new TypeError('Workspace belongs to another connection.');
-    if (!allowExpired && meta.expiresAt <= this.now()) throw new TypeError('Workspace lease expired. Renew or dispose it through its owner connection.');
+    if (!allowExpired && meta.expiresAt <= this.now()) throw new TypeError('Workspace idle timeout expired. Open a separate workspace with a fresh intent.');
     return { dir, repo: join(dir, 'repo'), meta };
   }
-  async create(binding, { requestKey, fixtureRemote, branch, depth, ttlMs = 86400000, authorName = 'Robinson Git workspace', authorEmail = 'workspace@users.noreply.github.com' } = {}) {
+  async create(binding, { requestKey, fixtureRemote, branch, depth, ttlMs = 14400000, authorName = 'Robinson Git workspace', authorEmail = 'workspace@users.noreply.github.com' } = {}) {
     await this.access(binding, false); value(requestKey, 128); value(authorName, 100); value(authorEmail, 254);
     const { owner, repo } = binding;
     if (!/^[A-Za-z0-9-]{1,39}$/.test(owner) || !/^[A-Za-z0-9_.-]{1,100}$/.test(repo) || ['.', '..'].includes(repo)) throw new TypeError('Invalid GitHub remote identity.');
@@ -78,7 +78,7 @@ export class NativeGitWorker {
     if (await realpath(this.root) !== this.root) throw new TypeError('Worker storage root must not be a symlink.');
     try { await mkdir(dir, { mode: 0o700 }); } catch (e) { if (e.code !== 'EEXIST') throw e; const prior = await this.workspace(id, binding); if (prior.meta.createIntent !== createIntent) throw new TypeError('Clone request key belongs to different input.'); return { workspace_id: id, replayed: true, ...await this.inspect(id, binding) }; }
     const remote = fixtureRemote ?? `https://github.com/${owner}/${repo}.git`;
-    await save(join(dir, 'workspace.json'), { binding: bindingHash(binding), createIntent, remote, generation: 0, expiresAt: this.now() + ttlMs, state: 'opening' });
+    await save(join(dir, 'workspace.json'), { binding: bindingHash(binding), createIntent, remote, generation: 0, idleTimeoutMs: ttlMs, lastActivityAt: this.now(), expiresAt: this.now() + ttlMs, state: 'opening' });
     try {
       const token = fixtureRemote ? null : await this.credential?.(binding, { write: false });
       await this.git(dir, ['clone', '--no-recurse-submodules', ...(branch ? ['--branch', ref(branch)] : []), ...(depth ? ['--depth', String(depth)] : []), '--', remote, 'repo'], { token, remote });
@@ -87,6 +87,20 @@ export class NativeGitWorker {
       const meta = await json(join(dir, 'workspace.json')); meta.state = 'ready'; await save(join(dir, 'workspace.json'), meta);
       return { workspace_id: id, ...await this.inspect(id, binding) };
     } catch { return { workspace_id: id, state: 'uncertain', next: 'Inspect the workspace. An interrupted clone is not replayed automatically; dispose it and create a new intent if incomplete.' }; }
+  }
+  async touch(id, binding, idleTimeoutMs, { admitted = false } = {}) {
+    if (!Number.isSafeInteger(idleTimeoutMs) || idleTimeoutMs < 60000 || idleTimeoutMs > 86400000) throw new TypeError('Invalid workspace idle timeout.');
+    const w = await this.workspace(id, binding, false, admitted);
+    let lock;
+    try { lock = await open(join(w.dir, 'mutation.lock'), 'wx', 0o600); } catch (error) { if (error.code === 'EEXIST') throw new TypeError('Workspace is leased; inspect current state. Interrupted locks require operator recovery.'); throw error; }
+    try {
+      const meta = await json(join(w.dir, 'workspace.json'));
+      if (!admitted && meta.expiresAt <= this.now()) throw new TypeError('Workspace idle timeout expired; open a separate workspace with a fresh intent.');
+      if (meta.idleTimeoutMs !== undefined && meta.idleTimeoutMs !== idleTimeoutMs) throw new TypeError('Workspace idle timeout differs from its original lease.');
+      meta.idleTimeoutMs = idleTimeoutMs; meta.lastActivityAt = this.now(); meta.expiresAt = meta.lastActivityAt + idleTimeoutMs;
+      await save(join(w.dir, 'workspace.json'), meta);
+      return { idle_timeout_ms: idleTimeoutMs, last_activity_at: meta.lastActivityAt, expires_at: meta.expiresAt };
+    } finally { await lock.close(); await rm(join(w.dir, 'mutation.lock'), { force: true }); }
   }
   async inspect(id, binding, worktree) {
     const w = await this.workspace(id, binding);

@@ -8,6 +8,25 @@ const make1 = (over = {}) => ({ id: J1, connection: 'client-1', owner: 'example-
 
 export function runJobStoreContract(name, make) {
   describe(`async jobs: ${name}`, () => {
+    it('renews native idle metadata only for its active owner and immutable original duration',async()=>{
+      const db=await make();
+      const row=await db.createJob(make1({kind:'native-git-workspace',providerRef:JSON.stringify({worker:'git_'+'a'.repeat(32),authority:'b'.repeat(32)}),ttlMinutes:1}));
+      expect(await db.renewNativeGitJob(J1,'foreign',{idleTimeoutMs:60000})).toBeNull();
+      const expiry=new Date(row.expires_at).getTime()+1000;
+      const renewed=await db.renewNativeGitJob(J1,'client-1',{idleTimeoutMs:60000,expiresAt:expiry});
+      expect(new Date(renewed.expires_at).getTime()).toBe(expiry);expect(JSON.parse(renewed.provider_ref).idleTimeoutMs).toBe(60000);
+      expect(await db.renewNativeGitJob(J1,'client-1',{idleTimeoutMs:120000})).toBeNull();
+      expect(await db.renewNativeGitJob(J1,'client-1',{idleTimeoutMs:60000,expiresAt:expiry+600000})).toBeNull();
+      await db.finishJob(J1,'client-1',{state:'ready'});
+      expect(await db.renewNativeGitJob(J1,'client-1',{idleTimeoutMs:60000})).toBeNull();
+      await db.createJob(make1({id:J2,kind:'native-git-workspace',providerRef:'{}',ttlMinutes:-1}));
+      expect(await db.renewNativeGitJob(J2,'client-1',{idleTimeoutMs:60000})).toBeNull();
+      await expect(db.renewNativeGitJob(J1,'client-1',{idleTimeoutMs:1})).rejects.toThrow(TypeError);
+    });
+    it('does not apply native idle renewal to another kind of job',async()=>{
+      const db=await make();await db.createJob(make1());
+      expect(await db.renewNativeGitJob(J1,'client-1',{idleTimeoutMs:60000})).toBeNull();
+    });
     it('starts pending and reads back only for the connection that started it', async () => {
       const db = await make();
       const row = await db.createJob(make1());
