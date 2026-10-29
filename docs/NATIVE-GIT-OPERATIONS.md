@@ -15,11 +15,13 @@ Opening and mutating a workspace currently require a full write-capable connecti
 
 ## Branch switching and parallel agents
 
+Current capacity evidence: [four-agent verification](status/2026-10-29-native-git-capacity.md). Older dated notes record earlier settings.
+
 Use `operation:"switch", options:{branch:"topic"}` after creating the local branch. `name` and `ref` are supported aliases; disagreeing values refuse before sending a mutation. Switching never guesses a remote tracking branch. Inspect `branch`, `head` and `generation` afterward. Detached worktrees report branch=null; switching is independently verified against the requested branch. Invalid options produce explicit guidance rather than a generic transient read failure.
 
-Multiple workspaces may remain open. The reviewed Render configuration allows two simultaneous requests in different workspaces, including preflight/read requests, on the existing single process/disk. A workspace admits only one request at a time; its generation and mutation lock remain authoritative. Busy/over-capacity responses disclose retry guidance; there is no durable queue and no automatic mutation resend. Keep the same requestKey for the same intent and inspect after a current operation completes. Do not create new intents to work around contention.
+Multiple workspaces may remain open. The reviewed Render configuration allows four simultaneous requests in different workspaces, including preflight/read requests, on the existing single process/disk. A workspace admits only one request at a time; its generation and mutation lock remain authoritative. Busy/over-capacity responses disclose retry guidance; there is no durable queue and no automatic mutation resend. Keep the same requestKey for the same intent and inspect after a current operation completes. Do not create new intents to work around contention.
 
-Two requests is an initial bounded concurrency setting, not a measured large-clone capacity guarantee or a limit of Git itself. All workspaces share the 1 GB disk and 512 MB memory. Give each agent its own workspace/branch; distinct connections cannot access each other's workspaces. Inspect resource measurements before raising the 1–32 configurable request cap. This does not resize the host or its bill.
+Four requests is a bounded concurrency setting, not a measured large-clone capacity guarantee or a limit of Git itself. All workspaces share the 1 GB disk and 512 MB memory. Give each agent its own workspace/branch; distinct connections cannot access each other's workspaces. Inspect resource measurements before raising the 1–32 configurable request cap. This does not resize the host or its bill.
 
 ## Initial Dokploy deployment (retained migration option)
 

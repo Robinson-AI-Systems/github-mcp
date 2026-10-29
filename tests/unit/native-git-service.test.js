@@ -155,9 +155,17 @@ it('explains invalid switch input before sending a worker mutation', async () =>
 });
 
 
-it('serves two independent workspaces concurrently, keeps per-workspace exclusion and reports bounded overload', async () => {
- const first = await opened();
- const second = parse(await invoke('github_git_workspace_open', { owner: 'example-org', repo: 'hello', requestKey: 'second-concurrent-workspace' })).result.workspace_id;
+it.each([2, 4])('serves %i independent workspaces concurrently with per-workspace exclusion and bounded overload', async capacity => {
+ if (capacity !== 2) {
+  await new Promise(resolve => server.close(resolve));
+  server = nativeGitServer({root:join(dir,'storage'),key:KEY,now:w.ctx.now,allowLocalFixtures:true,fixtureRemote:()=>bare,maxConcurrent:capacity});
+  await new Promise(resolve => server.listen(0,'127.0.0.1',resolve));
+  origin = `http://127.0.0.1:${server.address().port}`;
+ }
+ const capabilities = parse(await invoke('github_git_workspace_read',{operation:'capabilities'}));
+ expect(capabilities.worker.max_concurrent).toBe(capacity);
+ const ids = [];
+ for (let i=0;i<capacity;i++) ids.push(parse(await invoke('github_git_workspace_open',{owner:'example-org',repo:'hello',requestKey:`concurrent-workspace-${i}`})).result.workspace_id);
  const { nativeConnection } = await import('../../src/native-git/client.js');
  const bodyFor = async id => {
   const row = await w.db.getJob(id, nativeConnection(w.ctx));
@@ -165,24 +173,24 @@ it('serves two independent workspaces concurrently, keeps per-workspace exclusio
   return JSON.stringify({ version: 2, scannerPolicy: {settings: {additionalRules:[],disabledRules:[],suppressions:[]},revision:0}, action: 'inspect', workspace_id: meta.worker, binding: {authority:meta.authority,connection:nativeConnection(w.ctx),owner:row.owner,repo:row.repo}, expiresAt: w.ctx.now()+60000 });
  };
  const send = body => fetch(origin+'/v1/workspace', {method:'POST',body,headers:{'x-robinson-signature':signWorkerBody(body,KEY)}});
- const a = await bodyFor(first), b = await bodyFor(second);
+ const bodies = await Promise.all(ids.map(bodyFor));
  let entered = 0, release, arrived;
  const held = new Promise(resolve => { release=resolve; });
- const both = new Promise(resolve => { arrived=resolve; });
+ const all = new Promise(resolve => { arrived=resolve; });
  const original = NativeGitWorker.prototype.inspect;
  vi.spyOn(NativeGitWorker.prototype,'inspect').mockImplementation(async function(...args) {
-  if (++entered===2) arrived();
+  if (++entered===capacity) arrived();
   await held;
   return original.apply(this,args);
  });
- const pending = [send(a),send(b)];
+ const pending = bodies.map(send);
  try {
-  await both;
-  const busy = await send(a); expect(busy.status).toBe(409); expect((await busy.json()).error).toBe('workspace_busy');
-  const c = JSON.parse(a); c.workspace_id='git_'+'f'.repeat(32);
-  const full = await send(JSON.stringify(c)); expect(full.status).toBe(429); expect(full.headers.get('retry-after')).toBe('2'); await full.text();
+  await all;
+  const busy = await send(bodies[0]); expect(busy.status).toBe(409); expect((await busy.json()).error).toBe('workspace_busy');
+  const extra = JSON.parse(bodies[0]); extra.workspace_id='git_'+'f'.repeat(32);
+  const full = await send(JSON.stringify(extra)); expect(full.status).toBe(429); expect(full.headers.get('retry-after')).toBe('2'); await full.text();
  } finally { release(); }
  const responses = await Promise.all(pending);
  for (const response of responses) { expect(response.status).toBe(200); expect((await response.json()).branch).toBe('main'); }
- const again = await send(a); expect(again.status).toBe(200); await again.text();
+ const again = await send(bodies[0]); expect(again.status).toBe(200); await again.text();
 });
