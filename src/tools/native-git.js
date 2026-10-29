@@ -62,6 +62,8 @@ const run = defineGithubWrite({
  name: 'github_git_workspace_run', area: 'git', audience: ['B', 'O', 'Op'],
  description: 'Run typed native Git operations. Read capabilities with options.name set to the operation for exact required arguments and examples.',
  properties: { workspace_id: WORKSPACE, operation: { type: 'string', enum: WRITE_OPERATIONS }, expectedGeneration: { type: 'integer', minimum: 0 }, options: OPTIONS }, required: ['workspace_id', 'operation', 'expectedGeneration'], declarations: { ...declarations, production: 'when-target' },
+ explain: error => error?.safeMessage ? error.message : 'Native Git operation could not be confirmed. Inspect workspace state and the same intent receipt before retrying.',
+ classifyError: error => [401,409,429].includes(error?.status) ? 'rejected' : 'uncertain',
  target, read: async (a, c, t) => { configured(c); try { gitCommand(a.operation, a.options ?? {}); } catch (error) { throw Object.assign(new TypeError(`Native ${a.operation} arguments: ${error.message}`), { safeMessage: true }); } try { return await invoke(c, t, { action: 'inspect', options: { worktree: a.options?.worktree } }); } catch (error) { if (error.safeMessage) error.message = `Native ${a.operation} preflight: ${error.message}`.slice(0,300); throw error; } },
  classify: ({ args: a }) => a.operation === 'push' ? { production: 'push changes exact GitHub remote refs; GitHub permissions and repository rules apply' } : {},
  price: () => 0, // Git ref transport itself does not buy seats/compute; disclose repository-automation costs separately.
@@ -83,7 +85,9 @@ const run = defineGithubWrite({
 const close = defineGithubWrite({
  name: 'github_git_workspace_close', area: 'git', audience: ['B', 'O', 'Op'],
  description: 'Dispose this connection’s native Git workspace, including uncommitted changes; never deletes the GitHub repository.',
- properties: { workspace_id: WORKSPACE }, required: ['workspace_id'], declarations: { ...declarations, production: 'when-target' }, target: (a, c) => target(a, c, true),
+ properties: { workspace_id: WORKSPACE }, required: ['workspace_id'], declarations: { ...declarations, production: 'when-target' },
+ explain: error => error?.safeMessage ? error.message : 'Native Git operation could not be confirmed. Inspect workspace state and the same intent receipt before retrying.',
+ classifyError: error => [401,409,429].includes(error?.status) ? 'rejected' : 'uncertain', target: (a, c) => target(a, c, true),
  read: async (_a, c, t) => { try { return await invoke(c, t, { action: 'inspect' }); } catch (e) { if (e.status === 404) return { disposed: true }; throw e; } }, classify: () => ({}), summarize: ({ target: t }) => `Dispose native workspace for ${t.owner}/${t.repo}; uncommitted local work is deleted.`,
  apply: async ({ ctx: c, target: t, before }) => { if (before.disposed) return { disposed: true }; const result = await invoke(c, t, { action: 'close', allowWrite: true }); return result; },
  readAfter: async ({ args: a, ctx: c, target: t }) => {

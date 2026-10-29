@@ -171,7 +171,10 @@ export function defineWrite(spec) {
     const line = marks.length ? `${summary} ${marks.map((m) => `${m}.`).join(' ')}` : summary;
     const needsConfirm = !ownerDirected && (decl.confirm === 'always' || decl.spend || classification.spendUnknown || !!classification.production || !!classification.accessWidening
       || classification.notifies.length > 0 || classification.spendCents > 0 || forcedConfirm !== null);
-    const preview = { done: false, ...(readFailed ? {preflight_failed:true,warning:readError?.safeMessage===true&&typeof readError.message==='string'&&readError.message.length<=300?readError.message:'Required current-state preflight failed. This preview is incomplete; no operation was sent.'}:{}), preview: line, needsConfirmation: needsConfirm && args.confirm !== true, ...(forcedConfirm ? { because: forcedConfirm } : {}) };
+    const preflightWarning = readError?.safeMessage === true && typeof readError.message === 'string' && readError.message.length <= 300
+      ? readError.message : 'Required current-state preflight failed. This preview is incomplete; no operation was sent.';
+    const preview = { done: false, ...(readFailed ? { preflight_failed: true, warning: preflightWarning } : {}),
+      preview: line, needsConfirmation: !readFailed && needsConfirm && args.confirm !== true, ...(forcedConfirm ? { because: forcedConfirm } : {}) };
 
     if (args.dryRun === true || (ownerDirected && args.confirm === false)) {
       const previewId = await log({ summary: line, dryRun: true, ...recordFields() });

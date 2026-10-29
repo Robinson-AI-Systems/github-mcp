@@ -219,3 +219,57 @@ it('keeps closed clone replay historical and opens a separate workspace only wit
  expect(fresh.status).toBe('applied');expect(fresh.result.workspace_id).not.toBe(id);
  expect(parse(await invoke('github_git_workspace_run',{workspace_id:fresh.result.workspace_id,operation:'branch_create',expectedGeneration:0,options:{branch:'fresh-topic'}})).status).toBe('applied');
 });
+
+it('verifies rename/delete aliases and rejects invalid branch operations without sending a mutation', async () => {
+ const id = await opened();
+ const run = (operation, generation, options) => invoke('github_git_workspace_run', {workspace_id:id, operation, expectedGeneration:generation, options});
+ expect(parse(await run('branch_create',0,{branch:'before'})).status).toBe('applied');
+ const renamed=parse(await run('branch_rename',1,{branch:'after',ref:'before'}));
+ expect(renamed.status).toBe('applied');expect(renamed.result.reference).toMatchObject({name:'after',exists:true});
+ expect(parse(await run('branch_delete',2,{name:'after'})).result.reference.exists).toBe(false);
+ const count=requests.filter(r=>r.action==='run').length;
+ for(const options of [{branch:'x',name:'y'},{branch:'--bad'},{branch:'ok',staged:true}]) {
+  const result=parse(await run('branch_create',3,options));expect(result.status).toBe('refused_by_guard');expect(result.error).toContain('Native branch_create arguments');
+ }
+ expect(requests.filter(r=>r.action==='run')).toHaveLength(count);
+});
+it('rechecks active replay availability and never turns revoked access into a replayed clone',async()=>{
+ const args={owner:'example-org',repo:'hello',requestKey:'active-clone'};
+ const first=parse(await invoke('github_git_workspace_open',args));
+ const replay=parse(await invoke('github_git_workspace_open',args));
+ expect(replay).toMatchObject({status:'replayed',done:true,historical:true,current_workspace:{workspace_id:first.result.workspace_id,available:true,state:'ready'}});
+ expect(requests.filter(r=>r.action==='open')).toHaveLength(1);
+ w.gh.when('GET /repos/{owner}/{repo}').reply(403,{message:'Access revoked'});
+ const denied=await invoke('github_git_workspace_open',args);expect(denied.isError).toBe(true);
+ expect(requests.filter(r=>r.action==='open')).toHaveLength(1);
+});
+it('marks a missing worker workspace unavailable on clone replay without creating another clone',async()=>{
+ const args={owner:'example-org',repo:'hello',requestKey:'missing-clone'};
+ const first=parse(await invoke('github_git_workspace_open',args));
+ const {nativeConnection}=await import('../../src/native-git/client.js');
+ const row=await w.db.getJob(first.result.workspace_id,nativeConnection(w.ctx));
+ await rm(join(dir,'storage',JSON.parse(row.provider_ref).worker),{recursive:true,force:true});
+ const replay=parse(await invoke('github_git_workspace_open',args));
+ expect(replay).toMatchObject({status:'replayed',historical:true,done:false,current_workspace:{available:false,state:'unavailable'}});
+ expect(requests.filter(r=>r.action==='open')).toHaveLength(1);
+});
+it('fetches and merges moved main with two real parents, then pushes the same commit to a new remote branch',async()=>{
+ const id=await opened();let generation=0;
+ const run=async(operation,options={})=>{
+  const result=parse(await invoke('github_git_workspace_run',{workspace_id:id,operation,expectedGeneration:generation,options,requestKey:'graph-'+generation,confirm:true}));
+  expect(result.status,JSON.stringify(result)).toBe('applied');generation=result.result.workspace.generation;return result;
+ };
+ await run('branch_create',{branch:'topic'});await run('switch',{branch:'topic'});
+ await run('write_file',{path:'topic.txt',base64:Buffer.from('topic\n').toString('base64')});
+ await run('add',{paths:['topic.txt']});const local=await run('commit',{message:'topic commit'});
+ const other=join(dir,'other');git(dir,'clone',bare,other);git(other,'config','user.name','Fixture');git(other,'config','user.email','fixture@example.test');
+ await writeFile(join(other,'main.txt'),'moved main\n');git(other,'add','.');git(other,'commit','-m','main moved');git(other,'push','origin','main');const main=git(other,'rev-parse','HEAD');
+ await run('fetch');const merged=await run('merge',{ref:'origin/main'});
+ const head=merged.result.workspace.head;expect(head).not.toBe(local.result.workspace.head);
+ const log=parse(await invoke('github_git_workspace_read',{workspace_id:id,operation:'log',options:{max:1}}));
+ expect(log.stdout.split('\0')[1].split(' ')).toEqual([local.result.workspace.head,main]);
+ const pushed=await run('push',{branch:'new-topic',expectedHead:''});
+ expect(pushed.result.operation.remote_head).toBe(head);
+ expect(git(bare,'rev-parse','refs/heads/new-topic')).toBe(head);
+ expect(git(bare,'rev-list','--parents','-n','1',head).split(' ')).toEqual([head,local.result.workspace.head,main]);
+});
