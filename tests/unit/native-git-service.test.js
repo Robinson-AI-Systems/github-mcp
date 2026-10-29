@@ -14,14 +14,15 @@ import {TenantCapacityError} from '../../src/tenancy/runtime-limits.js';
 import { registry } from '../../src/tools/index.js';
 
 const KEY = 'FAKE-worker-service-key-for-local-tests-only';
-let dir, bare, server, origin, w, requests, asymmetric, routeEnv, routeOrigins, secondServer;
+let dir, bare, server, origin, w, requests, asymmetric, routeEnv, routeOrigins, secondServer,pressure;
+const fixtureResources=()=>({policy:{minMemoryBytes:33554432,minDiskBytes:67108864,maxLoopDelayMs:250},body:()=>({allowed:true}),check:async()=>pressure?{allowed:false,reason:pressure,retryAfterSeconds:2}:{allowed:true},close(){}});
 const git = (cwd, ...args) => execFileSync('git', args, { cwd, encoding: 'utf8', stdio: 'pipe' }).trim();
 beforeEach(async () => {
  dir = await mkdtemp(join(tmpdir(), 'native-service-')); const seed = join(dir, 'seed'); bare = join(dir, 'remote.git');
  await mkdir(seed); git(seed, 'init', '-b', 'main'); git(seed, 'config', 'user.name', 'Fixture'); git(seed, 'config', 'user.email', 'fixture@example.test');
  await writeFile(join(seed, 'file.txt'), 'initial\n'); git(seed, 'add', 'file.txt'); git(seed, 'commit', '-m', 'initial'); git(dir, 'clone', '--bare', seed, bare);
- w = await makeWorld({ mode: 'production', profile: 'full' }); requests = []; asymmetric = false; routeEnv={}; routeOrigins=new Map(); secondServer=null;
- server = nativeGitServer({ root: join(dir, 'storage'), key: KEY, now: w.ctx.now, allowLocalFixtures: true, fixtureRemote: () => bare });
+ w = await makeWorld({ mode: 'production', profile: 'full' }); requests = []; asymmetric = false; routeEnv={}; routeOrigins=new Map(); secondServer=null; pressure=null;
+ server = nativeGitServer({ root: join(dir, 'storage'), key: KEY, now: w.ctx.now, allowLocalFixtures: true, fixtureRemote: () => bare,resources:fixtureResources() });
  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve)); origin = `http://127.0.0.1:${server.address().port}`; routeOrigins.set('https://worker.example.test',origin);
  w.gh.when('GET /repos/{owner}/{repo}').reply(200, { full_name: 'example-org/hello', default_branch: 'main' });
 });
@@ -69,8 +70,8 @@ it('revalidates provider access before cached reads and never exposes another co
  expect(denied.isError).toBe(true); expect(requests).toHaveLength(count);
 });
 it('preserves dry runs, read-only grants and immutable write replay through the dispatcher', async () => {
- const preview = parse(await invoke('github_git_workspace_open', { owner: 'example-org', repo: 'hello', dryRun: true })); expect(preview.status).toBe('preview'); expect(requests).toHaveLength(0);
- const denied = await invoke('github_git_workspace_open', { owner: 'example-org', repo: 'hello' }, { ...w.connection, profile: 'read_only' }); expect(denied.isError).toBe(true); expect(requests).toHaveLength(0);
+ const preview = parse(await invoke('github_git_workspace_open', { owner: 'example-org', repo: 'hello', dryRun: true })); expect(preview.status).toBe('preview'); expect(requests.filter(r=>r.action!=='capabilities')).toHaveLength(0);
+ const denied = await invoke('github_git_workspace_open', { owner: 'example-org', repo: 'hello' }, { ...w.connection, profile: 'read_only' }); expect(denied.isError).toBe(true); expect(requests.filter(r=>r.action!=='capabilities')).toHaveLength(0);
  const id = await opened(); const args = { workspace_id: id, operation: 'branch_create', expectedGeneration: 0, options: { name: 'topic' }, requestKey: 'native-replay-intent' };
  const first = parse(await invoke('github_git_workspace_run', args)); expect(first.status).toBe('applied');
  const count = requests.filter(r => r.action === 'run').length;
@@ -115,7 +116,7 @@ it('never releases another request’s active workspace lock when a busy request
 it('executes a real MCP clone with only a public verification key on the worker', async () => {
  const { nativeWorkerPublicKey } = await import('../../src/native-git/signing.js');
  server.closeAllConnections(); await new Promise(resolve => server.close(resolve));
- server = nativeGitServer({ root: join(dir, 'storage'), key: nativeWorkerPublicKey(w.ctx.env), now: w.ctx.now, allowLocalFixtures: true, fixtureRemote: () => bare });
+ server = nativeGitServer({ root: join(dir, 'storage'), key: nativeWorkerPublicKey(w.ctx.env), now: w.ctx.now, allowLocalFixtures: true, fixtureRemote: () => bare,resources:fixtureResources() });
  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve)); origin = `http://127.0.0.1:${server.address().port}`; asymmetric = true;
  const id = await opened(); expect(id).toMatch(/^job_/);
  const state = parse(await invoke('github_git_workspace_read', { workspace_id: id, operation: 'status' })); expect(state.state).toBe('ready');
@@ -160,15 +161,15 @@ it('explains invalid switch input before sending a worker mutation', async () =>
 });
 
 
-it.each([2, 4, 8])('serves %i independent workspaces concurrently with per-workspace exclusion and bounded overload', async capacity => {
+it.each([12])('serves %i independent workspaces concurrently with per-workspace exclusion and bounded overload', async capacity => {
  if (capacity !== 2) {
   await new Promise(resolve => server.close(resolve));
-  server = nativeGitServer({root:join(dir,'storage'),key:KEY,now:w.ctx.now,allowLocalFixtures:true,fixtureRemote:()=>bare,maxConcurrent:capacity});
+  server = nativeGitServer({root:join(dir,'storage'),key:KEY,now:w.ctx.now,allowLocalFixtures:true,fixtureRemote:()=>bare,resources:fixtureResources()});
   await new Promise(resolve => server.listen(0,'127.0.0.1',resolve));
   origin = `http://127.0.0.1:${server.address().port}`;
  }
  const capabilities = parse(await invoke('github_git_workspace_read',{operation:'capabilities'}));
- expect(capabilities.worker.max_concurrent).toBe(capacity);
+ expect(capabilities.worker.max_concurrent).toBeNull();expect(capabilities.worker.capacity_mode).toBe('resource-aware');
  const ids = [];
  for (let i=0;i<capacity;i++) ids.push(parse(await invoke('github_git_workspace_open',{owner:'example-org',repo:'hello',requestKey:`concurrent-workspace-${i}`})).result.workspace_id);
  const { nativeConnection } = await import('../../src/native-git/client.js');
@@ -193,8 +194,9 @@ it.each([2, 4, 8])('serves %i independent workspaces concurrently with per-works
   await all;
   const busy = await send(bodies[0]); expect(busy.status).toBe(409); expect((await busy.json()).error).toBe('workspace_busy');
   const extra = JSON.parse(bodies[0]); extra.workspace_id='git_'+'f'.repeat(32);
+  pressure='memory_pressure';
   const full = await send(JSON.stringify(extra)); expect(full.status).toBe(429); expect(full.headers.get('retry-after')).toBe('2'); await full.text();
- } finally { release(); }
+ } finally {pressure=null;release(); }
  const responses = await Promise.all(pending);
  for (const response of responses) { expect(response.status).toBe(200); expect((await response.json()).branch).toBe('main'); }
  const again = await send(bodies[0]); expect(again.status).toBe(200); await again.text();
@@ -413,7 +415,7 @@ it.each([false,true])('keeps real Git bytes, replay and disposal on their own wo
  expect(JSON.parse(row.provider_ref).host).toMatch(/^[a-f0-9]{32}$/);
  expect(parse(await invoke('github_git_workspace_run',{workspace_id:old,operation:'write_file',expectedGeneration:0,options:{path:'file.txt',base64:Buffer.from('old-host-only\n').toString('base64')},requestKey:'old-host-edit'})).status).toBe('applied');
  w.advanceClock(1000);
- secondServer=nativeGitServer({root:join(dir,'second-storage'),key:KEY,now:w.ctx.now,allowLocalFixtures:true,fixtureRemote:()=>bare,maxConcurrent:8});
+ secondServer=nativeGitServer({root:join(dir,'second-storage'),key:KEY,now:w.ctx.now,allowLocalFixtures:true,fixtureRemote:()=>bare,resources:fixtureResources()});
  await new Promise(resolve=>secondServer.listen(0,'127.0.0.1',resolve));
  routeOrigins.set('https://new-worker.example.test',`http://127.0.0.1:${secondServer.address().port}`);
  routeEnv={NATIVE_GIT_WORKER_URL:'https://new-worker.example.test',NATIVE_GIT_PREVIOUS_WORKER_URL:'https://worker.example.test',NATIVE_GIT_WORKER_CUTOVER_AT:new Date(w.ctx.now()).toISOString()};
@@ -421,7 +423,7 @@ it.each([false,true])('keeps real Git bytes, replay and disposal on their own wo
   const get=w.db.getJob.bind(w.db);
   vi.spyOn(w.db,'getJob').mockImplementation(async(...a)=>{const r=await get(...a);if(r?.kind==='native-git-workspace'){const m=JSON.parse(r.provider_ref);delete m.host;r.provider_ref=JSON.stringify(m);}return r;});
  }
- expect(parse(await invoke('github_git_workspace_read',{operation:'capabilities'})).worker.max_concurrent).toBe(8);
+ expect(parse(await invoke('github_git_workspace_read',{operation:'capabilities'})).worker.capacity_mode).toBe('resource-aware');
  const fresh=parse(await invoke('github_git_workspace_open',{...args,requestKey:'new-host-clone'})).result.workspace_id;
  expect(parse(await invoke('github_git_workspace_run',{workspace_id:fresh,operation:'write_file',expectedGeneration:0,options:{path:'file.txt',base64:Buffer.from('new-host-only\n').toString('base64')},requestKey:'new-host-edit'})).status).toBe('applied');
  for(const [id,content] of [[old,'old-host-only\n'],[fresh,'new-host-only\n']]){
@@ -440,5 +442,43 @@ it('reports tenant metadata admission refusal as known no-clone rather than unce
  const r=parse(await invoke('github_git_workspace_open',{owner:'example-org',repo:'hello',requestKey:'capacity-denied-clone'}));
  expect(r.status).toBe('rejected');expect(r.done).toBe(false);expect(r.retryable).toBe(true);
  expect(r.error).toContain('before any clone was sent');expect(r.error).not.toContain('GitHub could not be reached');
- expect(requests).toHaveLength(0);
+ expect(requests.filter(r=>r.action!=='capabilities')).toHaveLength(0);
+});
+
+it('rejects resource pressure before opening metadata, retries the same intent after recovery, and drains active work',async()=>{
+ pressure='storage_pressure';const args={owner:'example-org',repo:'hello',requestKey:'resource-refused-clone'};
+ const denied=parse(await invoke('github_git_workspace_open',args));expect(denied.status).toBe('refused_by_guard');expect(denied.reason_code).toBe('native_resource_pressure');expect(denied.retryable).toBe(true);expect(requests.some(r=>r.action==='open')).toBe(false);
+ pressure=null;const id=parse(await invoke('github_git_workspace_open',args)).result.workspace_id;
+ let release,entered;const held=new Promise(r=>{release=r;});const started=new Promise(r=>{entered=r;});const inspect=NativeGitWorker.prototype.inspect;
+ vi.spyOn(NativeGitWorker.prototype,'inspect').mockImplementation(async function(...a){entered();await held;return inspect.apply(this,a);});
+ const pending=invoke('github_git_workspace_read',{workspace_id:id,operation:'status'});await started;
+ let closed=false;const stopped=new Promise(r=>server.close(()=>{closed=true;r();}));expect(closed).toBe(false);
+ release();expect(parse(await pending).state).toBe('ready');await stopped;expect(closed).toBe(true);
+});
+
+it('keeps historical clone replay and exact disposal available during resource pressure',async()=>{
+ const args={owner:'example-org',repo:'hello',requestKey:'pressure-replay'};
+ const first=parse(await invoke('github_git_workspace_open',args));expect(first.status).toBe('applied');
+ const id=first.result.workspace_id,clones=requests.filter(r=>r.action==='open').length;
+ pressure='memory_pressure';
+ const replay=parse(await invoke('github_git_workspace_open',args));
+ expect(replay.replayed).toBe(true);expect(replay.result.workspace_id).toBe(id);
+ expect(requests.filter(r=>r.action==='open')).toHaveLength(clones);
+ const gitSpy=vi.spyOn(NativeGitWorker.prototype,'git');
+ const closed=parse(await invoke('github_git_workspace_close',{workspace_id:id}));
+ expect(closed.status,JSON.stringify(closed)).toBe('applied');expect(closed.result.disposed).toBe(true);
+ expect(gitSpy).not.toHaveBeenCalled();
+ const historical=parse(await invoke('github_git_workspace_open',args));expect(historical.replayed).toBe(true);
+ expect(requests.filter(r=>r.action==='open')).toHaveLength(clones);
+});
+
+it('records admission refusal after metadata creation as rejected and permits safe same-intent retry',async()=>{
+ const create=w.db.createJob;
+ vi.spyOn(w.db,'createJob').mockImplementation(async(...args)=>{const row=await create(...args);pressure='storage_pressure';return row;});
+ const args={owner:'example-org',repo:'hello',requestKey:'pressure-race'};
+ const refused=parse(await invoke('github_git_workspace_open',args));expect(refused.status,JSON.stringify(refused)).toBe('rejected');expect(refused.retryable).toBe(true);
+ expect(requests.some(r=>r.action==='open')).toBe(true);
+ expect(await new NativeGitWorker({root:join(dir,'storage'),authorize:async()=>false}).prune()).toEqual({removed:0});
+ vi.restoreAllMocks();pressure=null;
+ const retry=parse(await invoke('github_git_workspace_open',args));expect(retry.status,JSON.stringify(retry)).toBe('applied');
 });

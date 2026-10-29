@@ -1,7 +1,7 @@
 import {loadScannerPolicy} from '../github/scanner-policy.js';
 import { createHash } from 'node:crypto';
 import { githubFor, credentialFor, requestKey } from '../github/client.js';
-import { WORKER_PROTOCOL, nativeWorkerRoute } from './protocol.js';
+import { WORKER_PROTOCOL, nativeWorkerRoute, workerUrl } from './protocol.js';
 import { signNativeWorkerBody } from './signing.js';
 import { redactExcerpt } from '../github/content-protection.js';
 import { explainGithubError } from '../tools/errors.js';
@@ -44,6 +44,7 @@ export async function nativeRecord(ctx, id, { allowDisposed = false } = {}) {
 }
 export async function callNativeWorker(ctx, { binding, action, workspace_id, operation, options, requestKey, expectedGeneration, allowWrite = false, network = false, job, renewLease = true }) {
  const url = nativeWorkerRoute(ctx.env, job);
+ if(ctx.env?.NATIVE_GIT_WORKER_DRAINING==='true'&&url===workerUrl(ctx.env))throw Object.assign(new TypeError('The native Git worker is temporarily draining for an update. No worker request was sent; existing files are retained. Retry after maintenance completes.'),{safeMessage:true,safeCode:'native_worker_maintenance',safeRetryable:true,status:503});
  const scannerPolicy=binding?await loadScannerPolicy(ctx.db,binding.owner,binding.repo):null;
  let credential;
  if (network) {
@@ -84,13 +85,16 @@ export async function callNativeWorker(ctx, { binding, action, workspace_id, ope
  catch { throw failure('native_response', 'Native Git worker returned an invalid response. Inspect workspace state and the same intent receipt before retrying.'); }
  if (!response.ok) {
   const busy = response.status === 409 || response.status === 429;
+  const resource=data.error==='worker_resource_pressure';
   // Worker reasons contain only controlled TypeErrors. Redact again at this boundary,
   // including absolute host paths; never reflect bodies, stderr or network exceptions.
   const reason = typeof data.reason === 'string'
    ? redactExcerpt(data.reason).replace(/(?:\/[A-Za-z0-9_.-]+){2,}/g, '[host path]').replace(/[\x00-\x1f\x7f]/g, ' ').slice(0, 160) : '';
-  throw failure(busy ? 'native_busy' : 'native_http', busy
-   ? 'Native Git worker is busy. After the active operation finishes, inspect state and retry the same intent.'
+  const error=failure(busy ? 'native_busy' : 'native_http', busy
+   ? resource?`Native Git worker resource pressure: ${typeof data.reason==='string'?data.reason.replace(/[^a-z_]/g,'').slice(0,64):'unavailable'}. No operation was started. Retry after resources recover.`:'Native Git worker is busy. After the active operation finishes, inspect state and retry the same intent.'
    : `Native Git worker returned HTTP ${response.status}${reason ? ': ' + reason : '.'} Inspect state before a new intent.`, response.status);
+  if(resource&&data.phase==='admission'&&data.no_operation_started===true)error.nativeNoOperationStarted=true;
+  throw error;
  }
  if (activeJob) {
   if (data.idle_timeout_ms !== job.idleTimeoutMs || !Number.isSafeInteger(data.last_activity_at) || data.expires_at !== data.last_activity_at + job.idleTimeoutMs || data.expires_at <= (ctx.now ?? Date.now)() || data.last_activity_at > (ctx.now ?? Date.now)() + 90000)

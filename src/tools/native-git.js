@@ -31,7 +31,10 @@ const open = defineGithubWrite({
  description: 'Clone an authorized repository. Use a fresh requestKey per new workspace and reuse it only for retries; a closed clone receipt is historical.',
  properties: { owner: OWNER, repo: REPO, branch: TEXT, authorName: { type: 'string', minLength: 1, maxLength: 100 }, authorEmail: { type: 'string', minLength: 1, maxLength: 254 }, depth: { type: 'integer', minimum: 1, maximum: 100000 }, leaseMinutes: { type: 'integer', minimum: 1, maximum: 1440, description: 'Idle timeout in minutes, renewed by authorized workspace activity; default 240 (four hours).' } }, required: ['repo'], declarations,
  target: (a, c) => ({ owner: a.owner ?? c.connection.default_account, repo: a.repo, scope: 'repo', kind: 'native-git' }),
- read: async (a, c, t) => { configured(c); await authorizeNativeRepo(c, t.owner, t.repo); return {}; },
+ read: async (a, c, t) => { configured(c); await authorizeNativeRepo(c, t.owner, t.repo);
+  const key=await nativeOpenRequestKey(c,a);
+  if(await c.db.findNativeOpenChange({account:t.owner,repo:`${t.owner}/${t.repo}`,connection:c.connection.client_id??null,prefix:key}))return {};
+  const cap=await callNativeWorker(c,{action:'capabilities'});if(cap.capacity_mode!=='resource-aware')throw Object.assign(new TypeError('Update the native Git worker to resource-based admission before opening a new workspace.'),{safeMessage:true,safeCode:'native_worker_update_required'});if(!cap.admission?.allowed)throw Object.assign(new TypeError(`Native Git worker resource pressure: ${typeof cap.admission?.reason==='string'?cap.admission.reason.replace(/[^a-z_]/g,'').slice(0,64):'resource_observation_unavailable'}. No clone was sent.`),{safeMessage:true,safeCode:'native_resource_pressure',safeRetryable:true});return {}; },
  classify: () => ({}), summarize: ({ target: t }) => `Clone ${t.owner}/${t.repo} into a private native Git workspace; worker compute and storage use the configured host.`,
  apply: async ({ args: a, ctx: c, target: t, requestKey }) => {
   const id = 'job_' + randomBytes(8).toString('hex');
@@ -43,7 +46,7 @@ const open = defineGithubWrite({
    throw error;
   });
   try { return { workspace_id: id, result: await callNativeWorker(c, { action: 'open', binding, job: {id,host,idleTimeoutMs:(a.leaseMinutes ?? 240)*60000}, requestKey, allowWrite: true, network: true, options: { branch: a.branch, depth: a.depth, authorName: a.authorName, authorEmail: a.authorEmail, ttlMs: (a.leaseMinutes ?? 240) * 60000 } }) }; }
-  catch { return { workspace_id: id, result: { state: 'uncertain' } }; }
+  catch(error) {if(error.nativeNoOperationStarted){await c.db.finishJob(id,nativeConnection(c),{state:'failed',detail:'Worker resource admission declined before clone.'});throw error;}return { workspace_id: id, result: { state: 'uncertain' } }; }
  },
  readAfter: async ({ ctx: c, response }) => {
   const record = await nativeRecord(c, response.workspace_id);

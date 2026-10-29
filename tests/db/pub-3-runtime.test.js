@@ -396,3 +396,27 @@ it('creates and finishes over200 jobs without daily quotas in two isolated tenan
   const bWindows=await sqlB`SELECT scope FROM gh_tenant_budget_windows WHERE scope LIKE 'job:%'`;expect(bWindows).toEqual([]);
  }finally{await saveTenantRuntimePolicy(sqlA,{jobsClientPending:old.jobsClientPending,resultsClientActive:old.resultsClientActive});}
 });
+
+it('admits native metadata above old active caps in both tenants while retaining ordinary job slots',async()=>{
+ const oldA=await readTenantRuntimePolicy(sqlA),oldB=await readTenantRuntimePolicy(sqlB);
+ const created=[];
+ try{
+  for(const sql of [sqlA,sqlB])await saveTenantRuntimePolicy(sql,{jobsClientPending:1,jobsTenantPending:640});
+  for(const [db,other,sql] of [[dbA,dbB,sqlA],[dbB,dbA,sqlB]]){
+   const connection='resource-admission-client',store=withTenantStorageLimits(db,sql,connection);
+   for(let i=0;i<21;i++){
+    const id='job_'+randomBytes(8).toString('hex');created.push([store,id,connection]);
+    await store.createJob({id,connection,owner:'fixture',kind:'native-git-workspace',ttlMinutes:240});
+    expect(await db.getJob(id,connection)).toMatchObject({kind:'native-git-workspace',state:'pending'});
+    expect(await other.getJob(id,connection)).toBeNull();expect(await db.getJob(id,'foreign')).toBeNull();
+   }
+   const id='job_'+randomBytes(8).toString('hex');created.push([store,id,connection]);
+   await store.createJob({id,connection,owner:'fixture',kind:'export',ttlMinutes:1});
+   await expect(store.createJob({id:'job_'+randomBytes(8).toString('hex'),connection,owner:'fixture',kind:'export',ttlMinutes:1})).rejects.toBeInstanceOf(TenantCapacityError);
+  }
+ }finally{
+  for(const [store,id,connection] of created)await store.finishJob(id,connection,{state:'ready',detail:'Run-owned fixture finished.'});
+  await saveTenantRuntimePolicy(sqlA,{jobsClientPending:oldA.jobsClientPending,jobsTenantPending:oldA.jobsTenantPending});
+  await saveTenantRuntimePolicy(sqlB,{jobsClientPending:oldB.jobsClientPending,jobsTenantPending:oldB.jobsTenantPending});
+ }
+});

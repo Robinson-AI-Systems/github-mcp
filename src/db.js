@@ -1507,14 +1507,15 @@ export function createDb(sql = productionSql()) {
       return rows.length===1;
     },
 
-    /** Recover only legacy native clone keys; never reinterpret another tool's journal. */
+    /** Recover scoped native clone receipts by exact key or a validated legacy prefix. */
     async findNativeOpenChange({ account, repo, connection, prefix }) {
-      if (!/^rmcp_github_git_workspace_open_[a-f0-9]{64}_$/.test(prefix)) throw new TypeError('Invalid legacy clone key prefix.');
+      const legacyPrefix=/^rmcp_github_git_workspace_open_[a-f0-9]{64}_$/.test(prefix);
+      if (!legacyPrefix && !/^(?:rmcp_github_git_workspace_open_[a-f0-9]{64}_[0-9]+|rmcp_native_open_[a-f0-9]{64}_0)$/.test(prefix)) throw new TypeError('Invalid clone receipt key.');
       const rows = await sql`SELECT * FROM change_log
         WHERE tool='github_git_workspace_open' AND dry_run=FALSE
           AND lower(account)=lower(${account}) AND lower(repo)=lower(${repo})
           AND connection IS NOT DISTINCT FROM ${connection}
-          AND left(request_key,${prefix.length})=${prefix}
+          AND ((${legacyPrefix} AND left(request_key,${prefix.length})=${prefix}) OR (NOT ${legacyPrefix} AND request_key=${prefix}))
         ORDER BY at ASC, id ASC LIMIT 1`;
       return rows[0] ? changeView(rows[0]) : null;
     },

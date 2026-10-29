@@ -275,3 +275,5 @@ The source expansion adds real native Git through an isolated portable worker: c
 ### Daily job creation
 
 There is no daily limit on creating Git workspaces or other background jobs. How many requests execute simultaneously and how many active resources are held are separate capacity controls. Native workspaces default to four idle hours; closing one removes its local files. An active-capacity refusal explains how to free capacity, rather than asking you to wait for a daily allowance reset. Actual provider limits and restrictions deliberately selected for a delegated connection still apply.
+
+Native Git workspaces have no daily job quota or fixed simultaneous request/workspace count, for any user. Independent requests run while the Dokploy worker has measured memory, storage and responsiveness headroom. Each workspace still permits one operation at a time and expires after four hours without authorized activity. Closing deletes its local files; the container and host remain running. Other background-job and saved-result controls are separate.

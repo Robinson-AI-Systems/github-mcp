@@ -33,3 +33,13 @@ it('pins configured canonical origins and refuses missing hosts or invalid legac
  await expect(callNativeWorker({...ctx(fetch),env:{...env,NATIVE_GIT_PREVIOUS_WORKER_URL:undefined}},{action:'capabilities',job:{host:old}})).rejects.toMatchObject({safeMessage:true,safeCode:'native_worker_host_unavailable'});
  expect(fetch).not.toHaveBeenCalled();
 });
+
+it('drains only the primary worker before transport and preserves the previous origin route',async()=>{
+ const fetch=vi.fn(async()=>new Response('{}'));
+ const env={...ctx(fetch).env,NATIVE_GIT_WORKER_DRAINING:'true',NATIVE_GIT_PREVIOUS_WORKER_URL:'https://old-worker.example.test'};
+ await expect(callNativeWorker({...ctx(fetch),env},{action:'capabilities'})).rejects.toMatchObject({safeCode:'native_worker_maintenance',safeRetryable:true,status:503});
+ expect(fetch).not.toHaveBeenCalled();
+ const host=nativeWorkerHost({NATIVE_GIT_WORKER_URL:env.NATIVE_GIT_PREVIOUS_WORKER_URL});
+ await callNativeWorker({...ctx(fetch),env},{action:'capabilities',job:{host}});
+ expect(fetch.mock.calls[0][0]).toBe('https://old-worker.example.test/v1/workspace');
+});

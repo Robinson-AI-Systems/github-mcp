@@ -22,4 +22,8 @@ Implementation and acceptance sequence: [authority and parity plan](designs/AUTH
 
 ## Daily job creation — owner clarification, 2026-10-29
 
-There must be no daily job-creation quota, for any connection or tenant. Remove both per-connection and aggregate per-tenant daily job admission, rather than raising a number or exempting only one owner. Old saved32/128/200 job allowances must not restrict upgraded connections. Active resource admission, the native worker's configurable simultaneous-request capacity, idle workspace cleanup, actual provider rate signals and genuinely selected delegated restrictions remain distinct. This authorizes no paid resource purchase or widening of a capability grant.
+There must be no daily job-creation quota, for any connection or tenant. Remove both per-connection and aggregate per-tenant daily job admission, rather than raising a number or exempting only one owner. Old saved32/128/200 job allowances must not restrict upgraded connections. Active resource admission, measured native worker resource headroom, idle workspace cleanup, actual provider rate signals and genuinely selected delegated restrictions remain distinct. This authorizes no paid resource purchase or widening of a capability grant.
+
+## 2026-10-29 — global native Git resource admission
+
+For every user, simultaneous independent Git requests are limited only by actual worker resource pressure, with no fixed request-count or native workspace-count allowance. Keep four-hour inactivity expiry renewed by authorized activity, one operation per workspace, authentic delegated restrictions and tenant/connection isolation. No additional spending is authorized.

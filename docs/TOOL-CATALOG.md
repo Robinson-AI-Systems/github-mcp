@@ -978,3 +978,5 @@ Native workspace host continuity: new workspaces pin their protected worker host
 
 
 Daily job quotas are removed service-wide: creating native workspaces/background jobs does not consume a daily job allowance. Active resource capacity, TTL/idle cleanup and genuine authorization restrictions remain independent. See [the repair record](status/2026-10-29-no-daily-job-quota.md).
+
+Native workspace admission is resource-based for every connection: no fixed simultaneous-request or active-native-workspace count. Capabilities reports resource policy/admission; pressure refusals identify memory, storage or responsiveness with retry guidance. Ordinary background-job slot controls are separate. Historical clone replay and exact disposal stay available during pressure. See [resource admission](status/2026-10-29-native-resource-admission.md).

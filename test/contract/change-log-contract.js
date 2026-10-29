@@ -20,6 +20,12 @@ export function runChangeLogContract(name, make) {
       expect(await db.findNativeOpenChange({...query,account:'other'})).toBeNull();
       expect(await db.findNativeOpenChange({...query,connection:null})).toBeNull();
       await expect(db.findNativeOpenChange({...query,prefix:'%'})).rejects.toThrow(TypeError);
+      expect(await db.findNativeOpenChange({...query,prefix:prefix+'3'})).toMatchObject({id:first.id});
+      expect(await db.findNativeOpenChange({...query,prefix:prefix+'30'})).toBeNull();
+      const stable='rmcp_native_open_'+'b'.repeat(64)+'_0';
+      const current=await db.claimChange({...native,requestKey:stable});
+      expect(await db.findNativeOpenChange({...query,prefix:stable})).toMatchObject({id:current.id});
+      expect(await db.findNativeOpenChange({...query,prefix:stable,connection:'foreign'})).toBeNull();
     });
 
     it('records a preview row and reads it back', async () => {

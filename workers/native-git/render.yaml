@@ -18,8 +18,6 @@ services:
         value: "3000"
       - key: NATIVE_GIT_STORAGE_ROOT
         value: /data
-      - key: NATIVE_GIT_MAX_CONCURRENT
-        value: "4"
       # Public verifier fetched from the serving MCP; this is not a private key.
       - key: NATIVE_GIT_CONTROL_PUBLIC_KEY
         value: ed25519:MCowBQYDK2VwAyEAictZsWVVkgfLogLr7HpyZ7TLYTsbZoZCpGI4l6tl2DA=

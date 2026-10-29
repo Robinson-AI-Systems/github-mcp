@@ -374,11 +374,13 @@ export function withTenantStorageLimits(db, sql, clientId) {
           typeof input.owner!=='string' || !input.owner ||
           typeof input.kind!=='string' || !input.kind)
         throw new TypeError('Invalid tenant job request.');
-      await reserveTenantStorage(sql,'job',clientId,input.id,(input.ttlMinutes??1440)*60);
+      // Native workspace count follows worker storage/resources and idle cleanup.
+      const native=input.kind==='native-git-workspace';
+      if(!native)await reserveTenantStorage(sql,'job',clientId,input.id,(input.ttlMinutes??1440)*60);
       try {
         return await db.createJob(input);
       } catch(error) {
-        await releaseTenantStorage(sql,'job',clientId,input.id).catch(()=>{});
+        if(!native)await releaseTenantStorage(sql,'job',clientId,input.id).catch(()=>{});
         throw error;
       }
     },

@@ -94,7 +94,8 @@ export async function publicLimits(req, res, { env = process.env } = {}) {
     `<div class="row"><span><strong>Real changes</strong><br><small>Changes made on GitHub in an hour. Reading and previews keep working when this is reached.</small></span><span>${group(FAIR.writesPerHour)} an hour per person</span></div>` +
     `<div class="row"><span><strong>Sign-in attempts</strong><br><small>Connecting or reconnecting an app.</small></span><span>${LIMITS.oauthClientPerMinute} a minute per app</span></div>` +
     `<div class="row"><span><strong>Saved results</strong><br><small>Long answers we keep so your assistant can fetch them.</small></span><span>kept up to ${hours} hours; each up to ${Math.round(LIMITS.resultMaxBytes / 1024)} KB; ${mb(LIMITS.resultsTenantBytesPerDay)} a day</span></div>` +
-    `<div class="row"><span><strong>Background jobs</strong><br><small>Longer tasks that finish later.</small></span><span>${LIMITS.jobsTenantPending} active at once; no daily job-creation limit</span></div>` +
+    '<div class="row"><span><strong>Native Git workspaces</strong></span><span>No fixed request or workspace count; resource-based admission and four-hour inactivity cleanup</span></div>' +
+    `<div class="row"><span><strong>Background jobs</strong><br><small>Longer tasks that finish later; native Git workspaces use measured worker resources instead.</small></span><span>${LIMITS.jobsTenantPending} active at once; no daily job-creation limit</span></div>` +
     '<div class="row"><span><strong>Extra names</strong><br><small>People you list as your own, beyond your accounts.</small></span><span>up to 50</span></div>' +
     '<p><small>GitHub has its own limits too; if GitHub asks us to slow down, your assistant is told when to try again. <a href="/connection">Back to My connection</a></small></p>');
 }

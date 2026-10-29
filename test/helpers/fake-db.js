@@ -655,10 +655,11 @@ export function createFakeDb({ clock = Date.now } = {}) {
       return true;
     },
     async findNativeOpenChange({ account, repo, connection, prefix }) {
-      if (!/^rmcp_github_git_workspace_open_[a-f0-9]{64}_$/.test(prefix)) throw new TypeError('Invalid legacy clone key prefix.');
+      const legacyPrefix=/^rmcp_github_git_workspace_open_[a-f0-9]{64}_$/.test(prefix);
+      if (!legacyPrefix && !/^(?:rmcp_github_git_workspace_open_[a-f0-9]{64}_[0-9]+|rmcp_native_open_[a-f0-9]{64}_0)$/.test(prefix)) throw new TypeError('Invalid clone receipt key.');
       const row=changes.find(r=>r.tool==='github_git_workspace_open' && !r.dryRun &&
         r.account?.toLowerCase()===account.toLowerCase() && r.repo?.toLowerCase()===repo.toLowerCase() &&
-        r.connection===connection && r.requestKey?.startsWith(prefix));
+        r.connection===connection && (legacyPrefix ? r.requestKey?.startsWith(prefix) : r.requestKey===prefix));
       return row ? changeViewOf(row) : null;
     },
     async claimChange(change) {

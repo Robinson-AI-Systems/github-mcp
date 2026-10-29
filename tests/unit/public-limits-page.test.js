@@ -14,6 +14,7 @@ describe('/limits page', () => {
     expect(html).toContain(`${TENANT_RUNTIME_LIMITS.mcpTenantPerMinute} a minute in total`);
     expect(html).toContain('Saved results');
     expect(html).toContain('Job creation has no daily quota.');
+    expect(html).toContain('No fixed request or workspace count; resource-based admission and four-hour inactivity cleanup');
     const jobs=html.match(/Background jobs[\s\S]*?<\/div>/)?.[0];
     expect(jobs).toContain(`${TENANT_RUNTIME_LIMITS.jobsTenantPending} active at once; no daily job-creation limit`);
     expect(jobs).not.toMatch(/null|undefined|\d+ a day/);
