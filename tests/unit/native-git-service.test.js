@@ -8,6 +8,8 @@ import { nativeGitServer } from '../../workers/native-git/server.js';
 import { signWorkerBody, verifyWorkerBody, workerUrl } from '../../src/native-git/protocol.js';
 import { makeWorld, parse } from '../../test/helpers/write-contract.js';
 import { createDispatch } from '../../src/tools/dispatch.js';
+import { requestKey } from '../../src/github/client.js';
+import { nativeConnection } from '../../src/native-git/client.js';
 import { registry } from '../../src/tools/index.js';
 
 const KEY = 'FAKE-worker-service-key-for-local-tests-only';
@@ -211,6 +213,7 @@ it('keeps closed clone replay historical and opens a separate workspace only wit
  const first=parse(await invoke('github_git_workspace_open',args));const id=first.result.workspace_id;
  expect(parse(await invoke('github_git_workspace_close',{workspace_id:id,requestKey:'dispose-original'})).status).toBe('applied');
  const count=requests.filter(r=>r.action==='open').length;
+ w.advanceClock(61*60000);
  const replay=parse(await invoke('github_git_workspace_open',args));
  expect(replay.status).toBe('replayed');expect(replay.historical).toBe(true);expect(replay.done).toBe(false);
  expect(replay.result.workspace_id).toBe(id);expect(replay.current_workspace).toMatchObject({workspace_id:id,state:'disposed',available:false});
@@ -284,4 +287,43 @@ it('names unsupported native arguments with a stable no-send reason code',async(
  const id=await opened(),count=requests.filter(r=>r.action==='run').length;
  const result=parse(await invoke('github_git_workspace_run',{workspace_id:id,operation:'branch_create',expectedGeneration:0,options:{branch:'topic',staged:true}}));
  expect(result).toMatchObject({reason_code:'invalid_native_arguments',retryable:false,no_change_sent:true});expect(requests.filter(r=>r.action==='run')).toHaveLength(count);
+});
+
+async function legacyReceipt(args, first) {
+ const key=requestKey(w.ctx,'github_git_workspace_open',args);
+ const {id}=await w.db.claimChange({account:'example-org',repo:'example-org/hello',connection:w.connection.client_id,tool:'github_git_workspace_open',summary:'Legacy clone',requestKey:key});
+ await w.db.finishChange(id,{summary:'Legacy clone',after:first.result,confirmed:true});
+ return key;
+}
+it('recovers a legacy bucketed clone after an hour without another open and keeps disposed replay historical',async()=>{
+ const args={repo:'hello',requestKey:'legacy-intent'};
+ const first=parse(await invoke('github_git_workspace_open',args));
+ const legacy=await legacyReceipt(args,first);
+ w.advanceClock(61*60000);
+ const replay=parse(await invoke('github_git_workspace_open',args));
+ expect(replay).toMatchObject({replayed:true,requestKey:legacy,done:true,result:{workspace_id:first.result.workspace_id}});
+ expect(requests.filter(r=>r.action==='open')).toHaveLength(1);
+ await invoke('github_git_workspace_close',{workspace_id:first.result.workspace_id});
+ w.advanceClock(61*60000);
+ expect(parse(await invoke('github_git_workspace_open',args))).toMatchObject({replayed:true,done:false,current_workspace:{state:'disposed'}});
+ expect(requests.filter(r=>r.action==='open')).toHaveLength(1);
+});
+it('never recovers legacy receipts into another pass or clones when historical metadata is missing',async()=>{
+ const args={repo:'hello',requestKey:'legacy-bound'};
+ const first=parse(await invoke('github_git_workspace_open',args));await legacyReceipt(args,first);
+ const denied=parse(await invoke('github_git_workspace_open',args,{...w.connection,pass_id:'other-pass'}));
+ expect(denied.done).toBe(false);expect(JSON.stringify(denied)).not.toContain(first.result.workspace_id);
+ expect(requests.filter(r=>r.action==='open')).toHaveLength(1);
+ await w.db.finishJob(first.result.workspace_id,nativeConnection(w.ctx),{state:'ready',detail:'Native workspace disposed.'});
+ const get=vi.spyOn(w.db,'getJob').mockResolvedValue(null);
+ expect(parse(await invoke('github_git_workspace_open',args)).done).toBe(false);
+ expect(requests.filter(r=>r.action==='open')).toHaveLength(1);get.mockRestore();
+});
+it('binds fresh stable clone intents to the full connection and repository',async()=>{
+ const args={repo:'hello',requestKey:'same-raw-key'};
+ const first=parse(await invoke('github_git_workspace_open',args));w.advanceClock(61*60000);
+ expect(parse(await invoke('github_git_workspace_open',args))).toMatchObject({replayed:true,result:{workspace_id:first.result.workspace_id}});
+ const foreign=parse(await invoke('github_git_workspace_open',args,{...w.connection,client_id:'other-client'}));
+ expect(foreign.status).toBe('applied');expect(foreign.result.workspace_id).not.toBe(first.result.workspace_id);
+ expect(requests.filter(r=>r.action==='open')).toHaveLength(2);
 });

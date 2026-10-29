@@ -968,3 +968,5 @@ Large text, lists and object payloads have one full JSON copy in `content[0].tex
 Owner setup continuation (2026-10-28): merge/PR/release workflows reconstruct declared canonical payloads; guarded merge refusals preserve their status/reason instead of unknown. Owner connection setup and protected secret entry follow the current authority specification; legacy account production flags remain restricted-grant compatibility fields. No new public tool is added in this continuation.
 
 Scanner configuration compares independent persisted policy readback structurally; PostgreSQL JSONB object-key ordering does not manufacture an unconfirmed outcome.
+
+Native clone retry clarification (2026-10-29): `github_git_workspace_open` retains the same intent across ten-minute buckets. Legacy bucketed receipts require the original client/pass workspace ownership mapping; missing/expired historical metadata refuses without cloning. A fresh `requestKey` deliberately creates a separate workspace. See [native operations](NATIVE-GIT-OPERATIONS.md).

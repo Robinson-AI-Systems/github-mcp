@@ -61,7 +61,7 @@ export function marksOf(c) {
  * @param {(input) => object} [spec.present] shapes `after` for the caller
  * @param {(error, input) => string} [spec.explain] plain-language text for a failed change
  * @param {(error) => 'rejected'|'uncertain'} [spec.classifyError] `rejected` = GitHub definitively did not do it
- * @param {(ctx, args) => string} spec.requestKey stable key for this intent (10-minute bucket included)
+ * @param {(ctx, args) => string|Promise<string>} spec.requestKey stable key for this intent
  */
 export function defineWrite(spec) {
   const { name, description, area, audience, compact, guidance, properties = {}, required = [], declarations, target, read, classify, price, summarize, apply, readAfter, verify,
@@ -201,7 +201,11 @@ export function defineWrite(spec) {
 
     // 4. One request key per intent. A repeat is a replay, never a second change.
     let key;
-    try { key = requestKey(ctx, args); } catch { key = null; }
+    try { key = await requestKey(ctx, args); } catch (error) {
+      if (error?.safeMessage === true && typeof error.message === 'string' && error.message.length <= 300)
+        return refuseOutright(error.message);
+      key = null;
+    }
     if (typeof key !== 'string' || !key.startsWith('rmcp_')) return refuseOutright('A stable request key could not be made, so this change was refused.');
     let claim;
     try {

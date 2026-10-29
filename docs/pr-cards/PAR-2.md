@@ -64,3 +64,7 @@ Owner requests more native Git concurrency for multiple AI agents. The existing 
 ## Native contract/lifecycle fleet repair, 2026-10-29
 
 Active follow-up: [contract/lifecycle note](../status/2026-10-29-native-git-contract-lifecycle.md). Branch create/rename/delete aliases and operation-specific help, independent ref readback, explicit failed previews, bounded transport diagnostics and historical versus current clone replay are under verification. Dispatcher/real-Git regression includes a moved main, true two-parent merge and identical pushed commit on a previously absent remote branch. This is source proof only until checked merge/release and authenticated live acceptance; preserve the existing four-request capacity and disk. External helper batching, CI/log/receipt/rule diagnostics remain separate unresolved fleet work.
+
+### Durable native clone retry follow-up, 2026-10-29
+
+The fleet lifecycle acceptance found ten-minute request buckets could reopen a closed clone. Keep native clone intents stable across buckets, recover legacy journal receipts only after original client/pass ownership proof, and refuse without cloning if historical metadata is unavailable. Real dispatcher/Git tests cover one-hour active/disposed retries, fresh keys, legacy recovery and foreign passes; the existing shared database contract covers literal-prefix lookup against isolated PostgreSQL in CI. Other write contracts are unchanged. Exact-head review/checks and live proof are recorded in [the durability note](../status/2026-10-29-native-open-durability.md).
