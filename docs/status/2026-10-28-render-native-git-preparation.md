@@ -1,5 +1,7 @@
 # Render native Git deployment preparation
 
+Historical preparation checkpoint. Deployment, cutover and acceptance are now completed; see [live acceptance](2026-10-28-render-native-git-acceptance.md). Statements below record the earlier state.
+
 Owner asks to try Render as an add-on for the existing Git worker; Vercel MCP hosting and Neon metadata stay in place. Render OAuth connection is working. Discovery returned one workspace named My Workspace, but no selected workspace. Render's access guide and connector response explicitly require owner workspace confirmation before resource operations. No resource or charge has been created and no MCP worker URL changed.
 
 Prepared workers/native-git/render.yaml for one HTTP Docker web service (not a Render background worker), Virginia region, current 0.5c-512mb plan, 1 GB persistent disk at /data, manual deployments from the checked live branch, /health and one concurrent workspace. Reuse the existing pinned Dockerfile and purpose-separated Ed25519 public verifier, freshly read from the serving /api/native-git-key endpoint. The public verifier is not a provider credential or private key. No GitHub token or Neon connection is configured on the worker.

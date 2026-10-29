@@ -23,3 +23,7 @@ Correct by comparing normalized policy structures, including profile-collision a
 Live non-persisting preview: stored revision 2 found zero matches in the project-format fixture; a preview of `custom_rasdemo` found exactly one value-free location. Independent settings read remained revision 2 with no rules/suppressions. Live tool search finds the compact gateway. Corrective PR #456 source `65e5c9aa50b2cbcc8526071b0d3f076b93b8575c` carries structural readback equality and PostgreSQL regression; merge/release still pending.
 
 Corrective PR #456 passed exact-head CI 40780206734, release policy 40780206706 and native image 40780206666; no review threads. Merged `0e4c5007f6c8a5f80512285c2513db89a6c2a3d5`; checked corrective release 40780698250 is waiting on main checks. Worker rebuilt from that exact corrective source and is healthy. Authenticated live `github_git_workspace_read` capabilities still returns worker ready=false/setup_required=true; no public native lifecycle pass is claimed.
+
+## Completed follow-up
+
+Corrective release and later checked configuration release are independently live. Confirmed exact-file receipt/replay/full+byte reads, rollback/cleanup and native project-rule/profile-offer probes are recorded in [Render acceptance](2026-10-28-render-native-git-acceptance.md). The active native route is Render; the old Dokploy ingress prerequisite no longer blocks it. Historical unconfirmed journal3032 remains unconfirmed.

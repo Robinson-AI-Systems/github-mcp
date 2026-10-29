@@ -1,6 +1,6 @@
 # Native Git worker: operations, deployment and migration
 
-This is actual native Git execution, separate from GitHub's git-data API. Source is merged, CI/image-tested and released. Initial Dokploy container is healthy but external HTTPS ingress is blocked; hosted clone/push acceptance is not complete. A configured URL alone does not prove reachability or acceptance. Use `github_git_workspace_read` with `operation: capabilities` to check the signed worker response, native Git version and explicit limits. The dated parity-completion checkpoint records source/CI/release evidence.
+This is actual native Git execution, separate from GitHub's git-data API. Source is merged, CI/image-tested and released. The active worker now runs on Render with a 1 GB persistent disk; signed live clone/edit/commit/push, conflict/abort, replay/refusal, restart persistence and cleanup passed. See [Render acceptance](status/2026-10-28-render-native-git-acceptance.md). Dokploy storage is retained, not automatically migrated. A configured URL alone does not prove reachability or acceptance. Use `github_git_workspace_read` with `operation: capabilities` to check the signed worker response, native Git version and explicit limits. The dated parity-completion checkpoint records source/CI/release evidence.
 
 ## User workflow
 
@@ -13,7 +13,7 @@ This is actual native Git execution, separate from GitHub's git-data API. Source
 
 Opening and mutating a workspace currently require a full write-capable connection. Read-only profiles can inspect a workspace already belonging to that same connection while its current repository access remains valid; they cannot open or mutate one. For a separate read-only grant, use a local authorized `git clone` until read-only cache creation is explicitly supported. No pass gains another connection's workspace, credentials or grants.
 
-## Initial Dokploy deployment
+## Initial Dokploy deployment (retained migration option)
 
 The owner permits the friend's Dokploy/server for initial use, with an easy move to owned infrastructure. The runtime is an ordinary non-root OCI container; no Docker socket, host credential mount, privileged container or repository hook execution. One worker process/replica owns each persistent volume. The initial adapter is NOT a distributed queue or autoscaling pool.
 
@@ -43,9 +43,9 @@ LFS, submodules, executable hooks/filters, signing, custom remotes, arbitrary sh
 
 Unit tests use real local Git/bare repositories, signed HTTP and fake GitHub identity/permissions. Job-store contract also runs against disposable PostgreSQL. Full exact-head ci/release-policy and Native Git worker image must pass. The final approved combined release then needs a real service-issued connection, deployed worker Git/image/MCP source, exact disposable owned repository, clone/edit/commit/push plus independent GitHub readback, denial/replay/conflict/recovery and cleanup. Source and image tests do not replace that live proof.
 
-## External route acceptance and current blocker
+## External route verification and historical Dokploy blocker
 
-See [combined release evidence](status/2026-10-28-combined-release.md). Before sending repository credentials, verify the public route from outside the host:
+The Dokploy-specific blocker below was superseded by the active Render route; no host-wide changes were needed. See [current evidence](status/2026-10-28-render-native-git-acceptance.md) and [Render setup](../workers/native-git/RENDER.md). Before sending repository credentials to any replacement host, verify its public route from outside the host:
 
 ```sh
 curl --fail --show-error "$WORKER_ORIGIN/health"
@@ -57,4 +57,4 @@ If it times out, the authorized host/network operator must provide publicly reac
 
 ## Scanner policy transport upgrade
 
-The scanner-tuning release uses worker protocol 2, so an older worker cannot silently ignore project protection settings. Rebuild the worker from the same checked release before enabling native operations; retain the data volume and pinned public verifier. Protocol 1 requests are refused by the updated worker and the old worker refuses protocol 2 before running an operation. Workspace storage/snapshot format is unchanged. The MCP sends the current repository policy inside each signed lease; native file reads, diagnostics and command-output redaction use that policy. The existing external-ingress blocker remains separate from this source upgrade.
+The scanner-tuning release uses worker protocol 2, so an older worker cannot silently ignore project protection settings. Rebuild the worker from the same checked release before enabling native operations; retain the data volume and pinned public verifier. Protocol 1 requests are refused by the updated worker and the old worker refuses protocol 2 before running an operation. Workspace storage/snapshot format is unchanged. The MCP sends the current repository policy inside each signed lease; native file reads, diagnostics and command-output redaction use that policy. The historical Dokploy ingress problem was resolved operationally by moving the active origin to Render; the signed protocol remains portable.

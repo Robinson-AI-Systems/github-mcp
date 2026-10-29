@@ -1134,12 +1134,12 @@ open obligations, original fixture ownership, approvals and deployment provenanc
   {
     "id": "GITHUB-NATIVE-GIT-WORKER",
     "requiredRevision": "53df99ef8b10d8c7351aa5eae4ee7cc867c8f228",
-    "status": "BLOCKED",
+    "status": "PASSED",
     "priority": 1,
     "task": "Verify externally reachable signed native Git worker, then exact disposable clone/edit/commit/push/provider readback, stale-generation denial, immutable replay, conflict/recovery and disposal.",
-    "procedure": "docs/NATIVE-GIT-OPERATIONS.md; docs/status/2026-10-28-combined-release.md",
-    "gates": "An authorized network operator must route public HTTPS to the existing Dokploy native-git service on port 3000 (reachable TLS proxy or owned outbound tunnel), then signed capabilities must return ready=true. Exact session-owned private scratch fixture, no paid capacity or alteration of useful grants.",
-    "lastEvidence": "2026-10-28 READY MCP 53df99ef; worker built exact source and Docker reports running/healthy, native Git 2.39.5. Generated compose has expected Traefik route and dokploy-network. External HTTPS times out; signed capabilities honestly ready=false. Current Dokploy account is denied server-wide settings; Cloudflare tooling supplied no usable account selector. No clone or provider credential sent. Scratch fixture removed and independently 404.",
+    "procedure": "docs/NATIVE-GIT-OPERATIONS.md; docs/status/2026-10-28-render-native-git-acceptance.md",
+    "gates": "Owner-approved Render compute and 1 GB disk; signed protocol-2 route; exact run-created private scratch repository; no unrelated resource or useful-grant changes.",
+    "lastEvidence": "2026-10-28 22:31\u201322:36 MDT, READY live 8004b9e857f16b4027ecf380d9e43abddf3c959f, custom MCP PRODUCTION/full. Render HTTPS health 200, unsigned 401, signed ready=true/Git 2.39.5. Clone/edit/commit/push plus independent GitHub ref readback, push replay, stale-generation denial, deliberate conflict/abort, and workspace HEAD/generation/file SHA-256 retained across a controlled Render redeploy all passed. Repository scanner policy reached native reads; value-free detection/refusal, non-applying profile offer and rollback passed. Exact workspace disposal journal 3368; repository deletion journal 3369, independently 404. See dated evidence for precise journals and hashes.",
     "dependsOn": []
   }
 ]
