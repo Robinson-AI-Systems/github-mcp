@@ -1,0 +1,27 @@
+name: Coding workspace image
+on:
+  pull_request:
+    paths:
+      - 'workers/coding-workspace/**'
+      - 'workers/native-git/resources.js'
+      - 'src/github/content-protection.js'
+      - 'src/github/open-secret-rules.js'
+      - 'src/github/secret-literals.js'
+      - 'src/github/custom-secret-rules.js'
+      - 'vendor/gitleaks/**'
+      - '.github/workflows/coding-workspace-image.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  coding-workspace-image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a
+        with:
+          persist-credentials: false
+      - name: Build dedicated coding image
+        run: docker build --pull -f workers/coding-workspace/Dockerfile -t robinson-coding:test .
+      - name: Test credential-free commands, database, browser and isolation in the real image
+        run: docker run --rm --network none --read-only --cap-drop ALL --cap-add SETUID --cap-add SETGID --cap-add KILL --cap-add CHOWN --cap-add DAC_OVERRIDE --security-opt no-new-privileges --memory 2g --cpus 2 --tmpfs /tmp:rw,nosuid,nodev,size=1g,mode=1777 robinson-coding:test node --test workers/coding-workspace/smoke.test.js

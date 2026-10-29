@@ -27,3 +27,7 @@ There must be no daily job-creation quota, for any connection or tenant. Remove 
 ## 2026-10-29 — global native Git resource admission
 
 For every user, simultaneous independent Git requests are limited only by actual worker resource pressure, with no fixed request-count or native workspace-count allowance. Keep four-hour inactivity expiry renewed by authorized activity, one operation per workspace, authentic delegated restrictions and tenant/connection isolation. No additional spending is authorized.
+
+## 2026-10-29 — full coding workspaces
+
+The owner requests a complete coding environment, beyond typed Git: dependency installation, application builds/tests, browser tests, development servers and disposable PostgreSQL. Desired per-workspace ceilings are eight virtual CPUs, eight GiB RAM and150GB persistent storage, subject to actual host capacity and enforceable isolation. No benchmark superiority, dedicated physical cores, disk quota or running capacity is implied by these requested values. Preserve all-user no-daily-job-quota/resource-based admission/four-hour inactivity behavior and existing data; no new spending or host-wide administration is authorized.
