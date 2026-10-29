@@ -1,0 +1,844 @@
+#!/usr/bin/env python3
+"""ras-github — the one GitHub CLI for Chris's agents.
+
+Wraps the Robinson GitHub MCP connector helper (custom.github-mcp) so every
+GitHub operation goes through Chris's own connector — never the official
+connector CLI (/opt/hatch/bin/github), whose writes generate approval cards.
+
+Direct gateway tools are called straight through the helper; every other
+catalogue tool goes through the helper's github_call gateway. Results are
+printed exactly once (the server sends each result twice: text +
+structuredContent; only the text payload is shown, pretty-printed if JSON).
+"""
+
+import argparse
+import base64
+import json
+import re
+import subprocess
+import sys
+import tempfile
+import os
+import uuid
+import hashlib
+import shutil
+
+HELPER = os.path.abspath(os.path.expanduser(os.environ.get(
+    "RAS_GITHUB_CONNECTOR_HELPER",
+    "~/workspace/custom-connectors/custom.github-mcp/bin/client.py"
+)))
+
+# Keep only stable gateway tools here; all catalog operations use github_call.
+# No duplicated per-operation allowlist is maintained.
+DIRECT_TOOLS = {
+    "github_call", "github_search_tools", "github_describe_tool",
+}
+
+
+SECRET_PATTERNS = [
+    (re.compile(r"gh[pousr]_[A-Za-z0-9]{20,}"), "<redacted-token>"),
+    (re.compile(r"github_pat_[A-Za-z0-9_]{20,}"), "<redacted-token>"),
+    (re.compile(r"hsurr:[^\s\"']+"), "<redacted>"),
+    (re.compile(r"(?i)(bearer\s+)[A-Za-z0-9._\-]{20,}"), r"\1<redacted>"),
+]
+
+
+class CliError(Exception):
+    """An expected failure; preserve a value-free receipt for recovery."""
+    def __init__(self, message, receipt=None):
+        super().__init__(message)
+        self.receipt = receipt
+
+
+
+def redact(text):
+    for pattern, replacement in SECRET_PATTERNS:
+        text = pattern.sub(replacement, text)
+    return text
+
+
+# --------------------------------------------------------------------------
+# Helper plumbing
+# --------------------------------------------------------------------------
+
+def run_helper(tool_name, arguments):
+    """Call one tool through the connector helper; return the raw result dict."""
+    fd, path = tempfile.mkstemp(prefix="ras-github-", suffix=".json")
+    try:
+        with os.fdopen(fd, "w") as handle:
+            json.dump(arguments, handle)
+        proc = subprocess.run(
+            [sys.executable, HELPER, "call-tool",
+             "--name", tool_name, "--arguments-file", path],
+            capture_output=True, text=True, timeout=180,
+        )
+    except OSError as error:
+        raise CliError("connector helper is unavailable: %s" % error.strerror)
+    except subprocess.TimeoutExpired:
+        raise CliError(
+            "the GitHub connector did not answer in time; "
+            "check the current state with a read before retrying"
+        )
+    finally:
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
+    if proc.returncode != 0:
+        detail = (proc.stderr or "").strip()
+        detail = re.sub(r"^error:\s*", "", detail)
+        # The helper still prints the result JSON on a tool error; prefer the
+        # tool's own message when we can find it.
+        text = extract_text(proc.stdout)
+        if text:
+            raise CliError(text.strip())
+        raise CliError(detail or "the GitHub connector call failed")
+    try:
+        return json.loads(proc.stdout)
+    except (ValueError, TypeError):
+        raise CliError("the GitHub connector returned an unreadable result")
+
+
+def extract_text(raw_stdout):
+    """Pull the text payload out of a helper result, if it parses as one."""
+    if not raw_stdout:
+        return None
+    try:
+        result = json.loads(raw_stdout)
+    except (ValueError, TypeError):
+        return None
+    return result_text(result)
+
+
+def result_text(result):
+    """The single text payload of an MCP result (never the structured copy)."""
+    if not isinstance(result, dict):
+        return None
+    parts = []
+    for item in result.get("content") or []:
+        if isinstance(item, dict) and item.get("type") == "text":
+            parts.append(item.get("text", ""))
+    if parts:
+        return "\n".join(parts)
+    structured = result.get("structuredContent")
+    if structured is not None:
+        return json.dumps(structured, ensure_ascii=False)
+    return None
+
+
+def parse_payload(text):
+    """Parse a text payload as JSON when it is JSON; else return the string."""
+    if text is None:
+        return None
+    try:
+        return json.loads(text)
+    except (ValueError, TypeError):
+        return text
+
+
+def call_tool(tool_name, arguments):
+    """Call any connector tool (direct or via github_call).
+
+    Returns the parsed payload (dict/list) or raw text string.
+    Raises CliError with the tool's own message on failure.
+    """
+    if tool_name in DIRECT_TOOLS:
+        result = run_helper(tool_name, arguments)
+    else:
+        result = run_helper("github_call", {"name": tool_name, "args": arguments})
+    if isinstance(result, dict) and result.get("isError"):
+        message = result_text(result) or "the tool reported an error"
+        raise CliError(redact(plain_message(message)))
+    payload = parse_payload(result_text(result))
+    if payload is None:
+        raise CliError("the tool returned an empty result")
+    # Change tools sometimes report failure inside an otherwise successful
+    # result (status "uncertain" with an error field). Never let an agent
+    # mistake that for success.
+    if isinstance(payload, dict) and payload.get("error"):
+        raise CliError(redact(plain_message(str(payload["error"]))))
+    if isinstance(payload, dict) and payload.get("status") in {
+        "refused", "refused_by_guard", "rejected", "uncertain", "unconfirmed", "failed"
+    }:
+        raise CliError(redact(str(payload.get("warning") or payload.get("reason") or
+                                  "Operation was not confirmed; inspect state before retrying.")), payload)
+    return payload
+
+
+def plain_message(text):
+    """Reduce a server error blob to its human sentence, when it is one.
+
+    The server sometimes nests the real message inside a JSON envelope
+    (possibly twice). Unwrap until we reach plain words.
+    """
+    message = text.strip()
+    for _ in range(3):
+        try:
+            inner = json.loads(message)
+        except ValueError:
+            break
+        if isinstance(inner, dict) and inner.get("error"):
+            message = str(inner["error"]).strip()
+        else:
+            break
+    return message
+
+
+def emit(payload):
+    """Print a result exactly once; pretty-print JSON compactly."""
+    if isinstance(payload, (dict, list)):
+        print(json.dumps(payload, indent=1, ensure_ascii=False))
+    else:
+        print(redact(str(payload)))
+
+
+def request_key(tool_name):
+    return "rasgh-%s-%s" % (tool_name.replace("github_", ""), uuid.uuid4().hex[:16])
+
+
+def preview(tool_name, arguments):
+    """Phase one of a change: dry-run preview only."""
+    args = dict(arguments)
+    args["dryRun"] = True
+    args["requestKey"] = request_key(tool_name)
+    return call_tool(tool_name, args)
+
+
+def execute(tool_name, arguments):
+    """One authorized owner write; never turn a failed result into success."""
+    args = dict(arguments)
+    args.setdefault("requestKey", request_key(tool_name))
+    try:
+        result = call_tool(tool_name, args)
+    except CliError as error:
+        raise CliError("%s Intent key: %s. Inspect state before retrying." % (error, args["requestKey"]), error.receipt)
+    if not isinstance(result, dict) or result.get("preflight_failed") or result.get("done") is not True:
+        message = result.get("warning") or result.get("reason") or result.get("error") if isinstance(result, dict) else None
+        raise CliError(message or "Write was not confirmed; inspect state and the same intent before retrying.", result)
+    if result.get("status") not in {"applied", "replayed", "complete"} or result.get("confirmed") is False:
+        raise CliError("Write receipt is not a confirmed applied result; inspect it before retrying.", result)
+    return result
+
+
+# --------------------------------------------------------------------------
+# Shared argument helpers
+# --------------------------------------------------------------------------
+
+def add_repo_args(parser):
+    parser.add_argument("--owner", default="christcr2012",
+                        help="GitHub account (default: christcr2012)")
+    parser.add_argument("--repo", required=True, help="repository name")
+
+
+def add_number_arg(parser):
+    parser.add_argument("--number", type=int, required=True,
+                        help="pull request number")
+
+
+def repo_args(ns):
+    return {"owner": ns.owner, "repo": ns.repo}
+
+
+# --------------------------------------------------------------------------
+# Read commands
+# --------------------------------------------------------------------------
+
+def cmd_whoami(ns):
+    emit(call_tool("github_whoami", {"detail":"brief"}))
+
+
+def cmd_repo_get(ns):
+    emit(call_tool("github_repo_get", repo_args(ns)))
+
+
+def cmd_pr_list(ns):
+    args = repo_args(ns)
+    args["state"] = ns.state
+    if ns.max is not None:
+        args["max"] = ns.max
+    emit(call_tool("github_pr_list", args))
+
+
+def cmd_pr_get(ns):
+    args = repo_args(ns)
+    args["number"] = ns.number
+    emit(call_tool("github_pr_get", args))
+
+
+def cmd_pr_status(ns):
+    args = repo_args(ns)
+    args["number"] = ns.number
+    emit(call_tool("github_workflow_pr_status", args))
+
+
+def cmd_threads(ns):
+    args = repo_args(ns)
+    args["number"] = ns.number
+    if ns.unresolved:
+        args["unresolvedOnly"] = True
+    emit(call_tool("github_review_list_threads", args))
+
+
+def cmd_ci(ns):
+    args = repo_args(ns)
+    if ns.number is not None:
+        args["pr"] = ns.number
+    elif ns.ref:
+        args["ref"] = ns.ref
+    else:
+        raise CliError("ci needs a target: --ref <branch-or-sha> or --number <pr>")
+    emit(call_tool("github_check_get_ci_state", args))
+
+
+def cmd_workflows(ns):
+    emit(call_tool("github_actions_list_workflows", repo_args(ns)))
+
+
+def cmd_runs(ns):
+    args = repo_args(ns)
+    if ns.workflow:
+        args["workflow"] = ns.workflow
+    if ns.branch:
+        args["branch"] = ns.branch
+    if ns.status:
+        args["status"] = ns.status
+    if ns.max is not None:
+        args["max"] = ns.max
+    emit(call_tool("github_actions_list_runs", args))
+
+
+def cmd_job_log(ns):
+    if ns.job is not None:
+        args = repo_args(ns)
+        args["jobId"] = ns.job
+        if ns.full:
+            if ns.tail is not None:
+                raise CliError("--full cannot be combined with --tail")
+            args["fullText"] = True
+            args["textOffset"] = ns.offset
+            if ns.hash: args["expectedLogHash"] = ns.hash
+        elif ns.offset or ns.hash:
+            raise CliError("--offset and --hash require --full")
+        if ns.tail is not None:
+            args["tailLines"] = ns.tail
+        emit(call_tool("github_actions_get_job_log", args))
+    elif ns.run is not None:
+        if ns.full or ns.offset or ns.hash:
+            raise CliError("full-log windows need --job, not --run")
+        args = repo_args(ns)
+        args["runId"] = ns.run
+        emit(call_tool("github_actions_get_run_logs_summary", args))
+    else:
+        raise CliError("job-log needs --job <job id> or --run <run id>")
+
+
+def cmd_get_file(ns):
+    args = repo_args(ns)
+    args["path"] = ns.path
+    if ns.ref:
+        args["ref"] = ns.ref
+    args["fullText"] = True
+    emit(call_tool("github_content_get", args))
+
+
+def cmd_commit_list(ns):
+    args = repo_args(ns)
+    ref = ns.branch or ns.ref
+    if ref:
+        args["ref"] = ref
+    if ns.max is not None:
+        args["max"] = ns.max
+    emit(call_tool("github_commit_list", args))
+
+
+def cmd_branch_list(ns):
+    emit(call_tool("github_branch_list", repo_args(ns)))
+
+
+def cmd_search_tools(ns):
+    emit(call_tool("github_search_tools", {"query": ns.query, "limit": ns.limit}))
+
+
+def cmd_describe(ns):
+    emit(call_tool("github_describe_tool", {"name": ns.tool}))
+
+
+def cmd_call(ns):
+    try:
+        arguments = json.loads(ns.args)
+    except ValueError:
+        raise CliError("--args must be a JSON object, e.g. '{\"owner\": \"x\"}'")
+    if not isinstance(arguments, dict):
+        raise CliError("--args must be a JSON object")
+    emit(call_tool(ns.tool, arguments))
+
+
+# --------------------------------------------------------------------------
+# Write commands
+# --------------------------------------------------------------------------
+
+def resolve_pr_head(ns):
+    if ns.head:
+        if not re.fullmatch(r"[a-fA-F0-9]{40}", ns.head):
+            raise CliError("--head needs the full 40-character commit SHA, not an abbreviation")
+        return ns.head
+    pr = call_tool("github_pr_get",
+                   {"owner": ns.owner, "repo": ns.repo, "number": ns.number})
+    if isinstance(pr, dict) and pr.get("head_sha"):
+        return pr["head_sha"]
+    raise CliError("could not read the PR's head SHA; pass --head <exact sha>")
+
+
+def cmd_pr_create(ns):
+    args = repo_args(ns)
+    args["head"] = ns.head
+    args["title"] = ns.title
+    if ns.base:
+        args["base"] = ns.base
+    body = ns.body
+    if ns.body_file:
+        try:
+            with open(ns.body_file, "r", encoding="utf-8") as handle:
+                body = handle.read()
+        except OSError as error:
+            raise CliError("cannot read --body-file: %s" % error.strerror)
+    if body:
+        args["body"] = body
+    if ns.draft:
+        args["draft"] = True
+    emit(execute("github_pr_create", args))
+
+
+def cmd_pr_merge(ns):
+    head = resolve_pr_head(ns)
+    args = repo_args(ns)
+    args["number"] = ns.number
+    args["expectedHeadSha"] = head
+    args["method"] = ns.method
+    if ns.confirm:
+        emit(execute("github_pr_merge", args))
+    else:
+        result = preview("github_pr_merge", args)
+        emit(result)
+        print("ras-github: preview only — re-run with --confirm to merge "
+              "PR #%d at head %s" % (ns.number, head), file=sys.stderr)
+
+
+def cmd_auto_merge(ns):
+    if not re.fullmatch(r"[a-fA-F0-9]{40}", ns.head):
+        raise CliError("--head needs the full 40-character commit SHA, not an abbreviation")
+    args = repo_args(ns)
+    args["number"] = ns.number
+    args["enabled"] = not ns.off
+    args["expectedHeadSha"] = ns.head
+    args["method"] = "squash"
+    emit(execute("github_pr_set_auto_merge", args))
+
+
+def cmd_dispatch(ns):
+    args = repo_args(ns)
+    args["workflow"] = ns.workflow
+    args["ref"] = ns.ref
+    if ns.inputs:
+        try:
+            given = json.loads(ns.inputs)
+        except ValueError:
+            raise CliError("--inputs must be JSON: an object of name/value "
+                           "pairs or a list of {\"name\", \"value\"} objects")
+        if isinstance(given, dict):
+            args["inputs"] = [
+                {"name": str(k), "value": str(v)} for k, v in given.items()
+            ]
+        elif isinstance(given, list):
+            args["inputs"] = given
+        else:
+            raise CliError("--inputs must be a JSON object or list")
+    emit(execute("github_actions_dispatch", args))
+
+
+# --------------------------------------------------------------------------
+# push-branch
+# --------------------------------------------------------------------------
+
+def git(source_dir, *argv, binary=False):
+    proc = subprocess.run(
+        ["git", "-C", source_dir] + list(argv),
+        capture_output=True, timeout=120,
+    )
+    if proc.returncode != 0:
+        message = proc.stderr.decode("utf-8", "replace").strip()
+        raise CliError("git failed: %s" % (message or " ".join(argv)))
+    return proc.stdout if binary else proc.stdout.decode("utf-8", "replace")
+
+
+def remote_head(owner, repo, branch):
+    result = call_tool("github_commit_list",
+                       {"owner": owner, "repo": repo, "ref": branch, "max": 1})
+    items = result.get("items") if isinstance(result, dict) else None
+    if not items:
+        raise CliError(
+            "remote branch %r was not found on %s/%s — create it first "
+            "(ras-github call github_branch_create --args ...) and retry"
+            % (branch, owner, repo))
+    return items[0]["sha"]
+
+
+def collect_changes(source_dir, base_ref):
+    """Files changed between base-ref and local HEAD, as git-data entries."""
+    git(source_dir, "rev-parse", "--verify", base_ref + "^{commit}")
+    raw = git(source_dir, "diff", "--name-status", "-z", base_ref, "HEAD",
+              binary=True)
+    tokens = raw.split(b"\x00")
+    if tokens and tokens[-1] == b"":
+        tokens.pop()
+    entries = []
+    i = 0
+    while i < len(tokens):
+        status = tokens[i].decode("utf-8", "replace")
+        i += 1
+        code = status[:1]
+        if code in ("R", "C"):
+            old_path = tokens[i].decode("utf-8", "surrogateescape"); i += 1
+            new_path = tokens[i].decode("utf-8", "surrogateescape"); i += 1
+            if code == "R":
+                entries.append({"path": old_path, "delete": True})
+            entries.append(make_file_entry(source_dir, new_path))
+        elif code == "D":
+            path = tokens[i].decode("utf-8", "surrogateescape"); i += 1
+            entries.append({"path": path, "delete": True})
+        elif code in ("A", "M", "T"):
+            path = tokens[i].decode("utf-8", "surrogateescape"); i += 1
+            entries.append(make_file_entry(source_dir, path))
+        else:
+            raise CliError("unsupported git change status %r; "
+                           "push these changes another way" % status)
+    return entries
+
+
+def make_file_entry(source_dir, path):
+    data = git(source_dir, "cat-file", "blob", "HEAD:" + path, binary=True)
+    tree_line = git(source_dir, "ls-tree", "HEAD", "--", path)
+    mode = tree_line.split(None, 1)[0] if tree_line else None
+    if mode not in ("100644", "100755"):
+        raise CliError("unsupported mode for %s; symlinks/submodules cannot be copied as ordinary files" % path)
+    if len(data) > 1500000:
+        raise CliError("file %s exceeds the 1.5 MB Git-data limit" % path)
+    try:
+        text = data.decode("utf-8")
+        if "\x00" in text:
+            raise UnicodeDecodeError("utf-8", data, 0, 1, "NUL byte")
+        entry = {"path": path, "content": text, "encoding": "utf-8"}
+    except UnicodeDecodeError:
+        entry = {"path": path,
+                 "content": base64.b64encode(data).decode("ascii"),
+                 "encoding": "base64"}
+    if len(entry["content"]) > 2000000:
+        raise CliError(
+            "file %s is too large for the connector's git-data route "
+            "(%d chars over the 2,000,000 limit); split it or push it "
+            "another way" % (path, len(entry["content"]) - 2000000))
+    if mode == "100755":
+        entry["mode"] = mode
+    return entry
+
+
+def commit_tree(owner, repo, commit):
+    result = call_tool("github_api_read", {"owner": owner,
+        "operation": "GET /repos/{owner}/{repo}/git/commits/{commit_sha}",
+        "params": {"owner": owner, "repo": repo, "commit_sha": commit},
+        "fields": ["data.sha", "data.tree.sha", "data.parents.sha"]})
+    data = result.get("data", {}) if isinstance(result, dict) else {}
+    if data.get("sha") != commit or not re.fullmatch(r"[a-f0-9]{40}", data.get("tree", {}).get("sha", "")):
+        raise CliError("Independent commit/tree readback is incomplete; no success is claimed.")
+    return data
+
+
+def cmd_push_branch(ns):
+    source_dir = os.path.abspath(os.path.expanduser(ns.source_dir))
+    if not os.path.isdir(source_dir):
+        raise CliError("--source-dir is not a directory: %s" % source_dir)
+    local_head = git(source_dir, "rev-parse", "--verify", "HEAD^{commit}").strip()
+    local_tree = git(source_dir, "rev-parse", "HEAD^{tree}").strip()
+    base = git(source_dir, "rev-parse", "--verify", ns.base_ref + "^{commit}").strip()
+    entries = collect_changes(source_dir, ns.base_ref)
+    if git(source_dir, "rev-parse", "HEAD").strip() != local_head:
+        raise CliError("Local HEAD moved while collecting files; no upload was sent.")
+    if not entries:
+        emit({"status": "no_changes", "files": 0, "local_head": local_head})
+        return
+    description = call_tool("github_describe_tool", {"name": "github_content_commit_git_data"})
+    props = description.get("arguments", {}).get("properties", {})
+    if "createFrom" not in props or "expectedFileCount" not in props:
+        raise CliError("Server lacks the atomic batch/createFrom contract. Install the checked server release before this helper; no upload was sent.")
+    limit = props.get("files", {}).get("maxItems", 0)
+    if not isinstance(limit, int) or limit < 1 or limit > 50:
+        raise CliError("Server reported an unsupported batch limit; no upload was sent.")
+    chunks, chunk, size = [], [], 0
+    for entry in entries:
+        data = b"" if entry.get("delete") else (base64.b64decode(entry["content"]) if entry.get("encoding") == "base64" else entry["content"].encode("utf-8"))
+        if chunk and (len(chunk) == limit or size + len(data) > 2000000):
+            chunks.append(chunk); chunk, size = [], 0
+        chunk.append(entry); size += len(data)
+    if chunk: chunks.append(chunk)
+    if len(chunks) > 1:
+        print("ras-github: %d verified commits required; a later failure may leave an explicitly partial upload." % len(chunks), file=sys.stderr)
+    head = None
+    for index, chunk in enumerate(chunks):
+        args = {"owner": ns.owner, "repo": ns.repo, "branch": ns.branch,
+                "message": ns.message, "files": chunk, "expectedFileCount": len(chunk),
+                "createFrom": base}
+        if head: args["expectedHead"] = head
+        try:
+            result = execute("github_content_commit_git_data", args)
+            receipt = result.get("result", {})
+            commit = receipt.get("commit")
+            if (receipt.get("submitted_files") != len(chunk) or receipt.get("confirmed_files") != len(chunk)
+                    or receipt.get("manifest_complete") is not True or receipt.get("branch_head") != commit
+                    or not re.fullmatch(r"[a-f0-9]{40}", commit or "")):
+                raise CliError("Batch manifest/count/head is not independently confirmed.", result)
+            observed = remote_head(ns.owner, ns.repo, ns.branch)
+            if observed != commit:
+                raise CliError("Destination moved after the batch; inspect remote state before another intent.")
+            head = observed
+        except CliError as error:
+            raise CliError("Stopped at batch %d/%d; %d earlier batches confirmed. Remote work may be partial. %s" % (index+1,len(chunks),index,error), error.receipt)
+    data = commit_tree(ns.owner, ns.repo, head)
+    if data["tree"]["sha"] != local_tree:
+        raise CliError("Remote full tree differs from local HEAD. The upload is not verified complete; inspect rather than blindly retry.")
+    emit({"status":"verified", "remote_head":head, "local_head":local_head,
+          "tree":local_tree, "confirmed_files":len(entries), "commits":len(chunks),
+          "history":"content snapshot; local commits and merge parents were not imported",
+          "ci":"not guaranteed; inspect exact-SHA workflow events"})
+
+
+def cmd_sync_branch(ns):
+    """Merge a current remote base using real Git history, never copied parents."""
+    head = remote_head(ns.owner, ns.repo, ns.branch)
+    opened = execute("github_git_workspace_open", {**repo_args(ns), "branch": ns.branch,
+        "requestKey": request_key("workspace_open")})
+    workspace = opened.get("result", {})
+    wid = workspace.get("workspace_id")
+    generation = workspace.get("generation")
+    if not wid or not isinstance(generation, int):
+        raise CliError("Native workspace open has no current usable identity/generation.")
+    try:
+        for operation, options in [("fetch", {}), ("merge", {"ref":"origin/"+ns.base}),
+                                   ("push", {"branch":ns.branch,"expectedHead":head})]:
+            result = execute("github_git_workspace_run", {"workspace_id":wid,
+                "operation":operation,"expectedGeneration":generation,"options":options})
+            state = result.get("result", {}).get("workspace", {})
+            generation = state.get("generation")
+            if not isinstance(generation, int):
+                raise CliError("Native operation lacks current generation; inspect before continuing.")
+        observed = remote_head(ns.owner, ns.repo, ns.branch)
+        if observed != state.get("head"):
+            raise CliError("Native push is not equal to independent remote head.")
+        execute("github_git_workspace_close", {"workspace_id":wid})
+        emit({"status":"verified","remote_head":observed,"base":ns.base,"history":"native Git merge and push"})
+    except CliError as error:
+        raise CliError("Sync stopped. Workspace %s is retained for inspection/conflict recovery; nothing is auto-retried. %s" % (wid,error), error.receipt)
+
+
+def cmd_doctor(ns):
+    """Local checks by default; explicit --live uses only ordinary connector reads."""
+    issues = []
+    if not os.path.isfile(HELPER):
+        issues.append("Connector helper is missing. Set RAS_GITHUB_CONNECTOR_HELPER to the existing client.py; keep its saved sign-in.")
+    if not shutil.which("git"):
+        issues.append("Git is not available on PATH.")
+    result = {"ready": not issues, "version": "2.1", "connector_helper_present": os.path.isfile(HELPER), "issues": issues}
+    if ns.live and not issues:
+        identity = call_tool("github_whoami", {"detail": "brief"})
+        description = call_tool("github_describe_tool", {"name": "github_content_commit_git_data"})
+        props = description.get("arguments", {}).get("properties", {})
+        if "createFrom" not in props or "expectedFileCount" not in props:
+            issues.append("Server lacks the verified upload contract; update it before publishing.")
+        capabilities = call_tool("github_git_workspace_read", {"operation": "capabilities"})
+        worker = capabilities.get("worker", {})
+        result.update({"connector_read_verified": isinstance(identity, dict),
+                       "native_git_ready": worker.get("ready") is True and worker.get("admission", {}).get("allowed") is True,
+                       "native_admission": worker.get("admission", {"allowed": False, "reason": "not_observed"}),
+                       "capacity_mode": worker.get("capacity_mode"),
+                       "native_git_note": "Native Git readiness is separate from API-only publishing."})
+        result["ready"] = not issues and isinstance(identity, dict)
+    emit(result)
+    if not result["ready"]:
+        raise CliError("Doctor checks failed; resolve the listed issue before publishing.")
+
+
+# --------------------------------------------------------------------------
+# Parser
+# --------------------------------------------------------------------------
+
+def build_parser():
+    parser = argparse.ArgumentParser(
+        prog="ras-github",
+        description="GitHub through Chris's own Robinson GitHub MCP "
+                    "connector. Never uses the official connector CLI, so "
+                    "writes do not generate approval cards.")
+    parser.add_argument("--version", action="version", version="ras-github 2.1 (versioned fleet installation)")
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    p = sub.add_parser("doctor", help="check local prerequisites; --live verifies saved connector reads")
+    p.add_argument("--live", action="store_true", help="perform read-only calls through the existing connector")
+    p.set_defaults(func=cmd_doctor)
+
+    p = sub.add_parser("whoami", help="which GitHub account this acts as")
+    p.set_defaults(func=cmd_whoami)
+
+    p = sub.add_parser("repo-get", help="read a repository's settings")
+    add_repo_args(p); p.set_defaults(func=cmd_repo_get)
+
+    p = sub.add_parser("pr-list", help="list pull requests")
+    add_repo_args(p)
+    p.add_argument("--state", default="open",
+                   choices=["open", "closed", "all"])
+    p.add_argument("--max", type=int)
+    p.set_defaults(func=cmd_pr_list)
+
+    p = sub.add_parser("pr-get", help="read one pull request")
+    add_repo_args(p); add_number_arg(p); p.set_defaults(func=cmd_pr_get)
+
+    p = sub.add_parser("pr-status",
+                       help="PR with CI, review-gate and thread state")
+    add_repo_args(p); add_number_arg(p); p.set_defaults(func=cmd_pr_status)
+
+    p = sub.add_parser("pr-create", help="create a pull request")
+    add_repo_args(p)
+    p.add_argument("--title", required=True)
+    p.add_argument("--head", required=True, help="head branch")
+    p.add_argument("--base", help="base branch (default: repo default)")
+    p.add_argument("--body")
+    p.add_argument("--body-file", help="read the PR body from a file")
+    p.add_argument("--draft", action="store_true")
+    p.set_defaults(func=cmd_pr_create)
+
+    p = sub.add_parser("pr-merge",
+                       help="merge a PR (preview unless --confirm)")
+    add_repo_args(p); add_number_arg(p)
+    p.add_argument("--head", help="exact head SHA (default: read it live)")
+    p.add_argument("--method", default="squash",
+                   choices=["merge", "squash", "rebase"])
+    p.add_argument("--confirm", action="store_true",
+                   help="execute the merge (without it, preview only)")
+    p.set_defaults(func=cmd_pr_merge)
+
+    p = sub.add_parser("auto-merge",
+                       help="arm (or with --off, disarm) GitHub auto-merge")
+    add_repo_args(p); add_number_arg(p)
+    p.add_argument("--head", required=True, help="exact head SHA")
+    p.add_argument("--off", action="store_true", help="turn auto-merge off")
+    p.set_defaults(func=cmd_auto_merge)
+
+    p = sub.add_parser("threads", help="list a PR's review threads")
+    add_repo_args(p); add_number_arg(p)
+    p.add_argument("--unresolved", action="store_true",
+                   help="only unresolved threads")
+    p.set_defaults(func=cmd_threads)
+
+    p = sub.add_parser("ci", help="CI state at a ref or a PR's head")
+    add_repo_args(p)
+    p.add_argument("--ref", help="branch, tag or commit SHA")
+    p.add_argument("--number", type=int, help="PR number (uses its head)")
+    p.set_defaults(func=cmd_ci)
+
+    p = sub.add_parser("workflows", help="list a repo's Actions workflows")
+    add_repo_args(p); p.set_defaults(func=cmd_workflows)
+
+    p = sub.add_parser("runs", help="list workflow runs")
+    add_repo_args(p)
+    p.add_argument("--workflow")
+    p.add_argument("--branch")
+    p.add_argument("--status")
+    p.add_argument("--max", type=int)
+    p.set_defaults(func=cmd_runs)
+
+    p = sub.add_parser("dispatch", help="dispatch a workflow on a ref")
+    add_repo_args(p)
+    p.add_argument("--workflow", required=True, help="workflow file or name")
+    p.add_argument("--ref", required=True, help="branch or tag to run on")
+    p.add_argument("--inputs", help="JSON object of workflow inputs")
+    p.set_defaults(func=cmd_dispatch)
+
+    p = sub.add_parser("job-log", help="a job's log summary, or a run's "
+                                       "failure summary with --run")
+    add_repo_args(p)
+    p.add_argument("--job", type=int, help="job id")
+    p.add_argument("--run", type=int, help="run id (failure summary)")
+    p.add_argument("--tail", type=int, help="tail lines for --job")
+    p.add_argument("--full", action="store_true", help="redacted full-log character window")
+    p.add_argument("--offset", type=int, default=0, help="character offset for --full")
+    p.add_argument("--hash", help="log_hash required for a nonzero full-log offset")
+    p.set_defaults(func=cmd_job_log)
+
+    p = sub.add_parser("get-file", help="read a file (or list a directory)")
+    add_repo_args(p)
+    p.add_argument("--path", required=True)
+    p.add_argument("--ref", help="branch, tag or commit (default: default "
+                                 "branch)")
+    p.set_defaults(func=cmd_get_file)
+
+    p = sub.add_parser("commit-list", help="list commits on a branch")
+    add_repo_args(p)
+    p.add_argument("--branch", help="branch name")
+    p.add_argument("--ref", help="branch, tag or commit")
+    p.add_argument("--max", type=int)
+    p.set_defaults(func=cmd_commit_list)
+
+    p = sub.add_parser("branch-list", help="list branches")
+    add_repo_args(p); p.set_defaults(func=cmd_branch_list)
+
+    p = sub.add_parser("push-branch",
+                       help="publish a verified file snapshot to a remote branch via "
+                            "the connector's git-data route")
+    add_repo_args(p)
+    p.add_argument("--branch", required=True, help="remote branch to update")
+    p.add_argument("--source-dir", required=True,
+                   help="local git checkout holding the commits")
+    p.add_argument("--base-ref", required=True,
+                   help="git ref the remote branch was created from "
+                        "(changes are diffed from here to local HEAD)")
+    p.add_argument("--message", required=True, help="commit message")
+    p.set_defaults(func=cmd_push_branch)
+
+    p = sub.add_parser("sync-branch", help="merge a remote base into a remote topic with native Git")
+    add_repo_args(p)
+    p.add_argument("--branch", required=True)
+    p.add_argument("--base", default="main", help="remote source branch (default main)")
+    p.set_defaults(func=cmd_sync_branch)
+
+    p = sub.add_parser("search-tools",
+                       help="find connector tools by plain words")
+    p.add_argument("query")
+    p.add_argument("--limit", type=int, default=10)
+    p.set_defaults(func=cmd_search_tools)
+
+    p = sub.add_parser("describe", help="show one tool's full argument schema")
+    p.add_argument("tool")
+    p.set_defaults(func=cmd_describe)
+
+    p = sub.add_parser("call",
+                       help="call any connector tool by name (escape "
+                            "hatch to the current server catalog)")
+    p.add_argument("tool")
+    p.add_argument("--args", default="{}", help="JSON object of arguments")
+    p.set_defaults(func=cmd_call)
+
+    return parser
+
+
+def main(argv=None):
+    parser = build_parser()
+    ns = parser.parse_args(argv)
+    try:
+        ns.func(ns)
+    except CliError as error:
+        print("ras-github: %s" % redact(str(error)), file=sys.stderr)
+        return 1
+    except BrokenPipeError:
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
