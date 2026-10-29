@@ -2,7 +2,7 @@ import { nativeWorkerPublicKey } from '../native-git/signing.js';
 import { randomBytes } from 'node:crypto';
 import { defineRead } from './define-read.js';
 import { defineGithubWrite } from './define-github-write.js';
-import { READ_OPERATIONS, WRITE_OPERATIONS, gitCommand, switchBranch } from '../native-git/commands.js';
+import { READ_OPERATIONS, WRITE_OPERATIONS, gitCommand, switchBranch, branchName, nativeOperationHelp } from '../native-git/commands.js';
 import { nativeWorkspaceId, workerUrl, workerKey } from '../native-git/protocol.js';
 import { nativeConnection, nativeRecord, authorizeNativeRepo, callNativeWorker } from '../native-git/client.js';
 
@@ -12,7 +12,7 @@ const WORKSPACE = { type: 'string', pattern: '^job_[a-f0-9]{16}$' };
 const TEXT = { type: 'string', minLength: 1, maxLength: 256 };
 const BOOL = { type: 'boolean' };
 const OPTIONS = { type: 'object', additionalProperties: false, properties: {
- intentKey: { type: 'string', minLength: 1, maxLength: 128 }, worktree: { type: 'string', pattern: '^[a-zA-Z0-9_-]{1,60}$' }, ref: TEXT, branch: { ...TEXT, description: 'Exact branch; switch also accepts name or ref. Conflicting aliases are refused.' }, name: TEXT, path: { type: 'string', maxLength: 4096 }, paths: { type: 'array', minItems: 1, maxItems: 100, items: { type: 'string', minLength: 1, maxLength: 4096 } },
+ intentKey: { type: 'string', minLength: 1, maxLength: 128 }, worktree: { type: 'string', pattern: '^[a-zA-Z0-9_-]{1,60}$' }, ref: TEXT, branch: { ...TEXT, description: 'Branch name; branch_create/rename/delete accept name as alias; switch also accepts ref.' }, name: TEXT, path: { type: 'string', maxLength: 4096 }, paths: { type: 'array', minItems: 1, maxItems: 100, items: { type: 'string', minLength: 1, maxLength: 4096 } },
  message: { type: 'string', minLength: 1, maxLength: 10000 }, base64: { type: 'string', maxLength: 1400000 },
  expectedHead: { type: 'string', pattern: '^([a-f0-9]{40,64})?$' }, expectedFileHash: { type: 'string', pattern: '^[a-f0-9]{64}$' },
  force: BOOL, delete: BOOL, tag: BOOL, hard: BOOL, staged: BOOL, amend: BOOL, good: TEXT, bad: TEXT,
@@ -25,7 +25,7 @@ const configured = c => { workerUrl(c.env); if (c.env?.NATIVE_GIT_WORKER_KEY) wo
 
 const open = defineGithubWrite({
  name: 'github_git_workspace_open', area: 'git', audience: ['B', 'O', 'Op'],
- description: 'Clone an authorized GitHub repository into an isolated native Git workspace with a resumable connection-bound identity.',
+ description: 'Clone an authorized repository. Use a fresh requestKey per new workspace and reuse it only for retries; a closed clone receipt is historical.',
  properties: { owner: OWNER, repo: REPO, branch: TEXT, authorName: { type: 'string', minLength: 1, maxLength: 100 }, authorEmail: { type: 'string', minLength: 1, maxLength: 254 }, depth: { type: 'integer', minimum: 1, maximum: 100000 }, leaseMinutes: { type: 'integer', minimum: 1, maximum: 1440 } }, required: ['repo'], declarations,
  target: (a, c) => ({ owner: a.owner ?? c.connection.default_account, repo: a.repo, scope: 'repo', kind: 'native-git' }),
  read: async (a, c, t) => { configured(c); await authorizeNativeRepo(c, t.owner, t.repo); return {}; },
@@ -51,7 +51,7 @@ const read = defineRead({
  properties: { workspace_id: WORKSPACE, operation: { type: 'string', enum: ['capabilities', ...READ_OPERATIONS] }, options: OPTIONS, byteOffset: { type: 'integer', minimum: 0 }, byteLength: { type: 'integer', minimum: 1, maximum: 32768 } }, required: ['operation'],
  handler: async (a, c) => { if (a.operation === 'capabilities') {
   let worker; try { worker = await callNativeWorker(c, { action: 'capabilities' }); } catch { worker = { ready: false, setup_required: true }; }
-  return { worker, read_operations: READ_OPERATIONS, write_operations: WRITE_OPERATIONS, setup: 'https://github.com/Robinson-AI-Systems/github-mcp/blob/main/docs/NATIVE-GIT-OPERATIONS.md', unsupported: [
+  return { operation_help: a.options?.name ? nativeOperationHelp(a.options.name) : { next: 'Call capabilities with options.name set to an operation for exact options and an example.' }, worker, read_operations: READ_OPERATIONS, write_operations: WRITE_OPERATIONS, setup: 'https://github.com/Robinson-AI-Systems/github-mcp/blob/main/docs/NATIVE-GIT-OPERATIONS.md', unsupported: [
     { feature: 'LFS', guidance: 'Install git-lfs locally, run git lfs install in your trusted local clone, and use git lfs pull/push with your own GitHub authorization.' },
     { feature: 'submodules', guidance: 'Use a trusted isolated local clone, review .gitmodules origins, then git submodule update --init --recursive with separate repository permissions.' },
     { feature: 'executable hooks/filters, signing, custom remotes and arbitrary shell/bisect run', guidance: 'Use your local native Git configuration in an isolated environment with its own credentials. The worker never executes repository-provided programs.' }
@@ -60,21 +60,34 @@ const read = defineRead({
 });
 const run = defineGithubWrite({
  name: 'github_git_workspace_run', area: 'git', audience: ['B', 'O', 'Op'],
- description: 'Run typed native Git edits, commits, branches, push/fetch, merge/rebase, conflict recovery, stash, worktrees or bisect.',
+ description: 'Run typed native Git operations. Read capabilities with options.name set to the operation for exact required arguments and examples.',
  properties: { workspace_id: WORKSPACE, operation: { type: 'string', enum: WRITE_OPERATIONS }, expectedGeneration: { type: 'integer', minimum: 0 }, options: OPTIONS }, required: ['workspace_id', 'operation', 'expectedGeneration'], declarations: { ...declarations, production: 'when-target' },
- target, read: async (a, c, t) => { configured(c); try { gitCommand(a.operation, a.options ?? {}); } catch (error) { throw Object.assign(new TypeError(error.message), { safeMessage: true }); } return invoke(c, t, { action: 'inspect', options: { worktree: a.options?.worktree } }); },
+ explain: error => error?.safeMessage ? error.message : 'Native Git operation could not be confirmed. Inspect workspace state and the same intent receipt before retrying.',
+ classifyError: error => [401,409,429].includes(error?.status) ? 'rejected' : 'uncertain',
+ target, read: async (a, c, t) => { configured(c); try { gitCommand(a.operation, a.options ?? {}); } catch (error) { throw Object.assign(new TypeError(`Native ${a.operation} arguments: ${error.message}`), { safeMessage: true }); } try { return await invoke(c, t, { action: 'inspect', options: { worktree: a.options?.worktree } }); } catch (error) { if (error.safeMessage) error.message = `Native ${a.operation} preflight: ${error.message}`.slice(0,300); throw error; } },
  classify: ({ args: a }) => a.operation === 'push' ? { production: 'push changes exact GitHub remote refs; GitHub permissions and repository rules apply' } : {},
  price: () => 0, // Git ref transport itself does not buy seats/compute; disclose repository-automation costs separately.
  summarize: ({ args: a, target: t }) => `Native Git ${a.operation} in ${t.owner}/${t.repo} at workspace generation ${a.expectedGeneration}${a.operation === 'push' ? '; future GitHub automation costs may be unknown' : ''}`,
  apply: ({ args: a, ctx: c, target: t, requestKey }) => invoke(c, t, { action: 'run', operation: a.operation, options: a.options ?? {}, requestKey, expectedGeneration: a.expectedGeneration, allowWrite: true, network: ['fetch', 'pull', 'push'].includes(a.operation) }),
- readAfter: async ({ args: a, ctx: c, target: t, response }) => ({ operation: response, workspace: await invoke(c, t, { action: 'inspect', options: { worktree: a.options?.worktree } }) }),
- verify: ({ args: a, after }) => after.operation.status === 'applied' && after.workspace.generation === after.operation.generation && (a.operation !== 'push' || after.operation.remote_verified === true) && (a.operation !== 'switch' || after.workspace.branch === switchBranch(a.options ?? {})),
+ readAfter: async ({ args: a, ctx: c, target: t, response }) => {
+  const after = {operation:response,workspace:await invoke(c,t,{action:'inspect',options:{worktree:a.options?.worktree}})};
+  if (['branch_create','branch_rename','branch_delete'].includes(a.operation)) {
+   const name=branchName(a.options), full='refs/heads/'+name;
+   const refs=await invoke(c,t,{action:'read',operation:'refs',options:{ref:full,worktree:a.options?.worktree}});
+   const match=refs.stdout.split('\n').map(line=>line.split('\0')).find(parts=>parts[0]===full);
+   after.reference={name,exists:!!match,head:match?.[1]??null};
+  }
+  return after;
+ },
+ verify: ({ args: a, after }) => after.operation.status === 'applied' && after.workspace.generation === after.operation.generation && (a.operation !== 'push' || after.operation.remote_verified === true) && (a.operation !== 'switch' || after.workspace.branch === switchBranch(a.options ?? {})) && (!['branch_create','branch_rename','branch_delete'].includes(a.operation) || after.reference.exists === (a.operation !== 'branch_delete')),
  present: ({ after, response }) => after ?? response
 });
 const close = defineGithubWrite({
  name: 'github_git_workspace_close', area: 'git', audience: ['B', 'O', 'Op'],
  description: 'Dispose this connection’s native Git workspace, including uncommitted changes; never deletes the GitHub repository.',
- properties: { workspace_id: WORKSPACE }, required: ['workspace_id'], declarations: { ...declarations, production: 'when-target' }, target: (a, c) => target(a, c, true),
+ properties: { workspace_id: WORKSPACE }, required: ['workspace_id'], declarations: { ...declarations, production: 'when-target' },
+ explain: error => error?.safeMessage ? error.message : 'Native Git operation could not be confirmed. Inspect workspace state and the same intent receipt before retrying.',
+ classifyError: error => [401,409,429].includes(error?.status) ? 'rejected' : 'uncertain', target: (a, c) => target(a, c, true),
  read: async (_a, c, t) => { try { return await invoke(c, t, { action: 'inspect' }); } catch (e) { if (e.status === 404) return { disposed: true }; throw e; } }, classify: () => ({}), summarize: ({ target: t }) => `Dispose native workspace for ${t.owner}/${t.repo}; uncommitted local work is deleted.`,
  apply: async ({ ctx: c, target: t, before }) => { if (before.disposed) return { disposed: true }; const result = await invoke(c, t, { action: 'close', allowWrite: true }); return result; },
  readAfter: async ({ args: a, ctx: c, target: t }) => {
@@ -93,4 +106,17 @@ const list = defineRead({
  }
 });
 export const tools = [open.tool, read.tool, run.tool, close.tool, list.tool];
-export const handlers = Object.fromEntries([open, read, run, close, list].map(t => [t.tool.name, t.handler]));
+async function openWithCurrentState(args,ctx) {
+ const result=await open.handler(args,ctx), value=result.structuredContent;
+ if (!value?.replayed || !value.result?.workspace_id) return result;
+ const id=value.result.workspace_id;
+ let current={workspace_id:id,state:'unavailable',available:false,next:'The original clone receipt is historical. Inspect the old workspace if available; use a new requestKey only for a separate new workspace.'};
+ try {
+  const row=await ctx.db.getJob(id,nativeConnection(ctx));
+  if (row?.kind==='native-git-workspace' && row.state==='ready' && row.detail==='Native workspace disposed.') current={...current,state:'disposed',next:'This workspace was closed. Use a fresh requestKey to open a new workspace; do not reuse the disposed ID.'};
+  else if (row?.state==='pending') { const record=await nativeRecord(ctx,id);const observed=await callNativeWorker(ctx,{binding:record.binding,workspace_id:record.worker,action:'inspect'});current={workspace_id:id,...observed,available:observed.state==='ready'}; }
+ } catch { /* Preserve the immutable old receipt; never turn a failed current read into availability. */ }
+ const body={...value,done:value.done&&current.available,historical:true,current_workspace:current,...(!current.available?{warning:current.next}: {})};
+ return {...result,structuredContent:body,content:[{type:'text',text:JSON.stringify(body)}]};
+}
+export const handlers = Object.fromEntries([open, read, run, close, list].map(t => [t.tool.name, t===open?openWithCurrentState:t.handler]));

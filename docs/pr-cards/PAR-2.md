@@ -60,3 +60,7 @@ Owner reports three switch preflight refusals and requests usable parallel agent
 ## Four-agent capacity follow-through, 2026-10-29
 
 Owner requests more native Git concurrency for multiple AI agents. The existing configured worker is validated at four simultaneous independent requests, preserving same-workspace exclusion and bounded overload. No host resize or new paid resource; current sampled resource headroom and exact live fixture proof belong in [capacity note](../status/2026-10-29-native-git-capacity.md). This limit applies to native execution, not the API-based GitHub tools.
+
+## Native contract/lifecycle fleet repair, 2026-10-29
+
+Active follow-up: [contract/lifecycle note](../status/2026-10-29-native-git-contract-lifecycle.md). Branch create/rename/delete aliases and operation-specific help, independent ref readback, explicit failed previews, bounded transport diagnostics and historical versus current clone replay are under verification. Dispatcher/real-Git regression includes a moved main, true two-parent merge and identical pushed commit on a previously absent remote branch. This is source proof only until checked merge/release and authenticated live acceptance; preserve the existing four-request capacity and disk. External helper batching, CI/log/receipt/rule diagnostics remain separate unresolved fleet work.

@@ -34,11 +34,42 @@ export async function callNativeWorker(ctx, { binding, action, workspace_id, ope
   if (typeof credential !== 'string' || !credential) throw new TypeError('GitHub network authorization is unavailable.');
  }
  const body = JSON.stringify({ version: WORKER_PROTOCOL, expiresAt: (ctx.now ?? Date.now)() + 60000, binding, action, workspace_id, operation, options, requestKey, expectedGeneration, allowWrite, ...(scannerPolicy?{scannerPolicy:{settings:scannerPolicy.settings,revision:scannerPolicy.revision}}:{}), ...(credential ? { credential } : {}) });
- const response = await (ctx.fetch ?? globalThis.fetch)(url, { method: 'POST', redirect: 'error', signal: AbortSignal.timeout(50000), headers: { 'Content-Type': 'application/json', 'x-robinson-signature': signNativeWorkerBody(body, ctx.env) }, body });
- const reader = response.body.getReader(); const chunks = []; let size = 0;
- try { for (;;) { const { value, done } = await reader.read(); if (done) break; size += value.length; if (size > 3 * 1024 * 1024) { await reader.cancel(); throw new TypeError('Worker response exceeds the complete result limit.'); } chunks.push(Buffer.from(value)); } } finally { reader.releaseLock(); }
- const content = Buffer.concat(chunks).toString('utf8');
- let data; try { data = JSON.parse(content); } catch { throw new TypeError('Native Git worker returned invalid JSON; inspect the workspace before another intent.'); }
- if (!response.ok) throw Object.assign(new TypeError(response.status === 409 || response.status === 429 ? 'Workspace is busy; inspect after its operation finishes and retry the same intent.' : `Native Git worker returned HTTP ${response.status}: ${typeof data.reason === 'string' ? redactExcerpt(data.reason).slice(0,600) : 'inspect workspace state before another intent.'}`), { status: response.status, safeMessage: response.status === 409 || response.status === 429 });
+ const failure = (code, message, status) => Object.assign(new TypeError(message), {
+  safeMessage: true, nativeCode: code, ...(status ? { status } : {})
+ });
+ let response;
+ try {
+  response = await (ctx.fetch ?? globalThis.fetch)(url, { method: 'POST', redirect: 'error', signal: AbortSignal.timeout(50000), headers: { 'Content-Type': 'application/json', 'x-robinson-signature': signNativeWorkerBody(body, ctx.env) }, body });
+ } catch {
+  throw failure('native_transport', 'Native Git worker could not be reached. Inspect workspace state and the same intent receipt before retrying; the outcome may be unknown.');
+ }
+ let content;
+ try {
+  const reader = response.body.getReader(); const chunks = []; let size = 0;
+  try {
+   for (;;) {
+    const { value, done } = await reader.read(); if (done) break;
+    size += value.length;
+    if (size > 3 * 1024 * 1024) { await reader.cancel(); throw new Error('oversize'); }
+    chunks.push(Buffer.from(value));
+   }
+  } finally { reader.releaseLock(); }
+  content = Buffer.concat(chunks).toString('utf8');
+ } catch {
+  throw failure('native_response', 'Native Git worker response was incomplete or exceeded its result limit. Inspect workspace state and the same intent receipt before retrying.');
+ }
+ let data;
+ try { data = JSON.parse(content); if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('shape'); }
+ catch { throw failure('native_response', 'Native Git worker returned an invalid response. Inspect workspace state and the same intent receipt before retrying.'); }
+ if (!response.ok) {
+  const busy = response.status === 409 || response.status === 429;
+  // Worker reasons contain only controlled TypeErrors. Redact again at this boundary,
+  // including absolute host paths; never reflect bodies, stderr or network exceptions.
+  const reason = typeof data.reason === 'string'
+   ? redactExcerpt(data.reason).replace(/(?:\/[A-Za-z0-9_.-]+){2,}/g, '[host path]').replace(/[\x00-\x1f\x7f]/g, ' ').slice(0, 160) : '';
+  throw failure(busy ? 'native_busy' : 'native_http', busy
+   ? 'Native Git worker is busy. After the active operation finishes, inspect state and retry the same intent.'
+   : `Native Git worker returned HTTP ${response.status}${reason ? ': ' + reason : '.'} Inspect state before a new intent.`, response.status);
+ }
  return data;
 }

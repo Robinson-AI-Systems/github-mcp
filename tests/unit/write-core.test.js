@@ -208,3 +208,15 @@ it('awaits verified asynchronous target identity and denies rejected or foreign 
  expect(parse(await make(async () => { throw new TypeError('Stored grant revoked'); }).handler({}, w.ctx)).error).toContain('Stored grant revoked');
  expect(sent).toBe(1);
 });
+
+describe('failed previews',()=>{
+ it.each([true,false])('marks failed current-state reads without an actionable confirmation (safe=%s)',async safe=>{
+  const w=await makeWorld({gates:[],mode:'production'});let sent=0;
+  const def=defineWrite({name:'github_x_preflight',description:'d',declarations:{production:'never',confirm:'always'},
+   target:()=>({owner:'example-org',scope:'org'}),read:()=>{throw Object.assign(new Error('private backend detail'),safe?{safeMessage:true}:{});},
+   classify:()=>({}),summarize:()=> 'summary',apply:()=>{sent++;},readAfter:()=>null,verify:()=>true,requestKey:()=> 'rmcp_failed_preview'});
+  const result=parse(await def.handler({dryRun:true},w.ctx));
+  expect(result).toMatchObject({status:'preview',done:false,preflight_failed:true,needsConfirmation:false});
+  expect(result.warning.includes('private backend detail')).toBe(safe);expect(sent).toBe(0);
+ });
+});
