@@ -95,3 +95,7 @@ Current owner instruction applies globally: no daily job quota and no fixed nati
 ## 2026-10-29 — canonical fleet installation and recovery follow-through
 
 Owner approved finishing the operational remainder in priority order. Version the supplied corrected CLI and regressions in tools/ras-github, provide atomic reversible installation, explicit connector-path selection and local/read-only live doctor checks, and make the original external-host acceptance procedure concrete. Preserve snapshot/native ancestry distinctions, confirmed file manifests and failure exits. Project-scoped backup/Render/grant checks must record missing protected inputs rather than claim deployment or acceptance. See [finite advance plan](../status/2026-10-29-fleet-install-and-recovery-plan.md).
+
+### Owner-authorized full coding environment, 2026-10-29
+
+The owner expands native workspace scope to a full isolated development environment with per-workspace8vCPU/8GiB/150GB targets. Deliver execution, dependency/build/test/browser/database/service support, honest measured capacity, complete result retrieval, credential/tenant separation and idle cleanup before claiming replacement of a VM. This changes the earlier Git-only boundary; it does not authorize executing untrusted repository commands in the shared Git worker. [Finite implementation plan and infrastructure prerequisites](../status/2026-10-29-coding-workspace-expansion.md).

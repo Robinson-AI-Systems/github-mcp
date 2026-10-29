@@ -1,0 +1,33 @@
+# NOT an automatic provisioning contract. One unique externally quota-enforced
+# volume and isolated network are required for EACH workspace before launch.
+services:
+  coding:
+    build:
+      context: ../..
+      dockerfile: workers/coding-workspace/Dockerfile
+    restart: "no"
+    init: true
+    read_only: true
+    cap_drop: [ALL]
+    cap_add: [SETUID, SETGID, KILL, CHOWN, DAC_OVERRIDE]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 8g
+    cpus: "8.0"
+    stop_grace_period: 30s
+    environment:
+      CODING_WORKSPACE_BINDING: ${CODING_WORKSPACE_BINDING:?Use a unique immutable authenticated workspace binding}
+      CODING_CONTROL_PUBLIC_KEY: ${CODING_CONTROL_PUBLIC_KEY:?Pin the control plane Ed25519 public verifier, never its private key}
+    volumes:
+      - workspace:/workspace
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,size=1g,mode=1777
+    expose: ["3000"]
+    networks: [workspace]
+volumes:
+  workspace:
+    external: true
+    name: ${CODING_QUOTA_VOLUME:?Provision and independently verify a dedicated150GB quota before launch}
+networks:
+  workspace:
+    external: true
+    name: ${CODING_ISOLATED_NETWORK:?Use a workspace-isolated network with approved egress, not the shared Dokploy network}

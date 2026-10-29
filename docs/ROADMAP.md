@@ -194,3 +194,7 @@ C-16 is the final outstanding coding-agent improvement, separated from the alrea
 ## 2026-10-28 — Closing the ten-issue MCP feedback sweep
 
 All original improvement issues **#427–#436** are now independently closed/completed. The last three cohesive source PR bundles were: #441 (#432 PR CI inline failures, #433 provider-native auto-merge arming), #442 (#435 credential/account/resource-specific rate metadata), and #443 (#431 sequential guarded writes with durable Postgres journal and safe exact-HEAD chaining). Each merged only after its own exact-final-source-head `ci` and `release-policy` checks succeeded and blocking review threads were handled. The historical C-13 plan partially delivered #430 and #436 in PR #440; #435 was properly delivered in a separate C-15 PR #442. Documentation closeout keeps C-14, C-15, and C-16 statuses `MERGED` and records source evidence, not production deployment. Pending outside this issue sweep: normal policy-governed release and independently observed real client acceptance.
+
+## 2026-10-29 — approved full coding workspace expansion
+
+Owner requests development execution, tests, disposable PostgreSQL and preview services in isolated per-workspace environments, targeting8vCPU/8GiB/150GB. This scope is approved under PAR-2; the advance plan, real infrastructure prerequisites and source/deployment/benchmark distinctions are in [the current expansion record](status/2026-10-29-coding-workspace-expansion.md). No superiority or running allocation is claimed before verification.
