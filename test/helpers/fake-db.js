@@ -644,6 +644,13 @@ export function createFakeDb({ clock = Date.now } = {}) {
       if(status!=='running'){row.lease=null;row.until=null;}
       return true;
     },
+    async findNativeOpenChange({ account, repo, connection, prefix }) {
+      if (!/^rmcp_github_git_workspace_open_[a-f0-9]{64}_$/.test(prefix)) throw new TypeError('Invalid legacy clone key prefix.');
+      const row=changes.find(r=>r.tool==='github_git_workspace_open' && !r.dryRun &&
+        r.account?.toLowerCase()===account.toLowerCase() && r.repo?.toLowerCase()===repo.toLowerCase() &&
+        r.connection===connection && r.requestKey?.startsWith(prefix));
+      return row ? changeViewOf(row) : null;
+    },
     async claimChange(change) {
       const c = normalizeChange({ ...change, dryRun: false, confirmed: null });
       if (!c.requestKey) throw new TypeError('claimChange needs a request key.');

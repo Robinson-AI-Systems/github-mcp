@@ -1,6 +1,6 @@
 import {loadScannerPolicy} from '../github/scanner-policy.js';
 import { createHash } from 'node:crypto';
-import { githubFor, credentialFor } from '../github/client.js';
+import { githubFor, credentialFor, requestKey } from '../github/client.js';
 import { WORKER_PROTOCOL, workerUrl } from './protocol.js';
 import { signNativeWorkerBody } from './signing.js';
 import { redactExcerpt } from '../github/content-protection.js';
@@ -10,6 +10,22 @@ export const nativeConnection = ctx => {
  if (!ctx.connection?.client_id && !ctx.connection?.pass_id) throw new TypeError('A service-issued connection is required for native Git.');
  return createHash('sha256').update(JSON.stringify([ctx.connection.client_id ?? null, ctx.connection.pass_id ?? null])).digest('hex');
 };
+// Clone intents survive time buckets. Existing receipts are recovered only after
+// checking the original job's full client/pass binding; missing history never clones.
+export async function nativeOpenRequestKey(ctx, args) {
+ const owner = args.owner ?? ctx.connection.default_account;
+ const repo = `${owner}/${args.repo}`;
+ const prefix = requestKey(ctx, 'github_git_workspace_open', args).replace(/_[0-9]+$/, '_');
+ const legacy = await ctx.db.findNativeOpenChange({ account: owner, repo, connection: ctx.connection.client_id ?? null, prefix });
+ if (legacy) {
+  const row = legacy.after?.workspace_id ? await ctx.db.getJob(legacy.after.workspace_id, nativeConnection(ctx)) : null;
+  if (!row || row.kind !== 'native-git-workspace' || `${row.owner}/${row.repo}`.toLowerCase() !== repo.toLowerCase())
+   throw Object.assign(new TypeError('The original clone intent has historical or unavailable ownership metadata. Nothing was cloned. Inspect the original receipt; use a fresh requestKey only for a separate new workspace.'), {safeMessage:true});
+  return legacy.requestKey;
+ }
+ const digest = createHash('sha256').update(JSON.stringify([nativeConnection(ctx),repo.toLowerCase(),prefix])).digest('hex');
+ return `rmcp_native_open_${digest}_0`;
+}
 export async function authorizeNativeRepo(ctx, owner, repo) {
  const gh = await githubFor(ctx, { owner, ...(!isOwnerConnection(ctx.connection) ? { scope: { repositories: [repo] } } : {}) });
  let result; try { result = await gh.request('GET /repos/{owner}/{repo}', { owner, repo }); } catch (error) { throw new TypeError(explainGithubError(error)); }

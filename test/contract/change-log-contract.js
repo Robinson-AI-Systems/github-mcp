@@ -6,6 +6,22 @@ const base = { account: 'example-org', repo: 'example-org/hello', mode: 'preview
 
 export function runChangeLogContract(name, make) {
   describe(`change log: ${name}`, () => {
+    it('recovers the earliest legacy native clone only within account, repo and connection',async()=>{
+      const db=await make(),prefix='rmcp_github_git_workspace_open_'+'a'.repeat(64)+'_';
+      const native={...base,tool:'github_git_workspace_open'};
+      await db.recordChange({...native,dryRun:true,requestKey:prefix+'0'});
+      await db.claimChange({...native,connection:'foreign',requestKey:prefix+'1'});
+      await db.claimChange({...native,repo:'example-org/other',requestKey:prefix+'2'});
+      const first=await db.claimChange({...native,requestKey:prefix+'3'});
+      await db.finishChange(first.id,{summary:'Original clone',confirmed:true,after:{workspace_id:'job_0123456789abcdef'}});
+      await db.claimChange({...native,requestKey:prefix+'4'});
+      const query={account:'EXAMPLE-ORG',repo:'example-org/HELLO',connection:'client-1',prefix};
+      expect(await db.findNativeOpenChange(query)).toMatchObject({id:first.id,requestKey:prefix+'3',after:{workspace_id:'job_0123456789abcdef'}});
+      expect(await db.findNativeOpenChange({...query,account:'other'})).toBeNull();
+      expect(await db.findNativeOpenChange({...query,connection:null})).toBeNull();
+      await expect(db.findNativeOpenChange({...query,prefix:'%'})).rejects.toThrow(TypeError);
+    });
+
     it('records a preview row and reads it back', async () => {
       const db = await make();
       const id = await db.recordChange({ ...base, dryRun: true, production: true, notifies: ['outsider'], spendCents: 1900 });

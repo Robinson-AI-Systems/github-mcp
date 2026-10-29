@@ -52,7 +52,7 @@ export async function makeWorld({ mode = 'preview', profile = 'everyday', accoun
   const ctx = { connection, db, env: ENV, credentials: fixtureCredentials, fetch: gh.fetch,
     now: clock, sleep: async (ms) => { if (advanceClockOnSleep) offsetMs += ms; },
     retryAfterBaseValue: 1, gates };
-  return { db, gh, credentials: fixtureCredentials, connection, ctx };
+  return { db, gh, credentials: fixtureCredentials, connection, ctx, advanceClock: ms => { offsetMs += ms; } };
 }
 
 // A GraphQL query is a POST but changes nothing; only a mutation counts as a write.

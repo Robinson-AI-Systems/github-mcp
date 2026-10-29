@@ -4,7 +4,7 @@ import { defineRead } from './define-read.js';
 import { defineGithubWrite } from './define-github-write.js';
 import { READ_OPERATIONS, WRITE_OPERATIONS, gitCommand, switchBranch, branchName, nativeOperationHelp } from '../native-git/commands.js';
 import { nativeWorkspaceId, workerUrl, workerKey } from '../native-git/protocol.js';
-import { nativeConnection, nativeRecord, authorizeNativeRepo, callNativeWorker } from '../native-git/client.js';
+import { nativeConnection, nativeOpenRequestKey, nativeRecord, authorizeNativeRepo, callNativeWorker } from '../native-git/client.js';
 
 const OWNER = { type: 'string', minLength: 1, maxLength: 39, pattern: '^[A-Za-z0-9-]+$' };
 const REPO = { type: 'string', minLength: 1, maxLength: 100, pattern: '^[A-Za-z0-9_.-]+$' };
@@ -24,6 +24,7 @@ const invoke = (c, t, a) => callNativeWorker(c, { binding: t.record.binding, wor
 const configured = c => { workerUrl(c.env); if (c.env?.NATIVE_GIT_WORKER_KEY) workerKey(c.env.NATIVE_GIT_WORKER_KEY); else nativeWorkerPublicKey(c.env); };
 
 const open = defineGithubWrite({
+ requestKey: nativeOpenRequestKey,
  name: 'github_git_workspace_open', area: 'git', audience: ['B', 'O', 'Op'],
  description: 'Clone an authorized repository. Use a fresh requestKey per new workspace and reuse it only for retries; a closed clone receipt is historical.',
  properties: { owner: OWNER, repo: REPO, branch: TEXT, authorName: { type: 'string', minLength: 1, maxLength: 100 }, authorEmail: { type: 'string', minLength: 1, maxLength: 254 }, depth: { type: 'integer', minimum: 1, maximum: 100000 }, leaseMinutes: { type: 'integer', minimum: 1, maximum: 1440 } }, required: ['repo'], declarations,

@@ -1493,6 +1493,18 @@ export function createDb(sql = productionSql()) {
       return rows.length===1;
     },
 
+    /** Recover only legacy native clone keys; never reinterpret another tool's journal. */
+    async findNativeOpenChange({ account, repo, connection, prefix }) {
+      if (!/^rmcp_github_git_workspace_open_[a-f0-9]{64}_$/.test(prefix)) throw new TypeError('Invalid legacy clone key prefix.');
+      const rows = await sql`SELECT * FROM change_log
+        WHERE tool='github_git_workspace_open' AND dry_run=FALSE
+          AND lower(account)=lower(${account}) AND lower(repo)=lower(${repo})
+          AND connection IS NOT DISTINCT FROM ${connection}
+          AND left(request_key,${prefix.length})=${prefix}
+        ORDER BY at ASC, id ASC LIMIT 1`;
+      return rows[0] ? changeView(rows[0]) : null;
+    },
+
     async claimChange(change) {
       const c = normalizeChange({ ...change, dryRun: false, confirmed: null });
       if (!c.requestKey) throw new TypeError('claimChange needs a request key.');
