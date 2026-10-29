@@ -1099,7 +1099,7 @@ open obligations, original fixture ownership, approvals and deployment provenanc
     "gates": "Saved developer connection; scratch organization or disposable fixture named rtc-acc1-<date>-<n> only; never overrideRules on a real repository; no spend.",
     "dependsOn": [],
     "status": "BLOCKED",
-    "lastEvidence": "2026-10-28 READY 53df99ef custom MCP: exact disposable private scratch repo created (journal 2762) and deleted (2772), both confirmed and acting_as christcr2012 (you); independent GET 404. The Act-as-me switch OFF, App-only check-run and separate read-only grant remain unverified. Useful current connector settings were not changed.",
+    "lastEvidence": "2026-10-28 READY 53df99ef custom MCP: exact disposable private scratch repo created (journal 2762) and deleted (2772), both confirmed and acting_as christcr2012 (you); independent GET 404. The Act-as-me switch OFF, App-only check-run and separate read-only grant remain unverified. Useful current connector settings were not changed. 2026-10-29 on READY 454f6d4d: disposable repository creation acted as the person; App-only check creation independently read back app.slug=robinson-github-mcp and exact seed head, completed/success. Exact fixtures cleaned on READY c02b1998. OFF/read-only setting matrix still requires a separately disposable credential-setting fixture; this row remains incomplete.",
     "nextAction": "Prerequisite: owner enables a disposable secondary connection to test read-only and switches Act-as-me OFF and back ON on My connection, plus an exact approved disposable scratch check-run fixture. Verify App actor independently; do not change the owner's existing working settings without approval."
   },
   {

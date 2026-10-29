@@ -171,10 +171,9 @@ Implementation is approved and the publication hold is lifted. Remaining private
 - [ ] Through the normal initial GitHub sign-in/install flow, give the custom connector the organization's App installation identity needed for protected-branch merges. The current master-token extra place cannot satisfy that rule. No branch-rule override or separate manual installation is inferred.
 
 ## Using this connector in Claude Code (PAR-1, 2026-10-24)
-- [ ] Keep the official GitHub integration connected in Claude Code as well. It is what lets agents copy repositories,
-      push changes with git, use GitHub's command-line tool and get pull-request notifications. This connector cannot do
-      those (it lives in the conversation, not on the agent's computer). Agents should use this connector for GitHub tools;
-      the official one stays for git.
+- [x] Hosted native Git now clones, creates/switches branches, edits/stages/commits and pushes with independent remote verification. Use [native operations](NATIVE-GIT-OPERATIONS.md) for that path. Application tests still need an existing local development environment or GitHub Actions; the worker supplies typed Git operations, not a shell. No official connector is required for the hosted Git workflow.
+- [ ] Install the supplied corrected `ras-github` helper on the fleet machine using its packaged README, then run a disposable client push/sync and verify the returned remote tree. The replacement package and ten offline tests are prepared; the MCP repository's deployment does not install an external local helper.
+- [ ] Choose the independent off-host backup destination, schedule and private key custodian. Use the existing encrypted exporter/restore procedure and verify an off-host restoration before claiming recovery. No new paid storage or resource increase is authorized implicitly.
 
 ## Added 2026-10-26 — Meta Muse real-client acceptance (optional; not a development gate)
 

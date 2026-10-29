@@ -14,7 +14,8 @@
       "source": "local_tests",
       "observations": [
         "developer handoff/client unit regressions",
-        "npm run check before final staging"
+        "npm run check before final staging",
+        "2026-10-29: #465 exact head 2507c0d84ab1efe33f75fa25f11f4389da5324c0 CI 40875254833 passed all verification families, including isolated PostgreSQL; release-policy 40875316914 and worker image 40875254880 passed. Local 89 native/contract +37 shared write/journal/owner tests passed; local PostgreSQL unavailable, not claimed run."
       ]
     },
     {
@@ -23,13 +24,14 @@
       "source": "deployment_provider",
       "service": "robinson-github-mcp",
       "origin": "https://github.robinsonaisystems.com",
-      "commit": "8004b9e857f16b4027ecf380d9e43abddf3c959f",
+      "commit": "c02b1998e964428ca26a147a505d57fa24cce941",
       "transport": "deployment_api",
       "observations": [
         "vercel_ready",
         "independent_provider_metadata",
         "2026-10-28: Serving alias independently READY at 53df99ef after checked manual release 40743480147; public contract independently agrees.",
-        "2026-10-28: Checked Render-origin configuration release 40818137226; Vercel READY and public contract independently 8004b9e. Render worker independently live at the same source with persistent 1 GB /data, public health 200 and unsigned 401."
+        "2026-10-28: Checked Render-origin configuration release 40818137226; Vercel READY and public contract independently 8004b9e. Render worker independently live at the same source with persistent 1 GB /data, public health 200 and unsigned 401.",
+        "2026-10-29: Checked releases 40871791220 and 40875671569; actual serving alias independently READY at 454f6d4d6168c6608e1a3ddcbbd1ea3f19bb93c3 then c02b1998e964428ca26a147a505d57fa24cce941. Render remains independently live at 454f6d4d with unchanged executed worker modules, protocol 2 and signed capacity 4; disk/verifier preserved."
       ]
     },
     {
@@ -44,7 +46,8 @@
         "2026-10-28: Authenticated github_call through existing service-issued native MCP connection: content full/byte/diagnostic, organization IP inventory, notification/signoff previews, native workspace list/capabilities, scratch repository create/delete.",
         "One canonical full payload and compact structured location pointer on 98401-character immutable source read.",
         "Earlier 53df99ef probe: native capabilities correctly reported setup_required; no externally usable Git worker was claimed at that checkpoint.",
-        "2026-10-28: Authenticated custom MCP signed native Git ready=true, clone/edit/commit/push and independent remote readback, replay/stale-generation refusal, deliberate conflict/abort, exact state/file hash retained across Render redeploy, project scanner rule/native byte refusal/profile offer/rollback."
+        "2026-10-28: Authenticated custom MCP signed native Git ready=true, clone/edit/commit/push and independent remote readback, replay/stale-generation refusal, deliberate conflict/abort, exact state/file hash retained across Render redeploy, project scanner rule/native byte refusal/profile offer/rollback.",
+        "2026-10-29: Existing authenticated native MCP on READY 454f6d4d: atomic 29-file text/binary manifest, missing branch, independent Git blob/tree/mode verification; real native two-parent merge and identical remote push; all 22166 log characters, 1207 tree paths and SHA-verified artifact windows. On READY c02b1998e964428ca26a147a505d57fa24cce941: later-bucket active/disposed legacy clone replay, new stable intent, close/historical retry. Full evidence: docs/status/2026-10-29-fleet-live-acceptance.md."
       ]
     },
     {
@@ -62,7 +65,8 @@
         "denied_identity: personal key reads refused because the user grant lacks the permission",
         "not_run:webhook_receiver_signing,package_credential,spend_and_access_widening_owner_approved_writes,second_account_review_thread_replies",
         "2026-10-24: real GitHub results read back for deploy key add/delete, secret webhook create/rotate/delete, secret gist create/delete, Enterprise security configuration create/delete, personal Codespaces secret, Copilot Space and pinIssue/unpinIssue; Enterprise Actions settings returned 402 (unverified, needs a payment method)",
-        "2026-10-24 on live d96aab4: GOD-6 act-as and deliberate rule override exercised on a disposable scratch repo (deleted). Write results reported acting_as 'christcr2012 (you)'; merge refused without override; override preview listed the skipped rule; GitHub declined until the login could skip rules, then merged. Protected-list refusal and app-only routes not run live (unit tests)."
+        "2026-10-24 on live d96aab4: GOD-6 act-as and deliberate rule override exercised on a disposable scratch repo (deleted). Write results reported acting_as 'christcr2012 (you)'; merge refused without override; override preview listed the skipped rule; GitHub declined until the login could skip rules, then merged. Protected-list refusal and app-only routes not run live (unit tests).",
+        "2026-10-29 on READY 454f6d4d: 29-file commit be51cd4364016d4e0c71ce63b72342116f147474 independently compared all submitted blobs/modes; native merge c60c40f60e329cb41622d6c57bd6a39770cafe67 independently confirmed two actual parents and exact remote head. App-only check readback confirmed the service App at the seed SHA. No local merge graph imported by snapshot publication; no implicit CI dispatch."
       ],
       "source": "custom_service",
       "service": "robinson-github-mcp",
@@ -100,7 +104,8 @@
       "observations": [
         "2026-10-28: Exact session-created private scratch repository rtc-native-git-accept-20261028 deleted by custom MCP journal 2772, independently GET 404. No native workspace opened.",
         "Disposable public DCR client used for PKCE comparison issued no secret/token; no sign-in completed. Its unused registration remains subject to existing 30-day stale-client cleanup.",
-        "2026-10-28: Exact native acceptance workspace disposed (journal 3368) and run-created private repository deleted (journal 3369) with independent 404; earlier scanner fixture restored to defaults (journal 3334) and deleted (journal 3335), separate 404. No other workspace or repository removed."
+        "2026-10-28: Exact native acceptance workspace disposed (journal 3368) and run-created private repository deleted (journal 3369) with independent 404; earlier scanner fixture restored to defaults (journal 3334) and deleted (journal 3335), separate 404. No other workspace or repository removed.",
+        "2026-10-29 on READY c02b1998e964428ca26a147a505d57fa24cce941: all three exact run-owned workspaces disposed; exact marked private scratch repo deleted, journal 3945; independent subsequent 404 and workspace inventory absent for these IDs. Unrelated agent resources preserved."
       ]
     }
   ]
