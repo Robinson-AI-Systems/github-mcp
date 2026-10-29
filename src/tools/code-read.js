@@ -235,12 +235,13 @@ export const commitGet = defineRead({
 export const commitCompare = defineRead({
   name: 'github_commit_compare', area: 'commit', audience: ['B', 'Op'],
   description: 'Compare two refs: how far ahead or behind, the commits between them and the files changed (patches cut).',
-  properties: { owner: OWNER, repo: REPO, base: REF, head: REF },
+  properties: { owner: OWNER, repo: REPO, base: REF, head: REF,path:{type:'string',minLength:1,maxLength:1000,description:'Only this changed file (including its previous name); keeps review evidence bounded.'} },
   required: ['repo', 'base', 'head'],
   handler: (args, ctx) => plain(async () => {
     const { owner, octokit } = await readerFor(args, ctx);
     const { data: c } = await octokit.request('GET /repos/{owner}/{repo}/compare/{basehead}', { owner, repo: args.repo, basehead: `${args.base}...${args.head}`, per_page: 100 });
-    const files = c.files ?? [];
+    const received=c.files??[];
+    const files=args.path?received.filter(f=>f.filename===args.path||f.previous_filename===args.path):received;
     return { status: c.status, ahead_by: c.ahead_by, behind_by: c.behind_by, total_commits: c.total_commits, merge_base: c.merge_base_commit?.sha, html_url: c.html_url,
       commits: (c.commits ?? []).slice(0, 30).map((x) => ({ sha: x.sha, message: first(x.commit?.message), author: x.author?.login ?? x.commit?.author?.name })),
       ...((c.commits ?? []).length > 30 ? { commits_not_shown: c.commits.length - 30 } : {}),

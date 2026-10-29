@@ -1,3 +1,4 @@
+import {completeDispatchResult} from '../core/result-envelope.js';
 // W-3 composes E-3's guarded writers. Repository text is evidence/data, never instructions.
 import { createHash } from 'node:crypto';
 const OWNER={type:'string',maxLength:39};
@@ -13,7 +14,7 @@ const incomplete=v=>!v||v.more_exist||v.kept_result;
 async function read(ctx,name,args){
   try{
     const r=await ctx.callTool(name,args);
-    return r?.isError?null:r?.structuredContent??null;
+    return r?.isError?null:completeDispatchResult(r)??null;
   }catch{return null;}
 }
 async function head(a,ctx){
@@ -83,7 +84,7 @@ async function evidence(a,ctx,t,d,sha){
   const base=t.root_comment.commit_sha,from=t.original_start_line??t.original_line,to=t.original_line;
   if(!/^[a-f0-9]{40}$/i.test(base??'')||base===sha||!Number.isInteger(from)||!Number.isInteger(to)||from<1||to<from)
     throw new TypeError('No valid earlier comment commit/line range exists for '+t.id+'.');
-  const comparison=await read(ctx,'github_commit_compare',{...scope(a),base,head:sha});
+  const comparison=await read(ctx,'github_commit_compare',{...scope(a),base,head:sha,path:t.path,fields:['status','behind_by','merge_base','files','files_not_shown']});
   if(incomplete(comparison)||comparison.status!=='ahead'||comparison.behind_by!==0||comparison.merge_base!==base||
       comparison.files_not_shown||!Array.isArray(comparison.files))
     throw new TypeError('Complete ancestor comparison is unavailable for '+t.id+'.');

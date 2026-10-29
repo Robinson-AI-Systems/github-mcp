@@ -340,3 +340,8 @@ it('pages the actually delivered tree entries through dispatch without skipping 
  }
  expect(paths).toEqual(tree.map(x=>x.path));
 });
+it('bounds review comparison to the actual requested changed file before normal result shaping',async()=>{
+ const w=await world();w.gh.when('GET /repos/{owner}/{repo}/compare/{basehead}').reply(200,{status:'ahead',ahead_by:1,behind_by:0,merge_base_commit:{sha:'a'.repeat(40)},commits:[],files:Array.from({length:60},(_,i)=>({filename:'f'+i+'.js',patch:'@@ -1 +1 @@\n-old\n+new'}))});
+ const {body}=await run(w,'github_commit_compare',{...R,base:'a'.repeat(40),head:'b'.repeat(40),path:'f59.js'});
+ expect(body.files).toHaveLength(1);expect(body.files[0].filename).toBe('f59.js');expect(body.files_not_shown).toBeUndefined();
+});
