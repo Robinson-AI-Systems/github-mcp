@@ -1,0 +1,29 @@
+# Add only the native Git worker. MCP hosting and tenant records stay on Vercel/Neon.
+# Requires a confirmed Render workspace and paid-service approval before applying.
+services:
+  - type: web
+    name: robinson-github-native-git
+    runtime: docker
+    repo: https://github.com/Robinson-AI-Systems/github-mcp
+    branch: live
+    plan: 0.5c-512mb
+    region: virginia
+    numInstances: 1
+    autoDeployTrigger: "off"
+    dockerfilePath: ./workers/native-git/Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    envVars:
+      - key: PORT
+        value: "3000"
+      - key: NATIVE_GIT_STORAGE_ROOT
+        value: /data
+      - key: NATIVE_GIT_MAX_CONCURRENT
+        value: "1"
+      # Public verifier fetched from the serving MCP; this is not a private key.
+      - key: NATIVE_GIT_CONTROL_PUBLIC_KEY
+        value: ed25519:MCowBQYDK2VwAyEAictZsWVVkgfLogLr7HpyZ7TLYTsbZoZCpGI4l6tl2DA=
+    disk:
+      name: native-git-data
+      mountPath: /data
+      sizeGB: 1
