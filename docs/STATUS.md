@@ -1151,6 +1151,17 @@ open obligations, original fixture ownership, approvals and deployment provenanc
     "gates": "Owner-approved Dokploy project and retained persistent volume; signed protocol-3 route and host continuity for old Render jobs; all-tenant inventory; exact run-owned private scratch fixture; no unrelated resource or useful-grant changes.",
     "lastEvidence": "READY ac0d2805aacb7554ac81a0fb6a7b512471ce3969 and matching Dokploy worker: PR472/473 remove daily quotas and fixed native request/workspace counts for all users. Signed resource-aware/null capacity, twelve live clones/writes/exact reads with four-hour idle renewal, native push4394 independently verified ref/commit/parent, all twelve closes, deletion4408 and independent404; no run-owned jobs remain. Four unrelated workspaces retained, two legacy Render. See docs/status/2026-10-29-native-resource-admission.md and sanitized per-lane proof; source, release and client evidence separated. External off-host backup/fleet installation remain unverified.",
     "dependsOn": []
+  },
+  {
+    "id": "PLAYGROUND-COMMANDS",
+    "priority": 1,
+    "requiredRevision": "328828bde6996aba3009b97e24d707154fcb56b1",
+    "task": "Use deployed agent-facing Playground execute/read/cancel on one exact isolated attached workspace; verify real file output, exit/log/status, replay, permission denial and cancellation.",
+    "procedure": "docs/pr-cards/PLAY-1.md; docs/CODING-WORKSPACES.md",
+    "gates": "Reviewed source deployed READY; separately isolated allocation and exact repository mount; operator-verified storage/network controls; protected binding/origin; authenticated disposable fixture only, no spending.",
+    "dependsOn": [],
+    "status": "BLOCKED",
+    "lastEvidence": "Source328828b: ci40973062749, policy40973062690, native image40973062633 and coding image40973062634 passed. The image executed actual UID1000 commands through handler/dispatcher/github_call with real output, nonzero exit, logs, replay and cancellation. Live MCP independently remained READY ac0d2805; no attached live Playground allocation, repository mount or150GB quota was verified. Source/image tests are not actual provider/client acceptance."
   }
 ]
 ```
