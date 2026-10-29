@@ -10,11 +10,13 @@ services:
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
     pids_limit: 128
-    mem_limit: 512m
-    cpus: 1.0
+    # Shared worker limits, not per-workspace reservations or dedicated cores.
+    mem_limit: ${NATIVE_GIT_MEMORY_LIMIT:-2g}
+    cpus: ${NATIVE_GIT_CPUS:-2.0}
     environment:
       PORT: "3000"
       NATIVE_GIT_STORAGE_ROOT: /data
+      NATIVE_GIT_MAX_CONCURRENT: ${NATIVE_GIT_MAX_CONCURRENT:-8}
       NATIVE_GIT_CONTROL_PUBLIC_KEY: ${NATIVE_GIT_CONTROL_PUBLIC_KEY:?Pin the MCP public verification key from its native-git-key endpoint}
     volumes:
       - native-git-data:/data
