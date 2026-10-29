@@ -37,3 +37,10 @@ test('browser shard coverage, 3-minute watchdog and durable timing are required'
  assert.throws(()=>checkLayout(src.replace('ci-timing-check','missing-timing-check')),/timing artifact/);
  assert.throws(()=>checkLayout(src.replace('shard: [sign-in, home-page, fair-use]','shard: [sign-in, fair-use]')),/browser/);
 });
+
+test('unit matrix keeps six complete partitions without relaxing watchdogs',()=>{
+ const src=source();
+ assert.equal(policy.matrices.unit,6);
+ assert.throws(()=>checkLayout(src.replace('shard: [1, 2, 3, 4, 5, 6]','shard: [1, 2, 3]')),/collapse/);
+ assert.throws(()=>checkLayout(src.replace('--shard=${{ matrix.shard }}/6','--shard=${{ matrix.shard }}/3')),/complete suite/);
+});

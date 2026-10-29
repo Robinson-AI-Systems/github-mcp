@@ -3,7 +3,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-export const policy = {"gate": "ci", "parallel": ["check", "unit", "db", "shapes", "rtc", "browser"], "matrices": {"unit": 2, "browser": 3}, "maxTimeouts": {"check": 10, "unit": 10, "db": 10, "shapes": 10, "rtc": 10, "browser": 3, "ci": 5}, "timedJobs": ["unit", "db", "shapes", "rtc", "browser"]};
+export const policy = {"gate": "ci", "parallel": ["check", "unit", "db", "shapes", "rtc", "browser"], "matrices": {"unit": 6, "browser": 3}, "maxTimeouts": {"check": 10, "unit": 10, "db": 10, "shapes": 10, "rtc": 10, "browser": 3, "ci": 5}, "timedJobs": ["unit", "db", "shapes", "rtc", "browser"]};
 
 export function checkLayout(source, expected = policy) {
   const body = source.split(/^jobs:\s*$/m)[1];
@@ -58,6 +58,8 @@ export function checkLayout(source, expected = policy) {
     const values = /shard:\s*\[([^\]]+)\]/.exec(block)?.[1].split(',').filter(v=>v.trim());
     const max = /max-parallel:\s*(\d+)/.exec(block)?.[1];
     if (!values || values.length < count || (max && Number(max) < values.length)) throw Error('Required shards may not collapse or serialize: ' + id);
+    if (id === 'unit' && Number(/--shard=\$\{\{\s*matrix\.shard\s*\}\}\/(\d+)/.exec(block)?.[1]) !== values.length)
+      throw Error('Unit shard command must partition the complete suite across the actual matrix.');
   }
   return { gate: expected.gate, independentFamilies: expected.parallel, jobs: jobs.size,
     note: 'Topology/timeout guard only; real exact-head CI must pass. Review job/step timings and rebalance growing cohorts, never weaken coverage.' };
