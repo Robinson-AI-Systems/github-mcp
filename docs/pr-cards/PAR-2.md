@@ -87,3 +87,7 @@ The first cutover inventory inspected only the default schema; isolated tenants 
 
 
 Dokploy migration accepted for new workspaces on READY0af2bd93832d5806f9ddcfed6d6c9f77b3265799: matching actual worker source, signed eight-request idle-v1, eight fresh parallel clone/write/exact-read lanes, independent native push SHA/parent, persistent uncommitted bytes and exact cleanup passed. Previous-host continuity was also exercised live with a disposable Render marker. Two older workspace rows remain on Render during a non-destructive drain; retirement is pending, not a completed cancellation. See [final cutover record](../status/2026-10-29-dokploy-native-cutover.md).
+
+## 2026-10-29 — resource admission follow-through
+
+Current owner instruction applies globally: no daily job quota and no fixed native Git request/workspace count. Worker resource observations govern native execution; native metadata bypasses generic pending-job slots, with isolation, TTL, ordinary background-job reservations and result retention unchanged. Twelve held real-Git service requests, pressure/recovery/replay/disposal tests, real-process/filesystem sampling, two-tenant Postgres and packaged-image acceptance cover this repair. See [implementation and deployment record](../status/2026-10-29-native-resource-admission.md); source tests and live verification remain distinct.

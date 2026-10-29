@@ -1,3 +1,7 @@
+## 2026-10-29 — all-user native resource admission in progress
+
+Daily job quotas are merged and live at `63b6b5849537a35fbd43e0247de47e70f76691be` (checked release40924604299, independently READY). The next coherent repair removes fixed native request and metadata slot counts for all users in favor of measured worker headroom. See [resource admission handoff](status/2026-10-29-native-resource-admission.md) for source tests, rollout requirements and precise live evidence. Dokploy is the primary worker; Render is retained only for routed legacy workspaces.
+
 ## Current handoff — 2026-10-28
 
 Audit/parity source through #453, scanner tuning/readback corrections #455–#456 and Render native Git #457 are merged and live on independently READY `8004b9e857f16b4027ecf380d9e43abddf3c959f`. Evidence reconciliation #458 merged after exact-head checks; see [actual live proof](status/2026-10-28-render-native-git-acceptance.md). The acceptance ledger below records 56 passes, 15 distinct prerequisite-dependent rows and 2 optional Hub checks. No outstanding indexed approved engineering is inferred from the historical paragraphs below.

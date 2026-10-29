@@ -5,6 +5,7 @@ services:
       dockerfile: workers/native-git/Dockerfile
     restart: unless-stopped
     init: true
+    stop_grace_period: 75s
     user: "1000:1000"
     read_only: true
     cap_drop: [ALL]
@@ -16,7 +17,9 @@ services:
     environment:
       PORT: "3000"
       NATIVE_GIT_STORAGE_ROOT: /data
-      NATIVE_GIT_MAX_CONCURRENT: ${NATIVE_GIT_MAX_CONCURRENT:-8}
+      NATIVE_GIT_MIN_AVAILABLE_MEMORY_MB: ${NATIVE_GIT_MIN_AVAILABLE_MEMORY_MB:-32}
+      NATIVE_GIT_MIN_AVAILABLE_DISK_MB: ${NATIVE_GIT_MIN_AVAILABLE_DISK_MB:-64}
+      NATIVE_GIT_MAX_LOOP_DELAY_MS: ${NATIVE_GIT_MAX_LOOP_DELAY_MS:-250}
       NATIVE_GIT_CONTROL_PUBLIC_KEY: ${NATIVE_GIT_CONTROL_PUBLIC_KEY:?Pin the MCP public verification key from its native-git-key endpoint}
     volumes:
       - native-git-data:/data
