@@ -1,5 +1,7 @@
 # Combined audit, authority and native Git release
 
+Historical checkpoint for53df99ef. Active native Git hosting, scanner tuning and lifecycle evidence are now in [Render acceptance](2026-10-28-render-native-git-acceptance.md); the Dokploy ingress blocker below is superseded.
+
 Current serving source: **53df99ef8b10d8c7351aa5eae4ee7cc867c8f228**, independently verified Vercel READY on the production domain and matching /api/contract. Contract reports 491 tools. Checked manual release [40743480147](https://github.com/Robinson-AI-Systems/github-mcp/actions/runs/40743480147) succeeded after main's required checks. This followed implementation, not an intermediate feature release.
 
 ## Merged and checked

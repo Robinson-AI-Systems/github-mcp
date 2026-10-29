@@ -1,6 +1,6 @@
 # Repository scanner profiles and agent tuning
 
-Implementation checkpoint: source under validation; do not assume a new tool is live until the dated release evidence records it.
+Live checkpoint: database coverage, repository tuning, confirmed retest receipts, rollback, non-applying profile offers and native-worker policy transport are verified on READY source `8004b9e`. See [dated acceptance](status/2026-10-28-render-native-git-acceptance.md).
 
 ## One compact front door
 
@@ -60,4 +60,4 @@ The destination owner adopts the proposal only with a new reason and destination
 
 ## Operational boundaries
 
-Built-in output protections are not disabled by scanner reporting settings. Exact-file exceptions are the narrow explicit mechanism above. Real credentials still belong in protected setup, not agent context. No existing GitHub security setting, workflow, alert, credential or paid feature is changed by local scanner tuning. The native worker requires the scanner release's protocol-2 image; older workers fail closed rather than silently ignoring policy. Its separately recorded public-ingress problem is unchanged by this feature.
+Built-in output protections are not disabled by scanner reporting settings. Exact-file exceptions are the narrow explicit mechanism above. Real credentials still belong in protected setup, not agent context. No existing GitHub security setting, workflow, alert, credential or paid feature is changed by local scanner tuning. The native worker requires the scanner release's protocol-2 image; older workers fail closed rather than silently ignoring policy. Its active Render route has passed signed lifecycle and restart-persistence checks; retained Dokploy ingress is only a historical alternative.
