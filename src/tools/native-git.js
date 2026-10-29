@@ -20,14 +20,14 @@ const OPTIONS = { type: 'object', additionalProperties: false, properties: {
 } };
 const declarations = { production: 'never', confirm: 'when-needed', profiles: ['full'] };
 const target = async (a, c, allowDisposed = false) => { const r = await nativeRecord(c, a.workspace_id, { allowDisposed }); return { owner: r.row.owner, repo: r.row.repo, scope: 'repo', kind: 'native-git', record: r }; };
-const invoke = (c, t, a) => callNativeWorker(c, { binding: t.record.binding, workspace_id: t.record.worker, ...a });
+const invoke = (c, t, a) => callNativeWorker(c, { binding: t.record.binding, job: t.record.job, workspace_id: t.record.worker, ...a });
 const configured = c => { workerUrl(c.env); if (c.env?.NATIVE_GIT_WORKER_KEY) workerKey(c.env.NATIVE_GIT_WORKER_KEY); else nativeWorkerPublicKey(c.env); };
 
 const open = defineGithubWrite({
  requestKey: nativeOpenRequestKey,
  name: 'github_git_workspace_open', area: 'git', audience: ['B', 'O', 'Op'],
  description: 'Clone an authorized repository. Use a fresh requestKey per new workspace and reuse it only for retries; a closed clone receipt is historical.',
- properties: { owner: OWNER, repo: REPO, branch: TEXT, authorName: { type: 'string', minLength: 1, maxLength: 100 }, authorEmail: { type: 'string', minLength: 1, maxLength: 254 }, depth: { type: 'integer', minimum: 1, maximum: 100000 }, leaseMinutes: { type: 'integer', minimum: 1, maximum: 1440 } }, required: ['repo'], declarations,
+ properties: { owner: OWNER, repo: REPO, branch: TEXT, authorName: { type: 'string', minLength: 1, maxLength: 100 }, authorEmail: { type: 'string', minLength: 1, maxLength: 254 }, depth: { type: 'integer', minimum: 1, maximum: 100000 }, leaseMinutes: { type: 'integer', minimum: 1, maximum: 1440, description: 'Idle timeout in minutes, renewed by authorized workspace activity; default 240 (four hours).' } }, required: ['repo'], declarations,
  target: (a, c) => ({ owner: a.owner ?? c.connection.default_account, repo: a.repo, scope: 'repo', kind: 'native-git' }),
  read: async (a, c, t) => { configured(c); await authorizeNativeRepo(c, t.owner, t.repo); return {}; },
  classify: () => ({}), summarize: ({ target: t }) => `Clone ${t.owner}/${t.repo} into a private native Git workspace; worker compute and storage use the configured host.`,
@@ -35,13 +35,13 @@ const open = defineGithubWrite({
   const id = 'job_' + randomBytes(8).toString('hex');
   const binding = { authority: randomBytes(16).toString('hex'), connection: nativeConnection(c), owner: t.owner, repo: t.repo };
   const worker = nativeWorkspaceId(binding, requestKey);
-  await c.db.createJob({ id, connection: nativeConnection(c), owner: t.owner, repo: t.repo, kind: 'native-git-workspace', providerRef: JSON.stringify({ authority: binding.authority, worker }), ttlMinutes: a.leaseMinutes ?? 1440 });
-  try { return { workspace_id: id, result: await callNativeWorker(c, { action: 'open', binding, requestKey, allowWrite: true, network: true, options: { branch: a.branch, depth: a.depth, authorName: a.authorName, authorEmail: a.authorEmail, ttlMs: (a.leaseMinutes ?? 1440) * 60000 } }) }; }
+  await c.db.createJob({ id, connection: nativeConnection(c), owner: t.owner, repo: t.repo, kind: 'native-git-workspace', providerRef: JSON.stringify({ authority: binding.authority, worker, idleTimeoutMs: (a.leaseMinutes ?? 240) * 60000 }), ttlMinutes: a.leaseMinutes ?? 240 });
+  try { return { workspace_id: id, result: await callNativeWorker(c, { action: 'open', binding, job: {id,idleTimeoutMs:(a.leaseMinutes ?? 240)*60000}, requestKey, allowWrite: true, network: true, options: { branch: a.branch, depth: a.depth, authorName: a.authorName, authorEmail: a.authorEmail, ttlMs: (a.leaseMinutes ?? 240) * 60000 } }) }; }
   catch { return { workspace_id: id, result: { state: 'uncertain' } }; }
  },
  readAfter: async ({ ctx: c, response }) => {
   const record = await nativeRecord(c, response.workspace_id);
-  try { return { workspace_id: response.workspace_id, ...await callNativeWorker(c, { action: 'inspect', binding: record.binding, workspace_id: record.worker }) }; }
+  try { return { workspace_id: response.workspace_id, ...await callNativeWorker(c, { action: 'inspect', binding: record.binding, job: record.job, workspace_id: record.worker }) }; }
   catch { return { workspace_id: response.workspace_id, state: 'uncertain', next: 'Use github_git_workspace_read status; do not open another clone to retry this intent.' }; }
  },
  verify: ({ after }) => after.state === 'ready', present: ({ after, response }) => after ?? response
@@ -57,7 +57,7 @@ const read = defineRead({
     { feature: 'submodules', guidance: 'Use a trusted isolated local clone, review .gitmodules origins, then git submodule update --init --recursive with separate repository permissions.' },
     { feature: 'executable hooks/filters, signing, custom remotes and arbitrary shell/bisect run', guidance: 'Use your local native Git configuration in an isolated environment with its own credentials. The worker never executes repository-provided programs.' }
    ], cost: 'The initial worker is a running container on the configured host, not scale-to-zero. Compute, persistent storage and transfer depend on that host; no zero-idle-cost claim. Portable encrypted snapshots support moving to an owned host.' };
- } if (a.operation === 'read_file' && a.byteLength === undefined) throw new TypeError('Exact file reads require byteLength (1–32768), optional byteOffset, and options.path; use the returned file_hash as options.expectedFileHash for continuation.'); const r = await nativeRecord(c, a.workspace_id); return callNativeWorker(c, { binding: r.binding, workspace_id: r.worker, action: a.operation === 'status' ? 'inspect' : 'read', operation: a.operation, options: { ...(a.options ?? {}), ...(a.byteOffset !== undefined ? { byteOffset: a.byteOffset } : {}), ...(a.byteLength !== undefined ? { byteLength: a.byteLength } : {}) }, network: a.operation === 'remote_refs' }); }
+ } if (a.operation === 'read_file' && a.byteLength === undefined) throw new TypeError('Exact file reads require byteLength (1–32768), optional byteOffset, and options.path; use the returned file_hash as options.expectedFileHash for continuation.'); const r = await nativeRecord(c, a.workspace_id); return callNativeWorker(c, { binding: r.binding, job: r.job, workspace_id: r.worker, action: a.operation === 'status' ? 'inspect' : 'read', operation: a.operation, options: { ...(a.options ?? {}), ...(a.byteOffset !== undefined ? { byteOffset: a.byteOffset } : {}), ...(a.byteLength !== undefined ? { byteLength: a.byteLength } : {}) }, network: a.operation === 'remote_refs' }); }
 });
 const run = defineGithubWrite({
  name: 'github_git_workspace_run', area: 'git', audience: ['B', 'O', 'Op'],
@@ -89,10 +89,10 @@ const close = defineGithubWrite({
  properties: { workspace_id: WORKSPACE }, required: ['workspace_id'], declarations: { ...declarations, production: 'when-target' },
  explain: error => error?.safeMessage ? error.message : 'Native Git operation could not be confirmed. Inspect workspace state and the same intent receipt before retrying.',
  classifyError: error => [401,409,429].includes(error?.status) ? 'rejected' : 'uncertain', target: (a, c) => target(a, c, true),
- read: async (_a, c, t) => { try { return await invoke(c, t, { action: 'inspect' }); } catch (e) { if (e.status === 404) return { disposed: true }; throw e; } }, classify: () => ({}), summarize: ({ target: t }) => `Dispose native workspace for ${t.owner}/${t.repo}; uncommitted local work is deleted.`,
+ read: async (_a, c, t) => { try { return await invoke(c, t, { action: 'inspect', renewLease: false }); } catch (e) { if (e.status === 404) return { disposed: true }; throw e; } }, classify: () => ({}), summarize: ({ target: t }) => `Dispose native workspace for ${t.owner}/${t.repo}; uncommitted local work is deleted.`,
  apply: async ({ ctx: c, target: t, before }) => { if (before.disposed) return { disposed: true }; const result = await invoke(c, t, { action: 'close', allowWrite: true }); return result; },
  readAfter: async ({ args: a, ctx: c, target: t }) => {
-  try { await invoke(c, t, { action: 'inspect' }); return { state: 'pending' }; }
+  try { await invoke(c, t, { action: 'inspect', renewLease: false }); return { state: 'pending' }; }
   catch (error) { if (error.status !== 404) throw error; }
   return await c.db.finishJob(a.workspace_id, nativeConnection(c), { state: 'ready', detail: 'Native workspace disposed.' }) ?? c.db.getJob(a.workspace_id, nativeConnection(c));
  }, verify: ({ after }) => after?.state === 'ready' && after.detail === 'Native workspace disposed.', present: ({ after }) => ({ disposed: after?.state === 'ready' && after.detail === 'Native workspace disposed.' })
@@ -115,7 +115,7 @@ async function openWithCurrentState(args,ctx) {
  try {
   const row=await ctx.db.getJob(id,nativeConnection(ctx));
   if (row?.kind==='native-git-workspace' && row.state==='ready' && row.detail==='Native workspace disposed.') current={...current,state:'disposed',next:'This workspace was closed. Use a fresh requestKey to open a new workspace; do not reuse the disposed ID.'};
-  else if (row?.state==='pending') { const record=await nativeRecord(ctx,id);const observed=await callNativeWorker(ctx,{binding:record.binding,workspace_id:record.worker,action:'inspect'});current={workspace_id:id,...observed,available:observed.state==='ready'}; }
+  else if (row?.state==='pending') { const record=await nativeRecord(ctx,id);const observed=await callNativeWorker(ctx,{binding:record.binding,job:record.job,workspace_id:record.worker,action:'inspect'});current={workspace_id:id,...observed,available:observed.state==='ready'}; }
  } catch { /* Preserve the immutable old receipt; never turn a failed current read into availability. */ }
  const body={...value,done:value.done&&current.available,historical:true,current_workspace:current,...(!current.available?{warning:current.next}: {})};
  return {...result,structuredContent:body,content:[{type:'text',text:JSON.stringify(body)}]};
