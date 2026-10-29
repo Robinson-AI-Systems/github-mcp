@@ -39,3 +39,25 @@ export const nativeWorkspaceId = (binding, key) => {
  const digest = v => createHash('sha256').update(JSON.stringify(v)).digest('hex');
  return 'git_' + digest([digest(['authority', 'connection', 'owner', 'repo'].map(k => binding[k])), key]).slice(0, 32);
 };
+
+// Host pins are compact, non-secret IDs. Only protected configured origins are
+// eligible; a stored workspace can never supply an arbitrary credential target.
+export const nativeWorkerHost = env => createHash('sha256').update(new URL(workerUrl(env)).origin).digest('hex').slice(0,32);
+export function nativeWorkerRoute(env, job) {
+ const primary=workerUrl(env);
+ const previous=env?.NATIVE_GIT_PREVIOUS_WORKER_URL ? workerUrl({...env,NATIVE_GIT_WORKER_URL:env.NATIVE_GIT_PREVIOUS_WORKER_URL}) : null;
+ if (job?.host!==undefined) {
+  for (const url of [primary,previous].filter(Boolean)) {
+   if (createHash('sha256').update(new URL(url).origin).digest('hex').slice(0,32)===job.host) return url;
+  }
+  throw Object.assign(new TypeError('This workspace belongs to a worker origin that is no longer configured. Restore its protected host configuration or migrate its data; no request was sent.'),{safeMessage:true,safeCode:'native_worker_host_unavailable',safeRetryable:false});
+ }
+ if (previous && job?.createdAt!==undefined) {
+  const stamp=env.NATIVE_GIT_WORKER_CUTOVER_AT;
+  const cutover=typeof stamp==='string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(stamp)?Date.parse(stamp):NaN;
+  const created=new Date(job.createdAt).getTime();
+  if (!Number.isFinite(cutover) || !Number.isFinite(created)) throw Object.assign(new TypeError('Configure the exact worker cutover timestamp before routing historical workspaces. Nothing was sent.'),{safeMessage:true,safeCode:'native_worker_route_configuration',safeRetryable:false});
+  return created<cutover?previous:primary;
+ }
+ return primary;
+}

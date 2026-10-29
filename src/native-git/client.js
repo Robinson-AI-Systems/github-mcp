@@ -1,7 +1,7 @@
 import {loadScannerPolicy} from '../github/scanner-policy.js';
 import { createHash } from 'node:crypto';
 import { githubFor, credentialFor, requestKey } from '../github/client.js';
-import { WORKER_PROTOCOL, workerUrl } from './protocol.js';
+import { WORKER_PROTOCOL, nativeWorkerRoute } from './protocol.js';
 import { signNativeWorkerBody } from './signing.js';
 import { redactExcerpt } from '../github/content-protection.js';
 import { explainGithubError } from '../tools/errors.js';
@@ -40,10 +40,10 @@ export async function nativeRecord(ctx, id, { allowDisposed = false } = {}) {
  await authorizeNativeRepo(ctx, row.owner, row.repo);
  const idleTimeoutMs = meta.idleTimeoutMs ?? new Date(row.expires_at).getTime() - new Date(row.created_at).getTime();
  if (!Number.isSafeInteger(idleTimeoutMs) || idleTimeoutMs < 60000 || idleTimeoutMs > 86400000) throw new TypeError('Invalid stored workspace idle timeout.');
- return { row, job: { id, idleTimeoutMs }, binding: { authority: meta.authority, connection: nativeConnection(ctx), owner: row.owner, repo: row.repo }, worker: meta.worker };
+ return { row, job: { id, idleTimeoutMs, host: meta.host, createdAt: row.created_at }, binding: { authority: meta.authority, connection: nativeConnection(ctx), owner: row.owner, repo: row.repo }, worker: meta.worker };
 }
 export async function callNativeWorker(ctx, { binding, action, workspace_id, operation, options, requestKey, expectedGeneration, allowWrite = false, network = false, job, renewLease = true }) {
- const url = workerUrl(ctx.env);
+ const url = nativeWorkerRoute(ctx.env, job);
  const scannerPolicy=binding?await loadScannerPolicy(ctx.db,binding.owner,binding.repo):null;
  let credential;
  if (network) {

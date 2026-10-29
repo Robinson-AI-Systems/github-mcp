@@ -972,3 +972,6 @@ Scanner configuration compares independent persisted policy readback structurall
 Native clone retry clarification (2026-10-29): `github_git_workspace_open` retains the same intent across ten-minute buckets. Legacy bucketed receipts require the original client/pass workspace ownership mapping; missing/expired historical metadata refuses without cloning. A fresh `requestKey` deliberately creates a separate workspace. See [native operations](NATIVE-GIT-OPERATIONS.md).
 
 Native idle timeout (2026-10-29): `github_git_workspace_open.leaseMinutes` selects an inactivity window (1–1440 minutes; new default 240). Authorized workspace reads and Git requests renew it; listing, capabilities and health checks do not. Expired/disposed workspaces and expired service grants are not revived. Responses expose confirmed activity and expiry metadata; protocol-3 rollout and legacy adoption are documented in native operations.
+
+
+Native workspace host continuity: new workspaces pin their protected worker host; existing workspaces retain it through provider changes, including reads, retries and disposal. Previous pre-pin workspaces require explicit protected previous-origin/cutover configuration. No tool takes a worker URL. See [operations](NATIVE-GIT-OPERATIONS.md) and [migration correction](status/2026-10-29-native-worker-host-routing.md).
