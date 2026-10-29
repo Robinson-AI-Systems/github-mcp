@@ -56,3 +56,7 @@ Scanner follow-up and the native Git worker now have actual custom-MCP evidence 
 ## Switch and parallel-agent follow-through
 
 Owner reports three switch preflight refusals and requests usable parallel agents. Shared branch/name/ref switch aliases, safe argument/capacity feedback and independently checked-out branch verification are covered by real dispatcher/Git tests. Separate workspace HTTP calls overlap up to a reviewed capacity of two; same-workspace exclusion, overload/Retry-After and replay remain tested. No host resize or paid upgrade. See [current follow-through](../status/2026-10-28-native-git-follow-through.md) for exact checks/deployment/remaining evidence; initial Render lifecycle acceptance remains separately recorded.
+
+## Four-agent capacity follow-through, 2026-10-29
+
+Owner requests more native Git concurrency for multiple AI agents. The existing configured worker is validated at four simultaneous independent requests, preserving same-workspace exclusion and bounded overload. No host resize or new paid resource; current sampled resource headroom and exact live fixture proof belong in [capacity note](../status/2026-10-29-native-git-capacity.md). This limit applies to native execution, not the API-based GitHub tools.
