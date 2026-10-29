@@ -19,4 +19,29 @@ DB CI failure on #458 observed 841 ms remaining after scheduler delay, despite a
 
 Current docs now lead with actual live/merged evidence instead of obsolete task statements. Historical rows remain honest; 15 provider/grant/human-sign-in prerequisites are not supplied by Render. Independent encrypted off-host backups still require a destination and protected operator key custody; this session does not claim they are configured.
 
-Source tests/checks, exact-head CI, merger, worker deployment, final checked release and live alias/concurrency acceptance remain pending below.
+Source and live follow-through are complete; exact proof follows.
+
+
+## Checked source and actual live acceptance
+
+PR #459 head `cf776914b53b43f8ff73de60862f09d1c4ab9dac` passed exact-head CI 40823275153 (including all unit/DB/browser/RTC/shapes/check jobs), release policy 40823275149 and worker image 40823275166, with no review threads. The published tree exactly matched the locally checked tree. Local assembled check and 93 focused native service/worker/contract/snapshot/signing tests passed. Merged `0d75243923fd2e2eb7928bf2aafbf4f9b4a00867` (journal 3416). Main CI 40823539075 and policy 40823539185 passed; authorized checked manual release 40823575876 succeeded (3417).
+
+Vercel independently reports that exact source READY on deployment dpl_w4gYGtsWif5UyYX372st2xwLQPEw with the production hostname alias; public /api/contract reports the same revision. Render deploy dep-dbhdk00473hc739mo0f0 is independently live on the same commit. Only NATIVE_GIT_MAX_CONCURRENT was merged into the existing service environment, set to 2; that update triggered the one worker deployment. Same compute, disk, verifier and manual source deployment policy; no additional paid resource. The expected disk-service interruption briefly returned capabilities ready=false, then signed capabilities returned ready=true/protocol2/native Git2.39.5/max_concurrent2.
+
+Actual authenticated custom MCP, PRODUCTION/full, using exactly one run-created private scratch repository:
+
+- Created fixture (3418), opened workspace A (3419), created topic at generation0 (3420). On the old serving source, switch with options.branch reproduced the reported generic preflight refusal without changing generation1. After the checked deployment, the same branch intent applied and independently verified acceptance-topic/generation2 (3422). The workspace survived the worker deployment.
+- Repeated the identical successful switch request: replayed, confirmed, still generation2; no new mutation. Conflicting name/branch values produced “No change was sent. Switch branch arguments disagree; supply one exact branch.”
+- Opened independent workspace B (3425). Issued concurrent custom-MCP calls for A switch via ref and B branch creation (3427/3426), then concurrent switches via name/branch (3428/3429). All applied and independently confirmed. A retained acceptance-topic, B retained second-agent-topic. This is live concurrent-call success; the deterministic held-request source test separately proves overlapping HTTP admission and 409/429 enforcement.
+- Concurrently wrote agent.txt with different harmless two-byte contents (3431/3430). Independent parallel byte reads returned A\n (QQo=) in A and B\n (Qgo=) in B, with distinct SHA-256 hashes; no workspace crossed into the other. Inventory returned both independent IDs with proper ISO expiry strings.
+- Disposed exact workspaces (3432/3433), then deleted exact repository (3434), all confirmed. Independent primary GitHub repository GET returned 404; accessible workspace inventory no longer included the fixtures. No other workspace was closed or migrated by this test.
+
+The original 56 recorded passes and 15 historical prerequisite-dependent rows remain separate; this follow-through does not supply disposable revocation/narrow grants, fresh human OAuth, paid provider entitlements or independent administrative UI readbacks. The earlier no-further-budget-testing decision remains binding, not a new owner task. No source test is substituted for those observations.
+
+## Durability boundary and next re-entry
+
+Current Render documentation (https://render.com/docs/disks.md, retrieved 2026-10-28 MDT) documents encrypted automatic daily disk snapshots retained seven days, with full-disk destructive restore. That is provider behavior, not proof that a particular snapshot or restore has been observed for this newly created service. Existing encrypted workspace export/import has focused restoration tests; no independent off-host backup schedule/destination or operator key custody is configured here. Commit/push valuable work rather than relying on an expiring worker workspace as its only copy. Re-enter off-host backup operations when the owner-controlled destination and protected key custody are available; do not copy useful uncommitted work into an unapproved external store.
+
+Two concurrent requests is the verified starting configuration, not measured capacity for large clones or arbitrary fleet size. More independent agents can retain workspaces and interleave calls; further capacity changes remain measurement-driven on the existing 1 GB/512 MB host.
+
+Cleanup diagnostic caveat: an additional custom universal GET attempted a repository-narrowed App token after the fixture was deleted; GitHub refused token issuance with 422, so that call did not provide absence evidence. The separate primary GitHub GET supplied the 404 above. No installation or key was reset based on that misleading generic credential suggestion.

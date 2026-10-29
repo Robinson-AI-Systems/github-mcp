@@ -2,7 +2,7 @@
 
 Audit/parity source through #453, scanner tuning/readback corrections #455–#456 and Render native Git #457 are merged and live on independently READY `8004b9e857f16b4027ecf380d9e43abddf3c959f`. Evidence reconciliation #458 merged after exact-head checks; see [actual live proof](status/2026-10-28-render-native-git-acceptance.md). The acceptance ledger below records 56 passes, 15 distinct prerequisite-dependent rows and 2 optional Hub checks. No outstanding indexed approved engineering is inferred from the historical paragraphs below.
 
-Current owner-requested follow-through: [switch/concurrency plan](status/2026-10-28-native-git-follow-through.md). Its source/live verification is separate from the completed Render lifecycle proof. The older dated entries below preserve historical observations, not a current task list; use the index, ledger and latest dated handoff before repeating work.
+Switch/concurrency follow-through #459 is merged and live on independently READY `0d75243923fd2e2eb7928bf2aafbf4f9b4a00867`: all switch aliases/replay/invalid-input guidance and parallel isolated workspace writes passed. Render is configured for two simultaneous requests on the same plan/disk. See [completed proof](status/2026-10-28-native-git-follow-through.md). The older dated entries below preserve historical observations, not a current task list; use the index, ledger and latest dated handoff before repeating work.
 
 ## 2026-10-27 — C-16 explicit guarded write batching (#431)
 
