@@ -1,4 +1,6 @@
-# Full coding workspaces
+# Robinson's Playground — integrated coding workspaces
+
+Robinson's Playground is Robinson AI Systems' runtime/sandbox for the GitHub coding workspace. The owner confirmed GitHub integration first: opening an eligible coding workspace should also make its isolated Playground available for dependency installation, building, running, testing and previews. The150GB storage ceiling remains requested; use grows as needed. This is one workspace experience with one total resource allowance. Google Workspace/Gmail/Drive integration is not part of this first implementation.
 
 ## Current status
 

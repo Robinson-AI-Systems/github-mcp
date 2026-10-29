@@ -18,7 +18,7 @@ export function codingServer({runtime,key,now=Date.now,capacity=codingCapacity}=
  const server=createServer({requestTimeout:15000,headersTimeout:10000,maxHeaderSize:8192},async(req,res)=>{
   res.setHeader('Content-Type','application/json');res.setHeader('Cache-Control','no-store');
   const send=(code,data)=>{res.statusCode=code;res.end(JSON.stringify(data));};
-  if(req.method==='GET'&&req.url==='/health')return send(200,{service:'robinson-coding',protocol:1});
+  if(req.method==='GET'&&req.url==='/health')return send(200,{service:'robinson-coding',product:"Robinson's Playground",protocol:1});
   if(req.method!=='POST'||req.url!=='/v1/coding')return send(404,{error:'not_found'});
   let claim;try{
    let size=0;const chunks=[];for await(const chunk of req){size+=chunk.length;if(size>65536)return send(413,{error:'request_too_large'});chunks.push(chunk);}
@@ -26,7 +26,7 @@ export function codingServer({runtime,key,now=Date.now,capacity=codingCapacity}=
    const o=claim.options??{};const fields={capabilities:[],start:['requestKey','argv','cwd','timeoutMs'],status:['id'],logs:['id','offset','length','expectedLogHash'],cancel:['id']}[claim.action];
    if(typeof o!=='object'||Array.isArray(o)||Object.keys(o).some(k=>!fields.includes(k)))return send(400,{error:'invalid_arguments'});
    switch(claim.action){
-    case 'capabilities':return send(200,{protocol:1,execution:'dedicated-container',idleTimeoutMs:runtime.idleMs,capacity:await capacity({root:runtime.root}),providerCredentials:false,arbitraryCommands:true,preview:'private-only; no unauthenticated public port forwarding'});
+    case 'capabilities':return send(200,{product:"Robinson's Playground",protocol:1,execution:'dedicated-container',idleTimeoutMs:runtime.idleMs,capacity:await capacity({root:runtime.root}),providerCredentials:false,arbitraryCommands:true,preview:'private-only; no unauthenticated public port forwarding'});
     case 'start':return send(202,await runtime.start(o));
     case 'status':return send(200,await runtime.status(o.id));
     case 'logs':return send(200,await runtime.logs(o.id,{offset:o.offset,length:o.length,expectedLogHash:o.expectedLogHash}));

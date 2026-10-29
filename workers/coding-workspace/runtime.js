@@ -13,7 +13,7 @@ export class CodingRuntime {
  constructor({root,binding,uid=1000,gid=1000,now=Date.now,maxLogBytes=32*1024*1024,idleMs=4*3600000,resources}={}){
   if(process.getuid?.()!==0)throw fail('isolation_required','Run the supervisor as the isolated container root; commands always use a different unprivileged UID.');
   if(!isAbsolute(root??'')||!ID.test(binding??'')||uid!==1000||gid!==1000||!Number.isSafeInteger(maxLogBytes)||maxLogBytes<1024||maxLogBytes>64*1024*1024||idleMs!==4*3600000)throw fail('invalid_configuration','Invalid isolated workspace configuration.');
-  Object.assign(this,{root:resolve(root),binding,uid,gid,now,maxLogBytes,idleMs});this.active=new Map();this.lastActivity=now();this.expired=false;this.resources=resources??createResourceMonitor({root:this.root});
+  Object.assign(this,{root:resolve(root),binding,uid,gid,now,maxLogBytes,idleMs});this.active=new Map();this.lastActivity=now();this.expired=false;this.stopping=false;this.leaseWrites=Promise.resolve();this.resources=resources??createResourceMonitor({root:this.root});
  }
  async init(){
   const {chown}=await import('node:fs/promises');
@@ -28,7 +28,7 @@ export class CodingRuntime {
   for(const name of await readdir(join(this.root,'control'))){if(!/^[a-f0-9]{64}\.json$/.test(name))continue;const p=join(this.root,'control',name),r=JSON.parse(await readFile(p,'utf8'));if(['starting','running'].includes(r.state)){r.state='uncertain';r.reason='runtime_restarted';await atomic(p,r);}}
   return this;
  }
- async touch(){if(this.expired||this.lastActivity+this.idleMs<=this.now())throw fail('workspace_expired','Four-hour inactivity lease expired.');this.lastActivity=this.now();await atomic(join(this.root,'control','workspace.json'),{binding:this.binding,lastActivity:this.lastActivity});}
+ async touch(){if(this.expired||this.stopping||this.lastActivity+this.idleMs<=this.now())throw fail('workspace_expired','Four-hour inactivity lease expired or runtime is stopping.');this.lastActivity=Math.max(this.lastActivity,this.now());const write=this.leaseWrites.catch(()=>{}).then(()=>atomic(join(this.root,'control','workspace.json'),{binding:this.binding,lastActivity:this.lastActivity}));this.leaseWrites=write;await write;}
  paths(id){if(!ID.test(id??''))throw fail('invalid_execution','Invalid execution identity.');return {receipt:join(this.root,'control',id+'.json'),log:join(this.root,'control',id+'.log')};}
  async inspect(id){const p=this.paths(id);let r;try{r=JSON.parse(await readFile(p.receipt,'utf8'));}catch(e){if(e.code==='ENOENT')throw fail('execution_not_found','No execution belongs to this workspace.');throw e;}return r;}
  async start({requestKey,argv,cwd='.',timeoutMs=600000}={}){
@@ -38,6 +38,7 @@ export class CodingRuntime {
   const id=hash([this.binding,requestKey]),intent=hash({argv,cwd,timeoutMs});const p=this.paths(id);
   try{const prior=await this.inspect(id);if(prior.intent!==intent)throw fail('intent_conflict','Request key belongs to different command arguments.');return {...prior,replayed:true};}catch(e){if(e.code!=='execution_not_found')throw e;}
   const admission=await this.resources.check();if(!admission.allowed)throw fail('resource_pressure','Measured workspace resources are under pressure; no command started.');
+  if(this.expired||this.stopping)throw fail('workspace_expired','Runtime stopped before command admission.');
   // Reserve synchronously before the first filesystem await so concurrent identical starts cannot spawn twice.
   if(this.active.has(id))throw fail('execution_busy','The same execution is being admitted; inspect its receipt.');
   const slot={child:null,reason:null,timer:null};this.active.set(id,slot);
@@ -74,5 +75,5 @@ export class CodingRuntime {
  }
  async cancel(id){await this.touch();const receipt=await this.inspect(id),slot=this.active.get(id);if(slot){slot.kill('cancelled');await slot.done;return await this.inspect(id);}return {...receipt,replayed:true};}
  async expire(){if(this.lastActivity+this.idleMs>this.now())return false;this.expired=true;await this.shutdown('idle_timeout');return true;}
- async shutdown(reason='runtime_stopped'){this.resources.close();const slots=[...this.active.values()];for(const slot of slots)slot.kill?.(reason);await Promise.all(slots.map(s=>s.done));}
+ async shutdown(reason='runtime_stopped'){this.stopping=true;this.resources.close();const slots=[...this.active.values()];for(const slot of slots)slot.kill?.(reason);await Promise.all(slots.map(s=>s.done));}
 }

@@ -31,3 +31,7 @@ For every user, simultaneous independent Git requests are limited only by actual
 ## 2026-10-29 — full coding workspaces
 
 The owner requests a complete coding environment, beyond typed Git: dependency installation, application builds/tests, browser tests, development servers and disposable PostgreSQL. Desired per-workspace ceilings are eight virtual CPUs, eight GiB RAM and150GB persistent storage, subject to actual host capacity and enforceable isolation. No benchmark superiority, dedicated physical cores, disk quota or running capacity is implied by these requested values. Preserve all-user no-daily-job-quota/resource-based admission/four-hour inactivity behavior and existing data; no new spending or host-wide administration is authorized.
+
+## 2026-10-29 — Robinson's Playground name and integration
+
+Name the sandbox/runtime Robinson's Playground, published by Robinson AI Systems. The owner clarified GitHub coding workspace first, rather than Google Workspace. The target is one integrated workspace for edit/Git/install/build/run/test/preview, with8CPU equivalents,8GiB RAM and up to150GB persistent disk shared by all its components. Keep the150GB ceiling and allocate actual storage as used, with no implied purchase or unverified reservation.
