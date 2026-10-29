@@ -131,7 +131,7 @@ const contentPushFiles = defineGithubWrite(overridable({
     const writes = args.files.filter((f) => !f.delete).map((f) => f.path);
     const deletes = args.files.filter((f) => f.delete).map((f) => f.path);
     const list = [...writes.map((p) => `+${p}`), ...deletes.map((p) => `-${p}`)];
-    return before ? `Commit ${args.files.length} file change(s) to ${slug(target.owner, target.repo)} on ${args.branch} (head now ${short(before)}; pass expectedHead: ${before} to refuse if it moves): ${list.slice(0, 10).join(', ')}${list.length > 10 ? ` and ${list.length - 10} more` : ''}`
+    return before ? `Commit ${args.files.length} file change(s) to ${slug(target.owner, target.repo)} on ${args.branch} (observed head ${short(before)}; pass expectedHead: ${before} to refuse if it moves): ${list.slice(0, 10).join(', ')}${list.length > 10 ? ` and ${list.length - 10} more` : ''}`
       : `${args.branch} does not exist in ${slug(target.owner, target.repo)}`;
   },
   apply: async ({ args, ctx, before, target }) => {

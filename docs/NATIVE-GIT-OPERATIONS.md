@@ -29,6 +29,12 @@ Multiple workspaces may remain open. The reviewed Render configuration allows fo
 
 Four requests is a bounded concurrency setting, not a measured large-clone capacity guarantee or a limit of Git itself. All workspaces share the 1 GB disk and 512 MB memory. Give each agent its own workspace/branch; distinct connections cannot access each other's workspaces. Inspect resource measurements before raising the 1–32 configurable request cap. This does not resize the host or its bill.
 
+## API content-commit alternative
+
+`github_content_commit_git_data` accepts 1–50 UTF-8/base64/deletion operations, up to 1.5 MB per file and 2 MB total. Set `expectedFileCount` from your intended upload manifest; a mismatch refuses the whole request before any provider call. A caller that sends only 12 files without its independent expected count cannot be detected as intending 29. This tool never silently chunks a batch. For more than 50 files, use native Git or an explicitly planned series of individually verified commits; a helper must verify every batch and fail its overall command if any file is unconfirmed.
+
+For a missing branch, supply `createFrom` with the exact source commit and `expectedHead:""`. The tool creates blobs/tree/commit first, then creates the destination ref only if it is still absent. An existing branch keeps its own observed parent; use its exact `expectedHead`. Creation racing another writer refuses rather than overwriting it. Returned `commit` is the new commit, `branch_head` is independently observed, and `submitted_files`/`confirmed_files` distinguish requested versus verified delivery. Confirmation requires the exact commit, one exact parent, tree and every requested path/mode/blob or deletion; truncated or failed readback remains unconfirmed. A tree snapshot does not import your local merge commit or trigger a guaranteed workflow run. Use native fetch/merge/push for history, and inspect actual workflow events/rules before choosing an explicit dispatch.
+
 ## Initial Dokploy deployment (retained migration option)
 
 The owner permits the friend's Dokploy/server for initial use, with an easy move to owned infrastructure. The runtime is an ordinary non-root OCI container; no Docker socket, host credential mount, privileged container or repository hook execution. One worker process/replica owns each persistent volume. The initial adapter is NOT a distributed queue or autoscaling pool.
