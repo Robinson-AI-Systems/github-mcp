@@ -157,7 +157,7 @@ it('explains invalid switch input before sending a worker mutation', async () =>
 });
 
 
-it.each([2, 4])('serves %i independent workspaces concurrently with per-workspace exclusion and bounded overload', async capacity => {
+it.each([2, 4, 8])('serves %i independent workspaces concurrently with per-workspace exclusion and bounded overload', async capacity => {
  if (capacity !== 2) {
   await new Promise(resolve => server.close(resolve));
   server = nativeGitServer({root:join(dir,'storage'),key:KEY,now:w.ctx.now,allowLocalFixtures:true,fixtureRemote:()=>bare,maxConcurrent:capacity});
