@@ -52,3 +52,7 @@ Live acceptance correction: normalize scanner policy objects for PostgreSQL JSON
 ## Current live acceptance, 2026-10-28
 
 Scanner follow-up and the native Git worker now have actual custom-MCP evidence on READY8004b9e: signed Render route, native clone/edit/commit/push with provider readback, replay/refusal, conflict/abort, persistence across redeploy, repository policy propagation and non-applying profile offer, tested rollback and exact fixture cleanup. See [dated proof](../status/2026-10-28-render-native-git-acceptance.md). This satisfies the native-worker lifecycle row only; retain unrelated external prerequisites and advanced local Git alternatives.
+
+## Switch and parallel-agent follow-through
+
+Owner reports three switch preflight refusals and requests usable parallel agents. Shared branch/name/ref switch aliases, safe argument/capacity feedback and independently checked-out branch verification are covered by real dispatcher/Git tests. Separate workspace HTTP calls overlap up to a reviewed capacity of two; same-workspace exclusion, overload/Retry-After and replay remain tested. No host resize or paid upgrade. See [current follow-through](../status/2026-10-28-native-git-follow-through.md) for exact checks/deployment/remaining evidence; initial Render lifecycle acceptance remains separately recorded.

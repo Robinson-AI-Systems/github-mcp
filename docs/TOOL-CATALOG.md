@@ -110,7 +110,7 @@ Card(s): D-2.
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `github_git_workspace_open` | Clone a repository into a connection-bound native Git worker workspace; returns HEAD, generation and expiry | P | N | I | B,O,Op | F | PAR-2 |
 | `github_git_workspace_read` | Inspect native Git capabilities, history, conflicts, refs, receipts and exact protected file windows | — | N | I | B,O,Op | R | PAR-2 |
-| `github_git_workspace_run` | Execute typed native Git operations with generation/replay protection, conflict recovery and independently verified push | P·D·Prod* | N | I | B,O,Op | F | PAR-2 |
+| `github_git_workspace_run` | Typed native Git; switch accepts branch/name/ref with branch readback, generation/replay, conflicts and verified push | P·D·Prod* | N | I | B,O,Op | F | PAR-2 |
 | `github_git_workspace_close` | Dispose only the owned local workspace, verify absence and retain immutable disposal replay | P·D·Prod* | N | I | B,O,Op | F | PAR-2 |
 | `github_git_workspace_list` | Page current connection workspaces with fresh repository access checks and explicit omissions/cursor | — | N | I | B,O,Op | R | PAR-2 |
 | `github_content_get` | A file or directory at any ref; compact text by default, byte-exact base64 via `byteOffset`/`byteLength` (up to 32 KiB per explicit call) and a retained handle for overflow | — | F | I | B,Op | R | D-2 built #30 |

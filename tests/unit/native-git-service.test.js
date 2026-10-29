@@ -1,8 +1,9 @@
-import { it, expect, beforeEach, afterEach } from 'vitest';
+import { it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
+import { NativeGitWorker } from '../../workers/native-git/engine.js';
 import { nativeGitServer } from '../../workers/native-git/server.js';
 import { signWorkerBody, verifyWorkerBody, workerUrl } from '../../src/native-git/protocol.js';
 import { makeWorld, parse } from '../../test/helpers/write-contract.js';
@@ -21,7 +22,7 @@ beforeEach(async () => {
  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve)); origin = `http://127.0.0.1:${server.address().port}`;
  w.gh.when('GET /repos/{owner}/{repo}').reply(200, { full_name: 'example-org/hello', default_branch: 'main' });
 });
-afterEach(async () => { await new Promise(resolve => server.close(resolve)); await rm(dir, { recursive: true, force: true }); });
+afterEach(async () => { vi.restoreAllMocks(); await new Promise(resolve => server.close(resolve)); await rm(dir, { recursive: true, force: true }); });
 async function invoke(name, args, connection = w.connection) {
  const run = createDispatch({ ...w.ctx, env: { ...w.ctx.env, NATIVE_GIT_WORKER_URL: 'https://worker.example.test/', ...(asymmetric ? {} : { NATIVE_GIT_WORKER_KEY: KEY }) }, gates: [], fetch: async (url, init) => {
   if (String(url).startsWith('https://worker.example.test/')) { requests.push(JSON.parse(init.body)); return fetch(origin + '/v1/workspace', init); }
@@ -123,4 +124,65 @@ it('brokers current repository scanner rules into signed worker calls and protec
  expect(report.findings).toMatchObject([{rule:'custom_initial_word'}]);expect(report.policy_revision).toBe(1);
  expect((await invoke('github_git_workspace_read',{workspace_id:id,operation:'read_file',options:{path:'file.txt'},byteLength:32768})).isError).toBe(true);
  expect(requests.at(-1).scannerPolicy.revision).toBe(1);expect(requests.at(-1).scannerPolicy.settings.additionalRules[0].id).toBe('custom_initial_word');
+});
+
+it('switches branches through the dispatcher with explicit aliases, verified branch and immutable replay', async () => {
+ const id = await opened();
+ const created = parse(await invoke('github_git_workspace_run', { workspace_id: id, operation: 'branch_create', expectedGeneration: 0, options: { name: 'topic' } }));
+ expect(created.status).toBe('applied');
+ let generation = 1;
+ for (const options of [{ branch: 'topic' }, { ref: 'main' }, { name: 'topic' }]) {
+  const args = { workspace_id: id, operation: 'switch', expectedGeneration: generation, options, requestKey: `switch-alias-${generation}` };
+  const result = parse(await invoke('github_git_workspace_run', args));
+  expect(result.status, JSON.stringify(result)).toBe('applied');
+  expect(result.result.workspace.branch).toBe(Object.values(options)[0]);
+  expect(result.result.workspace.generation).toBe(++generation);
+  const count = requests.filter(r => r.action === 'run').length;
+  expect(parse(await invoke('github_git_workspace_run', args)).replayed).toBe(true);
+  expect(requests.filter(r => r.action === 'run')).toHaveLength(count);
+ }
+});
+it('explains invalid switch input before sending a worker mutation', async () => {
+ const id = await opened();
+ for (const options of [{}, { name: 'main', branch: 'other' }, { branch: '--detach' }, { branch: 'a..b' }]) {
+  const count = requests.filter(r => r.action === 'run').length;
+  const result = parse(await invoke('github_git_workspace_run', { workspace_id: id, operation: 'switch', expectedGeneration: 0, options }));
+  expect(result.status).toBe('refused_by_guard');
+  expect(result.error).not.toContain('Try again in a moment');
+  expect(result.error).toMatch(/branch|reference|argument/i);
+  expect(requests.filter(r => r.action === 'run')).toHaveLength(count);
+ }
+});
+
+
+it('serves two independent workspaces concurrently, keeps per-workspace exclusion and reports bounded overload', async () => {
+ const first = await opened();
+ const second = parse(await invoke('github_git_workspace_open', { owner: 'example-org', repo: 'hello', requestKey: 'second-concurrent-workspace' })).result.workspace_id;
+ const { nativeConnection } = await import('../../src/native-git/client.js');
+ const bodyFor = async id => {
+  const row = await w.db.getJob(id, nativeConnection(w.ctx));
+  const meta = JSON.parse(row.provider_ref);
+  return JSON.stringify({ version: 2, scannerPolicy: {settings: {additionalRules:[],disabledRules:[],suppressions:[]},revision:0}, action: 'inspect', workspace_id: meta.worker, binding: {authority:meta.authority,connection:nativeConnection(w.ctx),owner:row.owner,repo:row.repo}, expiresAt: w.ctx.now()+60000 });
+ };
+ const send = body => fetch(origin+'/v1/workspace', {method:'POST',body,headers:{'x-robinson-signature':signWorkerBody(body,KEY)}});
+ const a = await bodyFor(first), b = await bodyFor(second);
+ let entered = 0, release, arrived;
+ const held = new Promise(resolve => { release=resolve; });
+ const both = new Promise(resolve => { arrived=resolve; });
+ const original = NativeGitWorker.prototype.inspect;
+ vi.spyOn(NativeGitWorker.prototype,'inspect').mockImplementation(async function(...args) {
+  if (++entered===2) arrived();
+  await held;
+  return original.apply(this,args);
+ });
+ const pending = [send(a),send(b)];
+ try {
+  await both;
+  const busy = await send(a); expect(busy.status).toBe(409); expect((await busy.json()).error).toBe('workspace_busy');
+  const c = JSON.parse(a); c.workspace_id='git_'+'f'.repeat(32);
+  const full = await send(JSON.stringify(c)); expect(full.status).toBe(429); expect(full.headers.get('retry-after')).toBe('2'); await full.text();
+ } finally { release(); }
+ const responses = await Promise.all(pending);
+ for (const response of responses) { expect(response.status).toBe(200); expect((await response.json()).branch).toBe('main'); }
+ const again = await send(a); expect(again.status).toBe(200); await again.text();
 });
