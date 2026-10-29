@@ -273,3 +273,10 @@ it('fetches and merges moved main with two real parents, then pushes the same co
  expect(git(bare,'rev-parse','refs/heads/new-topic')).toBe(head);
  expect(git(bare,'rev-list','--parents','-n','1',head).split(' ')).toEqual([head,local.result.workspace.head,main]);
 });
+it.each(['a'.repeat(250),'prefix/'+'a'.repeat(249)])('verifies accepted long branch names without truncating their full refs: %s',async name=>{
+ const id=await opened();
+ const run=async(operation,generation,options)=>parse(await invoke('github_git_workspace_run',{workspace_id:id,operation,expectedGeneration:generation,options}));
+ const created=await run('branch_create',0,{branch:name});expect(created.status,JSON.stringify(created)).toBe('applied');expect(created.result.reference).toMatchObject({name,exists:true});
+ const renamed=await run('branch_rename',1,{ref:name,branch:'renamed-long'});expect(renamed.status).toBe('applied');
+ const deleted=await run('branch_delete',2,{branch:'renamed-long'});expect(deleted.status).toBe('applied');expect(deleted.result.reference.exists).toBe(false);
+});
