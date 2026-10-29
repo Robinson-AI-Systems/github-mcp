@@ -27,7 +27,7 @@ Worker network, incomplete-body and invalid-response failures require inspecting
 
 Multiple workspaces may remain open. The active Dokploy configuration allows eight simultaneous requests in different workspaces, including preflight/read requests. Retained Render workspaces keep that host’s four-request setting during drain. A workspace admits only one request at a time; its generation and mutation lock remain authoritative. Busy/over-capacity responses disclose retry guidance; there is no durable queue and no automatic mutation resend. Keep the same requestKey for the same intent and inspect after a current operation completes. Do not create new intents to work around contention.
 
-The configured request cap is a bounded concurrency setting, not a measured large-clone capacity guarantee or a limit of Git itself. Legacy Render workspaces share its 1 GB disk and 512 MB memory. New Dokploy workspaces share the retained named volume and configurable Compose defaults of2g RAM and a two-CPU ceiling; actual host quota/free capacity is not independently measured. Give each agent its own workspace/branch; distinct connections cannot access each other's workspaces. Inspect resource measurements before raising the 1–32 configurable request cap. This does not resize the host or its bill.
+The configured request cap is a bounded concurrency setting, not a measured large-clone capacity guarantee or a limit of Git itself. Legacy Render workspaces share its 1 GB disk and 512 MB memory. New Dokploy workspaces share the retained named volume and configurable Compose defaults of 2 GiB RAM and a two-CPU ceiling; actual host quota/free capacity is not independently measured. Give each agent its own workspace/branch; distinct connections cannot access each other's workspaces. Inspect resource measurements before raising the 1–32 configurable request cap. This does not resize the host or its bill.
 
 ## API content-commit alternative
 
@@ -67,7 +67,7 @@ Unit tests use real local Git/bare repositories, signed HTTP and fake GitHub ide
 
 ## External route verification and historical Dokploy blocker
 
-The earlier Dokploy-specific blocker led to a historical Render fallback; the corrected Dokploy route is now active for new workspaces. No host-wide changes were needed. See [current evidence](status/2026-10-28-render-native-git-acceptance.md) and [Render setup](../workers/native-git/RENDER.md). Before sending repository credentials to any replacement host, verify its public route from outside the host:
+The earlier Dokploy-specific blocker led to a historical Render fallback; the corrected Dokploy route is now active for new workspaces. No host-wide changes were needed. See [historical Render evidence](status/2026-10-28-render-native-git-acceptance.md) and [Render setup](../workers/native-git/RENDER.md). Before sending repository credentials to any replacement host, verify its public route from outside the host:
 
 ```sh
 curl --fail --show-error "$WORKER_ORIGIN/health"

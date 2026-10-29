@@ -1143,8 +1143,8 @@ open obligations, original fixture ownership, approvals and deployment provenanc
     "status": "PASSED",
     "priority": 1,
     "task": "Verify externally reachable signed native Git worker, then exact disposable clone/edit/commit/push/provider readback, stale-generation denial, immutable replay, conflict/recovery and disposal.",
-    "procedure": "docs/NATIVE-GIT-OPERATIONS.md; docs/status/2026-10-28-render-native-git-acceptance.md",
-    "gates": "Owner-approved Render compute and 1 GB disk; signed protocol-2 route; exact run-created private scratch repository; no unrelated resource or useful-grant changes.",
+    "procedure": "docs/NATIVE-GIT-OPERATIONS.md; docs/status/2026-10-29-dokploy-native-cutover.md; historical Render proof linked there",
+    "gates": "Owner-approved Dokploy project and retained persistent volume; signed protocol-3 route and host continuity for old Render jobs; all-tenant inventory; exact run-owned private scratch fixture; no unrelated resource or useful-grant changes.",
     "lastEvidence": "Earlier Render/idle lifecycle proof retained in docs/status/2026-10-29-native-idle-live-acceptance.md. 2026-10-29 READY/live0af2bd93832d5806f9ddcfed6d6c9f77b3265799, checked release40909299141: actual matching Dokploy source; signed protocol3/idle-v1/max8; eight fresh parallel clone/write/exact-read lanes; native push675c55e with independent App ref/parent; replay; uncommitted marker hash/HEAD/generation across redeploy. Disposable Render marker preserved across host switch and closed4266. All17 run-owned workspaces closed, marked repo deleted4314, independent same-App404, all-schema run-owned pending0. Two older workspace rows remain routed to Render; service/disk retirement pending natural drain or verified migration. Initial default-schema zero-active inference withdrawn. Full distinctions/proof: docs/status/2026-10-29-dokploy-native-cutover.md.",
     "dependsOn": []
   }
