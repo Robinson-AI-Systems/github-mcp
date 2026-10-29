@@ -71,7 +71,7 @@ export const actionsGetRun = defineRead({
 });
 
 export const actionsGetJobLog = defineRead({
-  name: 'github_actions_get_job_log', area: 'actions', audience: ['B', 'Op'],
+  name: 'github_actions_get_job_log', boundedWindow:true, area: 'actions', audience: ['B', 'Op'],
   description: 'Read a job log summary or full redacted text in hash-pinned character windows; no missing earlier lines.',
   aliases: {jobId:['job_id']},
   properties: { owner: OWNER, repo: REPO, jobId: { type: 'integer', minimum: 1 }, tailLines: { type: 'integer', minimum: 10, maximum: 2000, description: 'Last lines to keep (default 400)' },
@@ -91,9 +91,17 @@ export const actionsGetJobLog = defineRead({
       const safe=redactExcerpt(text).replace(/[A-Za-z0-9+/=]{200,}/g,'[long encoded text removed]'),hash=createHash('sha256').update(safe).digest('hex'),offset=args.textOffset??0;
       if(offset>safe.length || ((offset>0||args.expectedLogHash!==undefined)&&args.expectedLogHash!==hash))
         throw new TypeError('Log hash changed or is missing for continuation; restart at textOffset zero.');
-      const end=Math.min(safe.length,offset+(args.maxChars??4000));
-      return {job:jobBrief(job),text:safe.slice(offset,end),text_offset:offset,next_text_offset:end,total_chars:safe.length,
-        complete:end===safe.length,log_hash:hash,redacted:true,byte_exact_available:false,untrusted:true};
+      const splitsPair=at=>at>0&&at<safe.length&&safe.charCodeAt(at-1)>=0xd800&&safe.charCodeAt(at-1)<=0xdbff&&safe.charCodeAt(at)>=0xdc00&&safe.charCodeAt(at)<=0xdfff;
+      if(splitsPair(offset))throw new TypeError('Log offset splits a Unicode character; use the returned continuation offset.');
+      let end=Math.min(safe.length,offset+(args.maxChars??4000));
+      if(splitsPair(end))end--;
+      const window=()=>({job:{id:job.id,name:redactExcerpt(String(job.name??'')).slice(0,120)},text:safe.slice(offset,end),text_offset:offset,next_text_offset:end,total_chars:safe.length,
+        complete:end===safe.length,log_hash:hash,redacted:true,byte_exact_available:false,untrusted:true});
+      // Advance by exactly the JSON-budgeted characters actually returned, even
+      // for CJK/emoji/escaping-heavy logs. The dispatcher preserves this bounded window.
+      while(Buffer.byteLength(JSON.stringify(window()))>6000&&end>offset){end=offset+Math.floor((end-offset)*0.8);if(splitsPair(end))end--;}
+      if(end===offset&&offset<safe.length)throw new TypeError('A log character cannot fit this bounded window.');
+      return window();
     }
     if(args.textOffset!==undefined||args.maxChars!==undefined||args.expectedLogHash!==undefined)
       throw new TypeError('Log continuation requires fullText:true.');

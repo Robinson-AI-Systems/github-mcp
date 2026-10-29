@@ -141,3 +141,16 @@ it('falls back to job logs when the run archive cannot be read and redacts full-
  expect(JSON.stringify(full.body)).not.toContain(candidate);expect(full.body.text).not.toContain('QUJD'.repeat(100));
  expect(w.gh.invalid).toEqual([]);
 });
+it('never advances past multibyte or JSON-escaped log characters removed by a result budget',async()=>{
+ const w=await makeWorld({profile:'read_only'}),text=('漢字😀\\\"\n').repeat(1500);
+ w.gh.when('GET /repos/{owner}/{repo}/actions/jobs/{job_id}').reply(200,FAILED_JOB);
+ w.gh.when('GET /repos/{owner}/{repo}/actions/jobs/{job_id}/logs').reply(200,text);
+ let offset=0,hash,joined='';
+ for(let n=0;n<50;n++){
+  const {body}=await run(w,'github_actions_get_job_log',{...R,jobId:5,fullText:true,textOffset:offset,maxChars:4000,...(hash?{expectedLogHash:hash}:{})});
+  expect(body.next_text_offset-offset).toBe(body.text.length);expect(Buffer.byteLength(JSON.stringify(body))).toBeLessThan(8192);
+  expect([...body.text].some(c=>c.codePointAt(0)>=0xd800&&c.codePointAt(0)<=0xdfff)).toBe(false);
+  joined+=body.text;hash=body.log_hash;offset=body.next_text_offset;if(body.complete)break;
+ }
+ expect(joined).toBe(text);
+});

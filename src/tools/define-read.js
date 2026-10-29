@@ -20,7 +20,7 @@ export const FIELDS_PROPERTY = { type: 'array', items: { type: 'string', maxLeng
  * @param {string} [spec.guidance] longer instructions, shown by github_describe_tool
  * @param {(args: object, ctx: object) => any} spec.handler returns the raw object, or a list of them
  */
-export function defineRead({ name, description, area, audience, compact, guidance, byteWindow = false, aliases = {}, properties = {}, required = [], summaryType, handler }) {
+export function defineRead({ name, description, area, audience, compact, guidance, byteWindow = false, boundedWindow = false, aliases = {}, properties = {}, required = [], summaryType, handler }) {
   if (!NAME.test(name ?? '')) throw new TypeError('A valid tool name is required.');
   if (typeof description !== 'string' || !description) throw new TypeError(`${name}: a description is required.`);
   if (typeof handler !== 'function') throw new TypeError(`${name}: handler must be a function.`);
@@ -60,6 +60,7 @@ export function defineRead({ name, description, area, audience, compact, guidanc
     name, description, ...(area ? { area } : {}), ...(audience ? { audience: Object.freeze([...audience]) } : {}), ...(compact ? { compact: true } : {}), ...(guidance ? { guidance } : {}),
     readContract: 'defineRead-v1', results: Object.freeze({ summaryType: summaryType ?? null }),
     ...(byteWindow ? { byteWindow: true } : {}),
+    ...(boundedWindow ? {boundedWindow:true}:{}),
     ...(aliasEntries.length ? { aliases: Object.freeze(Object.fromEntries(Object.entries(aliases).map(([k, v]) => [k, Object.freeze([...v])]))), canonicalRequired: Object.freeze([...required]) } : {}),
     inputSchema: {
       type: 'object',
