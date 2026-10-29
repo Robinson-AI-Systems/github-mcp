@@ -975,3 +975,6 @@ Native idle timeout (2026-10-29): `github_git_workspace_open.leaseMinutes` selec
 
 
 Native workspace host continuity: new workspaces pin their protected worker host; existing workspaces retain it through provider changes, including reads, retries and disposal. Previous pre-pin workspaces require explicit protected previous-origin/cutover configuration. No tool takes a worker URL. See [operations](NATIVE-GIT-OPERATIONS.md) and [migration correction](status/2026-10-29-native-worker-host-routing.md).
+
+
+Daily job quotas are removed service-wide: creating native workspaces/background jobs does not consume a daily job allowance. Active resource capacity, TTL/idle cleanup and genuine authorization restrictions remain independent. See [the repair record](status/2026-10-29-no-daily-job-quota.md).

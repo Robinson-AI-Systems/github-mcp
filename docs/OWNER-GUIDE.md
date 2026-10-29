@@ -270,3 +270,8 @@ For a masked source file or refused exact-byte read, use `github_content_protect
 ## Native Git workspaces
 
 The source expansion adds real native Git through an isolated portable worker: clone, inspect/edit, commit, fetch/push, history/conflict recovery, stash/worktrees and manual bisect. Start with github_git_workspace_read(operation=capabilities); it reports actual configured-worker readiness or setup guidance. Five tools and exact limits/unsupported advanced features are documented in [Native Git operations](NATIVE-GIT-OPERATIONS.md). A missing worker never masquerades as working native Git, and API git-data tools remain available. Initial Dokploy is portable through full state export/restore; the initial running container does not promise zero idle cost or autoscaling. See the dated checkpoint for source versus actual deployed acceptance.
+
+
+### Daily job creation
+
+There is no daily limit on creating Git workspaces or other background jobs. How many requests execute simultaneously and how many active resources are held are separate capacity controls. Native workspaces default to four idle hours; closing one removes its local files. An active-capacity refusal explains how to free capacity, rather than asking you to wait for a daily allowance reset. Actual provider limits and restrictions deliberately selected for a delegated connection still apply.

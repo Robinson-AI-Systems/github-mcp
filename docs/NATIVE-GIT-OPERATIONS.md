@@ -97,3 +97,8 @@ Prefer deploying the checked worker first, preserving its disk, verifier and con
 ## Preserving active workspaces across a provider change
 
 New workspace metadata pins a compact hash of the configured worker origin; the full origin never enters user arguments. Retain NATIVE_GIT_PREVIOUS_WORKER_URL during a drain. For older rows without pins, set NATIVE_GIT_WORKER_CUTOVER_AT to the exact initial cutover time: rows created before it stay on the previous host, later rows use the current host. Only these protected configured origins are eligible. Unknown/removed pins and invalid historical routing refuse before a credential/request; no silent cross-host retry or re-clone. Capabilities/new clones use the current origin. After active jobs are finished or storage is actually migrated, retire the old host/configuration with independent proof. Count native jobs across every isolated tenant schema; a default-schema zero or one connection's inventory never proves fleet-wide absence. See [the correction](status/2026-10-29-native-worker-host-routing.md).
+
+
+## No daily workspace creation quota
+
+There is no daily job-creation allowance, either per connection or across a tenant. Old32/128/200 stored daily job settings do not govern new requests. Eight simultaneous native requests on the current worker and existing active metadata reservations remain separate capacity controls; closing/idle expiry frees active resources. A capacity refusal identifies an active-workspace constraint and never invents a daily reset. Real provider rate limits and chosen delegated grants remain in force.

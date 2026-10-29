@@ -9,6 +9,7 @@ describe('PUB-3 scoped runtime fail-closed validation',()=>{
     const sql=vi.fn();
     for(const props of [
       {operation:'arbitrary-code',clientId:'a',tenantMax:10,clientMax:2},
+      {operation:'job',clientId:'a',tenantMax:10,clientMax:2,window:'day'},
       {operation:'mcp',clientId:'',tenantMax:10,clientMax:2},
       {operation:'mcp',clientId:'x'.repeat(300),tenantMax:10,clientMax:2},
       {operation:'mcp',clientId:'a',tenantMax:2,clientMax:3},
@@ -108,4 +109,32 @@ describe('PUB-3 scoped runtime fail-closed validation',()=>{
     await expect(readTenantRuntimePolicy(async()=>[{value:{unauthorized:'raw'}}]))
       .rejects.toThrow(/policy/);
   });
+});
+
+
+describe('job creation without daily quotas',()=>{
+ it('normalizes retired stored32/128/200 quotas to no daily limit and omits them on save',async()=>{
+  for(const value of [{},{jobsClientPerDay:32,jobsTenantPerDay:200},{jobsClientPerDay:128,jobsTenantPerDay:1}]){
+   expect(validateTenantRuntimePolicy(value)).toMatchObject({jobsClientPerDay:null,jobsTenantPerDay:null});
+  }
+  const sql=vi.fn(async()=>[]);
+  await saveTenantRuntimePolicy(sql,{jobsClientPerDay:128,jobsTenantPerDay:200});
+  expect(JSON.parse(sql.mock.calls[0][2])).not.toHaveProperty('jobsClientPerDay');
+  expect(JSON.parse(sql.mock.calls[0][2])).not.toHaveProperty('jobsTenantPerDay');
+  expect(()=>validateTenantRuntimePolicy({jobsClientPerDay:'unlimited'})).toThrow();
+ });
+ it('admits successive jobs despite exhausted old quotas without claiming a daily budget',async()=>{
+  const sql=vi.fn(async parts=>{
+   const query=parts.join('');
+   if(query.includes('SELECT value FROM server_settings'))return [{value:{jobsClientPerDay:1,jobsTenantPerDay:1}}];
+   if(query.includes('gh_claim_tenant_storage_slot'))return [{admitted:true}];
+   if(query.includes('gh_claim_tenant_capacity'))throw new Error('An exhausted old daily job quota must never be consulted.');
+   return [];
+  });
+  const db={createJob:vi.fn(async()=>({state:'pending'})),finishJob:vi.fn(async()=>({state:'ready'})),putResult:vi.fn()};
+  const store=withTenantStorageLimits(db,sql,'fixture-client');
+  for(let i=0;i<201;i++){const id='job_'+i.toString(16).padStart(16,'0');await store.createJob({id,connection:'fixture-connection',owner:'fixture',kind:'export'});await store.finishJob(id,'fixture-connection',{state:'ready'});}
+  expect(db.createJob).toHaveBeenCalledTimes(201);
+  expect(sql.mock.calls.every(c=>!c[0].join('').includes('gh_claim_tenant_capacity'))).toBe(true);
+ });
 });
