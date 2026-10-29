@@ -91,3 +91,7 @@ Dokploy migration accepted for new workspaces on READY0af2bd93832d5806f9ddcfed6d
 ## 2026-10-29 — resource admission follow-through
 
 Current owner instruction applies globally: no daily job quota and no fixed native Git request/workspace count. Worker resource observations govern native execution; native metadata bypasses generic pending-job slots, with isolation, TTL, ordinary background-job reservations and result retention unchanged. Twelve held real-Git service requests, pressure/recovery/replay/disposal tests, real-process/filesystem sampling, two-tenant Postgres and packaged-image acceptance cover this repair. See [implementation and deployment record](../status/2026-10-29-native-resource-admission.md); source tests and live verification remain distinct.
+
+## 2026-10-29 — canonical fleet installation and recovery follow-through
+
+Owner approved finishing the operational remainder in priority order. Version the supplied corrected CLI and regressions in tools/ras-github, provide atomic reversible installation, explicit connector-path selection and local/read-only live doctor checks, and make the original external-host acceptance procedure concrete. Preserve snapshot/native ancestry distinctions, confirmed file manifests and failure exits. Project-scoped backup/Render/grant checks must record missing protected inputs rather than claim deployment or acceptance. See [finite advance plan](../status/2026-10-29-fleet-install-and-recovery-plan.md).
