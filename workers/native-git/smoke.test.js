@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { NativeGitWorker } from './engine.js';
+import {createResourceMonitor} from './resources.js';
 import { exportWorkspace, importWorkspace } from './snapshot.js';
 test('packaged image clones, commits, pushes, verifies and restores native Git state as non-root', async () => {
  const dir = await mkdtemp(join(tmpdir(), 'native-image-')); const seed = join(dir, 'seed'), bare = join(dir, 'remote.git');
@@ -23,4 +24,11 @@ test('packaged image clones, commits, pushes, verifies and restores native Git s
   const restored = await importWorkspace({ root: join(dir, 'restored'), bytes, key }); assert.equal(restored.workspace_id, opened.workspace_id);
   assert.notEqual(process.getuid?.(), 0, 'the packaged smoke test must run as the unprivileged image user');
  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test('packaged image samples available process memory and writable filesystem without a request-count cap',async()=>{
+ const dir=await mkdtemp(join(tmpdir(),'native-resource-image-'));
+ const monitor=createResourceMonitor({root:dir});
+ try{assert.equal(monitor.body(1024).allowed,true);assert.deepEqual(await monitor.check(),{allowed:true});assert.equal(Object.hasOwn(monitor.policy,'maxConcurrent'),false);}
+ finally{monitor.close();await rm(dir,{recursive:true,force:true});}
 });

@@ -102,6 +102,10 @@ export class NativeGitWorker {
       return { idle_timeout_ms: idleTimeoutMs, last_activity_at: meta.lastActivityAt, expires_at: meta.expiresAt };
     } finally { await lock.close(); await rm(join(w.dir, 'mutation.lock'), { force: true }); }
   }
+  async inspectMetadata(id, binding) {
+    const { meta } = await this.workspace(id, binding, false, true);
+    return { state: meta.state, generation: meta.generation, expires_at: meta.expiresAt };
+  }
   async inspect(id, binding, worktree) {
     const w = await this.workspace(id, binding);
     await this.selectWorktree(w, worktree);

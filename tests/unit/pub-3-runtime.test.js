@@ -138,3 +138,12 @@ describe('job creation without daily quotas',()=>{
   expect(sql.mock.calls.every(c=>!c[0].join('').includes('gh_claim_tenant_capacity'))).toBe(true);
  });
 });
+
+it('native workspace metadata uses no fixed active slots for any client',async()=>{
+ const db={createJob:vi.fn(async input=>input),putResult:vi.fn()},sql=vi.fn();
+ for(const client of ['client-A','client-B']){
+  const store=withTenantStorageLimits(db,sql,client);
+  for(let i=0;i<21;i++)await store.createJob({id:'job_'+i.toString(16).padStart(16,'0'),connection:client,owner:'fixture',kind:'native-git-workspace',ttlMinutes:240});
+ }
+ expect(db.createJob).toHaveBeenCalledTimes(42);expect(sql).not.toHaveBeenCalled();
+});
