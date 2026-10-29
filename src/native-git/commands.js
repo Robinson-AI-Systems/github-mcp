@@ -7,8 +7,8 @@ export function value(input, max = 256) {
   if (typeof input !== 'string' || !input.length || input.length > max || /[\x00-\x1f\x7f]/.test(input) || containsCredential(input)) throw new TypeError('Invalid native Git argument.');
   return input;
 }
-export function ref(input) {
-  value(input);
+export function ref(input, max = 256) {
+  value(input, max);
   if (input.startsWith('-') || /[\s~^:?*\[\\]/.test(input) || input.includes('..') || input.includes('@{') || input.endsWith('/')) throw new TypeError('Use an exact reference or object ID.');
   return input;
 }
@@ -47,7 +47,7 @@ export function gitCommand(operation, a = {}) {
     case 'show': return ['show', '--no-ext-diff', '--no-textconv', ref(a.ref ?? 'HEAD')];
     case 'diff': return ['diff', '--no-ext-diff', '--no-textconv', ...(a.staged ? ['--cached'] : []), ...(a.ref ? [ref(a.ref)] : []), '--', ...(a.paths ? paths() : [])];
     case 'blame': return ['blame', '--line-porcelain', ref(a.ref ?? 'HEAD'), '--', value(a.path, 4096)];
-    case 'refs': return ['for-each-ref', '--format=%(refname)%00%(objectname)', ...(a.ref ? [ref(a.ref)] : [])];
+    case 'refs': return ['for-each-ref', '--format=%(refname)%00%(objectname)', ...(a.ref ? [ref(a.ref, 267)] : [])];
     case 'conflicts': return ['ls-files', '--unmerged'];
     case 'stash_list': return ['stash', 'list'];
     case 'worktree_list': return ['worktree', 'list', '--porcelain'];
