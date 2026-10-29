@@ -118,7 +118,7 @@ Card(s): D-2.
 | `github_content_get_tree` | Whole-repo file list at a ref (recursive tree), filtered by a glob | — | C | I | B | R | D-2 built #30 |
 | `github_content_put_file` | Create or update one file with a commit (checks the file's current version first) | P·Prod* | F | I | B | E | D-2 built #32 |
 | `github_content_delete_file` | Delete one file with a commit | C·Prod* | C | I | B | E | D-2 built #32 |
-| `github_content_commit_git_data` | Commit binary PDFs and text through Git blobs, base tree, exact-parent commit and non-force branch advance (up to 2 MB) | P·Prod* | N | I | B | E | PAR-3 |
+| `github_content_commit_git_data` | Atomic 1–50 binary/text operations (2 MB); expected count, optional absent-branch createFrom, exact parent and full manifest readback | P·Prod* | N | I | B | E | PAR-3 |
 | `github_content_push_files` | Commit several file changes at once on a branch, signed by GitHub (GraphQL `createCommitOnBranch`, expected head checked) | P·Prod* | N | I | B | E | D-2 built #32 |
 | `github_content_edit_files` | Edit files by find-and-replace (text must match exactly once unless `all`) and commit on a branch, signed by GitHub; sends only the changed text | P·Prod* | N | I | B | E | D-2 follow-up built |
 | `github_content_get_archive_link` | Safe queryless archive URL or GitHub page when signed redirect withheld (all detail modes) | — | N | I | B | R | D-2 built #30 |

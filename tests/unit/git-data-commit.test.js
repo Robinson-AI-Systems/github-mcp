@@ -1,11 +1,14 @@
+import {createHash} from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { runWriteContract, makeWorld, doorsFor, parse } from '../../test/helpers/write-contract.js';
 import * as gitData from '../../src/tools/git-data-commit.js';
 import { createGates } from '../../src/tools/gates.js';
 
 const A = 'a'.repeat(40), B = 'b'.repeat(40), C = 'c'.repeat(40);
-const D = 'd'.repeat(40), E = 'e'.repeat(40);
+const E = 'e'.repeat(40);
+const blobSha = bytes => createHash('sha1').update(Buffer.concat([Buffer.from('blob '+bytes.length+'\0'),bytes])).digest('hex');
 const pdf = Buffer.from('%PDF-1.7\n' + String.fromCharCode(0, 255) + '\n%%EOF');
+const D = blobSha(pdf);
 const args = { repo: 'hello', branch: 'main', message: 'Add the official form',
   files: [{ path: 'forms/official.pdf', encoding: 'base64', content: pdf.toString('base64') }] };
 const definition = { tool: gitData.tools[0], handler: gitData.handlers.github_content_commit_git_data };
@@ -16,10 +19,13 @@ function arrange(gh, mismatch = false) {
     { status: 200, body: { protected: false, commit: { sha: A } } },
     { status: 200, body: { protected: false, commit: { sha: mismatch ? A : B } } }
   ]);
-  gh.when('GET /repos/{owner}/{repo}/git/commits/{commit_sha}').reply(200,
-    { sha: A, tree: { sha: C }, parents: [] });
-  gh.when('POST /repos/{owner}/{repo}/git/blobs').reply(201, { sha: D });
-  gh.when('POST /repos/{owner}/{repo}/git/trees').reply(201, { sha: E });
+  gh.when('GET /repos/{owner}/{repo}/git/commits/{commit_sha}').reply(200, r =>
+    r.params.commit_sha === A ? { sha: A, tree: { sha: C }, parents: [] } : {sha:B,tree:{sha:E},parents:[{sha:A}]});
+  gh.when('POST /repos/{owner}/{repo}/git/blobs').reply(201, r => ({sha:blobSha(Buffer.from(r.body.content,'base64'))}));
+  let entries=[];
+  gh.when('POST /repos/{owner}/{repo}/git/trees').reply(201, r => {entries=r.body.tree;return {sha:E};});
+  gh.when('GET /repos/{owner}/{repo}/git/trees/{tree_sha}').reply(200,()=>({sha:E,truncated:false,tree:entries.filter(e=>e.sha!==null)}));
+  gh.when('POST /repos/{owner}/{repo}/git/refs').reply(201,{ref:'refs/heads/dev',object:{sha:B}});
   gh.when('POST /repos/{owner}/{repo}/git/commits').reply(201, { sha: B });
   gh.when('PATCH /repos/{owner}/{repo}/git/refs/{ref}').reply(200,
     { ref: 'refs/heads/main', object: { sha: B } });
@@ -127,4 +133,63 @@ describe('Git Data binary commits', () => {
     expect(tree.body.tree).toEqual([{ path: 'old.txt', mode: '100644', type: 'blob', sha: null }]);
     expect(w.gh.invalid).toEqual([]);
   });
+});
+
+describe('fleet batch integrity',()=>{
+ const run=async(w,a,door=0)=>parse(await doorsFor(definition)[door].call(w,a));
+ const files=Array.from({length:29},(_,i)=>({path:`batch/f-${i}.bin`,content:Buffer.from([i,0,255]).toString('base64'),encoding:'base64'}));
+ it.each([0,1,2])('publishes all 29 files once with independent full manifest verification through door %i',async door=>{
+  const w=await makeWorld({advanceClockOnSleep:true});arrange(w.gh);
+  const input={...args,branch:'dev',files,expectedFileCount:29,expectedHead:A,confirm:true,requestKey:'batch-29'};
+  const out=await run(w,input,door);expect(out.status,JSON.stringify(out)).toBe('applied');
+  expect(out.result).toMatchObject({branch_head:B,commit:B,parent:A,submitted_files:29,confirmed_files:29,manifest_complete:true});
+  const blobs=w.gh.calls.filter(c=>c.route==='POST /repos/{owner}/{repo}/git/blobs');expect(blobs).toHaveLength(29);
+  const tree=w.gh.calls.find(c=>c.route==='POST /repos/{owner}/{repo}/git/trees');
+  expect(tree.body.tree.map(e=>({path:e.path,sha:e.sha}))).toEqual(files.map(f=>({path:f.path,sha:blobSha(Buffer.from(f.content,'base64'))})));
+  expect(w.gh.calls.filter(c=>c.route==='POST /repos/{owner}/{repo}/git/commits')).toHaveLength(1);
+  expect(w.gh.calls.filter(c=>c.route==='PATCH /repos/{owner}/{repo}/git/refs/{ref}')).toHaveLength(1);
+  expect(w.gh.invalid).toEqual([]);
+ });
+ it('rejects a count mismatch and 51 files before any provider request',async()=>{
+  for(const input of [{...args,files:files.slice(0,12),expectedFileCount:29},{...args,files:Array.from({length:51},(_,i)=>({path:'f'+i,content:'x'}))}]){
+   const w=await makeWorld();const out=await run(w,input);expect(out.done).toBe(false);expect(w.gh.calls).toHaveLength(0);
+  }
+ });
+ it('creates an absent branch from the explicit parent after building a single complete commit',async()=>{
+  const w=await makeWorld({advanceClockOnSleep:true});arrange(w.gh);
+  w.gh.when('GET /repos/{owner}/{repo}/branches/{branch}').replySequence([{status:404,body:{message:'Not Found'}},{status:200,body:{commit:{sha:B}}}]);
+  const out=await run(w,{...args,branch:'dev',createFrom:A,expectedHead:'',confirm:true});
+  expect(out.status,JSON.stringify(out)).toBe('applied');expect(out.result.parent).toBe(A);
+  const ref=w.gh.calls.find(c=>c.route==='POST /repos/{owner}/{repo}/git/refs');expect(ref.body).toEqual({ref:'refs/heads/dev',sha:B});
+  expect(w.gh.calls.some(c=>c.method==='PATCH')).toBe(false);expect(w.gh.invalid).toEqual([]);
+ });
+ it('explains an absent branch without blaming App setup or sending a write',async()=>{
+  const w=await makeWorld({mode:'production',advanceClockOnSleep:true});arrange(w.gh);
+  w.gh.when('GET /repos/{owner}/{repo}/branches/{branch}').reply(404,{message:'Not Found'});
+  const out=await run(w,{...args,branch:'dev',confirm:true});expect(out.error).toContain('createFrom');
+  expect(w.gh.calls.some(c=>c.method==='POST'||c.method==='PATCH')).toBe(false);
+ });
+ it('never overwrites a destination that appeared while the new commit was being built',async()=>{
+  const w=await makeWorld({advanceClockOnSleep:true});arrange(w.gh);
+  w.gh.when('GET /repos/{owner}/{repo}/branches/{branch}').reply(404,{message:'Not Found'});
+  w.gh.when('POST /repos/{owner}/{repo}/git/refs').reply(422,{message:'Reference already exists'});
+  const out=await run(w,{...args,branch:'dev',createFrom:A,expectedHead:'',confirm:true});expect(out.done).toBe(false);
+  expect(w.gh.calls.some(c=>c.method==='PATCH')).toBe(false);
+ });
+ it.each(['missing','truncated','wrong-parent','wrong-blob'])('never calls %s readback complete',async fault=>{
+  const w=await makeWorld({advanceClockOnSleep:true});arrange(w.gh);
+  if(fault==='wrong-parent')w.gh.when('GET /repos/{owner}/{repo}/git/commits/{commit_sha}').reply(200,r=>r.params.commit_sha===A?{sha:A,tree:{sha:C}}:{sha:B,tree:{sha:E},parents:[{sha:C}]});
+  else w.gh.when('GET /repos/{owner}/{repo}/git/trees/{tree_sha}').reply(200,{sha:E,truncated:fault==='truncated',tree:fault==='wrong-blob'?[{path:args.files[0].path,type:'blob',mode:'100644',sha:C}]:[]});
+  const out=await run(w,{...args,branch:'dev',confirm:true});expect(out.status).toBe('unconfirmed');expect(out.done).toBe(false);
+ });
+});
+it('rejects an acknowledged wrong blob hash before creating a tree or advancing a ref',async()=>{
+ const w=await makeWorld({advanceClockOnSleep:true});arrange(w.gh);
+ w.gh.when('POST /repos/{owner}/{repo}/git/blobs').reply(201,{sha:C});
+ const result=parse(await doorsFor(definition)[0].call(w,{...args,branch:'dev',confirm:true}));
+ expect(result.done).toBe(false);expect(w.gh.calls.some(c=>c.route==='POST /repos/{owner}/{repo}/git/trees'||c.method==='PATCH')).toBe(false);
+});
+it('accepts all 50 operations while preserving the independent total byte bound',()=>{
+ expect(gitData.checkGitFiles(Array.from({length:50},(_,i)=>({path:'f'+i,content:'x'}))).additions).toBe(50);
+ expect(()=>gitData.checkGitFiles(Array.from({length:50},(_,i)=>({path:'f'+i,content:'x'.repeat(50000)})))).toThrow(/2 MB/);
 });
