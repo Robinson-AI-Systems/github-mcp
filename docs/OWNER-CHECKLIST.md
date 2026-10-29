@@ -179,3 +179,7 @@ Implementation is approved and the publication hold is lifted. Remaining private
 
 - [ ] **Meta Muse personal assistant on Android/iPhone:** After MUSE-2 is merged and deployed, open Muse → Settings → Connectors → Add custom connector. Use `https://github.robinsonaisystems.com/api/mcp`; if the form requires a Client ID, copy the public, nonsecret `pcl_meta_muse_public_client_20261026_v1xyz` from the live homepage and leave **Client Secret blank**. Sign in with your OWN GitHub account in the browser and approve the App plus Muse; Muse should return to your chat. Ask Muse to list tools, perform a permitted read, reject an unapproved change, refresh/reconnect, then disconnect. Capture the exact screen/error if it fails. This is client acceptance only, not a prerequisite to build or merge. Never paste GitHub tokens or passwords into Muse.
 - [ ] **Muse Code, only if you use it:** Add the homepage's JSON to your Muse Code settings, run `muse mcp login github-robinson`, sign in with GitHub in your browser, and use `/mcp` to verify tools; report the result.
+
+## Optional worker hosting return, 2026-10-29
+
+- [ ] No immediate owner action required. The operator fixed Dokploy's generated hostname destination and health/auth rejection now verify. Keep the active Render service until [the documented signed capacity and disk-continuity cutover](NATIVE-GIT-OPERATIONS.md) is ready. The fix requires project DNS to target the operator-confirmed public ingress address; changing the worker's port alone would not have corrected the old hostname.

@@ -38,7 +38,7 @@ The existing 56 accepted ledger rows remain unchanged. All 15 required remaining
 | GITHUB-U1-AUTH-METERED-WRITE | Exact approved metered fixture and explicit cost authorization; unknown cost disclosure does not authorize builder spending. |
 | GITHUB-PRIVATE-USER-PASS-SCOPE | Separately narrowed current public OAuth grant; do not recreate retired pilot mode or narrow the useful owner grant. |
 | GITHUB-HARD1-SIGNIN-NO-CAP | Genuinely new human OAuth sign-in; existing connected access is not fresh sign-in evidence. |
-| GITHUB-GOD6-ACT-AS | Disposable credential-setting fixture/grant for switch OFF/App-only/read-only cases; existing person-actor write evidence retained. |
+| GITHUB-GOD6-ACT-AS | Disposable credential-setting fixture/grant for switch OFF/read-only cases; person-actor evidence retained, and App-only actor independently verified 2026-10-29. |
 | GITHUB-GOD6-RULE-OVERRIDE | Exact disposable rules/PR fixture plus restricted grant; do not change real production rules as a test. |
 | GITHUB-PUB5-HEADERS-LIMITS | Disposable refresh-token family for replay/revocation and per-person usage UI readback; existing header/PKCE evidence retained. |
 

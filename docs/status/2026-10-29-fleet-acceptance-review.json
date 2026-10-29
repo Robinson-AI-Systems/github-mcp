@@ -1,5 +1,5 @@
 {
-  "snapshot": "6e05730b406cc8f203ccbd0185972557480f12ea8257ce379458e5e0edb948c8",
+  "snapshot": "6328f7d46ed52cde8ee6917268c7d05f022082ef98af150755aaa3cf93dc385a",
   "deployed": "c02b1998e964428ca26a147a505d57fa24cce941",
   "deploymentState": "READY",
   "tasks": [
@@ -9,9 +9,9 @@
       "disposition": "RECHECK_EXTERNAL_GATE",
       "outcome": "DEFERRED",
       "evidence": "2026-10-28 READY 53df99ef custom MCP: exact disposable private scratch repo created (journal 2762) and deleted (2772), both confirmed and acting_as christcr2012 (you); independent GET 404. The Act-as-me switch OFF, App-only check-run and separate read-only grant remain unverified. Useful current connector settings were not changed. 2026-10-29 on READY 454f6d4d: disposable repository creation acted as the person; App-only check creation independently read back app.slug=robinson-github-mcp and exact seed head, completed/success. Exact fixtures cleaned on READY c02b1998. OFF/read-only setting matrix still requires a separately disposable credential-setting fixture; this row remains incomplete.",
-      "prerequisite": "Disposable credential-setting fixture/grant for switch OFF/App-only/read-only cases; existing person-actor write evidence retained.",
+      "prerequisite": "Disposable credential-setting fixture/grant for switch OFF/read-only cases; person-actor evidence retained, and App-only actor independently verified 2026-10-29.",
       "remedy": "Reconciled current deployed ancestry, recovery findings and available authorization/fixtures. Preserve useful grants, existing provider refusals and the owner-declined budget deletion decision; no entitlement or paid resource was added.",
-      "nextAction": "Disposable credential-setting fixture/grant for switch OFF/App-only/read-only cases; existing person-actor write evidence retained."
+      "nextAction": "Disposable credential-setting fixture/grant for switch OFF/read-only cases; person-actor evidence retained, and App-only actor independently verified 2026-10-29."
     },
     {
       "id": "GITHUB-GOD6-RULE-OVERRIDE",
