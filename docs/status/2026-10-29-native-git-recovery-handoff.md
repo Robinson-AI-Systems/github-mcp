@@ -1,5 +1,7 @@
 # Recovery handoff — user-requested pause, 2026-10-29
 
+Current continuation: the earlier WIP below has now been repaired through #465 and live accepted. Read [the fleet completion evidence](2026-10-29-fleet-live-acceptance.md) for current source, remaining external prerequisites and cleanup; retain this original checkpoint as historical findings.
+
 The owner explicitly asked to PAUSE and move this full thread to a new chat. This is an unfinished recovery checkpoint, not merge/release approval or completion evidence. No repair below has been released. All local test processes finished; no test resource from this repair was created remotely. Resume from the remote recovery branch named `ai/codex/native-git-contract-lifecycle-20261029` and its actual tip, not scratch filesystem state.
 
 ## Owner intent and standing scope
