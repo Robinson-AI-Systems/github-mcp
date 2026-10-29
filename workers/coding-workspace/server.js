@@ -37,7 +37,7 @@ export function codingServer({runtime,key,now=Date.now,capacity=codingCapacity}=
     case 'logs':return send(200,activity(await runtime.logs(o.id,{offset:o.offset,length:o.length,expectedLogHash:o.expectedLogHash})));
     case 'cancel':return send(200,activity(await runtime.cancel(o.id)));
    }});
-  }catch(e){return send(claim?e instanceof TypeError?400:500:401,{error:claim&&/^[a-z_]{1,64}$/.test(e.code??'')?e.code:claim?'execution_unconfirmed':'invalid_authorization',next:claim?'Inspect the original execution; do not start another intent to retry an uncertain command.':'Obtain current workspace authorization from the MCP.'});}
+  }catch(e){const status=claim?({resource_pressure:429,execution_busy:409,intent_conflict:409,log_changed:409,execution_not_found:404,workspace_expired:410}[e.code]??(e instanceof TypeError?400:500)):401;if(status===429)res.setHeader('Retry-After','2');return send(status,{error:claim&&/^[a-z_]{1,64}$/.test(e.code??'')?e.code:claim?'execution_unconfirmed':'invalid_authorization',next:claim?'Inspect the original execution; do not start another intent to retry an uncertain command.':'Obtain current workspace authorization from the MCP.'});}
  }));
  const timer=setInterval(()=>runtime.expire().then(expired=>{if(expired)server.close();}).catch(()=>{process.stderr.write('Coding lease cleanup could not be confirmed.\n');}),30000);timer.unref();
  server.on('close',()=>clearInterval(timer));return server;

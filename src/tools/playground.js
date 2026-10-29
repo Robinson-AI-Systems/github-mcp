@@ -1,6 +1,6 @@
 import {defineRead} from './define-read.js';
 import {defineGithubWrite} from './define-github-write.js';
-import {playgroundRecord,playgroundRequestKey,playgroundRuntimeKey,playgroundExecutionId,callPlayground,presentPlayground} from '../playground/client.js';
+import {playgroundRecord,playgroundRequestKey,playgroundRuntimeKey,playgroundExecutionId,callPlayground,presentPlayground,playgroundSetup} from '../playground/client.js';
 const OWNER={type:'string',maxLength:39},REPO={type:'string',minLength:1,maxLength:100},WORKSPACE={type:'string',pattern:'^job_[a-f0-9]{16}$'},EXECUTION={type:'string',pattern:'^[a-f0-9]{64}$'};
 const properties={owner:OWNER,repo:REPO,workspace_id:WORKSPACE};
 const required=['repo','workspace_id'];
@@ -19,7 +19,8 @@ const read=defineRead({name:'github_playground_read',area:'playground',audience:
  properties:{...properties,operation:{type:'string',enum:['capabilities','status','logs']},execution_id:EXECUTION,requestKey:{type:'string',minLength:1,maxLength:128},byteOffset:{type:'integer',minimum:0},byteLength:{type:'integer',minimum:1,maximum:32768},expectedLogHash:{type:'string',pattern:'^[a-f0-9]{64}$'}},required:['operation'],
  handler:async(a,c)=>{
   if(a.operation==='capabilities'&&!a.workspace_id)return{product:"Robinson's Playground",operations:['github_playground_execute','github_playground_read','github_playground_cancel'],runtime_attached:false,setup_required:true,next:'Use an attached workspace_id and repository to check its actual runtime. Installation alone does not attach a runtime.',setup:'https://github.com/Robinson-AI-Systems/github-mcp/blob/main/docs/CODING-WORKSPACES.md'};
-  const record=await playgroundRecord(c,a);
+  const record=await playgroundRecord(c,a,{allowUnattached:a.operation==='capabilities'});
+  if(!record.allocation)return playgroundSetup(c,record);
   if(a.operation==='capabilities')return await callPlayground(c,record,'capabilities');
   const id=a.execution_id??(a.requestKey?playgroundExecutionId(record.allocation.binding,playgroundRuntimeKey(c,a)):null);
   if(!id)throw new TypeError('execution_id or the original command requestKey is required for status/logs.');

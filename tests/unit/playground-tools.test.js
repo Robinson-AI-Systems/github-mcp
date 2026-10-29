@@ -44,3 +44,9 @@ it('changed argv with the same caller intent is refused by the original runtime 
  const changed=parse(await handler({...base,argv:['second'],requestKey:'same-intent'},w.ctx));expect(changed.status).toBe('rejected');expect(changed.error).toContain('execution_id=');expect(w.playground.starts()).toBe(1);
  const status=await playground.handlers.github_playground_read({...base,operation:'status',requestKey:'same-intent'},w.ctx);expect(status.state).toBe('running');
 });
+
+it('unattached capabilities disclose only nonsecret setup binding after exact repository authorization',async()=>{
+ const w=await world(),ctx={...w.ctx,env:{...w.ctx.env,PLAYGROUND_ALLOCATIONS:'[]'}};
+ const setup=await playground.handlers.github_playground_read({...base,operation:'capabilities'},ctx);expect(setup).toMatchObject({setup_required:true,runtime_attached:false,workspace_id:base.workspace_id});expect(setup.allocation_binding).toMatch(/^[a-f0-9]{64}$/);expect(setup.verification_key).toMatch(/^ed25519:/);expect(setup).not.toHaveProperty('authority');expect(w.playgroundRequests).toHaveLength(0);
+ await expect(playground.handlers.github_playground_read({...base,repo:'foreign',operation:'capabilities'},ctx)).rejects.toThrow();
+});

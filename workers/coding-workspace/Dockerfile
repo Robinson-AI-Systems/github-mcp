@@ -28,6 +28,7 @@ COPY workers/coding-workspace/smoke.test.js ./workers/coding-workspace/
 # CI-only stage: exercise real public connector doors against the isolated runtime.
 FROM runtime AS connector-test
 WORKDIR /connector
+ENV HOME=/tmp/playground-supervisor XDG_DATA_HOME=/tmp/playground-supervisor/data
 COPY package.json package-lock.json ./
 RUN npm ci --ignore-scripts
 COPY src/ ./src/
