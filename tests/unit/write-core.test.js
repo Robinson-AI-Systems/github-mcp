@@ -220,3 +220,8 @@ describe('failed previews',()=>{
   expect(result.warning.includes('private backend detail')).toBe(safe);expect(sent).toBe(0);
  });
 });
+it('identifies a no-send guard refusal separately from an uncertain write retry',async()=>{
+ const w=await makeWorld({mode:'production',gates:[()=>({by:'protected resource',refuse:'An explicit delegated restriction applies.'})]});
+ const result=parse(await sampleLabel.handler({...R},w.ctx));
+ expect(result).toMatchObject({reason_code:'guard_protected_resource',retryable:false,no_change_sent:true});expect(writes(w.gh)).toHaveLength(0);
+});

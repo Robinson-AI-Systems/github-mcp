@@ -59,7 +59,8 @@ async function readReply({ tool, args, raw, connection, db, mode }) {
     value?.byte_length <= 32768;
   const fullFile = tool.name === 'github_content_get' && args?.fullText === true &&
     shaped?.type === 'file' && typeof value.content === 'string' && Buffer.byteLength(value.content) <= 1_000_000;
-  const capped = capText(value, fullFile ? { textLimit: 1_000_000 } : byteWindow ? { textLimit: 48000 } : {});
+  const boundedWindow=tool.boundedWindow===true&&Buffer.byteLength(JSON.stringify(value))<=8192;
+  const capped = boundedWindow?{value,cut:[]}:capText(value, fullFile ? { textLimit: 1_000_000 } : byteWindow ? { textLimit: 48000 } : {});
   const fit = fitToBudget(capped.value, fullFile ? 2_000_000 : byteWindow ? 48000 : undefined);
   const notes = {};
   if (unknown.length) notes.unknown_fields = unknown.slice(0, 10);

@@ -280,3 +280,8 @@ it.each(['a'.repeat(250),'prefix/'+'a'.repeat(249)])('verifies accepted long bra
  const renamed=await run('branch_rename',1,{ref:name,branch:'renamed-long'});expect(renamed.status).toBe('applied');
  const deleted=await run('branch_delete',2,{branch:'renamed-long'});expect(deleted.status).toBe('applied');expect(deleted.result.reference.exists).toBe(false);
 });
+it('names unsupported native arguments with a stable no-send reason code',async()=>{
+ const id=await opened(),count=requests.filter(r=>r.action==='run').length;
+ const result=parse(await invoke('github_git_workspace_run',{workspace_id:id,operation:'branch_create',expectedGeneration:0,options:{branch:'topic',staged:true}}));
+ expect(result).toMatchObject({reason_code:'invalid_native_arguments',retryable:false,no_change_sent:true});expect(requests.filter(r=>r.action==='run')).toHaveLength(count);
+});

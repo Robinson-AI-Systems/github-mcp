@@ -99,7 +99,7 @@ export function defineWrite(spec) {
     const ownerDirected = isOwnerConnection(connection);
     const banner = connection?.mode === 'production' ? { mode: 'PRODUCTION' } : { mode: 'PREVIEW' };
     const out = (value, isError = false) => reply({ ...banner, ...value }, isError);
-    const refuseOutright = (error) => out({ done: false, status: 'refused', error }, true);
+    const refuseOutright = (error) => out({ done: false, status: 'refused', reason_code:'invalid_request',retryable:false,no_change_sent:true,error }, true);
 
     if (!connection || !Array.isArray(connection.accounts) || !connection.accounts.length) return refuseOutright('This connection is not allowed to change GitHub.');
     if (!decl.profiles.includes(connection.profile)) return refuseOutright(`The ${connection.profile} profile cannot use ${name}. Connect with a profile that allows changes.`);
@@ -140,7 +140,9 @@ export function defineWrite(spec) {
     const refuse = async (by, reason) => {
       const text = `REFUSED (${by}): ${reason}`;
       try { await log({ summary: text, dryRun: true, confirmed: false, ...recordFields() }); } catch { /* the refusal still stands */ }
-      return out({ done: false, status: 'refused_by_guard', refusedBy: by, error: reason, ...(classification.production ? { production: classification.production } : {}) }, true);
+      return out({ done: false, status: 'refused_by_guard', refusedBy: by,
+        reason_code:by==='read'&&/^[a-z][a-z0-9_]{1,63}$/.test(readError?.safeCode??'')?readError.safeCode:'guard_'+String(by).toLowerCase().replace(/[^a-z0-9]+/g,'_').slice(0,50),
+        retryable:by==='read'&&readError?.safeRetryable===true,no_change_sent:true,error: reason, ...(classification.production ? { production: classification.production } : {}) }, true);
     };
 
     if (priceFailed) {
@@ -173,7 +175,7 @@ export function defineWrite(spec) {
       || classification.notifies.length > 0 || classification.spendCents > 0 || forcedConfirm !== null);
     const preflightWarning = readError?.safeMessage === true && typeof readError.message === 'string' && readError.message.length <= 300
       ? readError.message : 'Required current-state preflight failed. This preview is incomplete; no operation was sent.';
-    const preview = { done: false, ...(readFailed ? { preflight_failed: true, warning: preflightWarning } : {}),
+    const preview = { done: false, ...(readFailed ? { preflight_failed: true,reason_code:'preflight_read_failed',no_change_sent:true,warning: preflightWarning } : {}),
       preview: line, needsConfirmation: !readFailed && needsConfirm && args.confirm !== true, ...(forcedConfirm ? { because: forcedConfirm } : {}) };
 
     if (args.dryRun === true || (ownerDirected && args.confirm === false)) {
@@ -222,7 +224,7 @@ export function defineWrite(spec) {
       let text;
       try { text = explain(failure, { args, ctx, target: tgt }); } catch { text = 'The change was not completed.'; }
       await ctx.db.finishChange(claim.id, { summary: `${rejected ? 'REJECTED' : 'UNCERTAIN'}: ${line}`, confirmed: false, releaseKey: rejected, actedAs: ctx.actor?.summary?.()?.as ?? null }).catch(() => {});
-      return out({ done: false, status: rejected ? 'rejected' : 'uncertain', requestKey: key, error: text,
+      return out({ done: false, status: rejected ? 'rejected' : 'uncertain',reason_code:rejected?'provider_rejected':'write_outcome_uncertain',retryable:rejected&&failure?.safeRetryable===true, requestKey: key, error: text,
         ...(rejected ? {} : { warning: 'GitHub may or may not have applied this. Check the current state before trying again.' }) }, true);
     }
     let after = null; let confirmed = false; let note = null;

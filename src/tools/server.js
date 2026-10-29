@@ -263,7 +263,7 @@ const readTools = [
   {
     name: 'github_whoami',
     area: 'server', audience: ['B', 'O', 'Op'], compact: true,
-    description: 'Accounts this connection can use, mode (PREVIEW/PRODUCTION), profile, credential types per account (I, U, K, P), API version, rate budget, spend limit.',
+    description: 'Identify this connection, accounts, mode, profile, usable grants and provider rate budget.',
     inputSchema: { type: 'object', properties: { detail: DETAIL, fields: FIELDS }, additionalProperties: false },
     annotations: readOnly
   },

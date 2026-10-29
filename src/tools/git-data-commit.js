@@ -81,7 +81,7 @@ const FILE = { type: 'object', additionalProperties: false, properties: {
 
 export const gitDataCommit = defineGithubWrite({
   name: 'github_content_commit_git_data', area: 'content', audience: ['B'],
-  description: 'Commit binary PDFs or text and deletions via real Git blobs, tree and exact-parent commit, with a non-force branch update.',
+  description: 'Atomically commit up to 50 files, optionally create the branch, and verify the complete manifest.',
   properties: { owner: OWNER, repo: REPO, branch: BRANCH,
     message: { type: 'string', minLength: 1, maxLength: 2000 },
     expectedHead: { type: 'string', pattern: '^([a-fA-F0-9]{40})?$', description: 'Exact observed destination head, or empty for an absent branch.' },

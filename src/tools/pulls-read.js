@@ -44,6 +44,7 @@ export const prGet = defineRead({
     const pr = (await octokit.request('GET /repos/{owner}/{repo}/pulls/{pull_number}', { owner, repo: args.repo, pull_number: args.number })).data;
     const out = {
       number: pr.number, title: pr.title, state: pr.state, draft: pr.draft, merged: pr.merged, user: pr.user?.login, head: pr.head?.ref, head_sha: pr.head?.sha, base: pr.base?.ref,
+      base_sha:pr.base?.sha??null,test_merge_sha:pr.merge_commit_sha??null,
       head_repo: pr.head?.repo?.full_name, mergeable: pr.mergeable, mergeable_state: pr.mergeable_state, labels: (pr.labels ?? []).map((l) => l.name), commits: pr.commits, changed_files: pr.changed_files,
       additions: pr.additions, deletions: pr.deletions, created_at: pr.created_at, updated_at: pr.updated_at, merged_at: pr.merged_at, html_url: pr.html_url,
       body: pr.body, author_association: pr.author_association,
@@ -68,8 +69,21 @@ export const prGet = defineRead({
     ]);
     Object.assign(out, review);
     if (ci) {
-      out.checks = { green: ci.green, basis: ci.basis, items: ci.checks, ...(ci.problems.length ? { problems: ci.problems } : {}), ...(ci.errors.length ? { could_not_check: ci.errors } : {}), ...(ci.notes?.length ? { plan_limits: ci.notes } : {}) };
+      out.checks = { green: ci.green, basis: ci.basis, items: ci.checks,strict_up_to_date:ci.strict_up_to_date,policy_sources:ci.policy_sources, ...(ci.problems.length ? { problems: ci.problems } : {}), ...(ci.errors.length ? { could_not_check: ci.errors } : {}), ...(ci.notes?.length ? { plan_limits: ci.notes } : {}) };
     }
+    out.merge_diagnostics={strict_up_to_date:ci?.strict_up_to_date??null,policy_sources:ci?.policy_sources??[],
+      head_sha:pr.head?.sha??null,test_merge_sha:pr.merge_commit_sha??null,state:'not_required'};
+    if(ci?.strict_up_to_date===true){
+      try{
+        const current=(await octokit.request('GET /repos/{owner}/{repo}/branches/{branch}',{owner,repo:args.repo,branch:pr.base.ref})).data.commit?.sha;
+        if(!/^[a-f0-9]{40}$/.test(current??''))throw new TypeError('Incomplete current base.');
+        const compared=(await octokit.request('GET /repos/{owner}/{repo}/compare/{basehead}',{owner,repo:args.repo,basehead:current+'...'+pr.head.sha})).data;
+        if(!compared.merge_base_commit?.sha)throw new TypeError('Incomplete comparison.');
+        const contains=compared.merge_base_commit.sha===current;
+        out.merge_diagnostics={...out.merge_diagnostics,current_base_sha:current,head_contains_base:contains,state:contains?'current':'base_update_required',
+          ...(!contains?{blocking_rule:'Required status checks require the branch to include the current base commit.',next:'Merge or rebase the current base into the topic with real Git ancestry, then let checks report at the resulting exact SHA.'}:{})};
+      }catch{out.merge_diagnostics={...out.merge_diagnostics,state:'unknown',note:'Strict current-base policy exists, but the current base comparison could not be verified.'};}
+    }else if(ci?.strict_up_to_date==null)out.merge_diagnostics.state='unknown';
     return out;
   })
 });

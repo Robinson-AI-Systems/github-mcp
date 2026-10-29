@@ -1,3 +1,4 @@
+import {standardAliases} from './argument-aliases.js';
 // GitHub's flavour of the write layer (B-1): the request key, the plain handling of the client's own errors, and the
 // rule that a write is attempted only through `githubFor` (the pinned, spaced, rate-aware client).
 import { defineWrite } from '../core/write.js';
@@ -22,28 +23,27 @@ export function defineGithubWrite(spec) {
     requestKey: (ctx, args) => requestKey(ctx, spec.name, args),
     ...spec
   });
-  // Provider naming compatibility belongs here, outside the generic transaction layer.
-  if (!spec.name.startsWith('github_pr_') || !spec.properties?.number || spec.properties.pull_number)
-    return definition;
-  const { tool, handler } = definition;
+  // Compatibility is shared by direct and wrapped routes; normalization happens
+  // before the existing lifecycle sees target arguments or computes replay keys.
+  const aliases=standardAliases(spec.name,spec.properties??{});
+  const entries=Object.entries(aliases).flatMap(([canonical,names])=>names.map(alias=>[canonical,alias]));
+  if(!entries.length)return definition;
+  const {tool,handler}=definition;
   return Object.freeze({
-    tool: Object.freeze({ ...tool,
-      aliases: Object.freeze({ number: Object.freeze(['pull_number']) }),
-      canonicalRequired: Object.freeze([...(spec.required ?? [])]),
-      inputSchema: { ...tool.inputSchema,
-        properties: { ...tool.inputSchema.properties, pull_number: { ...spec.properties.number, description: 'Alias for number.' } },
-        ...(tool.inputSchema.required ? { required: tool.inputSchema.required.filter(key => key !== 'number') } : {}) }
-    }),
-    handler: (args, ctx) => {
-      if (!args || typeof args !== 'object' || Array.isArray(args)) return handler(args, ctx);
-      if (args.pull_number !== undefined && args.number !== undefined && args.number !== args.pull_number)
-        throw new TypeError('Conflicting number and pull_number; provide one value.');
-      const normalized = { ...args, ...(args.number === undefined && args.pull_number !== undefined ? { number: args.pull_number } : {}) };
-      delete normalized.pull_number;
-      if (spec.required?.includes('number') && normalized.number === undefined)
-        throw new TypeError('number is required (or pull_number).');
-      return handler(normalized, ctx);
+    tool:Object.freeze({...tool,aliases:Object.freeze(Object.fromEntries(Object.entries(aliases).map(([key,names])=>[key,Object.freeze(names)]))),canonicalRequired:Object.freeze([...(spec.required??[])]),
+      inputSchema:{...tool.inputSchema,properties:{...tool.inputSchema.properties,...Object.fromEntries(entries.map(([canonical,alias])=>[alias,{...spec.properties[canonical],description:'Alias for '+canonical+'.'}]))},
+        ...(tool.inputSchema.required?{required:tool.inputSchema.required.filter(key=>!Object.hasOwn(aliases,key))}:{})}}),
+    handler:(args,ctx)=>{
+      if(!args||typeof args!=='object'||Array.isArray(args))return handler(args,ctx);
+      const normalized={...args};
+      for(const [canonical,alias] of entries){
+        if(!Object.hasOwn(args,alias))continue;
+        if(Object.hasOwn(normalized,canonical)&&normalized[canonical]!==args[alias])throw new TypeError('Conflicting '+canonical+' and '+alias+'; provide one value.');
+        normalized[canonical]=args[alias];delete normalized[alias];
+      }
+      for(const canonical of Object.keys(aliases))if(spec.required?.includes(canonical)&&normalized[canonical]===undefined)
+        throw new TypeError(canonical+' is required (or an accepted alias).');
+      return handler(normalized,ctx);
     }
   });
 }
-

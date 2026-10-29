@@ -1,3 +1,4 @@
+import {standardAliases} from './argument-aliases.js';
 // How a read tool is defined (C-1). The tool gives its arguments and a handler that returns GitHub's object (or a list of them);
 // the dispatcher applies the result rules: `detail` (summary by default) and `fields`, then the text caps and the size budget.
 import { SUMMARY_TYPES } from './summaries.js';
@@ -19,17 +20,17 @@ export const FIELDS_PROPERTY = { type: 'array', items: { type: 'string', maxLeng
  * @param {string} [spec.guidance] longer instructions, shown by github_describe_tool
  * @param {(args: object, ctx: object) => any} spec.handler returns the raw object, or a list of them
  */
-export function defineRead({ name, description, area, audience, compact, guidance, byteWindow = false, aliases = {}, properties = {}, required = [], summaryType, handler }) {
+export function defineRead({ name, description, area, audience, compact, guidance, byteWindow = false, boundedWindow = false, aliases = {}, properties = {}, required = [], summaryType, handler }) {
   if (!NAME.test(name ?? '')) throw new TypeError('A valid tool name is required.');
   if (typeof description !== 'string' || !description) throw new TypeError(`${name}: a description is required.`);
   if (typeof handler !== 'function') throw new TypeError(`${name}: handler must be a function.`);
   if (summaryType !== undefined && !SUMMARY_TYPES.includes(summaryType)) throw new TypeError(`${name}: unknown summary type "${summaryType}".`);
   for (const key of ['detail', 'fields']) if (key in properties) throw new TypeError(`${name}: "${key}" is added by the read layer.`);
-  aliases = {
-    ...(Object.hasOwn(properties, 'ref') && !Object.hasOwn(properties, 'branch') ? { ref: ['branch'] } : {}),
-    ...(Object.hasOwn(properties, 'number') && name.startsWith('github_pr_') ? { number: ['pull_number'] } : {}),
-    ...aliases
-  };
+  const defaults={...standardAliases(name,properties),
+    ...(Object.hasOwn(properties,'ref')&&!Object.hasOwn(properties,'branch')?{ref:['branch']}:{})};
+  for(const [canonical,names] of Object.entries(aliases))
+    defaults[canonical]=Array.isArray(names)?[...new Set([...(defaults[canonical]??[]),...names])]:names;
+  aliases=defaults;
   const aliasEntries = Object.entries(aliases).flatMap(([canonical, names]) => {
     if (!Object.hasOwn(properties, canonical) || !Array.isArray(names) || !names.length)
       throw new TypeError(`${name}: aliases need a declared canonical argument.`);
@@ -45,7 +46,7 @@ export function defineRead({ name, description, area, audience, compact, guidanc
     const chosen = { ...args };
     for (const [canonical, alias] of aliasEntries) {
       if (!Object.hasOwn(args, alias)) continue;
-      if (Object.hasOwn(args, canonical) && args[canonical] !== args[alias])
+      if (Object.hasOwn(chosen, canonical) && chosen[canonical] !== args[alias])
         throw new TypeError(`Conflicting ${canonical} and ${alias}; provide one value.`);
       chosen[canonical] = args[alias];
       delete chosen[alias];
@@ -59,6 +60,7 @@ export function defineRead({ name, description, area, audience, compact, guidanc
     name, description, ...(area ? { area } : {}), ...(audience ? { audience: Object.freeze([...audience]) } : {}), ...(compact ? { compact: true } : {}), ...(guidance ? { guidance } : {}),
     readContract: 'defineRead-v1', results: Object.freeze({ summaryType: summaryType ?? null }),
     ...(byteWindow ? { byteWindow: true } : {}),
+    ...(boundedWindow ? {boundedWindow:true}:{}),
     ...(aliasEntries.length ? { aliases: Object.freeze(Object.fromEntries(Object.entries(aliases).map(([k, v]) => [k, Object.freeze([...v])]))), canonicalRequired: Object.freeze([...required]) } : {}),
     inputSchema: {
       type: 'object',

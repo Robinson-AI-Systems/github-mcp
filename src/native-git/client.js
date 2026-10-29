@@ -35,7 +35,7 @@ export async function callNativeWorker(ctx, { binding, action, workspace_id, ope
  }
  const body = JSON.stringify({ version: WORKER_PROTOCOL, expiresAt: (ctx.now ?? Date.now)() + 60000, binding, action, workspace_id, operation, options, requestKey, expectedGeneration, allowWrite, ...(scannerPolicy?{scannerPolicy:{settings:scannerPolicy.settings,revision:scannerPolicy.revision}}:{}), ...(credential ? { credential } : {}) });
  const failure = (code, message, status) => Object.assign(new TypeError(message), {
-  safeMessage: true, nativeCode: code, ...(status ? { status } : {})
+  safeMessage: true, nativeCode: code,safeCode:code,safeRetryable:code==='native_busy', ...(status ? { status } : {})
  });
  let response;
  try {

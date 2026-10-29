@@ -126,10 +126,10 @@ export const contentProtectionCheck = defineRead({
 });
 
 export const contentGetTree = defineRead({
-  name: 'github_content_get_tree', area: 'content', audience: ['B'],
+  name: 'github_content_get_tree', boundedWindow:true, area: 'content', audience: ['B'],
   description: 'List every file in a repository at a ref (recursive), optionally only paths matching a glob such as src/**/*.js.',
   properties: { owner: OWNER, repo: REPO, ref: { ...REF, description: 'Branch, tag or commit (default: the default branch)' }, glob: { type: 'string', maxLength: 200, description: 'Only paths matching this (* within a folder, ** across folders)' },
-    include_dirs: { type: 'boolean', description: 'Also list folders (default files only)' }, max: { type: 'integer', minimum: 1, maximum: MAX_TREE, description: 'Default 200' } },
+    include_dirs: { type: 'boolean', description: 'Also list folders (default files only)' }, offset:{type:'integer',minimum:0},expectedTreeSha:{type:'string',pattern:'^[a-fA-F0-9]{40}$'}, max: { type: 'integer', minimum: 1, maximum: MAX_TREE, description: 'Default 200' } },
   required: ['repo'],
   handler: (args, ctx) => plain(async () => {
     const { owner, octokit } = await readerFor(args, ctx);
@@ -139,10 +139,19 @@ export const contentGetTree = defineRead({
     const patterns = args.glob ? [globToRegExp(args.glob), globToRegExp(args.glob.replaceAll('**/', ''))] : null;
     const wanted = patterns ? { test: (path) => patterns.some((re) => re.test(path)) } : null;
     const matches = (data.tree ?? []).filter((e) => (e.type === 'blob' || (args.include_dirs && e.type === 'tree')) && (!wanted || wanted.test(e.path)));
-    const max = args.max ?? 200;
-    return { ref, sha: data.sha, github_truncated: data.truncated === true, total_matching: matches.length, shown: Math.min(matches.length, max),
-      ...(data.truncated ? { note: 'GitHub cut this tree because the repository is very large; list a folder with github_content_get instead.' } : {}),
-      items: matches.slice(0, max).map((e) => ({ path: e.path, type: e.type === 'tree' ? 'dir' : 'file', ...(e.size !== undefined ? { size: e.size } : {}) })) };
+    const max = args.max ?? 200,offset=args.offset??0;
+    if(offset>matches.length||((offset>0||args.expectedTreeSha!==undefined)&&args.expectedTreeSha!==data.sha))
+      throw new TypeError('Tree SHA changed or is missing for continuation; restart at offset zero.');
+    const items=[];
+    const page=()=>({ref,sha:data.sha,offset,next_offset:offset+items.length,complete:!data.truncated&&offset+items.length===matches.length,
+      github_truncated:data.truncated===true,total_matching:matches.length,shown:items.length,
+      ...(data.truncated?{note:'GitHub cut this very large tree; use a folder read for the omitted provider entries.'}:{}),items});
+    for(const e of matches.slice(offset,offset+max)){
+      items.push({path:e.path,sha:e.sha,mode:e.mode,type:e.type==='tree'?'dir':'file',...(e.size!==undefined?{size:e.size}:{})});
+      if(Buffer.byteLength(JSON.stringify(page()))>6000){items.pop();break;}
+    }
+    if(!items.length&&offset<matches.length)throw new TypeError('A tree entry exceeds this bounded page. Use the universal Git tree read and retained-result fields for that entry.');
+    return page();
   })
 });
 
@@ -226,12 +235,13 @@ export const commitGet = defineRead({
 export const commitCompare = defineRead({
   name: 'github_commit_compare', area: 'commit', audience: ['B', 'Op'],
   description: 'Compare two refs: how far ahead or behind, the commits between them and the files changed (patches cut).',
-  properties: { owner: OWNER, repo: REPO, base: REF, head: REF },
+  properties: { owner: OWNER, repo: REPO, base: REF, head: REF,path:{type:'string',minLength:1,maxLength:1000,description:'Only this changed file (including its previous name); keeps review evidence bounded.'} },
   required: ['repo', 'base', 'head'],
   handler: (args, ctx) => plain(async () => {
     const { owner, octokit } = await readerFor(args, ctx);
     const { data: c } = await octokit.request('GET /repos/{owner}/{repo}/compare/{basehead}', { owner, repo: args.repo, basehead: `${args.base}...${args.head}`, per_page: 100 });
-    const files = c.files ?? [];
+    const received=c.files??[];
+    const files=args.path?received.filter(f=>f.filename===args.path||f.previous_filename===args.path):received;
     return { status: c.status, ahead_by: c.ahead_by, behind_by: c.behind_by, total_commits: c.total_commits, merge_base: c.merge_base_commit?.sha, html_url: c.html_url,
       commits: (c.commits ?? []).slice(0, 30).map((x) => ({ sha: x.sha, message: first(x.commit?.message), author: x.author?.login ?? x.commit?.author?.name })),
       ...((c.commits ?? []).length > 30 ? { commits_not_shown: c.commits.length - 30 } : {}),

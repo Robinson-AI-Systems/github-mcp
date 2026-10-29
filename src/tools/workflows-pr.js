@@ -46,6 +46,7 @@ function nextAction(p){
   if(p.threads.unresolved>0)return 'Address and resolve the outstanding review threads.';
   if(['CHANGES_REQUESTED','REVIEW_REQUIRED'].includes(p.review_decision))
     return 'Resolve the blocking review decision.';
+  if(p.merge_diagnostics?.strict_up_to_date===true&&p.merge_diagnostics?.head_contains_base===false)return 'GitHub requires an up-to-date branch: merge or rebase the current base with real ancestry, then rerun checks at the new exact head.';
   if(p.checks?.green!==true)return p.checks?.green===null
     ?'Required checks could not be verified; inspect permissions and rerun the read.'
     :'Wait for or repair required CI checks at this exact head.';
@@ -86,7 +87,7 @@ export async function inspectPr(args,ctx){
   return {done:true,status:'observed',number:pr.number,head_sha:pr.head_sha,
     head:pr.head,base:pr.base,draft:pr.draft,state:pr.state,merged:pr.merged,
     mergeable:pr.mergeable,mergeable_state:pr.mergeable_state,
-    checks:pr.checks??null,review_decision:pr.review_decision??null,
+    merge_diagnostics:pr.merge_diagnostics??null,checks:pr.checks??null,review_decision:pr.review_decision??null,
     unresolved_threads:pr.threads?.unresolved??null,stack:position,
     ...(ciFailure?{ci_failure:ciFailure}:{}),next_action:next,can_request_merge:next.startsWith('All checks'),
     html_url:pr.html_url,observed_at:new Date(clock(ctx)).toISOString(),

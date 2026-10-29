@@ -209,3 +209,33 @@ describe('pull request reads (E-1a)', () => {
     expect(body.items[0]).toMatchObject({ sha: H, message: 'm\n\nmore', author: 'chris' });
   });
 });
+
+it('names strict current-base policy even when head CI is green and carries the blocker into PR status',async()=>{
+ const w=await world(),base='b'.repeat(40);
+ w.gh.when('GET /repos/{owner}/{repo}/pulls/{pull_number}').reply(200,pr({base:{ref:'main',sha:base},merge_commit_sha:'d'.repeat(40)}));threads(w.gh);
+ const rules=requiredRule('ci');rules[0].parameters.strict_required_status_checks_policy=true;rules[0].ruleset_id=17;
+ ciRoutes(w.gh,{rules,runs:[run1('ci','completed','success')]});
+ w.gh.when('GET /repos/{owner}/{repo}/branches/{branch}').reply(200,{commit:{sha:base}});
+ w.gh.when('GET /repos/{owner}/{repo}/compare/{basehead}').reply(200,{merge_base_commit:{sha:'c'.repeat(40)},status:'diverged'});
+ const {body}=await run(w,'github_pr_get',{...R,number:7});
+ expect(body.checks.green).toBe(true);expect(body.merge_diagnostics).toMatchObject({strict_up_to_date:true,current_base_sha:base,head_contains_base:false,state:'base_update_required'});
+ const {inspectPr}=await import('../../src/tools/workflows-pr.js');
+ const status=await inspectPr({...R,number:7},{now:()=>0,callTool:async name=>({structuredContent:name==='github_pr_get'?body:{count:0,items:[]}})});
+ expect(status.can_request_merge).toBe(false);expect(status.next_action).toContain('up-to-date');expect(status.merge_diagnostics.blocking_rule).toContain('current base');
+ expect(w.gh.invalid).toEqual([]);
+});
+it('does not inherit an old green check when a newer queued check has no started_at',async()=>{
+ const w=await world();w.gh.when('GET /repos/{owner}/{repo}/pulls/{pull_number}').reply(200,pr());threads(w.gh);
+ ciRoutes(w.gh,{rules:requiredRule('ci'),runs:[run1('ci','completed','success',{id:1}),run1('ci','queued',null,{id:2,started_at:null})]});
+ const {body}=await run(w,'github_pr_get',{...R,number:7});expect(body.checks.green).toBe(false);expect(body.checks.items[0].state).toBe('pending');
+});
+it('explains a missing required app check without treating a same-name foreign app check as green',async()=>{
+ const w=await world();w.gh.when('GET /repos/{owner}/{repo}/pulls/{pull_number}').reply(200,pr());threads(w.gh);
+ ciRoutes(w.gh,{rules:[{type:'required_status_checks',parameters:{required_status_checks:[{context:'ci',integration_id:10}]}}],runs:[run1('ci','completed','success',{app:{id:20}})]});
+ const {body}=await run(w,'github_pr_get',{...R,number:7});expect(body.checks.green).toBe(false);expect(body.checks.items[0]).toMatchObject({state:'missing',required_app_id:10,observed_sha:H,reason:'same-name check exists under another app'});
+});
+it('marks a capped check-run inventory unknown instead of declaring the first 500 green',async()=>{
+ const w=await world();w.gh.when('GET /repos/{owner}/{repo}/pulls/{pull_number}').reply(200,pr());threads(w.gh);ciRoutes(w.gh,{rules:requiredRule('ci')});
+ w.gh.when('GET /repos/{owner}/{repo}/commits/{ref}/check-runs').reply(200,{total_count:600,check_runs:Array.from({length:100},(_,i)=>run1('ci','completed','success',{id:i}))});
+ const {body}=await run(w,'github_pr_get',{...R,number:7});expect(body.checks.green).toBeNull();expect(body.checks.could_not_check.join(' ')).toContain('inventory');
+});

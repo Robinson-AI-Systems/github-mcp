@@ -137,7 +137,7 @@ const prMerge = defineGithubWrite({
   summarize: ({ args, before, target: t }) => {
     const bypass = overriding(args);
     const why = blockers(before, args, { override: bypass });
-    const line = why.length ? `Cannot merge ${label(t, args.number)}: ${why.join(' ')}` : `Merge ${label(t, args.number)} (${before.pr.head} into ${before.pr.base}) at ${short(args.expectedHeadSha ?? before.pr.head_sha)} with ${args.method ?? 'merge'}; ${bypass ? 'rules skipped on purpose' : mergeCheckSummary(before)}`;
+    const line = why.length ? `Cannot merge ${label(t, args.number)}: ${why.join(' ')}` : `Merge ${label(t, args.number)} (${before.pr.head} into ${before.pr.base}) at expected PR head ${short(args.expectedHeadSha ?? before.pr.head_sha)} with ${args.method ?? 'merge'}; ${bypass ? 'rules skipped on purpose' : mergeCheckSummary(before)}`;
     return overrideText(args, line);
   },
   apply: async (input) => {
@@ -164,7 +164,7 @@ const prMergeAsync = defineGithubWrite({
   summarize: ({ args, before, target: t }) => {
     const bypass = overriding(args);
     const why = blockers(before, args, { override: bypass });
-    return overrideText(args, why.length ? `Cannot merge ${label(t, args.number)}: ${why.join(' ')}` : `Merge ${label(t, args.number)} in the background at ${short(args.expectedHeadSha ?? before.pr.head_sha)} with ${args.method ?? 'merge'}; ${bypass ? 'rules skipped on purpose' : mergeCheckSummary(before)}`);
+    return overrideText(args, why.length ? `Cannot merge ${label(t, args.number)}: ${why.join(' ')}` : `Merge ${label(t, args.number)} in the background at expected PR head ${short(args.expectedHeadSha ?? before.pr.head_sha)} with ${args.method ?? 'merge'}; ${bypass ? 'rules skipped on purpose' : mergeCheckSummary(before)}`);
   },
   apply: (input) => sendAsync(input, overriding(input.args)),
   readAfter: asyncAfter,

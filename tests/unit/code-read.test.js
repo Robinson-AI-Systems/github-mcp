@@ -319,3 +319,29 @@ it('redacts full RTC passes before commit and comparison patch clipping',async()
     expect(w.gh.invalid).toEqual([]);
   }
 });
+
+it('continues past 500 tree entries only with the immutable tree SHA and returns blob modes/hashes',async()=>{
+ const w=await world(),sha='a'.repeat(40),tree=Array.from({length:601},(_,i)=>({path:'file-'+i,type:'blob',sha:'b'.repeat(40),mode:'100644',size:1}));
+ w.gh.when('GET /repos/{owner}/{repo}/git/trees/{tree_sha}').reply(200,{sha,truncated:false,tree});
+ const last=await run(w,'github_content_get_tree',{...R,ref:sha,max:10,offset:600,expectedTreeSha:sha});
+ expect(last.body).toMatchObject({complete:true,offset:600,next_offset:601,shown:1,items:[{path:'file-600',sha:'b'.repeat(40),mode:'100644'}]});
+ expect((await run(w,'github_content_get_tree',{...R,ref:sha,offset:500,max:1})).result.isError).toBe(true);
+ expect((await run(w,'github_content_get_tree',{...R,ref:sha,offset:500,max:1,expectedTreeSha:'c'.repeat(40)})).result.isError).toBe(true);
+ expect(w.gh.invalid).toEqual([]);
+});
+it('pages the actually delivered tree entries through dispatch without skipping budget-trimmed rows',async()=>{
+ const w=await world(),sha='a'.repeat(40),tree=Array.from({length:200},(_,i)=>({path:'some/ordinary/path/file-'+i+'.txt',type:'blob',sha:'b'.repeat(40),mode:'100644',size:1}));
+ w.gh.when('GET /repos/{owner}/{repo}/git/trees/{tree_sha}').reply(200,{sha,truncated:false,tree});
+ let offset=0,paths=[];
+ for(let n=0;n<20;n++){
+  const {body}=await run(w,'github_content_get_tree',{...R,ref:sha,max:200,offset,...(offset?{expectedTreeSha:sha}:{})});
+  expect(body.next_offset-offset).toBe(body.items.length);expect(body.shown).toBe(body.items.length);
+  paths.push(...body.items.map(x=>x.path));offset=body.next_offset;if(body.complete)break;
+ }
+ expect(paths).toEqual(tree.map(x=>x.path));
+});
+it('bounds review comparison to the actual requested changed file before normal result shaping',async()=>{
+ const w=await world();w.gh.when('GET /repos/{owner}/{repo}/compare/{basehead}').reply(200,{status:'ahead',ahead_by:1,behind_by:0,merge_base_commit:{sha:'a'.repeat(40)},commits:[],files:Array.from({length:60},(_,i)=>({filename:'f'+i+'.js',patch:'@@ -1 +1 @@\n-old\n+new'}))});
+ const {body}=await run(w,'github_commit_compare',{...R,base:'a'.repeat(40),head:'b'.repeat(40),path:'f59.js'});
+ expect(body.files).toHaveLength(1);expect(body.files[0].filename).toBe('f59.js');expect(body.files_not_shown).toBeUndefined();
+});

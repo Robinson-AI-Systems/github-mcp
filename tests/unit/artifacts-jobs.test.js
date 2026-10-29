@@ -121,3 +121,24 @@ describe('background jobs', () => {
     expect((await run(w, 'github_job_status', { job_id: id })).body).toMatchObject({ state: 'failed', detail: 'Stopped by you.' });
   });
 });
+
+it.each(['github_artifact_read','github_content_read_archive'])('reconstructs exact binary windows with full-entry protection and immutable hashes through %s',async name=>{
+ const original=Buffer.from(Array.from({length:70000},(_,i)=>i%256));served.bytes=buildZip([{name:'binary.dat',data:original}]);
+ const w=await makeWorld({profile:'read_only'});
+ w.gh.when('GET /repos/{owner}/{repo}/actions/artifacts/{artifact_id}').reply(200,{id:8,name:'build',size_in_bytes:100,expired:false});
+ w.gh.when('GET /repos/{owner}/{repo}/actions/artifacts/{artifact_id}/{archive_format}').reply(302,'',{location:'https://pipelines.actions.githubusercontent.com/x'});
+ w.gh.when('GET /repos/{owner}/{repo}/zipball/{ref}').reply(302,'',{location:'https://pipelines.actions.githubusercontent.com/x'});
+ // A repository zip normally has one leading directory.
+ if(name==='github_content_read_archive')served.bytes=buildZip([{name:'root/',data:''},{name:'root/binary.dat',data:original}]);
+ let offset=0,hash,chunks=[];
+ do{const {body,result}=await run(w,name,{...R,...(name==='github_artifact_read'?{artifact_id:8}:{ref:'main'}),path:'binary.dat',byteOffset:offset,byteLength:32768,...(hash?{expectedFileHash:hash}:{})});
+  expect(result.isError,JSON.stringify(body)).not.toBe(true);chunks.push(Buffer.from(body.content_base64,'base64'));hash=body.file_hash;offset=body.next_byte_offset;if(body.complete)break;
+ }while(offset<original.length);
+ expect(Buffer.concat(chunks)).toEqual(original);expect(w.gh.invalid).toEqual([]);
+ const stale=await run(w,name,{...R,...(name==='github_artifact_read'?{artifactId:8}:{ref:'main'}),path:'binary.dat',byteOffset:1,expectedFileHash:'a'.repeat(64)});expect(stale.result.isError).toBe(true);
+});
+it('never releases a harmless window from a protected full archive entry',async()=>{
+ const {describeZip}=await import('../../src/tools/artifacts-read.js');
+ const candidate='rtc_pass_'+'a'.repeat(43),bytes=buildZip([{name:'protected.txt',data:'safe prefix\n'+candidate}]);
+ expect(()=>describeZip(bytes,{path:'protected.txt',byteOffset:0,byteLength:4})).toThrow(/content protection/);
+});

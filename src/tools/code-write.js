@@ -119,7 +119,7 @@ const headOf = (ctx, target, branch) => missing(async () => (await (await octo(c
 
 const contentPushFiles = defineGithubWrite(overridable({
   name: 'github_content_push_files', area: 'content', audience: ['B'],
-  description: 'Commit several file changes at once on a named branch, signed by GitHub; refused if the branch moved since your preview.',
+  description: 'Commit text changes atomically at an expected branch head and verify the resulting commit.',
   properties: { owner: OWNER, repo: REPO, branch: BRANCH, message: MESSAGE, files: { type: 'array', items: FILE_ITEM, minItems: 1, maxItems: MAX_FILES },
     expectedHead: { type: 'string', minLength: 40, maxLength: 40, description: 'The branch head shown in the preview; the commit is refused if the branch has moved' }, ...OUTSIDE_PROJECT },
   required: ['repo', 'branch', 'message', 'files'],

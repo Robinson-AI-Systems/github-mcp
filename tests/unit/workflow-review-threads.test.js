@@ -185,3 +185,13 @@ describe('W-3 shared whole-request deadline',()=>{
     expect(writes(f)).toHaveLength(0);
   });
 });
+it('uses canonical compact-envelope review evidence and requests only the commented file',async()=>{
+ const f=fixture(),original=f.ctx.callTool;
+ f.ctx.callTool=async(n,a)=>{
+  if(n!=='github_commit_compare')return original(n,a);
+  expect(a.path).toBe('a.js');expect(a.fields).toContain('files');
+  const body={status:'ahead',behind_by:0,merge_base:B,files:[{filename:'a.js',patch:'@@ -3,3 +3,3 @@\n context\n-old\n+new\n context'}]};
+  return {structuredContent:{status:'ahead',behind_by:0,merge_base:B,full_payload_location:'content[0].text',full_payload_format:'json',omitted_fields:['files']},content:[{type:'text',text:JSON.stringify(body)}]};
+ };
+ expect((await preview(f)).status).toBe('preview');expect(writes(f)).toEqual([]);
+});

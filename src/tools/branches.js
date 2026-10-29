@@ -80,7 +80,7 @@ export const tagList = defineRead({
 // ---- branch changes ----
 const branchCreate = defineGithubWrite({
   name: 'github_branch_create', area: 'branch', audience: ['B'],
-  description: 'Create a branch from any branch, tag or commit (default: the repository\'s real default branch).',
+  description: 'Create a branch from a selected ref or the repository default.',
   properties: { owner: OWNER, repo: REPO, branch: NAME, from: { ...NAME, description: 'Branch, tag or commit to start from (default: the default branch)' }, ...OUTSIDE_PROJECT },
   required: ['repo', 'branch'],
   declarations: { production: 'never' },
