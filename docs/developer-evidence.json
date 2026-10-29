@@ -15,7 +15,8 @@
       "observations": [
         "developer handoff/client unit regressions",
         "npm run check before final staging",
-        "2026-10-29: #465 exact head 2507c0d84ab1efe33f75fa25f11f4389da5324c0 CI 40875254833 passed all verification families, including isolated PostgreSQL; release-policy 40875316914 and worker image 40875254880 passed. Local 89 native/contract +37 shared write/journal/owner tests passed; local PostgreSQL unavailable, not claimed run."
+        "2026-10-29: #465 exact head 2507c0d84ab1efe33f75fa25f11f4389da5324c0 CI 40875254833 passed all verification families, including isolated PostgreSQL; release-policy 40875316914 and worker image 40875254880 passed. Local 89 native/contract +37 shared write/journal/owner tests passed; local PostgreSQL unavailable, not claimed run.",
+        "2026-10-29: #467 final exact head d54807dd046dc69f1d228f2afec2ee77c16563de CI40889183000 and image40889182935 passed, including isolated PostgreSQL idle-renewal contract. Local128 focused native/contract/snapshot/fake-DB and30 shared write/owner tests; assembled checks used actual base0c81e59a. No new arbitrary command execution or application test runner."
       ]
     },
     {
@@ -24,14 +25,15 @@
       "source": "deployment_provider",
       "service": "robinson-github-mcp",
       "origin": "https://github.robinsonaisystems.com",
-      "commit": "c02b1998e964428ca26a147a505d57fa24cce941",
+      "commit": "6739c45f94c799df0ecb7b09c04c1189afa837e9",
       "transport": "deployment_api",
       "observations": [
         "vercel_ready",
         "independent_provider_metadata",
         "2026-10-28: Serving alias independently READY at 53df99ef after checked manual release 40743480147; public contract independently agrees.",
         "2026-10-28: Checked Render-origin configuration release 40818137226; Vercel READY and public contract independently 8004b9e. Render worker independently live at the same source with persistent 1 GB /data, public health 200 and unsigned 401.",
-        "2026-10-29: Checked releases 40871791220 and 40875671569; actual serving alias independently READY at 454f6d4d6168c6608e1a3ddcbbd1ea3f19bb93c3 then c02b1998e964428ca26a147a505d57fa24cce941. Render remains independently live at 454f6d4d with unchanged executed worker modules, protocol 2 and signed capacity 4; disk/verifier preserved."
+        "2026-10-29: Checked releases 40871791220 and 40875671569; actual serving alias independently READY at 454f6d4d6168c6608e1a3ddcbbd1ea3f19bb93c3 then c02b1998e964428ca26a147a505d57fa24cce941. Render remains independently live at 454f6d4d with unchanged executed worker modules, protocol 2 and signed capacity 4; disk/verifier preserved.",
+        "2026-10-29: Checked manual release 40889760959; actual Vercel serving alias READY and Render live deployment independently match 6739c45f94c799df0ecb7b09c04c1189afa837e9. Existing disk/plan/instance/verifier retained; signed protocol3 idle-v1 max_concurrent4. No hosting migration or resource increase."
       ]
     },
     {
@@ -47,7 +49,8 @@
         "One canonical full payload and compact structured location pointer on 98401-character immutable source read.",
         "Earlier 53df99ef probe: native capabilities correctly reported setup_required; no externally usable Git worker was claimed at that checkpoint.",
         "2026-10-28: Authenticated custom MCP signed native Git ready=true, clone/edit/commit/push and independent remote readback, replay/stale-generation refusal, deliberate conflict/abort, exact state/file hash retained across Render redeploy, project scanner rule/native byte refusal/profile offer/rollback.",
-        "2026-10-29: Existing authenticated native MCP on READY 454f6d4d: atomic 29-file text/binary manifest, missing branch, independent Git blob/tree/mode verification; real native two-parent merge and identical remote push; all 22166 log characters, 1207 tree paths and SHA-verified artifact windows. On READY c02b1998e964428ca26a147a505d57fa24cce941: later-bucket active/disposed legacy clone replay, new stable intent, close/historical retry. Full evidence: docs/status/2026-10-29-fleet-live-acceptance.md."
+        "2026-10-29: Existing authenticated native MCP on READY 454f6d4d: atomic 29-file text/binary manifest, missing branch, independent Git blob/tree/mode verification; real native two-parent merge and identical remote push; all 22166 log characters, 1207 tree paths and SHA-verified artifact windows. On READY c02b1998e964428ca26a147a505d57fa24cce941: later-bucket active/disposed legacy clone replay, new stable intent, close/historical retry. Full evidence: docs/status/2026-10-29-fleet-live-acceptance.md.",
+        "2026-10-29 on READY 6739c45f94c799df0ecb7b09c04c1189afa837e9: four-hour default idle lease, adopted original-duration workspace with exact uncommitted marker/HEAD/generation across rollout, four concurrent clone/write/readback lanes, three timed one-minute status reads beyond original creation expiry, exact file bytes/hash, confirmed close and historical disposed replay. Final harness observations were persisted; an earlier usage-limit interruption is not counted as a pass."
       ]
     },
     {
@@ -105,7 +108,8 @@
         "2026-10-28: Exact session-created private scratch repository rtc-native-git-accept-20261028 deleted by custom MCP journal 2772, independently GET 404. No native workspace opened.",
         "Disposable public DCR client used for PKCE comparison issued no secret/token; no sign-in completed. Its unused registration remains subject to existing 30-day stale-client cleanup.",
         "2026-10-28: Exact native acceptance workspace disposed (journal 3368) and run-created private repository deleted (journal 3369) with independent 404; earlier scanner fixture restored to defaults (journal 3334) and deleted (journal 3335), separate 404. No other workspace or repository removed.",
-        "2026-10-29 on READY c02b1998e964428ca26a147a505d57fa24cce941: all three exact run-owned workspaces disposed; exact marked private scratch repo deleted, journal 3945; independent subsequent 404 and workspace inventory absent for these IDs. Unrelated agent resources preserved."
+        "2026-10-29 on READY c02b1998e964428ca26a147a505d57fa24cce941: all three exact run-owned workspaces disposed; exact marked private scratch repo deleted, journal 3945; independent subsequent 404 and workspace inventory absent for these IDs. Unrelated agent resources preserved.",
+        "2026-10-29 on READY 6739c45f94c799df0ecb7b09c04c1189afa837e9: exact marked scratch repository deletion 4045, independent subsequent 404; explicit marker/default/parallel/timed workspace closes and complete inventory with no run-owned workspaces. Idle/interrupted fixtures expired; direct live filesystem inspection is not claimed. Other agents resources remained untouched."
       ]
     }
   ]
