@@ -34,3 +34,12 @@ The exporter refuses busy, uninitialized, symlink-containing and oversized works
 ## Current external prerequisites
 
 The destination, independent key custodian and project-scoped remote export/restore execution remain unconfigured/unavailable here. No paid resource, backup schedule, raw volume export, new credential or worker restart was created by preparing this guide. See the [finite work plan](status/2026-10-29-fleet-install-and-recovery-plan.md) and [owner checklist](OWNER-CHECKLIST.md).
+
+
+## Verified access limitation and ready request for the server owner
+
+A subsequent actual `destination.all` call returned upstream401, code UPSTREAM_UNAUTHORIZED: unauthorized to access resource destination. Project-scoped backup-job inventory is readable, but this connection cannot inspect/assign backup destinations. No destination credentials or configuration were returned. Do not bypass this by requesting host-wide Docker access or another person's API key.
+
+Request to send to the Dokploy owner:
+
+> Please assign an independent off-server backup destination to our GitHub MCP project, or enable the project-scoped destination permission needed to configure one. The project backup-job list works, but destination access currently returns unauthorized. We need the nonsecret destination ID/location, a project-scoped export/restore route, and a way to store the backup encryption key under Robinson's control outside the worker server. Please keep credentials in protected setup, not chat. If this adds cost, provide the specific storage/transfer price before creating anything paid. We do not need general server administration.
