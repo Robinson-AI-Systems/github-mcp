@@ -194,3 +194,28 @@ it.each([2, 4])('serves %i independent workspaces concurrently with per-workspac
  for (const response of responses) { expect(response.status).toBe(200); expect((await response.json()).branch).toBe('main'); }
  const again = await send(bodies[0]); expect(again.status).toBe(200); await again.text();
 });
+
+it('creates and verifies a branch using branch alias and supplies exact operation help', async () => {
+ const id=await opened();
+ const help=parse(await invoke('github_git_workspace_read',{operation:'capabilities',options:{name:'branch_create'}}));
+ expect(help.operation_help.required).toContain('name or branch');
+ const result=parse(await invoke('github_git_workspace_run',{workspace_id:id,operation:'branch_create',expectedGeneration:0,options:{branch:'alias-topic',ref:'HEAD'},requestKey:'branch-alias-intent'}));
+ expect(result.status,JSON.stringify(result)).toBe('applied');
+ expect(result.result.reference).toMatchObject({name:'alias-topic',exists:true});
+ const count=requests.filter(r=>r.action==='run').length;
+ const invalid=parse(await invoke('github_git_workspace_run',{workspace_id:id,operation:'branch_create',expectedGeneration:1,options:{branch:'other',name:'conflict'},dryRun:true}));
+ expect(invalid.preflight_failed).toBe(true);expect(invalid.warning).toContain('disagree');expect(requests.filter(r=>r.action==='run')).toHaveLength(count);
+});
+it('keeps closed clone replay historical and opens a separate workspace only with a fresh intent',async()=>{
+ const args={owner:'example-org',repo:'hello',requestKey:'original-clone'};
+ const first=parse(await invoke('github_git_workspace_open',args));const id=first.result.workspace_id;
+ expect(parse(await invoke('github_git_workspace_close',{workspace_id:id,requestKey:'dispose-original'})).status).toBe('applied');
+ const count=requests.filter(r=>r.action==='open').length;
+ const replay=parse(await invoke('github_git_workspace_open',args));
+ expect(replay.status).toBe('replayed');expect(replay.historical).toBe(true);expect(replay.done).toBe(false);
+ expect(replay.result.workspace_id).toBe(id);expect(replay.current_workspace).toMatchObject({workspace_id:id,state:'disposed',available:false});
+ expect(requests.filter(r=>r.action==='open')).toHaveLength(count);
+ const fresh=parse(await invoke('github_git_workspace_open',{...args,requestKey:'new-clone'}));
+ expect(fresh.status).toBe('applied');expect(fresh.result.workspace_id).not.toBe(id);
+ expect(parse(await invoke('github_git_workspace_run',{workspace_id:fresh.result.workspace_id,operation:'branch_create',expectedGeneration:0,options:{branch:'fresh-topic'}})).status).toBe('applied');
+});
