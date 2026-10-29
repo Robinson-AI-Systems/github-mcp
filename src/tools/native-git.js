@@ -39,7 +39,7 @@ const open = defineGithubWrite({
   const worker = nativeWorkspaceId(binding, requestKey);
   const host = nativeWorkerHost(c.env);
   await c.db.createJob({ id, connection: nativeConnection(c), owner: t.owner, repo: t.repo, kind: 'native-git-workspace', providerRef: JSON.stringify({ authority: binding.authority, worker, host, idleTimeoutMs: (a.leaseMinutes ?? 240) * 60000 }), ttlMinutes: a.leaseMinutes ?? 240 }).catch(error=>{
-   if(error instanceof TenantCapacityError) throw Object.assign(new TypeError('Workspace metadata capacity was reached before any clone was sent. Wait for capacity or update this tenant’s job allowance, then start a new clone intent.'),{status:429,safeMessage:true,safeRetryable:true});
+   if(error instanceof TenantCapacityError) throw Object.assign(new TypeError('Active workspace capacity was reached before any clone was sent. Close a finished workspace or wait for idle cleanup, then start a new clone intent. There is no daily job-creation quota.'),{status:429,safeMessage:true,safeRetryable:true});
    throw error;
   });
   try { return { workspace_id: id, result: await callNativeWorker(c, { action: 'open', binding, job: {id,host,idleTimeoutMs:(a.leaseMinutes ?? 240)*60000}, requestKey, allowWrite: true, network: true, options: { branch: a.branch, depth: a.depth, authorName: a.authorName, authorEmail: a.authorEmail, ttlMs: (a.leaseMinutes ?? 240) * 60000 } }) }; }

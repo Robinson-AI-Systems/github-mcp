@@ -9,8 +9,8 @@ export const TENANT_RUNTIME_LIMITS = Object.freeze({
   mcpTenantPerMinute: 600,
   oauthClientPerMinute: 30,
   oauthTenantPerMinute: 150,
-  jobsClientPerDay: 32,
-  jobsTenantPerDay: 200,
+  jobsClientPerDay: null,
+  jobsTenantPerDay: null,
   resultMaxBytes: 256 * 1024,
   resultsClientBytesPerDay: 8 * 1024 * 1024,
   resultsTenantBytesPerDay: 40 * 1024 * 1024,
@@ -31,8 +31,6 @@ const CONFIG_FIELDS = Object.freeze({
   mcpTenantPerMinute: 6000,
   oauthClientPerMinute: 300,
   oauthTenantPerMinute: 1500,
-  jobsClientPerDay: 320,
-  jobsTenantPerDay: 2000,
   resultsClientBytesPerDay: 80 * 1024 * 1024,
   resultsTenantBytesPerDay: 400 * 1024 * 1024,
   jobsClientPending: 80,
@@ -40,14 +38,20 @@ const CONFIG_FIELDS = Object.freeze({
   resultsClientActive: 1000,
   resultsTenantActive: 4000
 });
+// Retired stored overrides are accepted for upgrade compatibility, never enforced.
+const RETIRED_JOB_QUOTAS = new Set(['jobsClientPerDay','jobsTenantPerDay']);
 const CONFIG_KEY = 'private_runtime_limits';
 export function validateTenantRuntimePolicy(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value) ||
       Object.getPrototypeOf(value) !== Object.prototype ||
-      Object.keys(value).some(k => !Object.hasOwn(CONFIG_FIELDS,k)))
+      Object.keys(value).some(k => !Object.hasOwn(CONFIG_FIELDS,k) && !RETIRED_JOB_QUOTAS.has(k)))
     throw new TypeError('Invalid private tenant capacity policy.');
   const merged = { ...TENANT_RUNTIME_LIMITS };
   for (const [key, val] of Object.entries(value)) {
+    if (RETIRED_JOB_QUOTAS.has(key)) {
+      if (val!==null && (!Number.isSafeInteger(val) || val<1)) throw new TypeError('Invalid retired job quota setting.');
+      continue;
+    }
     if (!Number.isSafeInteger(val) || val < 1 || val > CONFIG_FIELDS[key])
       throw new TypeError('Private tenant capacity policy has an invalid limit.');
     merged[key] = val;
@@ -55,7 +59,6 @@ export function validateTenantRuntimePolicy(value) {
   for (const [perClient, perTenant] of [
     ['mcpClientPerMinute','mcpTenantPerMinute'],
     ['oauthClientPerMinute','oauthTenantPerMinute'],
-    ['jobsClientPerDay','jobsTenantPerDay'],
     ['resultsClientBytesPerDay','resultsTenantBytesPerDay'],
     ['jobsClientPending','jobsTenantPending'],
     ['resultsClientActive','resultsTenantActive']
@@ -79,7 +82,7 @@ export async function saveTenantRuntimePolicy(sql, limits) {
   return policy;
 }
 
-const allowedKinds = new Set(['mcp', 'oauth', 'job', 'result']);
+const allowedKinds = new Set(['mcp', 'oauth', 'result']);
 const allowedEvents = new Set(['mcp', 'oauth', 'job', 'result', 'provider', 'refresh']);
 const allowedOutcomes = new Set(['ok', 'refused', 'throttled', 'error']);
 const bound = (number, low, high) => Number.isSafeInteger(number) && number >= low && number <= high;
@@ -364,8 +367,8 @@ export function withTenantStorageLimits(db, sql, clientId) {
     async createJob(input) {
       if (!bound(input?.ttlMinutes ?? 1440,1,TENANT_RUNTIME_LIMITS.jobMaxTtlMinutes))
         throw new TenantCapacityError('job',86400);
-      // Reject malformed requests before reserving a slot or debiting daily
-      // capacity. A failed active-slot reservation must not burn daily quota.
+      // Job creation has no daily quota. Keep live-slot admission and TTL
+      // checks independent of the number of jobs previously created.
       if (typeof input?.id!=='string' || !/^job_[0-9a-f]{16}$/.test(input.id) ||
           typeof input.connection!=='string' || !input.connection ||
           typeof input.owner!=='string' || !input.owner ||
@@ -373,9 +376,6 @@ export function withTenantStorageLimits(db, sql, clientId) {
         throw new TypeError('Invalid tenant job request.');
       await reserveTenantStorage(sql,'job',clientId,input.id,(input.ttlMinutes??1440)*60);
       try {
-        const policy=await readTenantRuntimePolicy(sql);
-        await claimTenantBudget(sql,{operation:'job',clientId,window:'day',
-          clientMax:policy.jobsClientPerDay,tenantMax:policy.jobsTenantPerDay});
         return await db.createJob(input);
       } catch(error) {
         await releaseTenantStorage(sql,'job',clientId,input.id).catch(()=>{});

@@ -88,13 +88,13 @@ export async function publicLimits(req, res, { env = process.env } = {}) {
   if (req.method !== 'GET') { res.setHeader('Allow', 'GET'); return send(res, 405, { error: 'method_not_allowed' }); }
   const mb = (bytes) => `${Math.round(bytes / (1024 * 1024))} MB`;
   const hours = Math.round(LIMITS.resultMaxTtlSeconds / 3600);
-  return page(res, 200, 'Limits', '<p>These limits keep the service fast and fair for everyone. Normal use never gets near them. When one is reached your assistant is told to wait a moment; nothing is lost or changed.</p>' +
+  return page(res, 200, 'Limits', '<p>Capacity controls protect shared resources. When a request-rate or capacity limit is reached, your assistant receives retry guidance. Job creation has no daily quota.</p>' +
     `<div class="row"><span><strong>Assistant calls</strong><br><small>How fast your assistants can use GitHub through us.</small></span><span>${LIMITS.mcpClientPerMinute} a minute per app, ${LIMITS.mcpTenantPerMinute} a minute in total</span></div>` +
     `<div class="row"><span><strong>Free daily use</strong><br><small>Calls your assistants make in a day (midnight to midnight UTC). Looking things up and previews count as calls; there is no limit on how many people can join.</small></span><span>${group(FAIR.callsPerDay)} calls a day per person</span></div>` +
     `<div class="row"><span><strong>Real changes</strong><br><small>Changes made on GitHub in an hour. Reading and previews keep working when this is reached.</small></span><span>${group(FAIR.writesPerHour)} an hour per person</span></div>` +
     `<div class="row"><span><strong>Sign-in attempts</strong><br><small>Connecting or reconnecting an app.</small></span><span>${LIMITS.oauthClientPerMinute} a minute per app</span></div>` +
     `<div class="row"><span><strong>Saved results</strong><br><small>Long answers we keep so your assistant can fetch them.</small></span><span>kept up to ${hours} hours; each up to ${Math.round(LIMITS.resultMaxBytes / 1024)} KB; ${mb(LIMITS.resultsTenantBytesPerDay)} a day</span></div>` +
-    `<div class="row"><span><strong>Background jobs</strong><br><small>Longer tasks that finish later.</small></span><span>${LIMITS.jobsTenantPending} waiting at once, ${LIMITS.jobsTenantPerDay} a day</span></div>` +
+    `<div class="row"><span><strong>Background jobs</strong><br><small>Longer tasks that finish later.</small></span><span>${LIMITS.jobsTenantPending} active at once; no daily job-creation limit</span></div>` +
     '<div class="row"><span><strong>Extra names</strong><br><small>People you list as your own, beyond your accounts.</small></span><span>up to 50</span></div>' +
     '<p><small>GitHub has its own limits too; if GitHub asks us to slow down, your assistant is told when to try again. <a href="/connection">Back to My connection</a></small></p>');
 }

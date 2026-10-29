@@ -83,7 +83,7 @@ describe('PUB-3 tenant capacity with REAL PostgreSQL',()=>{
   it('retains strict per-client and per-tenant minute/day separation and reclaims windows safely',async()=>{
     await expect(admitTenantMcp(sqlB,'supported-client')).resolves.toMatchObject({allowed:true});
     await expect(admitTenantOAuth(sqlB,'supported-client')).resolves.toMatchObject({allowed:true});
-    const day={operation:'job',clientId:'day-limits',tenantMax:3,clientMax:2,window:'day'};
+    const day={operation:'result',clientId:'day-limits',tenantMax:3,clientMax:2,window:'day'};
     await claimTenantBudget(sqlA,day);
     await claimTenantBudget(sqlA,day);
     await expect(claimTenantBudget(sqlA,day)).rejects.toBeInstanceOf(TenantCapacityError);
@@ -92,7 +92,7 @@ describe('PUB-3 tenant capacity with REAL PostgreSQL',()=>{
       .rejects.toBeInstanceOf(TenantCapacityError);
     await sqlA`UPDATE gh_tenant_budget_windows SET expires_at=now()-interval '5 seconds',
       window_start=window_start-interval '2 days'
-      WHERE scope LIKE 'job:%'`;
+      WHERE scope LIKE 'result:%'`;
     expect((await purgeExpiredTenantRuntime(sqlA)).budgetRows).toBeGreaterThanOrEqual(2);
     await expect(claimTenantBudget(sqlA,day)).resolves.toMatchObject({allowed:true});
     const rows=await sqlB`SELECT count(*)::integer AS n FROM gh_tenant_budget_windows`;
@@ -186,7 +186,7 @@ describe('PUB-3 tenant capacity with REAL PostgreSQL',()=>{
       .resolves.toBeUndefined();
   });
 
-  it('refuses malformed or slot-capped storage without spending the daily job/result budget',async()=>{
+  it('refuses malformed or slot-capped storage without spending the retained-result budget',async()=>{
     const client='reservation-order-'+randomBytes(7).toString('hex');
     const facade=withTenantStorageLimits(dbA,sqlA,client);
     const policy=await readTenantRuntimePolicy(sqlA);
@@ -196,7 +196,7 @@ describe('PUB-3 tenant capacity with REAL PostgreSQL',()=>{
     const result='res_'+randomBytes(16).toString('base64url');
     await saveTenantRuntimePolicy(sqlA,{jobsClientPending:1,resultsClientActive:1});
     try {
-      // Both malformed inputs previously spent the day quota before their
+      // Both malformed inputs must be rejected before their
       // identifier was validated. Neither may even reserve a slot.
       await expect(facade.createJob({id:'bad',connection:'tenant-A',owner:'fixture',
         kind:'check'})).rejects.toThrow(/Invalid tenant job/);
@@ -225,8 +225,8 @@ describe('PUB-3 tenant capacity with REAL PostgreSQL',()=>{
         body:{ok:true},ttlSeconds:600});
       daily=await sqlA`SELECT scope,used::integer FROM gh_tenant_budget_windows
         WHERE scope=${scopeJob} OR scope=${scopeResult} ORDER BY scope`;
-      expect(daily).toHaveLength(2);
-      expect(daily.find(x=>x.scope===scopeJob).used).toBe(1);
+      expect(daily).toHaveLength(1);
+      expect(daily.find(x=>x.scope===scopeJob)).toBeUndefined();
       expect(daily.find(x=>x.scope===scopeResult).used).toBeGreaterThan(0);
       expect((await dbA.getJob(job,'tenant-A')).state).toBe('pending');
       expect((await dbA.getResult(result,'tenant-A')).body).toEqual({ok:true});
@@ -370,4 +370,29 @@ describe('PUB-3 tenant capacity with REAL PostgreSQL',()=>{
       .toEqual(otherResultsBefore);
   });
 
+});
+
+
+it('creates and finishes over200 jobs without daily quotas in two isolated tenants, even with exhausted legacy counters',async()=>{
+ const old=await readTenantRuntimePolicy(sqlA);
+ await sqlA`UPDATE server_settings SET value=value || '{"jobsClientPerDay":1,"jobsTenantPerDay":1}'::jsonb WHERE setting='private_runtime_limits'`;
+ const client='no-daily-job-quota';
+ const clientScope='job:client:'+createHash('sha256').update(client).digest('hex').slice(0,24);
+ for(const scope of [clientScope,'job:tenant']) await sqlA`INSERT INTO gh_tenant_budget_windows(scope,window_start,used,expires_at) VALUES(${scope},date_trunc('day',now()),999999,date_trunc('day',now())+interval '1 day') ON CONFLICT(scope,window_start) DO UPDATE SET used=999999`;
+ const aStore=withTenantStorageLimits(dbA,sqlA,client),bStore=withTenantStorageLimits(dbB,sqlB,client);
+ try{
+  expect(await readTenantRuntimePolicy(sqlA)).toMatchObject({jobsClientPerDay:null,jobsTenantPerDay:null});
+  for(const [store,connection,count] of [[aStore,'jobs-A',201],[bStore,'jobs-B',33]]){
+   for(let i=0;i<count;i++){
+    const id='job_'+randomBytes(8).toString('hex');
+    await store.createJob({id,connection,owner:'fixture',kind:i%2?'native-git-workspace':'export',ttlMinutes:1});
+    expect((await (connection==='jobs-A'?dbA:dbB).getJob(id,connection)).state).toBe('pending');
+    expect(await (connection==='jobs-A'?dbB:dbA).getJob(id,connection)).toBeNull();
+    expect(await store.finishJob(id,connection,{state:'ready',detail:'Fixture finished.'})).not.toBeNull();
+   }
+  }
+  const windows=await sqlA`SELECT used FROM gh_tenant_budget_windows WHERE scope=${clientScope} OR scope='job:tenant'`;
+  expect(windows).toHaveLength(2);expect(windows.every(r=>Number(r.used)===999999)).toBe(true);
+  const bWindows=await sqlB`SELECT scope FROM gh_tenant_budget_windows WHERE scope LIKE 'job:%'`;expect(bWindows).toEqual([]);
+ }finally{await saveTenantRuntimePolicy(sqlA,{jobsClientPending:old.jobsClientPending,resultsClientActive:old.resultsClientActive});}
 });

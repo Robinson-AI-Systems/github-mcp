@@ -13,6 +13,10 @@ describe('/limits page', () => {
     expect(html).toContain(`${TENANT_RUNTIME_LIMITS.mcpClientPerMinute} a minute per app`);
     expect(html).toContain(`${TENANT_RUNTIME_LIMITS.mcpTenantPerMinute} a minute in total`);
     expect(html).toContain('Saved results');
+    expect(html).toContain('Job creation has no daily quota.');
+    const jobs=html.match(/Background jobs[\s\S]*?<\/div>/)?.[0];
+    expect(jobs).toContain(`${TENANT_RUNTIME_LIMITS.jobsTenantPending} active at once; no daily job-creation limit`);
+    expect(jobs).not.toMatch(/null|undefined|\d+ a day/);
     expect(html).not.toMatch(/ghp_|github_pat_|secret/i);
     const off = res();
     await publicLimits({ method: 'GET' }, off, { env: {} });

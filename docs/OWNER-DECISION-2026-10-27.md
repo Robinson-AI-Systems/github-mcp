@@ -18,3 +18,8 @@ Remove duplicate owner policy for production enablement, server spending caps, n
 Keep credential secrecy/binding, tenant isolation, revoked/expired grant rejection, explicit chosen read-only connections, owner-issued pass restrictions, journaling, replay protection, independent readback and truthful uncertain outcomes. A user can change their own standing settings through an authorized tool; a setting cannot lock its owner out of changing it.
 
 Implementation and acceptance sequence: [authority and parity plan](designs/AUTHORITY-PARITY-2026-10-28.md).
+
+
+## Daily job creation — owner clarification, 2026-10-29
+
+There must be no daily job-creation quota, for any connection or tenant. Remove both per-connection and aggregate per-tenant daily job admission, rather than raising a number or exempting only one owner. Old saved32/128/200 job allowances must not restrict upgraded connections. Active resource admission, the native worker's configurable simultaneous-request capacity, idle workspace cleanup, actual provider rate signals and genuinely selected delegated restrictions remain distinct. This authorizes no paid resource purchase or widening of a capability grant.
