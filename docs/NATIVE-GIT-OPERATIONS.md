@@ -13,6 +13,14 @@ This is actual native Git execution, separate from GitHub's git-data API. Source
 
 Opening and mutating a workspace currently require a full write-capable connection. Read-only profiles can inspect a workspace already belonging to that same connection while its current repository access remains valid; they cannot open or mutate one. For a separate read-only grant, use a local authorized `git clone` until read-only cache creation is explicitly supported. No pass gains another connection's workspace, credentials or grants.
 
+## Branch switching and parallel agents
+
+Use `operation:"switch", options:{branch:"topic"}` after creating the local branch. `name` and `ref` are supported aliases; disagreeing values refuse before sending a mutation. Switching never guesses a remote tracking branch. Inspect `branch`, `head` and `generation` afterward. Detached worktrees report branch=null; switching is independently verified against the requested branch. Invalid options produce explicit guidance rather than a generic transient read failure.
+
+Multiple workspaces may remain open. The reviewed Render configuration allows two simultaneous requests in different workspaces, including preflight/read requests, on the existing single process/disk. A workspace admits only one request at a time; its generation and mutation lock remain authoritative. Busy/over-capacity responses disclose retry guidance; there is no durable queue and no automatic mutation resend. Keep the same requestKey for the same intent and inspect after a current operation completes. Do not create new intents to work around contention.
+
+Two requests is an initial bounded concurrency setting, not a measured large-clone capacity guarantee or a limit of Git itself. All workspaces share the 1 GB disk and 512 MB memory. Give each agent its own workspace/branch; distinct connections cannot access each other's workspaces. Inspect resource measurements before raising the 1–32 configurable request cap. This does not resize the host or its bill.
+
 ## Initial Dokploy deployment (retained migration option)
 
 The owner permits the friend's Dokploy/server for initial use, with an easy move to owned infrastructure. The runtime is an ordinary non-root OCI container; no Docker socket, host credential mount, privileged container or repository hook execution. One worker process/replica owns each persistent volume. The initial adapter is NOT a distributed queue or autoscaling pool.

@@ -93,6 +93,7 @@ export class NativeGitWorker {
     await this.selectWorktree(w, worktree);
     if (w.meta.state !== 'ready') return { state: w.meta.state, generation: w.meta.generation, expires_at: w.meta.expiresAt, next: 'Incomplete initialization; dispose this workspace before opening with a new request key.' };
     const head = await this.git(w.repo, ['rev-parse', '--verify', 'HEAD'], { allowedCodes: [0, 128] });
+    const branch = await this.git(w.repo, ['symbolic-ref', '--quiet', '--short', 'HEAD'], { allowedCodes: [0, 1] });
     const status = await this.git(w.repo, ['status', '--porcelain=v1', '--untracked-files=all']);
     const conflicts = await this.git(w.repo, ['diff', '--name-only', '--diff-filter=U']);
     const inProgress = [];
@@ -100,7 +101,7 @@ export class NativeGitWorker {
       const location = (await this.git(w.repo, ['rev-parse', '--git-path', name])).stdout.trim();
       try { await lstat(resolve(w.repo, location)); inProgress.push(name); } catch (e) { if (e.code !== 'ENOENT') throw e; }
     }
-    return { state: 'ready', generation: w.meta.generation, head: head.code === 0 ? head.stdout.trim() : null, status: status.stdout, conflicts: conflicts.stdout.split('\n').filter(Boolean), in_progress: inProgress, expires_at: w.meta.expiresAt };
+    return { state: 'ready', generation: w.meta.generation, branch: branch.code === 0 ? branch.stdout.trim() : null, head: head.code === 0 ? head.stdout.trim() : null, status: status.stdout, conflicts: conflicts.stdout.split('\n').filter(Boolean), in_progress: inProgress, expires_at: w.meta.expiresAt };
   }
   async selectWorktree(w, name) {
     if (name === undefined) return;

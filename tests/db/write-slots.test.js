@@ -35,8 +35,10 @@ describe('GitHub client on throwaway Postgres only', () => {
     const sleepsB = [];
     // Verify genuinely overlapping database slot claims, not a fragile
     // assumption that independent credential/ETag preflight ends in <100ms.
-    // Both requests must arrive at the slot allocator before either
-    // reserves; the original >=900ms wait assertion remains unchanged.
+    // Both requests must arrive at the allocator before either reserves.
+    // Freeze PostgreSQL now() with one disposable transaction so runner
+    // scheduling cannot consume part of the reserved second before assertion.
+    // The original >=900/<=1100ms allocation invariant stays unchanged.
     let arrived = 0;
     let release;
     const together = new Promise((resolve) => { release = resolve; });
@@ -50,10 +52,11 @@ describe('GitHub client on throwaway Postgres only', () => {
     });
     const a = await githubFor(instance(simultaneous(dbA), gh, sleepsA), {});
     const b = await githubFor(instance(simultaneous(dbB), gh, sleepsB), {});
-    await Promise.all([
+    await rawQuery('BEGIN');
+    try { await Promise.all([
       a.request('POST /repos/{owner}/{repo}/issues', { owner: 'example-org', repo: 'hello', title: 'from A' }),
       b.request('POST /repos/{owner}/{repo}/issues', { owner: 'example-org', repo: 'hello', title: 'from B' })
-    ]);
+    ]); } finally { await rawQuery('ROLLBACK'); }
     expect(gh.calls).toHaveLength(2);
     const waits = [...sleepsA, ...sleepsB, 0].sort((x, y) => x - y); // the first writer needs no wait (and does not sleep)
     expect(sleepsA.length + sleepsB.length).toBe(1);

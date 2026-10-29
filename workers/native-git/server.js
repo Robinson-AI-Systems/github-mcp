@@ -1,6 +1,7 @@
 import {withProtectionContext,withRepositoryProtection} from '../../src/github/content-protection.js';
 import {scannerSettings,defaultScannerSettings} from '../../src/github/scanner-policy.js';
-// One process per persistent volume. All workspace calls serialize, including reads.
+// One process per persistent volume; calls serialize per workspace, including reads.
+// Independent workspaces run up to the configured bounded capacity.
 import { execFileSync } from 'node:child_process';
 import { createServer } from 'node:http';
 import { redactExcerpt } from '../../src/github/content-protection.js';

@@ -1,3 +1,9 @@
+## Current handoff — 2026-10-28
+
+Audit/parity source through #453, scanner tuning/readback corrections #455–#456 and Render native Git #457 are merged and live on independently READY `8004b9e857f16b4027ecf380d9e43abddf3c959f`. Evidence reconciliation #458 merged after exact-head checks; see [actual live proof](status/2026-10-28-render-native-git-acceptance.md). The acceptance ledger below records 56 passes, 15 distinct prerequisite-dependent rows and 2 optional Hub checks. No outstanding indexed approved engineering is inferred from the historical paragraphs below.
+
+Current owner-requested follow-through: [switch/concurrency plan](status/2026-10-28-native-git-follow-through.md). Its source/live verification is separate from the completed Render lifecycle proof. The older dated entries below preserve historical observations, not a current task list; use the index, ledger and latest dated handoff before repeating work.
+
 ## 2026-10-27 — C-16 explicit guarded write batching (#431)
 
 C-16's plan card was committed before source. The separate `github_write_batch` delegates to ordinary authorized GitHub writers in order and records durable per-step PostgreSQL write intent, receipts and stop-on-error handling, without changing read-only `github_batch`. The one-call branch-create → exact-head commit/push → PR-open workflow now independently reads back the new PR in the same call. Code, tests and database migration are in PR #443. Initial CI exposed an incorrectly appended started marker, schema inventory ordering and two unused declarations; repaired with preserved test contracts. Two review findings (duplicate started receipt, possible unverified PR head acceptance) were resolved in source, including explicit uncertain PR readback outcomes and regression fixtures. New exact-head CI/review resolution, merge and #431 closure still pending. No live write or release was performed.

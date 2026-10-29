@@ -39,6 +39,6 @@ export async function callNativeWorker(ctx, { binding, action, workspace_id, ope
  try { for (;;) { const { value, done } = await reader.read(); if (done) break; size += value.length; if (size > 3 * 1024 * 1024) { await reader.cancel(); throw new TypeError('Worker response exceeds the complete result limit.'); } chunks.push(Buffer.from(value)); } } finally { reader.releaseLock(); }
  const content = Buffer.concat(chunks).toString('utf8');
  let data; try { data = JSON.parse(content); } catch { throw new TypeError('Native Git worker returned invalid JSON; inspect the workspace before another intent.'); }
- if (!response.ok) throw Object.assign(new TypeError(response.status === 409 || response.status === 429 ? 'Workspace is busy; inspect after its operation finishes and retry the same intent.' : `Native Git worker returned HTTP ${response.status}: ${typeof data.reason === 'string' ? redactExcerpt(data.reason).slice(0,600) : 'inspect workspace state before another intent.'}`), { status: response.status });
+ if (!response.ok) throw Object.assign(new TypeError(response.status === 409 || response.status === 429 ? 'Workspace is busy; inspect after its operation finishes and retry the same intent.' : `Native Git worker returned HTTP ${response.status}: ${typeof data.reason === 'string' ? redactExcerpt(data.reason).slice(0,600) : 'inspect workspace state before another intent.'}`), { status: response.status, safeMessage: response.status === 409 || response.status === 429 });
  return data;
 }

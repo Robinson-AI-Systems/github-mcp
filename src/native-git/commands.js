@@ -12,9 +12,15 @@ export function ref(input) {
   if (input.startsWith('-') || /[\s~^:?*\[\\]/.test(input) || input.includes('..') || input.includes('@{') || input.endsWith('/')) throw new TypeError('Use an exact reference or object ID.');
   return input;
 }
+export function switchBranch(options = {}) {
+  const names = ['name', 'branch', 'ref'].filter(key => options[key] !== undefined).map(key => options[key]);
+  if (!names.length) throw new TypeError('Switch requires options.branch (options.name or options.ref is also accepted).');
+  if (names.some(name => name !== names[0])) throw new TypeError('Switch branch arguments disagree; supply one exact branch.');
+  return ref(names[0]);
+}
 const OPTIONS = {
  protection_check: ['path'], operation_result: ['intentKey'], status: [], log: ['ref','max'], show: ['ref'], diff: ['ref','staged','paths'], blame: ['ref','path'], refs: ['ref'], conflicts: [], remote_refs: ['ref'], read_file: ['path','byteOffset','byteLength','expectedFileHash'], stash_list: [], worktree_list: [], bisect_log: [],
- write_file: ['path','base64'], remove_file: ['path'], branch_create: ['name','ref'], branch_delete: ['name','force'], branch_rename: ['name','ref'], switch: ['name'], tag_create: ['name','ref'], tag_delete: ['name'], add: ['paths'], restore: ['paths','staged'], commit: ['message','amend'], merge: ['ref'], merge_abort: [], rebase: ['ref'], rebase_continue: [], rebase_abort: [], cherry_pick: ['ref'], cherry_pick_continue: [], cherry_pick_abort: [], revert: ['ref'], revert_continue: [], revert_abort: [], reset: ['ref','hard'], clean: ['paths'], stash_push: ['message'], stash_pop: [], stash_drop: [], fetch: [], pull: ['branch'], push: ['branch','ref','expectedHead','force','delete','tag'], worktree_add: ['name','ref'], worktree_remove: ['name'], bisect_start: ['good','bad'], bisect_good: ['ref'], bisect_bad: ['ref'], bisect_reset: []
+ write_file: ['path','base64'], remove_file: ['path'], branch_create: ['name','ref'], branch_delete: ['name','force'], branch_rename: ['name','ref'], switch: ['name','branch','ref'], tag_create: ['name','ref'], tag_delete: ['name'], add: ['paths'], restore: ['paths','staged'], commit: ['message','amend'], merge: ['ref'], merge_abort: [], rebase: ['ref'], rebase_continue: [], rebase_abort: [], cherry_pick: ['ref'], cherry_pick_continue: [], cherry_pick_abort: [], revert: ['ref'], revert_continue: [], revert_abort: [], reset: ['ref','hard'], clean: ['paths'], stash_push: ['message'], stash_pop: [], stash_drop: [], fetch: [], pull: ['branch'], push: ['branch','ref','expectedHead','force','delete','tag'], worktree_add: ['name','ref'], worktree_remove: ['name'], bisect_start: ['good','bad'], bisect_good: ['ref'], bisect_bad: ['ref'], bisect_reset: []
 };
 export function gitCommand(operation, a = {}) {
   if (!a || typeof a !== 'object' || Array.isArray(a)) throw new TypeError('Native options must be an object.');
@@ -43,7 +49,7 @@ export function gitCommand(operation, a = {}) {
     case 'branch_create': return ['branch', '--', ref(a.name), ref(a.ref ?? 'HEAD')];
     case 'branch_rename': return ['branch', '-m', ...(a.ref ? [ref(a.ref)] : []), ref(a.name)];
     case 'branch_delete': return ['branch', a.force ? '-D' : '-d', '--', ref(a.name)];
-    case 'switch': return ['switch', ref(a.name)];
+    case 'switch': return ['switch', '--no-guess', switchBranch(a)];
     case 'tag_create': return ['tag', '--', ref(a.name), ref(a.ref ?? 'HEAD')];
     case 'tag_delete': return ['tag', '-d', '--', ref(a.name)];
     case 'add': return ['add', '--', ...paths()];

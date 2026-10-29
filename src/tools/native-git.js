@@ -2,7 +2,7 @@ import { nativeWorkerPublicKey } from '../native-git/signing.js';
 import { randomBytes } from 'node:crypto';
 import { defineRead } from './define-read.js';
 import { defineGithubWrite } from './define-github-write.js';
-import { READ_OPERATIONS, WRITE_OPERATIONS, gitCommand } from '../native-git/commands.js';
+import { READ_OPERATIONS, WRITE_OPERATIONS, gitCommand, switchBranch } from '../native-git/commands.js';
 import { nativeWorkspaceId, workerUrl, workerKey } from '../native-git/protocol.js';
 import { nativeConnection, nativeRecord, authorizeNativeRepo, callNativeWorker } from '../native-git/client.js';
 
@@ -12,7 +12,7 @@ const WORKSPACE = { type: 'string', pattern: '^job_[a-f0-9]{16}$' };
 const TEXT = { type: 'string', minLength: 1, maxLength: 256 };
 const BOOL = { type: 'boolean' };
 const OPTIONS = { type: 'object', additionalProperties: false, properties: {
- intentKey: { type: 'string', minLength: 1, maxLength: 128 }, worktree: { type: 'string', pattern: '^[a-zA-Z0-9_-]{1,60}$' }, ref: TEXT, branch: TEXT, name: TEXT, path: { type: 'string', maxLength: 4096 }, paths: { type: 'array', minItems: 1, maxItems: 100, items: { type: 'string', minLength: 1, maxLength: 4096 } },
+ intentKey: { type: 'string', minLength: 1, maxLength: 128 }, worktree: { type: 'string', pattern: '^[a-zA-Z0-9_-]{1,60}$' }, ref: TEXT, branch: { ...TEXT, description: 'Exact branch; switch also accepts name or ref. Conflicting aliases are refused.' }, name: TEXT, path: { type: 'string', maxLength: 4096 }, paths: { type: 'array', minItems: 1, maxItems: 100, items: { type: 'string', minLength: 1, maxLength: 4096 } },
  message: { type: 'string', minLength: 1, maxLength: 10000 }, base64: { type: 'string', maxLength: 1400000 },
  expectedHead: { type: 'string', pattern: '^([a-f0-9]{40,64})?$' }, expectedFileHash: { type: 'string', pattern: '^[a-f0-9]{64}$' },
  force: BOOL, delete: BOOL, tag: BOOL, hard: BOOL, staged: BOOL, amend: BOOL, good: TEXT, bad: TEXT,
@@ -62,13 +62,13 @@ const run = defineGithubWrite({
  name: 'github_git_workspace_run', area: 'git', audience: ['B', 'O', 'Op'],
  description: 'Run typed native Git edits, commits, branches, push/fetch, merge/rebase, conflict recovery, stash, worktrees or bisect.',
  properties: { workspace_id: WORKSPACE, operation: { type: 'string', enum: WRITE_OPERATIONS }, expectedGeneration: { type: 'integer', minimum: 0 }, options: OPTIONS }, required: ['workspace_id', 'operation', 'expectedGeneration'], declarations: { ...declarations, production: 'when-target' },
- target, read: async (a, c, t) => { configured(c); gitCommand(a.operation, a.options ?? {}); return invoke(c, t, { action: 'inspect', options: { worktree: a.options?.worktree } }); },
+ target, read: async (a, c, t) => { configured(c); try { gitCommand(a.operation, a.options ?? {}); } catch (error) { throw Object.assign(new TypeError(error.message), { safeMessage: true }); } return invoke(c, t, { action: 'inspect', options: { worktree: a.options?.worktree } }); },
  classify: ({ args: a }) => a.operation === 'push' ? { production: 'push changes exact GitHub remote refs; GitHub permissions and repository rules apply' } : {},
  price: () => 0, // Git ref transport itself does not buy seats/compute; disclose repository-automation costs separately.
  summarize: ({ args: a, target: t }) => `Native Git ${a.operation} in ${t.owner}/${t.repo} at workspace generation ${a.expectedGeneration}${a.operation === 'push' ? '; future GitHub automation costs may be unknown' : ''}`,
  apply: ({ args: a, ctx: c, target: t, requestKey }) => invoke(c, t, { action: 'run', operation: a.operation, options: a.options ?? {}, requestKey, expectedGeneration: a.expectedGeneration, allowWrite: true, network: ['fetch', 'pull', 'push'].includes(a.operation) }),
  readAfter: async ({ args: a, ctx: c, target: t, response }) => ({ operation: response, workspace: await invoke(c, t, { action: 'inspect', options: { worktree: a.options?.worktree } }) }),
- verify: ({ args: a, after }) => after.operation.status === 'applied' && after.workspace.generation === after.operation.generation && (a.operation !== 'push' || after.operation.remote_verified === true),
+ verify: ({ args: a, after }) => after.operation.status === 'applied' && after.workspace.generation === after.operation.generation && (a.operation !== 'push' || after.operation.remote_verified === true) && (a.operation !== 'switch' || after.workspace.branch === switchBranch(a.options ?? {})),
  present: ({ after, response }) => after ?? response
 });
 const close = defineGithubWrite({
@@ -88,7 +88,7 @@ const list = defineRead({
  description: 'Page this connection’s active native Git workspaces after fresh repository authorization; unavailable names are withheld.',
  properties: { after: WORKSPACE, max: { type: 'integer', minimum: 1, maximum: 20 } }, handler: async (a, c) => {
   const limit = a.max ?? 10; const page = await c.db.listNativeGitWorkspaces(nativeConnection(c), { after: a.after ?? null, limit }); const rows = page.slice(0, limit); const next = page.length > limit ? rows.at(-1).id : null; const items = []; let unavailable = 0;
-  for (const row of rows) { try { await authorizeNativeRepo(c, row.owner, row.repo); items.push({ workspace_id: row.id, owner: row.owner, repo: row.repo, expires_at: row.expires_at }); } catch { unavailable++; } }
+  for (const row of rows) { try { await authorizeNativeRepo(c, row.owner, row.repo); items.push({ workspace_id: row.id, owner: row.owner, repo: row.repo, expires_at: row.expires_at instanceof Date ? row.expires_at.toISOString() : row.expires_at }); } catch { unavailable++; } }
   return { items, checked: rows.length, unavailable, next_cursor: next, complete: next === null && unavailable === 0, note: 'Unavailable repository names are withheld. Follow next_cursor even when a page has no accessible items; omissions never prove absence.' };
  }
 });

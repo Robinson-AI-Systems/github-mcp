@@ -1,3 +1,5 @@
+> Current delivery checkpoint (2026-10-28): indexed approved source work is merged/complete. Audit/parity, scanner tuning and Render lifecycle have [dated live evidence](status/2026-10-28-render-native-git-acceptance.md); [switch/concurrency follow-through](status/2026-10-28-native-git-follow-through.md) is the active owner request. Historical proposals and source-only release qualifiers below are not a current unfinished-work inventory. Unscheduled capability gaps and individual acceptance prerequisites remain explicit.
+
 # ROADMAP — ideas not being built now
 
 ## 2026-10-27 — Coding-agent MCP usability backlog (#427–#436)

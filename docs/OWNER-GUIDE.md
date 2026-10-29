@@ -1,6 +1,8 @@
 # Owner guide — what you can ask for
 
-**Repository scanner profiles:** `github_secret_scanner` is the compact direct entry for settings, scan/preview, configure, rollback and profile offers. Each repository has independent settings. Changes require a reason and pinned before/after retests; exact file/finding exceptions are visible and version-bound. [Guide](SECRET-SCANNER.md) explains the baseline, receipts and limits. This new source needs its dated release evidence before live use is assumed.
+Current release checkpoint: audit/parity and scanner changes are live on `8004b9e`; native Git runs on Render. Historical source/daily-release qualifiers below are dated delivery notes, not a current claim those merged tools are unavailable. Consult the latest [live evidence](status/2026-10-28-render-native-git-acceptance.md).
+
+**Repository scanner profiles:** `github_secret_scanner` is the compact direct entry for settings, scan/preview, configure, rollback and profile offers. Each repository has independent settings. Changes require a reason and pinned before/after retests; exact file/finding exceptions are visible and version-bound. [Guide](SECRET-SCANNER.md) explains the baseline, receipts and limits. This is live; [dated acceptance](status/2026-10-28-render-native-git-acceptance.md) records repository tuning, rollback and worker policy tests.
 
 
 > **Current authority and parity remediation (2026-10-28):** [requirements](OWNER-DECISION-2026-10-27.md), [delivery plan](designs/AUTHORITY-PARITY-2026-10-28.md). Full owner writes disclose/execute/journal/verify in one call; explicit delegated restrictions remain. Older dated statements about owner caps, production ceremony and mandatory merge gates are superseded. Source delivery and live acceptance remain separate.

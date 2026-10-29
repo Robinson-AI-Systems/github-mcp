@@ -1,6 +1,6 @@
 # Authority alignment and GitHub MCP replacement plan
 
-Owner-authorized 2026-10-28. Status: implementation in progress; not a completion or deployed-parity claim.
+Owner-authorized 2026-10-28. Status: audit/parity implementation and scanner tuning are merged and released; Render native lifecycle is accepted. See [live proof](../status/2026-10-28-render-native-git-acceptance.md) and [active switch/concurrency follow-through](../status/2026-10-28-native-git-follow-through.md). Historical checkpoints below do not reopen completed work.
 
 ## Governing intent
 
@@ -84,4 +84,4 @@ This is the same approved audit/parity/native-Git scope. Do not label implementa
 
 ## Current delivery state after combined release
 
-Implementation through #453 is released on independently READY 53df99ef. [Combined evidence](../status/2026-10-28-combined-release.md) records actual complete/byte reads, administrative previews, scratch create/delete, PKCE/header/unauthenticated denial and cleanup. The deployed native worker is internally healthy, but external HTTPS ingress times out and the current account lacks host-wide networking authority. Hosted native Git remains unavailable until that route exists; do not represent Docker health or source tests as end-to-end acceptance. Proprietary scan and advanced Git alternatives remain explicit. The existing 15 external acceptance obligations retain their individual prerequisites.
+Implementation through #453 is released on independently READY 53df99ef. [Combined evidence](../status/2026-10-28-combined-release.md) records actual complete/byte reads, administrative previews, scratch create/delete, PKCE/header/unauthenticated denial and cleanup. That checkpoint predates the owner-applied Render deployment. Render HTTPS and signed native lifecycle, persistence and cleanup are now independently verified in the current evidence above; retained Dokploy ingress is no longer the active-route prerequisite. Proprietary scan and advanced Git alternatives remain explicit. The existing 15 external acceptance obligations retain their individual prerequisites.
