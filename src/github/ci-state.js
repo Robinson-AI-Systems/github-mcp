@@ -6,13 +6,13 @@
 
 /** Every check run at a commit (up to 500), page by page; the response wraps the list in `check_runs`. */
 async function allCheckRuns(octokit, params) {
-  const runs = [];
+  const runs = [];let complete=false;
   for (let page = 1; page <= 5; page += 1) {
     const { data } = await octokit.request('GET /repos/{owner}/{repo}/commits/{ref}/check-runs', { ...params, filter: 'all', per_page: 100, page });
     runs.push(...(data.check_runs ?? []));
-    if ((data.check_runs ?? []).length < 100) break;
+    if ((data.check_runs ?? []).length < 100 || (Number.isInteger(data.total_count)&&runs.length>=data.total_count)) {complete=true;break;}
   }
-  return runs;
+  return {items:runs,complete};
 }
 
 const PASSING = new Set(['success', 'neutral', 'skipped']);
@@ -30,8 +30,8 @@ async function tryRead(fn) {
 export async function requiredChecks(octokit, { owner, repo, branch }) {
   const found = new Map();
   const errors = [];
-  const notes = [];
-  const add = (context, appId) => { const key = `${context}\n${appId ?? ''}`; if (!found.has(key)) found.set(key, { context, appId: appId ?? null }); };
+  const notes = [];const sources=[];let strict=false;
+  const add = (context, appId) => { if(appId===-1)appId=null; const key = `${context}\n${appId ?? ''}`; if (!found.has(key)) found.set(key, { context, appId: appId ?? null }); };
   // These two policy views are independent; preserve the order of their
   // diagnostics while avoiding an extra provider round trip on every PR read.
   const [rules, classic] = await Promise.all([
@@ -40,19 +40,32 @@ export async function requiredChecks(octokit, { owner, repo, branch }) {
   ]);
   if (rules.ok) {
     for (const rule of Array.isArray(rules.data) ? rules.data : []) {
-      if (rule.type === 'required_status_checks') for (const c of rule.parameters?.required_status_checks ?? []) add(c.context, c.integration_id);
+      if (rule.type === 'required_status_checks') {
+        strict ||= rule.parameters?.strict_required_status_checks_policy===true;
+        sources.push({source:'ruleset',ruleset_id:rule.ruleset_id??null,name:rule.ruleset_name??null,strict:rule.parameters?.strict_required_status_checks_policy===true});
+        for (const c of rule.parameters?.required_status_checks ?? []) add(c.context, c.integration_id);
+      }
     }
   } else if (rules.planLimited) notes.push(`rules are not available for this repository on its GitHub plan, so none can require checks on ${branch}`);
   else errors.push(`rules for ${branch} could not be read${rules.status ? ` (HTTP ${rules.status})` : ''}`);
   if (classic.ok) {
+    strict ||= classic.data.strict===true;sources.push({source:'classic branch protection',strict:classic.data.strict===true});
     if (Array.isArray(classic.data.checks) && classic.data.checks.length) for (const c of classic.data.checks) add(c.context, c.app_id);
     else for (const context of classic.data.contexts ?? []) add(context, null);
   } else if (classic.planLimited) notes.push(`branch protection is not available for this repository on its GitHub plan, so none can require checks on ${branch}`);
   else if (classic.status !== 404) errors.push(`classic protection for ${branch} could not be read${classic.status ? ` (HTTP ${classic.status})` : ''}`);
-  return { required: [...found.values()], errors, notes };
+  return { required: [...found.values()], errors, notes,strict_up_to_date:errors.length?null:strict,policy_sources:sources };
 }
 
-const latestRun = (runs) => runs.reduce((best, r) => (!best || new Date(r.started_at ?? 0) > new Date(best.started_at ?? 0) || (r.started_at === best.started_at && r.id > best.id) ? r : best), null);
+const latestRun = runs => {
+  // CheckRun has no created_at in the pinned provider schema. An unstarted
+  // matching run cannot safely inherit an older success: report pending until
+  // GitHub supplies a state that establishes its outcome.
+  const unstarted=runs.find(r=>r.status!=='completed'&&!r.started_at);
+  if(unstarted)return unstarted;
+  return runs.reduce((best,r)=>!best||new Date(r.started_at??0)>new Date(best.started_at??0)||
+    (r.started_at===best.started_at&&r.id>best.id)?r:best,null);
+};
 
 function runState(run) {
   if (run.status !== 'completed') return 'pending';
@@ -75,9 +88,10 @@ export async function ciState(octokit, { owner, repo, baseBranch, headSha }) {
     tryRead(() => allCheckRuns(octokit, { ...p, ref: headSha })),
     tryRead(async () => (await octokit.request('GET /repos/{owner}/{repo}/commits/{ref}/status', { ...p, ref: headSha })).data.statuses ?? [])
   ]);
-  const { required, errors, notes } = policy;
+  const { required, errors, notes,strict_up_to_date,policy_sources } = policy;
   if (!runsRead.ok) return { green: null, known: false, basis: 'required', checks: [], problems: [], notes, errors: [...errors, 'the check runs at this commit could not be read'] };
-  const runs = runsRead.data;
+  const runs = runsRead.data.items;
+  if(!runsRead.data.complete)errors.push('check-run inventory exceeded its bound; required state is incomplete');
   const statuses = statusesRead.ok ? statusesRead.data : null;
   if (!statusesRead.ok) errors.push('the commit statuses could not be read');
 
@@ -85,8 +99,8 @@ export async function ciState(octokit, { owner, repo, baseBranch, headSha }) {
     const matching = runs.filter((r) => r.name === context && (appId == null || r.app?.id === appId));
     const run = latestRun(matching);
     if (run) return { context, state: runState(run), source: 'check run', started_at: run.started_at ?? null, completed_at: run.completed_at ?? null };
-    const status = (statuses ?? []).find((s) => s.context === context);
-    return status ? { context, state: statusState(status.state), source: 'status', updated_at: status.updated_at ?? null } : { context, state: 'missing', source: 'none' };
+    const status = appId==null?(statuses ?? []).find((s) => s.context === context):null;
+    return status ? { context, state: statusState(status.state), source: 'status', updated_at: status.updated_at ?? null } : { context, state: 'missing', source: 'none',observed_sha:headSha,required_app_id:appId??null,reason:appId!=null&&runs.some(r=>r.name===context)?'same-name check exists under another app':'required check not observed on this exact SHA' };
   };
 
   let checks; let basis;
@@ -99,5 +113,5 @@ export async function ciState(octokit, { owner, repo, baseBranch, headSha }) {
   const problems = checks.filter((c) => c.state !== 'success').map((c) => `${c.context}: ${c.state}`);
   if (!checks.length) problems.push('no checks have reported on this commit yet (CI may not have started)');
   // Any read that failed means the answer is unknown, never green.
-  return { green: errors.length ? null : problems.length === 0, known: errors.length === 0, basis, checks, problems, notes, errors };
+  return { green: errors.length ? null : problems.length === 0, known: errors.length === 0, basis, checks, problems, notes, errors,strict_up_to_date,policy_sources };
 }

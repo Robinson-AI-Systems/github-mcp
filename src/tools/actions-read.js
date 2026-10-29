@@ -1,3 +1,5 @@
+import {createHash} from 'node:crypto';
+import {redactExcerpt} from '../github/content-protection.js';
 // GitHub Actions, read side (G-1 part 1): workflows, runs, one run with its jobs, job and run log summaries, runs waiting for approval.
 // Logs are summarised, never dumped (BATCH-G G1): failed steps first, error lines, the last lines; the rest stays on GitHub.
 import { readZip, summarizeLog, textOfBody } from '../github/log-summary.js';
@@ -70,15 +72,32 @@ export const actionsGetRun = defineRead({
 
 export const actionsGetJobLog = defineRead({
   name: 'github_actions_get_job_log', area: 'actions', audience: ['B', 'Op'],
-  description: 'A job\'s log in short form: failed steps first, error lines, and the last lines. The full log stays on GitHub.',
-  properties: { owner: OWNER, repo: REPO, jobId: { type: 'integer', minimum: 1 }, tailLines: { type: 'integer', minimum: 10, maximum: 2000, description: 'Last lines to keep (default 400)' } },
+  description: 'Read a job log summary or full redacted text in hash-pinned character windows; no missing earlier lines.',
+  aliases: {jobId:['job_id']},
+  properties: { owner: OWNER, repo: REPO, jobId: { type: 'integer', minimum: 1 }, tailLines: { type: 'integer', minimum: 10, maximum: 2000, description: 'Last lines to keep (default 400)' },
+    fullText:{type:'boolean',description:'Return a redacted log window instead of the tail summary.'},
+    textOffset:{type:'integer',minimum:0},maxChars:{type:'integer',minimum:1,maximum:4000},
+    expectedLogHash:{type:'string',pattern:'^[a-f0-9]{64}$'} },
   required: ['repo', 'jobId'],
   handler: (args, ctx) => plain(async () => {
     const { owner, octokit } = await readerFor(args, ctx);
     const p = { owner, repo: args.repo, job_id: args.jobId };
     const job = (await octokit.request('GET /repos/{owner}/{repo}/actions/jobs/{job_id}', p)).data;
     const res = await octokit.request('GET /repos/{owner}/{repo}/actions/jobs/{job_id}/logs', p);
-    const summary = summarizeLog(textOfBody(res.data), { tailLines: args.tailLines ?? 400 });
+    const text=textOfBody(res.data);
+    if(args.fullText===true){
+      if(args.tailLines!==undefined)throw new TypeError('fullText cannot be combined with tailLines.');
+      if(Buffer.byteLength(text)>50*1024*1024)throw new TypeError('This log exceeds the 50 MB complete-read limit.');
+      const safe=redactExcerpt(text).replace(/[A-Za-z0-9+/=]{200,}/g,'[long encoded text removed]'),hash=createHash('sha256').update(safe).digest('hex'),offset=args.textOffset??0;
+      if(offset>safe.length || ((offset>0||args.expectedLogHash!==undefined)&&args.expectedLogHash!==hash))
+        throw new TypeError('Log hash changed or is missing for continuation; restart at textOffset zero.');
+      const end=Math.min(safe.length,offset+(args.maxChars??4000));
+      return {job:jobBrief(job),text:safe.slice(offset,end),text_offset:offset,next_text_offset:end,total_chars:safe.length,
+        complete:end===safe.length,log_hash:hash,redacted:true,byte_exact_available:false,untrusted:true};
+    }
+    if(args.textOffset!==undefined||args.maxChars!==undefined||args.expectedLogHash!==undefined)
+      throw new TypeError('Log continuation requires fullText:true.');
+    const summary = summarizeLog(text, { tailLines: args.tailLines ?? 400 });
     return { job: jobBrief(job), failed_steps_first: jobBrief(job).failed_steps, ...summary };
   })
 });
@@ -86,24 +105,35 @@ export const actionsGetJobLog = defineRead({
 export const actionsGetRunLogsSummary = defineRead({
   name: 'github_actions_get_run_logs_summary', area: 'actions', audience: ['B', 'Op'],
   description: 'Why a run failed: for each failed job, the failing steps and their error lines, read from the run\'s log archive.',
+  aliases:{runId:['run_id']},
   properties: { owner: OWNER, repo: REPO, runId: RUN }, required: ['repo', 'runId'],
   handler: (args, ctx) => plain(async () => {
     const { owner, octokit } = await readerFor(args, ctx);
     const p = { owner, repo: args.repo, run_id: args.runId };
-    const { items: jobs } = await listWrapped(octokit, 'GET /repos/{owner}/{repo}/actions/runs/{run_id}/jobs', { ...p, filter: 'latest' }, 'jobs', 100);
+    const { items: jobs, capped } = await listWrapped(octokit, 'GET /repos/{owner}/{repo}/actions/runs/{run_id}/jobs', { ...p, filter: 'latest' }, 'jobs', 100);
     const failed = jobs.filter((j) => j.conclusion === 'failure' || (j.steps ?? []).some((s) => s.conclusion === 'failure'));
-    if (!failed.length) return { run_id: args.runId, failed_jobs: [], note: 'No job in this run failed.' };
-    const res = await octokit.request('GET /repos/{owner}/{repo}/actions/runs/{run_id}/logs', p);
-    const bytes = res.data instanceof ArrayBuffer || ArrayBuffer.isView(res.data) ? res.data : Buffer.from(String(res.data ?? ''), 'binary');
-    if ((bytes.byteLength ?? bytes.length) > MAX_ARCHIVE_BYTES) throw new TypeError('The log archive is over 50 MB, so it is not read here. Use github_actions_get_job_log for one job instead.');
-    const entries = readZip(bytes);
-    return { run_id: args.runId, failed_jobs: failed.map((job) => {
+    if (!failed.length) return { run_id: args.runId, jobs_complete:!capped, failed_jobs: [], note: capped?'No failure was found in the incomplete job inventory.':'No job in this run failed.' };
+    let entries=[],archiveReadable=false;
+    try{
+      const res = await octokit.request('GET /repos/{owner}/{repo}/actions/runs/{run_id}/logs', p);
+      const bytes = res.data instanceof ArrayBuffer || ArrayBuffer.isView(res.data) ? res.data : Buffer.from(String(res.data ?? ''), 'binary');
+      if ((bytes.byteLength ?? bytes.length) <= MAX_ARCHIVE_BYTES){entries=readZip(bytes);archiveReadable=true;}
+    }catch{/* Read each exact failed job rather than pretending an unavailable archive was empty. */}
+    return { run_id: args.runId, jobs_complete:!capped,archive_readable:archiveReadable, failed_jobs: await Promise.all(failed.map(async (job) => {
       const steps = (job.steps ?? []).filter((s) => s.conclusion === 'failure');
       const mine = entries.filter((e) => e.name.startsWith(`${job.name}/`) || e.name.endsWith(`_${job.name}.txt`) || e.name === `${job.name}.txt`);
       const onStep = mine.filter((e) => steps.some((s) => e.name.includes(s.name)));
-      const errors = [...new Set((onStep.length ? onStep : mine).flatMap((e) => summarizeLog(e.text, { tailLines: 1, maxErrors: 40 }).errors))].slice(0, 40);
-      return { ...jobBrief(job), error_lines: errors, ...(mine.length ? {} : { note: 'No log file for this job was found in the archive.' }) };
-    }) };
+      let errors = [...new Set((onStep.length ? onStep : mine).flatMap((e) => summarizeLog(e.text, { tailLines: 1, maxErrors: 40 }).errors))].slice(0, 40);
+      let source=mine.length?'archive':'unavailable';
+      if(!errors.length){
+        try{const direct=await octokit.request('GET /repos/{owner}/{repo}/actions/jobs/{job_id}/logs',{owner,repo:args.repo,job_id:job.id});
+          const summary=summarizeLog(textOfBody(direct.data),{tailLines:20});errors=summary.errors.length?summary.errors:summary.tail;source='job_log';}
+        catch{/* Never attribute another job's output or invent an empty successful diagnostic. */}
+      }
+      return { ...jobBrief(job), error_lines: errors, logs_source:source,logs_readable:source!=='unavailable',
+        full_log:{tool:'github_actions_get_job_log',args:{owner,repo:args.repo,jobId:job.id,fullText:true}},
+        ...(!errors.length?{note:'No diagnostic lines were readable. Read this exact job log; absence is not a successful run.'}:{}) };
+    })) };
   })
 });
 

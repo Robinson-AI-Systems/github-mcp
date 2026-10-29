@@ -129,7 +129,7 @@ export const contentGetTree = defineRead({
   name: 'github_content_get_tree', area: 'content', audience: ['B'],
   description: 'List every file in a repository at a ref (recursive), optionally only paths matching a glob such as src/**/*.js.',
   properties: { owner: OWNER, repo: REPO, ref: { ...REF, description: 'Branch, tag or commit (default: the default branch)' }, glob: { type: 'string', maxLength: 200, description: 'Only paths matching this (* within a folder, ** across folders)' },
-    include_dirs: { type: 'boolean', description: 'Also list folders (default files only)' }, max: { type: 'integer', minimum: 1, maximum: MAX_TREE, description: 'Default 200' } },
+    include_dirs: { type: 'boolean', description: 'Also list folders (default files only)' }, offset:{type:'integer',minimum:0},expectedTreeSha:{type:'string',pattern:'^[a-fA-F0-9]{40}$'}, max: { type: 'integer', minimum: 1, maximum: MAX_TREE, description: 'Default 200' } },
   required: ['repo'],
   handler: (args, ctx) => plain(async () => {
     const { owner, octokit } = await readerFor(args, ctx);
@@ -139,10 +139,13 @@ export const contentGetTree = defineRead({
     const patterns = args.glob ? [globToRegExp(args.glob), globToRegExp(args.glob.replaceAll('**/', ''))] : null;
     const wanted = patterns ? { test: (path) => patterns.some((re) => re.test(path)) } : null;
     const matches = (data.tree ?? []).filter((e) => (e.type === 'blob' || (args.include_dirs && e.type === 'tree')) && (!wanted || wanted.test(e.path)));
-    const max = args.max ?? 200;
-    return { ref, sha: data.sha, github_truncated: data.truncated === true, total_matching: matches.length, shown: Math.min(matches.length, max),
+    const max = args.max ?? 200,offset=args.offset??0;
+    if(offset>matches.length||((offset>0||args.expectedTreeSha!==undefined)&&args.expectedTreeSha!==data.sha))
+      throw new TypeError('Tree SHA changed or is missing for continuation; restart at offset zero.');
+    const next=Math.min(matches.length,offset+max);
+    return { ref, sha: data.sha, offset,next_offset:next,complete:!data.truncated&&next===matches.length, github_truncated: data.truncated === true, total_matching: matches.length, shown: Math.min(matches.length-offset, max),
       ...(data.truncated ? { note: 'GitHub cut this tree because the repository is very large; list a folder with github_content_get instead.' } : {}),
-      items: matches.slice(0, max).map((e) => ({ path: e.path, type: e.type === 'tree' ? 'dir' : 'file', ...(e.size !== undefined ? { size: e.size } : {}) })) };
+      items: matches.slice(offset, next).map((e) => ({ path: e.path,sha:e.sha,mode:e.mode, type: e.type === 'tree' ? 'dir' : 'file', ...(e.size !== undefined ? { size: e.size } : {}) })) };
   })
 });
 

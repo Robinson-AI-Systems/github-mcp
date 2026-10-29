@@ -23,7 +23,7 @@ async function listWrapped(octokit, route, params, key, max) {
 
 export const checkGetCiState = defineRead({
   name: 'github_check_get_ci_state', area: 'check', audience: ['B', 'Op'],
-  description: 'CI state at a commit or a pull request\'s head: each check and status, which are required, and the overall answer (green, red, pending or unknown).',
+  description: 'Read exact-head checks, required policy and missing-check reasons for a PR or commit.',
   properties: { owner: OWNER, repo: REPO, pr: { type: 'integer', minimum: 1, description: 'Pull request number (uses its head and base)' },
     ref: { type: 'string', minLength: 1, maxLength: 250, description: 'Commit, branch or tag (default: the default branch)' }, base: { type: 'string', maxLength: 250, description: 'Branch whose required checks apply (default: the default branch)' } },
   required: ['repo'],

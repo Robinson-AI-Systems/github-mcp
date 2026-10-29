@@ -319,3 +319,13 @@ it('redacts full RTC passes before commit and comparison patch clipping',async()
     expect(w.gh.invalid).toEqual([]);
   }
 });
+
+it('continues past 500 tree entries only with the immutable tree SHA and returns blob modes/hashes',async()=>{
+ const w=await world(),sha='a'.repeat(40),tree=Array.from({length:601},(_,i)=>({path:'file-'+i,type:'blob',sha:'b'.repeat(40),mode:'100644',size:1}));
+ w.gh.when('GET /repos/{owner}/{repo}/git/trees/{tree_sha}').reply(200,{sha,truncated:false,tree});
+ const last=await run(w,'github_content_get_tree',{...R,ref:sha,max:10,offset:600,expectedTreeSha:sha});
+ expect(last.body).toMatchObject({complete:true,offset:600,next_offset:601,shown:1,items:[{path:'file-600',sha:'b'.repeat(40),mode:'100644'}]});
+ expect((await run(w,'github_content_get_tree',{...R,ref:sha,offset:500,max:1})).result.isError).toBe(true);
+ expect((await run(w,'github_content_get_tree',{...R,ref:sha,offset:500,max:1,expectedTreeSha:'c'.repeat(40)})).result.isError).toBe(true);
+ expect(w.gh.invalid).toEqual([]);
+});

@@ -115,7 +115,7 @@ Card(s): D-2.
 | `github_git_workspace_list` | Page current connection workspaces with fresh repository access checks and explicit omissions/cursor | — | N | I | B,O,Op | R | PAR-2 |
 | `github_content_get` | A file or directory at any ref; compact text by default, byte-exact base64 via `byteOffset`/`byteLength` (up to 32 KiB per explicit call) and a retained handle for overflow | — | F | I | B,Op | R | D-2 built #30 |
 | `github_content_protection_check` | Explain matching rules and locations without values; provide a safe false-positive report and exact local-Git retrieval guidance | — | N | I | B,O,Op | R | PAR-2 |
-| `github_content_get_tree` | Whole-repo file list at a ref (recursive tree), filtered by a glob | — | C | I | B | R | D-2 built #30 |
+| `github_content_get_tree` | Recursive tree with blob SHA/mode, glob and pinned offset continuation beyond 500 entries | — | C | I | B | R | D-2 built #30 |
 | `github_content_put_file` | Create or update one file with a commit (checks the file's current version first) | P·Prod* | F | I | B | E | D-2 built #32 |
 | `github_content_delete_file` | Delete one file with a commit | C·Prod* | C | I | B | E | D-2 built #32 |
 | `github_content_commit_git_data` | Atomic 1–50 binary/text operations (2 MB); expected count, optional absent-branch createFrom, exact parent and full manifest readback | P·Prod* | N | I | B | E | PAR-3 |
@@ -155,7 +155,7 @@ Card(s): E-1, E-2.
 | Tool | What it does | Safety | Origin | Cred | Audience | Profile | Card |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `github_pr_list` | Pull requests by state, base, head branch, author, label | — | C | I | B,Op | R | E-1 (built #35) |
-| `github_pr_get` | One PR: state, draft, head SHA, mergeable, review decision, required checks at head, unresolved thread count | — | C | I | B,Op | R | E-1 (built #35) |
+| `github_pr_get` | PR head/checks/reviews plus actual strict-base rule, current-base comparison and named merge blocker | — | C | I | B,Op | R | E-1 (built #35) |
 | `github_pr_get_diff` | The PR's diff (capped; handle for the rest) | — | C | I | B | R | E-1 (built #35) |
 | `github_pr_list_files` | Files changed with additions/deletions (patches capped) | — | C | I | B | R | E-1 (built #35) |
 | `github_pr_list_commits` | Commits in the PR | — | C | I | B | R | E-1 (built #35) |
@@ -252,7 +252,7 @@ Card(s): G-1.
 | `github_actions_dispatch` | Start a workflow (`workflow_dispatch`) on a ref with inputs; returns the run (API 2026-03-10) | P·Prod* | F | I | B,Op | E | G-1 built #41 |
 | `github_actions_list_runs` | Runs by workflow, branch, event, status, actor, head SHA | — | C | I | B,Op | R | G-1 built #39 |
 | `github_actions_get_run` | One run: status, conclusion, jobs and steps, attempt, billable timing | — | C | I | B,Op | R | G-1 built #39 |
-| `github_actions_get_job_log` | A job's log: failed steps first, tail lines, error lines; never a raw base64 dump | — | F | I | B,Op | R | G-1 built #39 |
+| `github_actions_get_job_log` | Job summary or full redacted character windows pinned to log hash; job_id alias | — | F | I | B,Op | R | G-1 built #39 |
 | `github_actions_get_run_logs_summary` | Download a run's log archive server-side and return failing steps, error lines and annotations | — | F | I | B,Op | R | G-1 built #39 |
 | `github_actions_rerun` | Re-run a whole run, only its failed jobs, or one job | P·Prod* | C | I | B,Op | E | G-1 built #41 |
 | `github_actions_approve_fork_run` | Approve one reviewed public fork PR CI run, including GitHub's synthetic PR merge SHA; never bypass checks | C·Prod* | N | U | B,Op | F | FORK-CI-1 |
@@ -629,7 +629,7 @@ Card(s): P-2, P-3, W-1 … W-7. P-2 built in PR #207 as a non-read-only composed
 
 | Tool | What it does | Safety | Origin | Cred | Audience | Profile | Card |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| `github_workflow_pr_status` | Everything about a PR in one answer: CI at head (required vs optional), mergeable, review decision, unresolved threads, stack position, next action | — | N | I | B,Op | R | W-1 built #210 |
+| `github_workflow_pr_status` | PR checks/reviews/stack plus strict current-base diagnostics and concrete next action | — | N | I | B,Op | R | W-1 built #210 |
 | `github_workflow_open_pr` | Idempotently find an existing PR from bounded normalized head/base inventory without duplicating it; create only through guarded writer, then add missing labels separately | P·M | N | I | B | E | W-1 built #210 |
 | `github_workflow_merge_when_green` | Merge at the exact head SHA only when required checks are green there and no review thread is unresolved; otherwise says what is missing | C·Prod* | F | I | B | E | W-2 built #210 |
 | `github_workflow_merge_stack` | Merge a stack bottom-up: retarget each PR to the default branch, require fresh green CI at its head, merge; stops at the first PR that is not ready | C·Prod* | N | I | B | E | W-2 built #210 |
@@ -773,7 +773,7 @@ Card(s): Y-8. A slow GitHub operation returns a `job_id` at once; `github_job_st
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `github_job_status` | Check a slow job you started (pending, ready with a result handle, or failed) | — | N | — | B,Op | R | Y-8 |
 | `github_job_cancel` | Stop tracking a pending slow job | P | N | — | B,Op | F | Y-8 |
-| `github_artifact_read` | List the files of a build artifact or read one text file | — | N | I | B,Op | R | Y-8 |
+| `github_artifact_read` | List/read artifact files or scan-gated exact SHA-pinned binary/text byte windows | — | N | I | B,Op | R | Y-8 |
 | `github_content_read_archive` | List or read files inside a repository snapshot at a ref | — | N | I | B,Op | R | Y-8 |
 | `github_content_snapshot` | Pin an exact GitHub commit and return a tenant-scoped ZIP result handle for binary byte windows and checksum verification | — | N | I | B,Op | R | C-13 |
 | `github_security_export_sbom` | The software parts list (SBOM) of a repository | — | N | I | B,Op | R | Y-8 |

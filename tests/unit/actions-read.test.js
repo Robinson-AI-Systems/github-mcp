@@ -11,7 +11,7 @@ const JOBS = 'GET /repos/{owner}/{repo}/actions/runs/{run_id}/jobs';
 async function run(world, name, args) {
   const dispatch = createDispatch({ credentials: world.credentials, gates: [], fetch: world.gh.fetch, now: world.ctx.now, sleep: async () => {} });
   const result = await dispatch({ registry, name, args, connection: world.connection, db: world.db });
-  return { result, body: result.isError ? null : (result.structuredContent ?? parse(result)) };
+  return { result, body: result.isError ? null : (result.structuredContent?.full_payload_location === 'content[0].text' ? JSON.parse(result.content[0].text) : (result.structuredContent ?? parse(result))) };
 }
 /** A small zip writer for fixtures: [name, text, deflate?] */
 function zip(files) {
@@ -106,4 +106,38 @@ describe('Actions read tools (G-1)', () => {
     expect(w.gh.calls.find((c) => c.route === RUNS).query.status).toBe('waiting');
     expect(w.gh.invalid).toEqual([]);
   });
+});
+
+it('reads every redacted log character beyond the tail and long-line caps with a pinned hash and job_id alias',async()=>{
+ const w=await makeWorld({profile:'read_only'}),text=Array.from({length:12},(_,i)=>`line ${i} ${'detail '.repeat(150)}\n`).join('');
+ w.gh.when('GET /repos/{owner}/{repo}/actions/jobs/{job_id}').reply(200,FAILED_JOB);
+ w.gh.when('GET /repos/{owner}/{repo}/actions/jobs/{job_id}/logs').reply(200,text);
+ let offset=0,hash,joined='';
+ do{const {body}=await run(w,'github_actions_get_job_log',{...R,job_id:5,fullText:true,textOffset:offset,maxChars:2000,...(hash?{expectedLogHash:hash}:{})});
+  expect(body.text.length).toBeLessThanOrEqual(2000);joined+=body.text;hash=body.log_hash;offset=body.next_text_offset;if(body.complete)break;
+ }while(offset<text.length);
+ expect(joined).toBe(text);expect(w.gh.invalid).toEqual([]);
+ const missing=await run(w,'github_actions_get_job_log',{...R,jobId:5,fullText:true,textOffset:2});expect(missing.result.isError).toBe(true);
+ w.gh.when('GET /repos/{owner}/{repo}/actions/jobs/{job_id}/logs').reply(200,'new attempt');
+ expect((await run(w,'github_actions_get_job_log',{...R,jobId:5,fullText:true,textOffset:1,expectedLogHash:hash})).result.isError).toBe(true);
+});
+it('falls back to the exact failed job when archive naming does not match instead of returning an empty diagnosis',async()=>{
+ const w=await makeWorld({profile:'read_only'});
+ w.gh.when(JOBS).reply(200,{total_count:1,jobs:[FAILED_JOB]});
+ w.gh.when('GET /repos/{owner}/{repo}/actions/runs/{run_id}/logs').reply(200,zip([['renamed/1.txt','unrelated']]));
+ w.gh.when('GET /repos/{owner}/{repo}/actions/jobs/{job_id}/logs').reply(200,'Error: exact job failure');
+ const {body}=await run(w,'github_actions_get_run_logs_summary',{...R,run_id:9});
+ expect(body.failed_jobs[0]).toMatchObject({logs_source:'job_log',logs_readable:true,error_lines:['Error: exact job failure']});expect(w.gh.invalid).toEqual([]);
+});
+it('falls back to job logs when the run archive cannot be read and redacts full-window credentials',async()=>{
+ const w=await makeWorld({profile:'read_only'}),candidate='rtc_pass_'+'a'.repeat(43);
+ w.gh.when(JOBS).reply(200,{total_count:1,jobs:[FAILED_JOB]});
+ w.gh.when('GET /repos/{owner}/{repo}/actions/runs/{run_id}/logs').reply(403,{message:'Archive unavailable'});
+ w.gh.when('GET /repos/{owner}/{repo}/actions/jobs/{job_id}').reply(200,FAILED_JOB);
+ w.gh.when('GET /repos/{owner}/{repo}/actions/jobs/{job_id}/logs').reply(200,'Error: failed\n'+candidate+'\n'+'QUJD'.repeat(100));
+ const summary=await run(w,'github_actions_get_run_logs_summary',{...R,runId:9});
+ expect(summary.body).toMatchObject({archive_readable:false,failed_jobs:[{logs_source:'job_log',logs_readable:true}]});
+ const full=await run(w,'github_actions_get_job_log',{...R,jobId:5,fullText:true});
+ expect(JSON.stringify(full.body)).not.toContain(candidate);expect(full.body.text).not.toContain('QUJD'.repeat(100));
+ expect(w.gh.invalid).toEqual([]);
 });
