@@ -10,24 +10,27 @@ import { makeWorld, parse } from '../../test/helpers/write-contract.js';
 import { createDispatch } from '../../src/tools/dispatch.js';
 import { requestKey } from '../../src/github/client.js';
 import { nativeConnection } from '../../src/native-git/client.js';
+import {TenantCapacityError} from '../../src/tenancy/runtime-limits.js';
 import { registry } from '../../src/tools/index.js';
 
 const KEY = 'FAKE-worker-service-key-for-local-tests-only';
-let dir, bare, server, origin, w, requests, asymmetric;
+let dir, bare, server, origin, w, requests, asymmetric, routeEnv, routeOrigins, secondServer;
 const git = (cwd, ...args) => execFileSync('git', args, { cwd, encoding: 'utf8', stdio: 'pipe' }).trim();
 beforeEach(async () => {
  dir = await mkdtemp(join(tmpdir(), 'native-service-')); const seed = join(dir, 'seed'); bare = join(dir, 'remote.git');
  await mkdir(seed); git(seed, 'init', '-b', 'main'); git(seed, 'config', 'user.name', 'Fixture'); git(seed, 'config', 'user.email', 'fixture@example.test');
  await writeFile(join(seed, 'file.txt'), 'initial\n'); git(seed, 'add', 'file.txt'); git(seed, 'commit', '-m', 'initial'); git(dir, 'clone', '--bare', seed, bare);
- w = await makeWorld({ mode: 'production', profile: 'full' }); requests = []; asymmetric = false;
+ w = await makeWorld({ mode: 'production', profile: 'full' }); requests = []; asymmetric = false; routeEnv={}; routeOrigins=new Map(); secondServer=null;
  server = nativeGitServer({ root: join(dir, 'storage'), key: KEY, now: w.ctx.now, allowLocalFixtures: true, fixtureRemote: () => bare });
- await new Promise(resolve => server.listen(0, '127.0.0.1', resolve)); origin = `http://127.0.0.1:${server.address().port}`;
+ await new Promise(resolve => server.listen(0, '127.0.0.1', resolve)); origin = `http://127.0.0.1:${server.address().port}`; routeOrigins.set('https://worker.example.test',origin);
  w.gh.when('GET /repos/{owner}/{repo}').reply(200, { full_name: 'example-org/hello', default_branch: 'main' });
 });
-afterEach(async () => { vi.restoreAllMocks(); await new Promise(resolve => server.close(resolve)); await rm(dir, { recursive: true, force: true }); });
+afterEach(async () => { vi.restoreAllMocks(); if(secondServer) await new Promise(resolve=>secondServer.close(resolve)); await new Promise(resolve => server.close(resolve)); await rm(dir, { recursive: true, force: true }); });
 async function invoke(name, args, connection = w.connection) {
- const run = createDispatch({ ...w.ctx, env: { ...w.ctx.env, NATIVE_GIT_WORKER_URL: 'https://worker.example.test/', ...(asymmetric ? {} : { NATIVE_GIT_WORKER_KEY: KEY }) }, gates: [], fetch: async (url, init) => {
-  if (String(url).startsWith('https://worker.example.test/')) { requests.push(JSON.parse(init.body)); return fetch(origin + '/v1/workspace', init); }
+ const run = createDispatch({ ...w.ctx, env: { ...w.ctx.env, NATIVE_GIT_WORKER_URL: 'https://worker.example.test/', ...(asymmetric ? {} : { NATIVE_GIT_WORKER_KEY: KEY }), ...routeEnv }, gates: [], fetch: async (url, init) => {
+  const host=new URL(url).origin;
+  const routed=host==='https://worker.example.test'?origin:routeOrigins.get(host);
+  if (routed) { requests.push(JSON.parse(init.body)); return fetch(routed + '/v1/workspace', init); }
   return w.gh.fetch(url, init);
  } });
  return run({ registry, name, args, connection, db: w.db });
@@ -400,4 +403,42 @@ it('does not clear an existing mutation lock when idle renewal is refused',async
  const refused=await invoke('github_git_workspace_read',{workspace_id:id,operation:'status'});expect(refused.isError).toBe(true);
  expect(await readFile(lock,'utf8')).toBe('operator-owned-lock');
  await rm(lock);expect(parse(await invoke('github_git_workspace_read',{workspace_id:id,operation:'status'})).state).toBe('ready');
+});
+
+it.each([false,true])('keeps real Git bytes, replay and disposal on their own worker across cutover (pre-pin=%s)',async legacy=>{
+ const args={owner:'example-org',repo:'hello',requestKey:'old-host-clone'};
+ const old=parse(await invoke('github_git_workspace_open',args)).result.workspace_id;
+ const row=await w.db.getJob(old,nativeConnection(w.ctx));
+ expect(row.provider_ref.length).toBeLessThanOrEqual(200);
+ expect(JSON.parse(row.provider_ref).host).toMatch(/^[a-f0-9]{32}$/);
+ expect(parse(await invoke('github_git_workspace_run',{workspace_id:old,operation:'write_file',expectedGeneration:0,options:{path:'file.txt',base64:Buffer.from('old-host-only\n').toString('base64')},requestKey:'old-host-edit'})).status).toBe('applied');
+ w.advanceClock(1000);
+ secondServer=nativeGitServer({root:join(dir,'second-storage'),key:KEY,now:w.ctx.now,allowLocalFixtures:true,fixtureRemote:()=>bare,maxConcurrent:8});
+ await new Promise(resolve=>secondServer.listen(0,'127.0.0.1',resolve));
+ routeOrigins.set('https://new-worker.example.test',`http://127.0.0.1:${secondServer.address().port}`);
+ routeEnv={NATIVE_GIT_WORKER_URL:'https://new-worker.example.test',NATIVE_GIT_PREVIOUS_WORKER_URL:'https://worker.example.test',NATIVE_GIT_WORKER_CUTOVER_AT:new Date(w.ctx.now()).toISOString()};
+ if(legacy){
+  const get=w.db.getJob.bind(w.db);
+  vi.spyOn(w.db,'getJob').mockImplementation(async(...a)=>{const r=await get(...a);if(r?.kind==='native-git-workspace'){const m=JSON.parse(r.provider_ref);delete m.host;r.provider_ref=JSON.stringify(m);}return r;});
+ }
+ expect(parse(await invoke('github_git_workspace_read',{operation:'capabilities'})).worker.max_concurrent).toBe(8);
+ const fresh=parse(await invoke('github_git_workspace_open',{...args,requestKey:'new-host-clone'})).result.workspace_id;
+ expect(parse(await invoke('github_git_workspace_run',{workspace_id:fresh,operation:'write_file',expectedGeneration:0,options:{path:'file.txt',base64:Buffer.from('new-host-only\n').toString('base64')},requestKey:'new-host-edit'})).status).toBe('applied');
+ for(const [id,content] of [[old,'old-host-only\n'],[fresh,'new-host-only\n']]){
+  const r=parse(await invoke('github_git_workspace_read',{workspace_id:id,operation:'read_file',options:{path:'file.txt'},byteLength:100}));
+  expect(Buffer.from(r.content_base64,'base64').toString()).toBe(content);
+ }
+ const replay=parse(await invoke('github_git_workspace_open',args));
+ expect(replay.status).toBe('replayed');expect(replay.current_workspace).toMatchObject({available:true,generation:1});
+ expect(parse(await invoke('github_git_workspace_close',{workspace_id:old,requestKey:'close-old-host'})).result.disposed).toBe(true);
+ expect(parse(await invoke('github_git_workspace_read',{workspace_id:fresh,operation:'status'})).generation).toBe(1);
+ expect(parse(await invoke('github_git_workspace_close',{workspace_id:fresh,requestKey:'close-new-host'})).result.disposed).toBe(true);
+});
+
+it('reports tenant metadata admission refusal as known no-clone rather than uncertain GitHub transport',async()=>{
+ vi.spyOn(w.db,'createJob').mockRejectedValue(new TenantCapacityError('job',86400));
+ const r=parse(await invoke('github_git_workspace_open',{owner:'example-org',repo:'hello',requestKey:'capacity-denied-clone'}));
+ expect(r.status).toBe('rejected');expect(r.done).toBe(false);expect(r.retryable).toBe(true);
+ expect(r.error).toContain('before any clone was sent');expect(r.error).not.toContain('GitHub could not be reached');
+ expect(requests).toHaveLength(0);
 });

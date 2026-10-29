@@ -1,9 +1,10 @@
 import { nativeWorkerPublicKey } from '../native-git/signing.js';
 import { randomBytes } from 'node:crypto';
 import { defineRead } from './define-read.js';
-import { defineGithubWrite } from './define-github-write.js';
+import { defineGithubWrite, explainGithubError } from './define-github-write.js';
+import { TenantCapacityError } from '../tenancy/runtime-limits.js';
 import { READ_OPERATIONS, WRITE_OPERATIONS, gitCommand, switchBranch, branchName, nativeOperationHelp } from '../native-git/commands.js';
-import { nativeWorkspaceId, workerUrl, workerKey } from '../native-git/protocol.js';
+import { nativeWorkspaceId, workerUrl, workerKey, nativeWorkerHost } from '../native-git/protocol.js';
 import { nativeConnection, nativeOpenRequestKey, nativeRecord, authorizeNativeRepo, callNativeWorker } from '../native-git/client.js';
 
 const OWNER = { type: 'string', minLength: 1, maxLength: 39, pattern: '^[A-Za-z0-9-]+$' };
@@ -25,6 +26,7 @@ const configured = c => { workerUrl(c.env); if (c.env?.NATIVE_GIT_WORKER_KEY) wo
 
 const open = defineGithubWrite({
  requestKey: nativeOpenRequestKey,
+ explain: error => error?.safeMessage ? error.message : explainGithubError(error),
  name: 'github_git_workspace_open', area: 'git', audience: ['B', 'O', 'Op'],
  description: 'Clone an authorized repository. Use a fresh requestKey per new workspace and reuse it only for retries; a closed clone receipt is historical.',
  properties: { owner: OWNER, repo: REPO, branch: TEXT, authorName: { type: 'string', minLength: 1, maxLength: 100 }, authorEmail: { type: 'string', minLength: 1, maxLength: 254 }, depth: { type: 'integer', minimum: 1, maximum: 100000 }, leaseMinutes: { type: 'integer', minimum: 1, maximum: 1440, description: 'Idle timeout in minutes, renewed by authorized workspace activity; default 240 (four hours).' } }, required: ['repo'], declarations,
@@ -35,8 +37,12 @@ const open = defineGithubWrite({
   const id = 'job_' + randomBytes(8).toString('hex');
   const binding = { authority: randomBytes(16).toString('hex'), connection: nativeConnection(c), owner: t.owner, repo: t.repo };
   const worker = nativeWorkspaceId(binding, requestKey);
-  await c.db.createJob({ id, connection: nativeConnection(c), owner: t.owner, repo: t.repo, kind: 'native-git-workspace', providerRef: JSON.stringify({ authority: binding.authority, worker, idleTimeoutMs: (a.leaseMinutes ?? 240) * 60000 }), ttlMinutes: a.leaseMinutes ?? 240 });
-  try { return { workspace_id: id, result: await callNativeWorker(c, { action: 'open', binding, job: {id,idleTimeoutMs:(a.leaseMinutes ?? 240)*60000}, requestKey, allowWrite: true, network: true, options: { branch: a.branch, depth: a.depth, authorName: a.authorName, authorEmail: a.authorEmail, ttlMs: (a.leaseMinutes ?? 240) * 60000 } }) }; }
+  const host = nativeWorkerHost(c.env);
+  await c.db.createJob({ id, connection: nativeConnection(c), owner: t.owner, repo: t.repo, kind: 'native-git-workspace', providerRef: JSON.stringify({ authority: binding.authority, worker, host, idleTimeoutMs: (a.leaseMinutes ?? 240) * 60000 }), ttlMinutes: a.leaseMinutes ?? 240 }).catch(error=>{
+   if(error instanceof TenantCapacityError) throw Object.assign(new TypeError('Workspace metadata capacity was reached before any clone was sent. Wait for capacity or update this tenant’s job allowance, then start a new clone intent.'),{status:429,safeMessage:true,safeRetryable:true});
+   throw error;
+  });
+  try { return { workspace_id: id, result: await callNativeWorker(c, { action: 'open', binding, job: {id,host,idleTimeoutMs:(a.leaseMinutes ?? 240)*60000}, requestKey, allowWrite: true, network: true, options: { branch: a.branch, depth: a.depth, authorName: a.authorName, authorEmail: a.authorEmail, ttlMs: (a.leaseMinutes ?? 240) * 60000 } }) }; }
   catch { return { workspace_id: id, result: { state: 'uncertain' } }; }
  },
  readAfter: async ({ ctx: c, response }) => {
