@@ -1,0 +1,408 @@
+{
+  "version": 1,
+  "status": "verified",
+  "source": "ac0d2805aacb7554ac81a0fb6a7b512471ce3969",
+  "implementationPR": 473,
+  "checkedHead": "1f9e6a5ef81c02d49d5b8d9bfa35ac5365daa755",
+  "sourceCI": 40928755738,
+  "policyCI": 40928755670,
+  "workerImage": 40928755722,
+  "mainCI": 40929159066,
+  "manualRelease": 40929178575,
+  "dailyQuota": {
+    "implementationPR": 472,
+    "source": "63b6b5849537a35fbd43e0247de47e70f76691be",
+    "checkedRelease": 40924604299,
+    "openJournal": 4359,
+    "closeJournal": 4360,
+    "legacyCountersUnchanged": {
+      "rows": 3,
+      "used": 112,
+      "hash": "0a13a96ea0dd36fd92b69165b2d1cb54"
+    },
+    "obsoleteStoredQuotaFieldsRemoved": true,
+    "counterAggregateAfter": {
+      "rows": 3,
+      "used": 112
+    },
+    "obsoleteStoredQuotaFieldsRemaining": 0
+  },
+  "defaultWorker": "Dokploy",
+  "fixedRequestCeiling": null,
+  "fixedNativeWorkspaceCeiling": null,
+  "defaultIdleTimeoutMs": 14400000,
+  "oneOperationPerWorkspace": true,
+  "resourcePolicy": {
+    "minMemoryBytes": 33554432,
+    "minDiskBytes": 67108864,
+    "maxLoopDelayMs": 250
+  },
+  "localSourceProof": {
+    "heldIndependentRequests": 12,
+    "serviceTests": 37,
+    "broaderNativeStoreTests": 88,
+    "resourcePolicyTests": 20,
+    "assembledChecksBase": "63b6b5849537a35fbd43e0247de47e70f76691be"
+  },
+  "workerDeployment": {
+    "id": "QgJJ_F5nAS0-nSoVOod3q",
+    "source": "ac0d2805aacb7554ac81a0fb6a7b512471ce3969",
+    "status": "done",
+    "finishedAt": "2026-10-29T18:20:42.321Z",
+    "existingVolumeRetained": true,
+    "healthProtocol": 3
+  },
+  "maintenance": {
+    "activatedReady": "dpl_VsoDQwFZziGNow3wMfB78TM56pjf",
+    "primaryPausedOnly": true,
+    "drainInventory": {
+      "active": 4,
+      "legacyRender": 2,
+      "earliestExpiry": "2026-10-29T20:44:55.093Z",
+      "primaryLastActivity": "2026-10-29T16:45:32.563Z",
+      "observedAt": "2026-10-29T18:20:27.132Z"
+    },
+    "flagConfigured": false,
+    "unpauseDeployment": "dpl_CEg9t7KjHsyHTEP9hhxeiagBEEnV",
+    "cleared": true
+  },
+  "resourceConfiguration": {
+    "sharedMemoryDefault": "2g",
+    "cpuCeilingDefault": 2,
+    "cpuConfigurable": true,
+    "persistentVolumeRetained": true,
+    "directCgroupInspection": false,
+    "guaranteedDiskQuota": false
+  },
+  "fixture": {
+    "owner": "robinson-ai-scratch",
+    "repo": "rtc-acc1-20261029-job-unlimited-e61",
+    "description": "Run-owned no daily job quota acceptance no-daily-job-20261029-e61; disposable private fixture."
+  },
+  "unrelatedActiveWorkspacesBefore": 4,
+  "legacyRenderWorkspacesBefore": 2,
+  "lanes": [
+    {
+      "lane": 0,
+      "openJournal": 4368,
+      "workspaceId": "job_6a64805385b816a8",
+      "openStatus": "applied",
+      "cloneHead": "8df1905602dc8dcb0a06bf41f33ab86c327902cf",
+      "idleTimeoutMs": 14400000,
+      "generation": 0,
+      "writeJournal": 4379,
+      "writeStatus": "applied",
+      "generationAfterWrite": 1,
+      "fileHash": "1c342a5f2bc88adf111ad3d84064c2d495474eb19b901b562cab41c258b67cf8",
+      "exactBytesVerified": true,
+      "readFileHash": "1c342a5f2bc88adf111ad3d84064c2d495474eb19b901b562cab41c258b67cf8",
+      "idleRenewalVerified": true,
+      "closeJournal": 4395,
+      "closeStatus": "applied",
+      "disposed": true
+    },
+    {
+      "lane": 1,
+      "openJournal": 4369,
+      "workspaceId": "job_0f77501e72fb48c4",
+      "openStatus": "applied",
+      "cloneHead": "8df1905602dc8dcb0a06bf41f33ab86c327902cf",
+      "idleTimeoutMs": 14400000,
+      "generation": 0,
+      "writeJournal": 4380,
+      "writeStatus": "applied",
+      "generationAfterWrite": 1,
+      "fileHash": "e1f433550caff33c7e19d798e4721b53367aa999c67df5da9917c6e206a57be5",
+      "exactBytesVerified": true,
+      "readFileHash": "e1f433550caff33c7e19d798e4721b53367aa999c67df5da9917c6e206a57be5",
+      "idleRenewalVerified": true,
+      "closeJournal": 4396,
+      "closeStatus": "applied",
+      "disposed": true
+    },
+    {
+      "lane": 2,
+      "openJournal": 4367,
+      "workspaceId": "job_a5c24058168a8514",
+      "openStatus": "applied",
+      "cloneHead": "8df1905602dc8dcb0a06bf41f33ab86c327902cf",
+      "idleTimeoutMs": 14400000,
+      "generation": 0,
+      "writeJournal": 4381,
+      "writeStatus": "applied",
+      "generationAfterWrite": 1,
+      "fileHash": "69fbb3834d0051116b811ae37181a5781ee3d3b002498fcf0057de5f0c81bb11",
+      "exactBytesVerified": true,
+      "readFileHash": "69fbb3834d0051116b811ae37181a5781ee3d3b002498fcf0057de5f0c81bb11",
+      "idleRenewalVerified": true,
+      "closeJournal": 4398,
+      "closeStatus": "applied",
+      "disposed": true
+    },
+    {
+      "lane": 3,
+      "openJournal": 4370,
+      "workspaceId": "job_830fe3d6a322c28c",
+      "openStatus": "applied",
+      "cloneHead": "8df1905602dc8dcb0a06bf41f33ab86c327902cf",
+      "idleTimeoutMs": 14400000,
+      "generation": 0,
+      "writeJournal": 4382,
+      "writeStatus": "applied",
+      "generationAfterWrite": 1,
+      "fileHash": "1cc4a03960f8912e360f1e4804e122a726855ddc27dbe02369a9b5100e8f6174",
+      "exactBytesVerified": true,
+      "readFileHash": "1cc4a03960f8912e360f1e4804e122a726855ddc27dbe02369a9b5100e8f6174",
+      "idleRenewalVerified": true,
+      "closeJournal": 4397,
+      "closeStatus": "applied",
+      "disposed": true
+    },
+    {
+      "lane": 4,
+      "openJournal": 4372,
+      "workspaceId": "job_dd6e09df4a59865b",
+      "openStatus": "applied",
+      "cloneHead": "8df1905602dc8dcb0a06bf41f33ab86c327902cf",
+      "idleTimeoutMs": 14400000,
+      "generation": 0,
+      "writeJournal": 4385,
+      "writeStatus": "applied",
+      "generationAfterWrite": 1,
+      "fileHash": "4a710b9848c8b47e875a2e5a6b90c069fb288261c3355fa14ce299f222a5e5d9",
+      "exactBytesVerified": true,
+      "readFileHash": "4a710b9848c8b47e875a2e5a6b90c069fb288261c3355fa14ce299f222a5e5d9",
+      "idleRenewalVerified": true,
+      "closeJournal": 4400,
+      "closeStatus": "applied",
+      "disposed": true
+    },
+    {
+      "lane": 5,
+      "openJournal": 4371,
+      "workspaceId": "job_ee3c631130f1c3db",
+      "openStatus": "applied",
+      "cloneHead": "8df1905602dc8dcb0a06bf41f33ab86c327902cf",
+      "idleTimeoutMs": 14400000,
+      "generation": 0,
+      "writeJournal": 4383,
+      "writeStatus": "applied",
+      "generationAfterWrite": 1,
+      "fileHash": "c7cd1a28db979945b077d883bb7d7492654379ae821e433093f12731bd308b1d",
+      "exactBytesVerified": true,
+      "readFileHash": "c7cd1a28db979945b077d883bb7d7492654379ae821e433093f12731bd308b1d",
+      "idleRenewalVerified": true,
+      "closeJournal": 4399,
+      "closeStatus": "applied",
+      "disposed": true
+    },
+    {
+      "lane": 6,
+      "openJournal": 4373,
+      "workspaceId": "job_2d7e28adf244a4a7",
+      "openStatus": "applied",
+      "cloneHead": "8df1905602dc8dcb0a06bf41f33ab86c327902cf",
+      "idleTimeoutMs": 14400000,
+      "generation": 0,
+      "writeJournal": 4384,
+      "writeStatus": "applied",
+      "generationAfterWrite": 1,
+      "fileHash": "5f4bff116218d9cf4e7114b3dff292f701e94c984b9d49b1f1f1da21552040ba",
+      "exactBytesVerified": true,
+      "readFileHash": "5f4bff116218d9cf4e7114b3dff292f701e94c984b9d49b1f1f1da21552040ba",
+      "idleRenewalVerified": true,
+      "closeJournal": 4401,
+      "closeStatus": "applied",
+      "disposed": true
+    },
+    {
+      "lane": 7,
+      "openJournal": 4374,
+      "workspaceId": "job_155fdcde07d37d51",
+      "openStatus": "applied",
+      "cloneHead": "8df1905602dc8dcb0a06bf41f33ab86c327902cf",
+      "idleTimeoutMs": 14400000,
+      "generation": 0,
+      "writeJournal": 4386,
+      "writeStatus": "applied",
+      "generationAfterWrite": 1,
+      "fileHash": "0f5b6314c3d35fd3b9381ba712150f7583ba8ffbf2a3f1c9249bdc3d243d8511",
+      "exactBytesVerified": true,
+      "readFileHash": "0f5b6314c3d35fd3b9381ba712150f7583ba8ffbf2a3f1c9249bdc3d243d8511",
+      "idleRenewalVerified": true,
+      "closeJournal": 4402,
+      "closeStatus": "applied",
+      "disposed": true
+    },
+    {
+      "lane": 8,
+      "openJournal": 4375,
+      "workspaceId": "job_98d5bf3473e3be2b",
+      "openStatus": "applied",
+      "cloneHead": "8df1905602dc8dcb0a06bf41f33ab86c327902cf",
+      "idleTimeoutMs": 14400000,
+      "generation": 0,
+      "writeJournal": 4387,
+      "writeStatus": "applied",
+      "generationAfterWrite": 1,
+      "fileHash": "bb19dcc0c035ff513eb555af0ad98658080add90ff322810cbc5f8b94d344053",
+      "exactBytesVerified": true,
+      "readFileHash": "bb19dcc0c035ff513eb555af0ad98658080add90ff322810cbc5f8b94d344053",
+      "idleRenewalVerified": true,
+      "closeJournal": 4403,
+      "closeStatus": "applied",
+      "disposed": true
+    },
+    {
+      "lane": 9,
+      "openJournal": 4376,
+      "workspaceId": "job_9229690b2767ac03",
+      "openStatus": "applied",
+      "cloneHead": "8df1905602dc8dcb0a06bf41f33ab86c327902cf",
+      "idleTimeoutMs": 14400000,
+      "generation": 0,
+      "writeJournal": 4388,
+      "writeStatus": "applied",
+      "generationAfterWrite": 1,
+      "fileHash": "715082ee96f03877757b8f36ec2dc21d04ed933a9cdf7105d403a7fc5142ba8a",
+      "exactBytesVerified": true,
+      "readFileHash": "715082ee96f03877757b8f36ec2dc21d04ed933a9cdf7105d403a7fc5142ba8a",
+      "idleRenewalVerified": true,
+      "closeJournal": 4404,
+      "closeStatus": "applied",
+      "disposed": true
+    },
+    {
+      "lane": 10,
+      "openJournal": 4377,
+      "workspaceId": "job_28bf2df176050145",
+      "openStatus": "applied",
+      "cloneHead": "8df1905602dc8dcb0a06bf41f33ab86c327902cf",
+      "idleTimeoutMs": 14400000,
+      "generation": 0,
+      "writeJournal": 4389,
+      "writeStatus": "applied",
+      "generationAfterWrite": 1,
+      "fileHash": "b197a6443143c0419f018041c54f8c6e271a4948ca28d7ffebc0c9598d94e025",
+      "exactBytesVerified": true,
+      "readFileHash": "b197a6443143c0419f018041c54f8c6e271a4948ca28d7ffebc0c9598d94e025",
+      "idleRenewalVerified": true,
+      "closeJournal": 4405,
+      "closeStatus": "applied",
+      "disposed": true
+    },
+    {
+      "lane": 11,
+      "openJournal": 4378,
+      "workspaceId": "job_fdedfe6f970ab741",
+      "openStatus": "applied",
+      "cloneHead": "8df1905602dc8dcb0a06bf41f33ab86c327902cf",
+      "idleTimeoutMs": 14400000,
+      "generation": 0,
+      "writeJournal": 4390,
+      "writeStatus": "applied",
+      "generationAfterWrite": 1,
+      "fileHash": "26aacc3440ce3ff5f5dc47fcc11213b5530dac231ebb156ee6f87767fffa00e9",
+      "exactBytesVerified": true,
+      "readFileHash": "26aacc3440ce3ff5f5dc47fcc11213b5530dac231ebb156ee6f87767fffa00e9",
+      "idleRenewalVerified": true,
+      "closeJournal": 4406,
+      "closeStatus": "applied",
+      "disposed": true
+    }
+  ],
+  "serving": {
+    "id": "dpl_CEg9t7KjHsyHTEP9hhxeiagBEEnV",
+    "state": "READY",
+    "source": "ac0d2805aacb7554ac81a0fb6a7b512471ce3969",
+    "ready": 1793298120679
+  },
+  "capabilities": {
+    "ready": true,
+    "protocol": 3,
+    "native_git": "git version 2.39.5",
+    "max_concurrent": null,
+    "capacity_mode": "resource-aware",
+    "resource_policy": {
+      "minMemoryBytes": 33554432,
+      "minDiskBytes": 67108864,
+      "maxLoopDelayMs": 250
+    },
+    "admission": {
+      "allowed": true
+    },
+    "workspace_lease": "idle-v1"
+  },
+  "nativePush": [
+    {
+      "operation": "add",
+      "status": "applied",
+      "journal": 4392,
+      "head": "8df1905602dc8dcb0a06bf41f33ab86c327902cf",
+      "generation": 2
+    },
+    {
+      "operation": "commit",
+      "status": "applied",
+      "journal": 4393,
+      "head": "512f5fe0116db91a068b031d0afe291c1161580d",
+      "generation": 3
+    },
+    {
+      "operation": "push",
+      "status": "applied",
+      "journal": 4394,
+      "head": "512f5fe0116db91a068b031d0afe291c1161580d",
+      "generation": 4,
+      "remoteVerified": true,
+      "remoteHead": "512f5fe0116db91a068b031d0afe291c1161580d"
+    }
+  ],
+  "independentCommit": {
+    "sha": "512f5fe0116db91a068b031d0afe291c1161580d",
+    "parents": [
+      {
+        "sha": "8df1905602dc8dcb0a06bf41f33ab86c327902cf"
+      }
+    ],
+    "tree": {
+      "sha": "ae6adadfc247f9d9e39026a74c180c3e445afe25"
+    }
+  },
+  "independentRemoteRef": {
+    "ref": "refs/heads/resource-admission-e61",
+    "object": {
+      "sha": "512f5fe0116db91a068b031d0afe291c1161580d"
+    }
+  },
+  "activeReplay": {
+    "historical": true,
+    "available": true
+  },
+  "cleanup": {
+    "closedWorkspaceCount": 12,
+    "privateRepositoryDeletedJournal": 4408,
+    "independentSameApp404": true,
+    "completeConnectionInventoryEmpty": true,
+    "activeRunOwnedJobsAcrossAllSchemas": 0,
+    "unrelatedActiveWorkspacesRetained": 4,
+    "legacyRenderWorkspacesRetained": 2,
+    "observedAt": "2026-10-29T18:27:32.700Z"
+  },
+  "closedReplay": {
+    "done": false,
+    "historical": true,
+    "state": "disposed",
+    "available": false
+  },
+  "liveLimitsPage": {
+    "noDailyJobQuota": true,
+    "resourceBasedNativeAdmission": true
+  },
+  "acceptanceLimits": [
+    "Parallel client batches prove functional clone/write/read at twelve active native workspaces; no claim that all child Git processes overlapped or large repositories fit.",
+    "Local held-request service test independently proves twelve simultaneous requests and same-workspace exclusion.",
+    "Legacy Render workspaces and their original leases remain until safe drain; no unrelated files were inspected or deleted.",
+    "No new paid capacity, independent off-host backup restoration, fresh human sign-in or original fleet-host installation is claimed."
+  ]
+}
