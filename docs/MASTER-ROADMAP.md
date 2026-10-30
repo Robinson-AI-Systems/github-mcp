@@ -1,18 +1,20 @@
 # MASTER ROADMAP — the one handoff
 
-**2026-10-28 agent-feedback closeout:** Issues #427–#436 are all independently closed/completed, with PRs #440–#443 merged under exact-head required CI and review gates. C-16 `github_write_batch` has accepted source and disposable-Postgres tests; it is **not** a claim of a new live deployment or real-client smoke test. See `docs/status/2026-10-28-mcp-feedback-closeout.md` and the normal policy-governed release plan. The FIN roadmap below remains the product's other-work roadmap.
+Current state and next item: `npm run session:status`, `docs/STATUS.md`, `docs/pr-cards/work-index.json` (machine-readable;
+validate with `python3 docs/pr-cards/validate-index.py`). Product authority: [owner decision](OWNER-DECISION-2026-10-27.md).
+Procedure: `AGENTS.md` and `docs/SESSION-START.md`. Older roadmap text (stale statuses, the paste-in implementer prompt,
+tool counts) is in `docs/archive/MASTER-ROADMAP-2026-10-30-before-streamlining.md`.
 
-## Start here (2026-10-23): the finish plan
+**Status summary (checked 2026-10-30 against the work index):** batches A through Y, PUB and CAP are MERGED or complete;
+the FIN finish plan ([FINISH-PLAN](designs/FINISH-PLAN.md)) is MERGED except **PLAY-1** (Robinson Playground), which is
+IN_PROGRESS. The 2026-10-28 agent-feedback issues #427–#436 are closed (PRs #440–#443, C-16 `github_write_batch`); that
+is source-merged, not a new live release or client acceptance. Real-account acceptance remains a separate queue in
+`docs/STATUS.md` and never blocks development.
 
-**Everything left to finish the product is in [FINISH-PLAN](designs/FINISH-PLAN.md)**, with one ready-to-implement card
-per piece (batch FIN in `docs/pr-cards/work-index.json`), in this order:
-GOD-2 + GOD-3 (one PR) → ENT-1 (before the Enterprise trial ends ~2026-11-22) → ACC-1 (repeatable, alongside) →
-GOD-4 → GQL-1 → GOD-5 → LAUNCH-1 → AUTH-1 → INV-1 → HARD-1. Cards are written for Sol 5.6 at light/medium effort; see
-[SOL-GUIDE](pr-cards/SOL-GUIDE.md). Everything below this section is history kept for reference.
+## Build order (historical)
 
-Older planning paragraphs (2026-10-12 to 2026-10-21) are kept in `docs/archive/STATUS-before-2026-10-20.md`.
-
-## Order and why
+The order the batches were built in. Guards named here (production, spend, message) are builder-era design history; for the
+owner connection the owner decision removed duplicate policy and kept disclosure, journaling, readback and delegated limits.
 
 | Stage | Batches | Why in this place | Owner gate |
 |---|---|---|---|
@@ -25,29 +27,17 @@ Older planning paragraphs (2026-10-12 to 2026-10-21) are kept in `docs/archive/S
 | 7 Projects and workflows | P → W | Optional project profiles (Appliance Desk and the Robinson servers first) and the one-sentence jobs | — |
 | 8 Everything else | U → R | Universal REST and GraphQL access; the contract doors Robinson's Toolkit (the hub) uses to reach this server | IN-10 |
 | 9 Close-out | X | Undo, read-only smoke test on the real accounts | IN-04, IN-05 |
-| Production | GO-LIVE-CHECKLIST | Only after Chris turns production on per account | IN-07 |
-
-## Implementing agent — paste this
-
-> Read `docs/SESSION-START.md`, STATUS and the next card (plus its resume note `docs/pr-cards/<ID>.progress.md` if
-> present). Find the cited design headings and named code/tests in bounded sections. Run the drift protocol checklist A
-> against latest main. If no card exists, write one short card from the approved design (`docs/pr-cards/README.md`) with
-> exact current paths, credential/secret/guard/production boundaries, meaningful tests and completion evidence. Routine
-> details are yours to implement; a missing security, production, credential or schema decision needs a reviewed
-> amendment, not a guess. Implement a coherent unit, run the targeted checks, push once. While checks run, implement only
-> the eligible immediate successor. Write the self-review, fix blocking findings in one patch, refresh exact-head gates,
-> merge when authorized and green. Update the card, STATUS and `work-index.json` as if merged. Continue while eligible
-> work exists; stop only for a real gate, with committed work and the exact next action.
+| Production | GO-LIVE-CHECKLIST | Switches and owner steps; no production-enable gate on the owner connection (owner decision) | — |
 
 ## Work coverage
 
 `docs/pr-cards/work-index.json` is the machine-readable list (`python3 docs/pr-cards/validate-index.py`). **JIT** = covered
-by the approved design; write the card when its predecessor is real. Tool counts are from `docs/TOOL-CATALOG.md`
-(`python3 scripts/count-catalog.py`: 411 = 405 hand-built + 6 universal).
+by the approved design; write the card when its predecessor is real. Tool counts come from `docs/TOOL-CATALOG.md` (`python3 scripts/count-catalog.py`); the card status column below is
+summary only, `work-index.json` is authoritative.
 
 | Batch | Cards | Tools | Card status |
 |---|---|---|---|
-| A Foundation | A-1 repo, CI, fake GitHub · A-2 schema · A-3 login · A-4 GitHub client, vendored descriptions, finders · A-5 setup page, Apps from manifests, credential store, one-time secrets · A-6 DEPLOY.md | 2 | A-1 MERGED (#1); A-2 MERGED (#7); A-3 MERGED (#8, #9); A-4 MERGED (#10); A-5 split: A-5a MERGED (#11), A-5b READY; A-6 onward JIT |
+| A Foundation | A-1 repo, CI, fake GitHub · A-2 schema · A-3 login · A-4 GitHub client, vendored descriptions, finders · A-5 setup page, Apps from manifests, credential store, one-time secrets · A-6 DEPLOY.md | 2 | MERGED (see work-index.json for PR numbers and any follow-ups) |
 | B Trust | B-1 safety layer · B-2 production guard · B-3 self-protection and ownership · B-4 access/message/spend · B-5 errors and shaping · B-6 profiles and downscoped tokens · B-7 check-writes · B-8 server tools | 11 | MERGED |
 | C Context | C-1 small results · C-2 listing modes, meta-tools, budgets | 5 | MERGED |
 | D Code | D-1 repositories · D-2 files, commits, git data · D-3 branches and tags | 44 | MERGED |
@@ -62,7 +52,7 @@ by the approved design; write the card when its predecessor is real. Tool counts
 | U Universal | U-1 REST · U-2 GraphQL | 6 | MERGED |
 | R Hub-ready doors (RTC 1) | R-1 passes · R-2 HTTPS API, manifest, OpenAPI, shared rate limit · R-3 conformance in CI | 1 | MERGED #225 |
 | X Close-out | X-1 undo · X-2 read-only smoke test | 1 | MERGED |
-| Y Gap closure (designed 2026-10-16) | Y-1 unblock universal tools · Y-2 GraphQL write specs · Y-3 other people's data, follow, star lists · Y-4 Projects v2 lifecycle · Y-5 moderation, org issue types/fields · Y-6 runners, Actions admin · Y-7 security writes · Y-8 artifacts, archives, uploads, jobs, wiki · Y-9 org long tail, read-backs, guides | ~80 planned | Y-1 and Y-2 merged (#227), Y-3 and Y-4 merged (#228), Y-5 and Y-6 merged (#229), Y-7 merged (#230), Y-8 merged (#231); Y-9 source complete (#233); live permission upgrades and provider acceptance pending |
-| PUB public-scale readiness | PUB-1 tenant isolation · PUB-2 delegated onboarding · PUB-3 capacity/abuse · PUB-4 mobile+desktop acceptance · PUB-5 independently approved publication gate | No new tools counted yet | PUB-1/2 **MERGED**; PUB-3 **source-complete, PR #267 pending review/merge**; PUB-4 **APPROVED**; PUB-5 **APPROVED** 2026-10-24 as the public free website launch (`docs/pr-cards/PUB-5.md`) |
-| CAP maximum legitimate authority | CAP-1 inventory · CAP-2 Standard Full · CAP-3 additional credentials · CAP-4 advanced gap closure · CAP-5 acceptance | No new tools claimed | CAP-1 merged #272; CAP-2 source reconciled for PR #273 (final gates required); CAP-3..CAP-5 **APPROVED / NOT IMPLEMENTED** |
-| **Total** | **83 cards** (78 previously indexed + 5 CAP) | **411 currently built or planned, PUB counts not claimed** | |
+| Y Gap closure (designed 2026-10-16) | Y-1 unblock universal tools · Y-2 GraphQL write specs · Y-3 other people's data, follow, star lists · Y-4 Projects v2 lifecycle · Y-5 moderation, org issue types/fields · Y-6 runners, Actions admin · Y-7 security writes · Y-8 artifacts, archives, uploads, jobs, wiki · Y-9 org long tail, read-backs, guides | ~80 planned | MERGED (see work-index.json for PR numbers and any follow-ups) |
+| PUB public-scale readiness | PUB-1 tenant isolation · PUB-2 delegated onboarding · PUB-3 capacity/abuse · PUB-4 mobile+desktop acceptance · PUB-5 independently approved publication gate | No new tools counted yet | MERGED (see work-index.json for PR numbers and any follow-ups) |
+| CAP maximum legitimate authority | CAP-1 inventory · CAP-2 Standard Full · CAP-3 additional credentials · CAP-4 advanced gap closure · CAP-5 acceptance | No new tools claimed | MERGED (see work-index.json for PR numbers and any follow-ups) |
+| **Total** | see `work-index.json` | see `docs/TOOL-CATALOG.md` | |

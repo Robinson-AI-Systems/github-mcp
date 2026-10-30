@@ -1,7 +1,8 @@
 # SOL-GUIDE — how to implement one card at light/medium effort
 
-For Sol 5.6 (or any smaller model) picking up a FIN card from `docs/designs/FINISH-PLAN.md`. Follow it literally.
-It is short on purpose; `AGENTS.md` still holds the hard limits.
+For Sol 5.6 (or any smaller model) picking up a card from `docs/pr-cards/work-index.json` (`npm run session:status`
+shows what is left). Follow it literally. Procedure overview: `docs/SESSION-START.md`; `AGENTS.md` holds the hard limits.
+Authority questions: `docs/OWNER-DECISION-2026-10-27.md` wins over any older card or design gate.
 
 ## The loop (one card = one PR unless the card says split)
 1. **Sync:** `cd <repo> && git fetch origin main && git checkout -B ai/sol/<card-lower>-<yyyymmdd> origin/main`.
@@ -27,7 +28,8 @@ It is short on purpose; `AGENTS.md` still holds the hard limits.
    push once. Green → read review threads (`gh api repos/<o>/<r>/pulls/<n>/ccr/review_threads`), fix real findings,
    reply and resolve; then merge at the exact head:
    `gh api -X PUT repos/<o>/<r>/pulls/<n>/merge -f merge_method=merge -f sha=<head>`.
-   If the environment refuses the merge, stop and tell Chris in one plain sentence; do not route around it.
+   If the environment refuses the merge, tell Chris once in one plain sentence, keep working on the next independent
+   step, and do not route around the refusal with another tool.
 
 ## Patterns to copy (do not invent)
 | Need | Copy from |
@@ -56,17 +58,17 @@ It is short on purpose; `AGENTS.md` still holds the hard limits.
 - Several files to commit? Use `github_content_push_files` (up to 50 files in one commit) — or git, when the session has it —
   never one `github_content_put_file` per file.
 
-## Environment notes (seen 2026-10-23)
+## Environment notes
 - Local Postgres for db/browser tests: `scripts/local-postgres-test.sh` starts one if `initdb` is installed.
 - Browsers: CI installs WebKit and uses the runner's Google Chrome. Locally, Playwright's own download may be blocked;
   `npm i @sparticuz/chromium` in a scratch folder gives a Chromium binary — set `BROWSER_CHROMIUM_PATH` to it. WebKit
   tests skip locally unless `REQUIRE_ALL_BROWSERS=1` (CI sets it).
-- The session may block production deploys, merges or external posts until Chris says so in chat. Ask once, plainly.
 - `gh` GraphQL may be blocked; use `gh api` REST routes.
 
 ## When stuck (max 2 tries per approach)
 Write in the PR description: what you tried, the exact error, your best guess at the cause, and the next action. Then
-continue with the next independent step of the card. Never mark a box you did not prove.
+continue with the next independent step of the card. Never mark a box you did not prove. Never end the turn while an
+independent step remains.
 
 ## Reporting to Chris (he is not a developer)
 Three to six short lines: what changed (in his words, not code), how it was checked, anything he must do (point at

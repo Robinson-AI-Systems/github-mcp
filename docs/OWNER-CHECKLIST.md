@@ -1,40 +1,36 @@
-# Current owner checklist — reconciled 2026-10-29
+# Owner checklist
 
-This is the current list of external inputs, not a new approval request. Existing authorization persists. The [prior checklist](archive/OWNER-CHECKLIST-2026-10-29-before-reconciliation.md) preserves historical decisions and completed setup; its duplicated or stale unchecked boxes are not additional obligations. The [owner authority decision](OWNER-DECISION-2026-10-27.md) governs conflicting historical restrictions.
+Only things that need you (your sign-in, phone or desktop, money, or a decision). None of these block building or merging; agents keep working. Updated 2026-10-30. Rule: [OWNER-DECISION-2026-10-27](OWNER-DECISION-2026-10-27.md). Older boxes are in the [archived checklist](archive/OWNER-CHECKLIST-2026-10-29-before-reconciliation.md) and are not extra chores.
 
-## Already usable and not something to repeat
+## Already working (do not repeat)
 
-The custom connector is serving at https://github.robinsonaisystems.com with authenticated owner operations, PR/CI/review tools and native Git clone/edit/commit/fetch/merge/push. Public availability was approved; do not ask the owner to approve public sign-in again or reinstall the working connector as a routine test. Native Git needs no official connector. Package read/delete/restore proof and current person/App actor proof are retained; do not request replacement credentials without an actual missing permission. Current end-user authority, genuine delegated restrictions, mobile browser tests and optional Hub independence remain requirements.
+- The connector is live at `https://github.robinsonaisystems.com` with owner operations, PR/CI/review tools and Git workspaces (clone, edit, commit, fetch, merge, push). Public sign-in was approved. Do not re-approve it or reinstall the connector as a test.
+- Git workspaces close after 4 idle hours (activity renews the time). There is no daily job limit and no fixed workspace count; only real server load limits work. Source: `docs/OWNER-DECISION-2026-10-27.md`.
+- New workspaces run on Dokploy. Older ones may still sit on Render until they close; do not cancel Render yet. Evidence: [rollout note](status/2026-10-29-native-resource-admission.md).
 
-This release changes new native workspaces to a four-hour **idle** timeout. Authorized workspace activity renews the selected window; close removes the workspace. Existing workspaces keep their original stated duration. Application tests still run in GitHub Actions or a separate development environment. For all users, new workspaces use Dokploy with resource-based admission and no fixed request/workspace count or daily job quota; older Render workspaces retain their original host during a safe drain. Render is not yet cancelled. Twelve live clone/write/exact-read/close lanes passed on matching released source. See [current rollout/cleanup evidence](status/2026-10-29-native-resource-admission.md).
+## Do when you have time
 
-## Operational items still outstanding
+1. **Fleet machine tool.** Install `ras-github` on the external machine using [its guide](../tools/ras-github/ras-github.README.md), then have an agent test a real push. Agents cannot install on your machine.
+2. **Test sign-ins for agents.** Provide spare sign-ins through the protected setup page: a fresh consent, a read-only one, a capped one, and one that may be deliberately revoked. See [DISPOSABLE-CONNECTION-ACCEPTANCE](DISPOSABLE-CONNECTION-ACCEPTANCE.md). Never paste tokens in chat. Agents run the tests.
 
-- [ ] Install the canonical corrected `ras-github` package from `tools/ras-github/` on the external fleet machine using its [installation and acceptance guide](../tools/ras-github/ras-github.README.md), then verify a disposable real-client multi-file push and native sync. The script, reversible installer and offline/fake-transport tests are prepared; this repository cannot install an external host's local helper. Keep content-snapshot publication distinct from local Git ancestry and check each repository's actual CI subscriptions/filters.
-- Optional future backup: the owner selected an existing interim off-server destination and Chris as encryption-key custodian. Activation/restore acceptance is deferred and does not block production under the2026-10-30 owner decision. Destination access still returns401; do not bypass it or ask for it as a production prerequisite. Use the [prepared runbook](NATIVE-GIT-BACKUP-RUNBOOK.md) when activation is requested. No verified backup currently exists and no paid storage is authorized implicitly.
-- [ ] For the remaining identity/lifecycle acceptance, supply separately disposable sign-in/grant fixtures through protected setup: fresh human consent, read-only/narrow/capped grants, and a refresh-token family that may deliberately be replayed/revoked. Keep tokens out of chat and preserve the useful owner connection. The [prepared disposable-connection matrix](DISPOSABLE-CONNECTION-ACCEPTANCE.md) names the setup, observations and exact cleanup. Agents perform the actual tests once those fixtures exist.
+## Only if you want them
 
-The authoritative [acceptance ledger](STATUS.md) and [ID-by-ID prerequisite review](status/2026-10-29-native-git-contract-lifecycle.md) retain 56 passes, 15 unpassed required rows and two optional Hub rows. Several unpassed rows contain partial proof; they are not 15 missing implementations or 15 new owner chores. Separate Codespaces policy/UI and eligible security/runner fixtures are required where named.
+- **Backups of Git workspaces.** Optional and not needed for production (decision 2026-10-30). No backup exists today. The off-server destination currently returns 401; do not work around it. When you want it: [runbook](NATIVE-GIT-BACKUP-RUNBOOK.md).
+- **Paid-feature tests.** Only with a specific cost approved by you. Nothing is bought just to finish a test.
+- **Budget-deletion test.** You declined it on 2026-10-23. Leave it closed.
+- **Meta Muse / Muse Code.** Test only if you want those clients.
+- **Hub checks.** Optional; the Hub team owns them.
+- **Pricing and spend alerts.** Choose only if you want to charge or cap spend. Nothing is assumed.
 
-## Choices that remain optional
+## Public launch inputs
 
-- **Paid-feature acceptance:** use already eligible hosted-runner/private-security fixtures where available. An operation with additional cost needs a specific cost proposal and approval; do not buy a plan, activate billable features or widen real users merely to complete a test.
-- **Budget deletion:** the owner declined further tests on 2026-10-23. Preserve that decision. Its historical unpassed row is not a current owner task and must not be reopened automatically.
-- **Other clients:** Meta Muse/Muse Code onboarding can be tested if those clients are wanted. Use the homepage's current public client information and the user's own protected GitHub consent; existing browser tests do not manufacture fresh client acceptance.
-- **Hub:** relay/sandbox verification is Hub-owned and optional. It does not block standalone completion.
+- [ ] Approve the privacy, terms and security text and choose the support email (`PUBLIC_SUPPORT_EMAIL`, then `LEGAL_APPROVED=yes` in Vercel). Until then those pages show a DRAFT banner (`src/tenancy/trust-pages.js`).
+- [ ] GitHub Marketplace listing (only if wanted): verify publisher email, pick trader status, accept the agreement, then enroll the webhook and cron secrets privately. See [GO-LIVE-CHECKLIST](GO-LIVE-CHECKLIST.md) and [listing](marketplace/LISTING.md).
+- [ ] Official MCP Registry listing (only if wanted): choose where the signing key lives and finish the DNS step. Never put the key in chat or the repo.
+- [ ] Website button: [connect-button](website/connect-button.html) goes on the business site through that site's own work.
 
-## Public distribution and business inputs
+## Playground (coding workspaces)
 
-The implementation and public-use authorization already exist. The following distribution/activation inputs remain unverified unless a later dated record proves them complete:
+Released in "best effort" mode (`vercel.json` sets `PLAYGROUND_RESOURCE_MODE`). Dokploy credentials are saved in protected setup; live provisioning reached Dokploy on 2026-10-30. Host monitoring, quotas and backups are optional. Private workspace isolation and clean-up are required. Some Dokploy host reads return 401; a signed clean-up proof covers that. Do not give unrestricted admin, paste credentials in chat, or buy more resources. Details: [PLAYGROUND-OPERATIONS](PLAYGROUND-OPERATIONS.md).
 
-- [ ] Approve final privacy/terms/security text and choose the support email; obtain legal review if desired. Agents can prepare the text, but cannot invent approval or the business contact.
-- [ ] For a GitHub Marketplace listing: verify the publisher email, choose truthful trader classification, accept the Marketplace agreement, and privately enroll the prepared webhook/cron activation secrets using the documented protected setup. Follow [go-live guidance](GO-LIVE-CHECKLIST.md) and [listing material](marketplace/LISTING.md); do not put secret values in tool arguments. Do not repeat the App transfer or installation based only on old unchecked boxes.
-- [ ] For official MCP Registry publication: choose protected signing-key custody and complete the prepared DNS-authenticated publication. Do not put the registry private key in chat or this public repository.
-- [ ] If wanted, place the prepared [connect button](website/connect-button.html) on the business website through that repository's own work session.
-- [ ] Choose pricing only if monetization is wanted, and choose provider spend alerts/limits using actual billing observations. No new price, quota or monthly ceiling is inferred here.
-
-See the latest dated repair/release note for exact source, CI, deployment, acceptance and cleanup evidence. Builder no-spend and project-isolation rules remain distinct from full-owner product authority.
-
-## Playground operator activation — existing hosting plan
-
-The integrated source and best-effort mode are released. The owner enrolled the Dokploy account credential/provider settings; actual live provisioning reached Dokploy on2026-10-30. The application enforces project boundaries; no special project-scoped API key exists. Host resource monitoring/quota guarantees and backups are optional under current owner decisions. Private workspace/credential isolation and exact cleanup remain required. See [the operating contract](PLAYGROUND-OPERATIONS.md). Current project/container reads work, while host-volume/health reads return401; a narrowly bound signed cleanup proof can substitute for forbidden host-volume inspection. Do not request unrestricted administration, put credentials in chat or buy/increase resources. Fleet/Render and genuine disposable acceptance fixtures remain separate.
+Acceptance counts (56 passed, 15 not yet) are from the 2026-10-29 ledger in [STATUS](STATUS.md); unverified today.

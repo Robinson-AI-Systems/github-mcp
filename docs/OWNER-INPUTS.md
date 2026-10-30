@@ -1,32 +1,57 @@
-# Owner inputs and decisions
+# Owner decisions (IN-xx)
 
-Current product authority: [specification](OWNER-DECISION-2026-10-27.md). All rows describe their stated scope; dated evidence below is historical, not new authorization.
+Your recorded decisions, kept short. Newest authority: [OWNER-DECISION-2026-10-27](OWNER-DECISION-2026-10-27.md) (with its 2026-10-29 and 2026-10-30 additions). Where a row below disagrees with it, the decision wins. Rows about "our development agents" bind builders only, not your own connection ([END-USER-AUTHORITY](END-USER-AUTHORITY.md)). Agents ask only what a card needs. Old wording is in git history and `docs/archive/`.
 
-Decisions only Chris can make, with stable IDs. Agents check here first and ask only for what the current card needs.
-An answer is "applied" only once the setting and its behavior are verified. Plain English throughout.
-IN-00 and IN-01 are answered. Scratch owner setup for IN-04/IN-05/IN-06 was verified 2026-10-12 UTC. Custom OAuth and approved scratch reads/scope denial are verified after October 15 reconnect; actual live write/cleanup acceptance remains open.
+## Answered or superseded
 
-| ID | Status | Question | Blocks | Recommended / safe default |
-|---|---|---|---|---|
-| IN-00 | **Answered 2026-10-10 — approved** (Chris: "I approve the plans") | Approve this plan (all designs in `docs/designs/`) so building can start. | Everything | — |
-**Owner clarification 2026-10-16:** All decisions restricting *our development agents* (including development $0 spending and no LIVE acceptance) must not be imposed as silent capabilities restrictions on future end users or their coding agents. The product must implement every feasible authorized action, warning about money/security and supporting end-user delegation. The historical IN-09 and IN-16 entries retain their audit history; current governing interpretation is [END-USER-AUTHORITY.md](END-USER-AUTHORITY.md). No implementation-agent spending was approved by this clarification.
+- **IN-00 (answered 2026-10-10):** plans approved so building could start.
+- **IN-01 (answered 2026-10-10):** repository stays public (free CI and secret scanning); no automated reviewer. The building agent reviews its own PRs.
+- **IN-07 production switch (superseded 2026-10-27):** your full connection runs production changes with same-call disclosure, a log and a readback. Production limits apply only to passes you deliberately restrict. Unverified: the sign-in page still asks for Production to be turned on per account before it offers Production mode (`src/oauth/policy.js:71-75`). Treat that as a known gap, tracked in the [authority plan](designs/AUTHORITY-PARITY-2026-10-28.md).
+- **IN-08 protected-resource list (superseded):** it may inform warnings. GitHub's own rules decide. It cannot block you or stop you editing it.
+- **IN-09 spending cap (removed for your connection):** costs are reported, not vetoed. Limits you set on a pass still bind. The $0 budget is for building agents only.
+- **IN-10 write pacing (clarified):** your writes follow GitHub's rate signals. Pass limits you chose stay.
+- **IN-12 production names, IN-13 notification confirmation:** informational only; no extra confirmation for you.
+- **IN-14 (answered 2026-10-10):** no legacy compatibility with the old toolkit.
+- **IN-15 (answered yes 2026-10-16):** new GitHub App permissions approved. You add them on github.com (Settings, Developer settings, GitHub Apps, the App, Permissions). `github_check_permissions` lists the exact names. Nothing breaks if you wait; the affected tools say "missing permission".
+- **IN-16 (2026-10-27):** money tools run real supported GitHub actions with cost disclosure. An unknown price is a notice, not a refusal.
+- **IN-17 (answered yes 2026-10-16):** wiki editing approved (libraries `isomorphic-git` and `memfs`, both in `package.json`).
+- **IN-18 (answered 2026-10-24):** no ChatGPT/Claude directory listing. Public and free from your own website, no invite list required, no people cap. See `docs/pr-cards/PUB-5.md`.
 
-| IN-01 | **Answered 2026-10-10** — **no automated review** (Chris: "I don't want the automated review at this time"); public, as Chris created the repository (and as he chose for the Stripe MCP) | Keep this repository public (free CI, GitHub secret scanning) with **no automated (Codex) review** — the building agent inspects every change itself and writes "Self-review" in the PR? | Nothing | As for Stripe: public, no automated review |
-| IN-02 | **Infrastructure verified 2026-10-12:** Vercel `github-mcp` READY on paid team; separate Neon `github_mcp` database (20 tables on that date; code now creates 27), 0.25 CU with five-minute autosuspend. OAuth metadata, setup page and unauthenticated MCP denial passed HTTP smoke; `/` 404 and authenticated acceptance remain open. | Dedicated Vercel + Neon setup. | Real deployment | No new plan or paid extras |
-| IN-03 | **Variables configured 2026-10-12; owner backup pending.** Generated independently in isolated Neon SQL and transferred directly into project-scoped encrypted Vercel production settings, without chat/GitHub exposure. Owner must privately retrieve and save both values, especially the admin passphrase, in password manager. | Private owner setup login | No sharing in chat or repo |
-| IN-04 | **Scratch App completed; real-work organization and personal account Apps pending** | **How the server signs in to GitHub.** Recommended: on the server's setup page, click "Create the GitHub App" once for your organization (Robinson-AI-Systems) and once for your personal account (christcr2012). GitHub creates a private app for each and hands its keys straight to the server — nothing to copy. Then click "Install" on each, and "Authorize as me" once so the server can reach your personal settings. Alternative: paste one fine-grained token per account (simpler, but no check runs, no token approvals, no per-connection read-only tokens). Not recommended: classic tokens. | Using the server | **Two private GitHub Apps** (research §4) |
-| IN-05 | **Scratch App installed for All repositories; real-work accounts' repository choices pending** | When you install each App, which repositories may it reach? | Using the server | **All repositories** on both accounts — the server's own guards (production, self-protection, read-only connections) do the narrowing; pick "Only select repositories" if you prefer and add repos later |
-| IN-06 | **Owner setup VERIFIED 2026-10-12; connected acceptance PENDING:** `robinson-ai-scratch` has custom App `robinson-mcp-robinson-ai-scratch` installed active/All repositories, 41/41 recorded permissions matching, `is_scratch=true`; owner independently enabled **`production_enabled=true` on 2026-10-18** using the private setup-passphrase step. This does not enable PRODUCTION mode on any existing connector token, approve real scratch writes/cleanup, or configure a product spend cap (developer's autonomous budget remains $0). Custom service-issued OAuth and approved scratch reads/scope denials verified after reconnect on 2026-10-15; scratch mutation and run-owned cleanup acceptance remain open. Original quarantined run belongs to its prior connection; do not rebind ownership or infer disposal authority. Original quarantined run remains untouched; connected FULL/PREVIEW still needs an owner-approved mode upgrade after PR #260's checked release. The user-selected account spend cap is not configured, not silently fixed to the developer's $0 limit. | V-1/V-2 connected scratch tests | No user production organizations may be designated scratch |
-| IN-07 | **Superseded product ceremony (2026-10-27)** | Full owner connections execute instructed production changes with same-call disclosure, journal and readback. Production limits may bind explicitly restricted developer passes. | Scope: delegated grants / builders, never owner full product gate | GitHub repository/environment settings govern |
-| IN-08 | **Superseded owner product gate (2026-10-27)** | Protected-resource lists may inform disclosure. Configure required protection in GitHub; no parallel server list vetoes owner writes or prevents its owner editing it. | Scope: GitHub settings / explicit delegation | Historical defaults are not owner product prohibitions |
-| IN-09 | **Removed owner spending gate (2026-10-27)** | Report known/unknown costs; no default or standing MCP account cap vetoes a full owner instruction. Issuer-selected pass ceilings remain binding. | Scope: developer $0 budget / explicit pass grants | GitHub billing and user instruction govern |
-| IN-10 | **Owner clarification (2026-10-27)** | Owner full writes follow GitHub rate signals without fixed server spacing. Issuer-selected pass pacing remains effective. | Scope: explicit pass grants / provider limits | Existing pass request limits are retained |
-| IN-11 | Later, optional | GitHub only lets a **classic token** read notifications. Add one with only the `notifications` scope on the setup page so `github_notify_*` tools work? | O-7 notification tools | Not added until you want notifications through Claude |
-| IN-12 | **Informational classification (2026-10-27)** | Production branch/environment names describe effects; they do not create owner production gates. | Scope: disclosure / explicit delegated grants | GitHub protection settings govern |
-| IN-13 | **Notification confirmation gate removed (2026-10-27)** | Own-people membership may inform notification disclosure; it never creates an additional owner confirmation requirement. | Scope: disclosure | GitHub sends notifications normally |
-| IN-14 | **Answered 2026-10-10 — not needed** | Old toolkit's `github` namespace: no compatibility, no migration. Chris: "I don't need legacy compatibility"; the old toolkits were only a completeness checklist. | Nothing | — |
-| IN-15 | **Answered — yes** (Chris, 2026-10-16: approves the new App permissions; he adds them on github.com) | **Approve new GitHub App permissions** (Batch Y, Y-1). GitHub does not let an agent change an existing App's permissions: you add them on github.com → Settings → Developer settings → GitHub Apps → the App → Permissions & events, then accept the request on each installation. `github_check_permissions` will list the exact names. | Y-1 default: request them for Apps created later; list the checklist for the existing App | Nothing breaks if you wait; the affected tools answer "missing permission" in plain words |
-| IN-16 | **Owner execution authorized (2026-10-27)** | Money tools execute actual supported GitHub APIs with cost disclosure, journal and readback. Unknown pricing does not justify guided-only behavior; genuine API absence does. | Scope: product capability; builder no-spend stays in AGENTS | Explicit pass allowances remain binding |
-| IN-17 | **Answered — yes** (Chris, 2026-10-16: add the wiki libraries; built in Y-8d, PR with Bundle 10) | **Wiki editing** (Batch Y, Y-8). GitHub has no API for wikis; the server would need two new software libraries (`isomorphic-git`, `memfs`) to edit the wiki's hidden git repository. Approve, or keep a guide only? | Guide only | Browser steps in `github_where_is_setting` |
+## Setup rows
 
-| IN-18 | **ANSWERED 2026-10-24 (Chris): no ChatGPT/Claude directory listing; public and free from his website, no invite list, no people cap — see `docs/pr-cards/PUB-5.md`.** Earlier text kept for history: publication not authorized, third-party eligibility unresolved (2026-10-18) | The owner requires PRIVATE plugin(s) with both Android/iOS and desktop support, and a future multi-user scale architecture. Public-directory submission for an unofficial third-party GitHub connector is **not presumed eligible**: OpenAI's plugin guidelines state that unofficial connectors primarily relaying third-party services cannot be approved. Determine whether documented GitHub/OpenAI approval or another explicitly compliant differentiated product/distribution path exists. Without eligibility, keep the service PRIVATE/workspace-only and do not enroll outside users. Separate explicit owner approval is required at the final public launch gate. | PUB-5 directory/public enrollment only; PUB-1…PUB-4 **private isolation/security engineering is approved** | Default: PRIVATE, never submit an unofficial pass-through to Directory or claim an endorsed GitHub product. |
+- **IN-02:** Vercel project plus a separate Neon database for this server. Done; details in [DEPLOY](DEPLOY.md).
+- **IN-03:** `ADMIN_PASSPHRASE` and `TOKEN_ENCRYPTION_KEY` set in Vercel. Still open for you: privately save both in your password manager. Unverified whether done.
+- **IN-04:** one private GitHub App per account (organization `Robinson-AI-Systems`, personal `christcr2012`), created from the setup page. Scratch done. Your two real accounts: unverified, check "Show my accounts" on the setup page.
+- **IN-05:** which repositories each App reaches. Recommended: all repositories.
+- **IN-06:** scratch organization `robinson-ai-scratch` set up and verified 2026-10-12; its production flag was turned on 2026-10-18. Never mark a real organization as scratch.
+- **IN-11 (optional):** a classic token with only the `notifications` box ticked, for notification tools. Add it on the setup page, only if wanted.
+
+## Later in the same period
+
+- **Daily job limit (2026-10-29):** none, for anyone.
+- **Git and Playground resources (2026-10-29/30):** limited only by real server load; best-effort mode allowed; backups optional.
+- **Name (2026-10-29):** "Robinson's Playground", by Robinson AI Systems.
+
+## Index
+
+| ID | Status |
+|---|---|
+| IN-00 | Answered — plans approved |
+| IN-01 | Answered — public repo, no automated review |
+| IN-02 | Done — Vercel + Neon set up |
+| IN-03 | Set; password-manager backup unverified |
+| IN-04 | Scratch done; real accounts unverified |
+| IN-05 | Repositories reached: all recommended |
+| IN-06 | Scratch org verified; production flag on 2026-10-18 |
+| IN-07 | Superseded — production switch |
+| IN-08 | Superseded — protected-resource list |
+| IN-09 | Removed — spending cap for owner connection |
+| IN-10 | Clarified — write pacing |
+| IN-11 | Optional — notifications token |
+| IN-12 | Informational — production names |
+| IN-13 | Informational — notification confirmation |
+| IN-14 | Answered — no legacy compatibility |
+| IN-15 | Answered yes — new App permissions |
+| IN-16 | Authorized — money tools execute with disclosure |
+| IN-17 | Answered yes — wiki libraries |
+| IN-18 | Answered — no directory listing |
