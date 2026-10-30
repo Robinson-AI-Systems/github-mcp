@@ -1,0 +1,9 @@
+# Playground broker ingress path
+
+Actual base/main/READY58bee97f13bc654e66c5c6f51fd8093095ea3533, checked PR486. Exact5260fd66 passed ci41107242840, policy41107242662, native image41107243769 and coding image41107242540. Merged ci41107723458 and checked release41107738743 passed; independent Vercel source/READY and public domain matched58bee97f.
+
+Manager JSONB recovery succeeded without creating a duplicate. The same requested disposable workspace deployed a dedicated-ingress-v2 allocation from immutable58bee97f. Independently parsed actual converted YAML confirms coding only on its named internal workspace bridge; gateway has no mounts and receives provider shared ingress, UID1000/drop ALL/no-new-privileges. Provider inventory independently reported healthy gateway/broker/executor and successful initializer.
+
+Live attachment initially received non-JSON preview/Traefik responses. Actual converted labels proved internalPath=/v1/workspace adds that prefix to the already matched path. Correct internalPath=/ while preserving stripPath=false. Recovery must verify these fields rather than accept a doubled-path route. Regression tests cover exact provider domain-create shape and recovered-ingress refusal/recovery.
+
+Only the owned disposable domain was updated, independently read back, then its exact Compose redeployed with freshVolumes=false. No user commands or unrelated service was restarted. Actual browser broker GET now returns JSON not_found as expected; automatic sealed repository transfer progressed. Finish live attachment, dependency/build/test/PostgreSQL/private-browser acceptance and exact cleanup before claiming completion. Prior owned allocation volume absence remains unverified due provider docker permission; no cleanup claim is inferred. Backups/monitoring remain optional. Tool catalog/contracts unchanged.

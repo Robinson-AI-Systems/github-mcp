@@ -1,5 +1,9 @@
 # PLAY-1 — Robinson's Playground integrated coding workspaces
 
+## Live broker ingress path correction2026-10-30
+
+PR486 checked/released58bee97f; the original manager recovered and a new isolated allocation deployed. Actual converted YAML shows executor only on the internal workspace bridge and gateway only receiving shared ingress; actual gateway/broker/executor containers are healthy. Attachment exposed Dokploy internalPath prefix addition: setting it to the already matched broker path doubles that path. Configure internalPath=/ and stripPath=false, and require the same values before recovering an exposing phase. The exact disposable ingress was corrected/read back and redeployed with volumes preserved; actual broker JSON route readback succeeded and sealed attachment is progressing. Tests cover request shape and refusal of a recovered doubled path. Full workflow/cleanup remain unpassed.
+
 ## Live manager JSONB recovery correction2026-10-30
 
 PR485 is checked/released at8ffad0d2. Live provisioning of one disposable native workspace preserved its uncommitted edit but refused before manager dispatch: persisted Postgres JSONB normalizes source/build key order, while provider ownership requires byte-exact regenerated Compose. Reconstruct the original immutable source field order and test nested JSONB normalization across controller changes. Preserve source, exact ownership checks and uncertain-dispatch protection; no replacement manager/allocation or host permission change. Resume the same disposable allocation after checked release; integrated acceptance remains unpassed.
