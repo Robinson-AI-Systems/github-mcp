@@ -135,8 +135,7 @@ export function createPrivateOptionalEnrollment({
       (o.clientState!==null && (typeof o.clientState!=='string'||o.clientState.length>256))||
       !['preview','production'].includes(o.mode)||
       !['read_only','everyday','full'].includes(o.profile)||
-      !['compact','catalog'].includes(o.listing)||
-      (!isMaster && o.profile!=='full' && o.mode==='production' && row.production_enabled!==true)))throw denied();
+      !['compact','catalog'].includes(o.listing)))throw denied();
     const subject=await scope.directory.getPilotVerifiedSubject(
       flow.tenantId,flow.identityId);
     if(!/^[1-9][0-9]{0,18}$/.test(String(subject)) ||
@@ -198,7 +197,7 @@ export function createPrivateOptionalEnrollment({
           !accounts.every(x=>typeof x==='string'&&LOGIN.test(x)))throw denied();
         for(const login of accounts){
           const other=await scope.db.getAccount(login);
-          if(!isAccount(other,login,env)||(o.profile!=='full'&&o.mode==='production'&&other.production_enabled!==true))throw denied();
+          if(!isAccount(other,login,env))throw denied();
         }
       }
       await scope.db.createAuthCode({code,clientId:flow.clientId,

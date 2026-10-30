@@ -27,8 +27,8 @@ export function renderHome(origin = 'https://github.robinsonaisystems.com') {
 <section id="connect"><h2>Connect your AI app</h2><p>Paste this address into your AI app when it asks for a server or connector address:</p>
 <code class="addr" id="address">${address}</code>
 <!-- Steps below checked on 2026-10-24 against each client's official documentation:
-  Claude: https://www.claude.com/docs/connectors/custom/remote-mcp (phone app confirmed by the owner 2026-10-24; Customize > Connectors > Add custom connector > paste the URL > Add > Connect).
-  ChatGPT: https://developers.openai.com/api/docs/guides/custom-mcp-server (ChatGPT Plugins > plus > Add custom MCP server > name and URL > OAuth > confirm > Create as a plugin; install it before use).
+  Claude: https://www.claude.com/docs/connectors/custom/remote-mcp (Claude can add a connector from its phone app, confirmed by the owner 2026-10-24 and 2026-10-30; Customize > Connectors > Add custom connector > paste the URL > Add > Connect).
+  ChatGPT: https://developers.openai.com/api/docs/guides/custom-mcp-server (ChatGPT cannot add one from its phone app: add it in the phone's web browser, then use it in the app, owner 2026-10-30. ChatGPT Plugins > plus > Add custom MCP server > name and URL > OAuth > confirm > Create as a plugin; install it before use).
   Claude Code: https://code.claude.com/docs/en/mcp (claude mcp add --transport http <name> <url>; run /mcp to sign in).
   Cursor: https://cursor.com/docs/context/mcp (.cursor/mcp.json or ~/.cursor/mcp.json, "mcpServers" with a "url").
   VS Code: https://code.visualstudio.com/docs/copilot/reference/mcp-configuration (.vscode/mcp.json, "servers" with "type": "http" and "url").
@@ -36,7 +36,7 @@ export function renderHome(origin = 'https://github.robinsonaisystems.com') {
   Meta Muse personal assistant: https://about.fb.com/news/2026/09/introducing-muse-small-business/ (custom connectors); https://platform.muse.ai/docs (Meta catalog review). -->
 <h2>Claude (web, desktop and phone app)</h2><ol><li>Open Claude on the web, or in the desktop or phone app, and go to <b>Customize</b>, then <b>Connectors</b>.</li><li>Choose <b>Add custom connector</b> and paste the address above.</li><li>Choose <b>Add</b>, then <b>Connect</b>, and sign in with GitHub.</li></ol>
 <p><small>On a team or company plan, an owner adds it first under Organization settings, then members choose Connect.</small></p>
-<h2>ChatGPT</h2><ol><li>Open ChatGPT on the web and go to <b>Plugins</b>.</li><li>Choose the plus button, then <b>Add custom MCP server</b>.</li><li>Enter a name and paste the address above. For authentication choose <b>OAuth</b>.</li><li>Confirm the warning, choose <b>Create as a plugin</b>, then install it and sign in with GitHub.</li></ol>
+<h2>ChatGPT</h2><p><small>On a phone, add it from the phone's web browser at chatgpt.com. Once added, you can use it in the ChatGPT app too.</small></p><ol><li>Open ChatGPT on the web and go to <b>Plugins</b>.</li><li>Choose the plus button, then <b>Add custom MCP server</b>.</li><li>Enter a name and paste the address above. For authentication choose <b>OAuth</b>.</li><li>Confirm the warning, choose <b>Create as a plugin</b>, then install it and sign in with GitHub.</li></ol>
 <h2>Claude Code</h2><pre>claude mcp add --transport http github-robinson ${address}</pre><p><small>Then type /mcp inside Claude Code and sign in.</small></p>
 <h2>Cursor</h2><p>Add this to <code>.cursor/mcp.json</code> (or <code>~/.cursor/mcp.json</code>), then sign in when asked:</p>
 <pre>{

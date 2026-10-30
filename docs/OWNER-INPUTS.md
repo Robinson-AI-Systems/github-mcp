@@ -6,7 +6,7 @@ Your recorded decisions, kept short. Newest authority: [OWNER-DECISION-2026-10-2
 
 - **IN-00 (answered 2026-10-10):** plans approved so building could start.
 - **IN-01 (answered 2026-10-10):** repository stays public (free CI and secret scanning); no automated reviewer. The building agent reviews its own PRs.
-- **IN-07 production switch (superseded 2026-10-27):** your full connection runs production changes with same-call disclosure, a log and a readback. Production limits apply only to passes you deliberately restrict. Unverified: the sign-in page still asks for Production to be turned on per account before it offers Production mode (`src/oauth/policy.js:71-75`). Treat that as a known gap, tracked in the [authority plan](designs/AUTHORITY-PARITY-2026-10-28.md).
+- **IN-07 production switch (superseded 2026-10-27):** your full connection runs production changes with same-call disclosure, a log and a readback. Production limits apply only to passes you deliberately restrict. Fixed 2026-10-30: the sign-in page offers Production by default on the production deployment, with no per-account switch. Delegated passes keep the issuer's production restriction.
 - **IN-08 protected-resource list (superseded):** it may inform warnings. GitHub's own rules decide. It cannot block you or stop you editing it.
 - **IN-09 spending cap (removed for your connection):** costs are reported, not vetoed. Limits you set on a pass still bind. The $0 budget is for building agents only.
 - **IN-10 write pacing (clarified):** your writes follow GitHub's rate signals. Pass limits you chose stay.

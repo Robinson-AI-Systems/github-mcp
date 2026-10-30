@@ -54,7 +54,7 @@ export function requestScopedVerifiedAccess(db, token, record) {
 }
 
 /** The max-ten authorized accounts can be checked concurrently; every one must still be live. */
-export async function tenantMcpAccountsLive(db, accounts, mode, env, profile = 'everyday') {
+export async function tenantMcpAccountsLive(db, accounts, mode, env, _profile = 'everyday') {
   if (!Array.isArray(accounts) || !accounts.length || accounts.length > 10 ||
       accounts.some(login => typeof login !== 'string' || !login)) return false;
   const rows = await Promise.all(accounts.map(login => db.getAccount(login)));
@@ -65,7 +65,7 @@ export async function tenantMcpAccountsLive(db, accounts, mode, env, profile = '
     Number.isSafeInteger(account.app_id) &&
     account.app_id === Number(env.GITHUB_PILOT_APP_ID) &&
     (mode !== 'production' ||
-      (env.VERCEL_ENV === 'production' && (profile === 'full' || account.production_enabled === true)))
+      env.VERCEL_ENV === 'production')
   ));
 }
 

@@ -75,10 +75,12 @@ describe('C-9 tenant MCP hot path', () => {
 
   it('preserves strict App, marketplace-independent production, removed and master-place gates', async () => {
     for(const row of [null,app({installation_status:'suspended'}),
-      app({installation_id:0}),app({app_id:92}),app({production_enabled:false})]){
+      app({installation_id:0}),app({app_id:92})]){
       expect(await tenantMcpAccountsLive({getAccount:async()=>row},['one'],'production',env)).toBe(false);
     }
     expect(await tenantMcpAccountsLive({getAccount:async()=>app({production_enabled:false})},['one'],'preview',env)).toBe(true);
+    // owner decision 2026-10-27: the old per-account production switch no longer vetoes a sign-in connection
+    expect(await tenantMcpAccountsLive({getAccount:async()=>app({production_enabled:false})},['one'],'production',env)).toBe(true);
     expect(await tenantMcpAccountsLive({getAccount:async()=>app()},['one'],'production',
       {...env,VERCEL_ENV:'preview'})).toBe(false);
     expect(await tenantMcpAccountsLive({getAccount:async()=>({credential_kind:'master'})},['one'],'production',env)).toBe(true);

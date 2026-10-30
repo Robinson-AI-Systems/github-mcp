@@ -1,5 +1,4 @@
 import { redact } from './util.js';
-import { isOwnerConnection } from '../core/authority.js';
 // The production guard (B2). A change is "production" when any rule below says so, judged from GitHub's own answers and the
 // owner's settings, never from the arguments. A read that fails counts as production: the guard never guesses "safe".
 // A tool's `classify` calls `productionReason`; the write layer then refuses the change on a preview connection and always
@@ -111,7 +110,8 @@ export async function productionReason(ctx, target, { profile = {}, names } = {}
  */
 export function productionEnabledGate() {
   return async ({ ctx, target, classification }) => {
-    if (isOwnerConnection(ctx.connection)) return null;
+    // Normal sign-in connections are not vetoed by the per-account switch (owner decision); only delegated passes are.
+    if (!ctx.connection?.pass && ctx.connection?.kind !== 'pass') return null;
     if (!classification.production || ctx.connection.mode !== 'production') return null;
     const account = await ctx.db.getAccount(target.owner);
     if (account?.production_enabled === true) return null;

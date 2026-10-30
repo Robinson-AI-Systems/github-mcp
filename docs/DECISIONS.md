@@ -31,3 +31,7 @@ Where the archive disagrees with this table or [OWNER-DECISION-2026-10-27.md](OW
 | Instructions stay short (AGENTS.md simplified); per-PR status goes in `docs/status/` notes | 2026-10-22 | Long ledger caused merge conflicts and drag | [status README](status/README.md) |
 | Maximum legitimate GitHub authority plan (CAP-1..CAP-5) approved | 2026-10-21 | Owner-requested capability expansion | [MAXIMUM-AUTHORITY](designs/MAXIMUM-AUTHORITY.md) |
 | End-user authority supersedes developer-restriction readings; paid features are priced/confirmed, not refused | 2026-10-16 | Product user's agent must be able to act | [END-USER-AUTHORITY](END-USER-AUTHORITY.md) |
+
+## 2026-10-30 — Production is the default sign-in mode
+
+Chris: the sign-in must not refuse Production mode, and Production should be the default. Implemented for normal sign-in connections on the production deployment: the page offers Production first and selected, and the old per-account `production_enabled` switch no longer vetoes them (`src/oauth/policy.js`, `src/tenancy/github-consent.js`, `mcp-route.js`, `optional-setup.js`, `src/tools/production-guard.js`). Preview deployments still offer Preview only. Delegated passes (`rtc` and scratch) keep the issuer's restriction. Home page: Claude can add a connector from the phone app; ChatGPT must be added in the phone's browser first, then used in the app.
