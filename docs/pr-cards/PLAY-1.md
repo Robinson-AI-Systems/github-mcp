@@ -1,5 +1,9 @@
 # PLAY-1 — Robinson's Playground integrated coding workspaces
 
+## Live hosting isolation correction2026-10-30
+
+Dokploy converted Compose adds shared/default networks to ingress-target services, including the executor. Preserve optional backups/resource monitoring, but refuse best-effort command admission/resume/authority unless independently read-back converted networking remains exactly private. Current strict reader supports JSON only and fails closed for the host's YAML. A trusted ingress gateway plus bounded YAML readback/actual network acceptance is unfinished engineering. The owned live allocation was stopped/deleted without running commands; Compose/container absence is proven, four-volume absence/source close remain unconfirmed because volume inspection returns401. Do not claim integrated completion or replace this work with an owner approval card.
+
 ## Owner-authorized best-effort production outcome2026-10-30
 
 Support protected PLAYGROUND_RESOURCE_MODE=best_effort across allocation, availability, command admission, resume and heartbeat lifecycle without mandatory host resource telemetry or quota assertions. Preserve the existing verified mode, configured-feed failure/known-pressure refusal, exact automatic plan/attachment identity, private internal network, current grants, read-only Git metadata, idempotent commands and strict exact cleanup. Unit/transport tests cover all public execution doors, replay, absent/foreign/tampered identities, lifecycle revocation and provisioning without observations. Source tests and exact-head CI/images do not establish live activation. The default internal-network profile has no dependency-download egress, and the protected backend account credential still needs setup; these remain explicit limitations rather than invented passes.

@@ -2,7 +2,7 @@ import {allocationAdmission,refreshAdmission,cleanupEvidence} from './admission.
 import {ensureProjectManager} from './manager.js';
 import {indexAllocation} from './index.js';
 import {enforcementObservation} from './availability.js';
-import {managedResourceBaseline} from './resource-policy.js';
+import {managedResourceBaseline,managedNetworkVerified} from './resource-policy.js';
 import {createHash} from 'node:crypto';
 import {playgroundBinding} from './client.js';
 import {nativeWorkerPublicKey} from '../native-git/signing.js';
@@ -77,7 +77,7 @@ export async function inspectAllocation(ctx,record,{provider,config}={}){
  return {workspace_id:record.row.id,phase:stored.phase,allocation_ready:['allocated','attaching','attached'].includes(stored.phase),repository_attached:stored.repositoryAttached===true,enforcement_verified:stored.enforcementVerified===true,execution_available:false,provider_observed:observed!==null,next:'Repository attachment and verified enforcement are required before commands.'};
 }
 
-export async function resumeAllocation(ctx,record,{provider,config}={}){ctx=await refreshAdmission(ctx,{project:ctx.env?.PLAYGROUND_DOKPLOY_PROJECT_ID});const stored=await allocationRecord(ctx,record);if(stored?.phase!=='attached'||!enforcementObservation(ctx,{row:record.row,allocation:{binding:stored.binding}})&&!managedResourceBaseline(ctx.env,stored,{workspace:record.row.id,binding:playgroundBinding(record)}))throw fail('An attached managed allocation or fresh verified controls are required before resume.');config??=dokployConfig(ctx.env);providerScope(stored,config);provider??=dokployProvider(config,{fetch:ctx.fetch});await provider.start(stored.composeId,stored.plan);return stored;}
+export async function resumeAllocation(ctx,record,{provider,config}={}){ctx=await refreshAdmission(ctx,{project:ctx.env?.PLAYGROUND_DOKPLOY_PROJECT_ID});const stored=await allocationRecord(ctx,record);if(stored?.phase!=='attached'||!enforcementObservation(ctx,{row:record.row,allocation:{binding:stored.binding}})&&(!managedResourceBaseline(ctx.env,stored,{workspace:record.row.id,binding:playgroundBinding(record)})||!await managedNetworkVerified(ctx,stored)))throw fail('An attached managed allocation with verified private networking or fresh verified controls is required before resume.');config??=dokployConfig(ctx.env);providerScope(stored,config);provider??=dokployProvider(config,{fetch:ctx.fetch});await provider.start(stored.composeId,stored.plan);return stored;}
 
 export async function enqueueAllocation(ctx,record){
  const config=dokployConfig(ctx.env),binding=playgroundBinding(record),key=allocationKey(binding);
