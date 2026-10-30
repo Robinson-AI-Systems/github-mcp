@@ -1,8 +1,14 @@
 # PLAY-1 — Robinson's Playground integrated coding workspaces
 
+## Trusted ingress and controlled download outcome2026-10-30
+
+Implement a separate credential-free, volume-free gateway as the sole domain target. The executor stays on its exact internal workspace network. Gateway forwards fixed authenticated control/preview destinations, and a peer-restricted HTTP80/HTTPS443 proxy permits public IPv4 dependency downloads with per-connection DNS pinning, private/metadata/admin-address refusal and bounded connections. Commands receive only this fixed proxy configuration. Broker, executor and gateway share the configured allocation CPU/RAM total; storage remains an unverified ceiling. Strict bounded data-only Compose YAML/JSON readback checks actual provider networking and gateway policy before execution. Unsupported serialization fails closed.
+
+Recover the old manager deploying state only with pinned source/ownership, idle provider status and empty deployment history; record a dispatch version before retry so uncertainty never becomes repeated submission. New allocations build from the immutable serving source rather than an obsolete manifest pin. Existing allocations and manager keep their recorded source. Source/unit/image checks and live acceptance remain separate; this outcome must not be marked complete until checked release and authenticated disposable acceptance.
+
 ## Live hosting isolation correction2026-10-30
 
-Dokploy converted Compose adds shared/default networks to ingress-target services, including the executor. Preserve optional backups/resource monitoring, but refuse best-effort command admission/resume/authority unless independently read-back converted networking remains exactly private. Current strict reader supports JSON only and fails closed for the host's YAML. A trusted ingress gateway plus bounded YAML readback/actual network acceptance is unfinished engineering. The owned live allocation was stopped/deleted without running commands; Compose/container absence is proven, four-volume absence/source close remain unconfirmed because volume inspection returns401. Do not claim integrated completion or replace this work with an owner approval card.
+Dokploy converted Compose adds shared/default networks to ingress-target services, including the executor. Preserve optional backups/resource monitoring, but refuse best-effort command admission/resume/authority unless independently read-back converted networking remains exactly private. The emergency release supported JSON only and failed closed for the host's YAML. The successor outcome above implements the gateway and bounded YAML reader; actual live network acceptance remains required. The owned live allocation was stopped/deleted without running commands; Compose/container absence is proven, four-volume absence/source close remain unconfirmed because volume inspection returns401. Do not claim integrated completion or replace this work with an owner approval card.
 
 ## Owner-authorized best-effort production outcome2026-10-30
 

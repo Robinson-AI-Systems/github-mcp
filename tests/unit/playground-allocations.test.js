@@ -22,7 +22,7 @@ function fixtureProvider({lostCreate=false,remaining=false}={}){
 }
 it('plans a uniquely owned constrained allocation without credentials, public app ports or quota claims',()=>{
  const p=allocationPlan({binding:'b'.repeat(64),verificationKey:'ed25519:FAKE_PUBLIC',idleTimeoutMs:14400000},config),body=JSON.parse(p.composeFile);
- expect(body.services.coding).toMatchObject({read_only:true,cpus:'7.5',mem_limit:'6656m',cap_drop:['ALL'],networks:['workspace']});expect(body.services.coding).not.toHaveProperty('ports');expect(body.networks.workspace.internal).toBe(true);expect(body.volumes.files.name).toBe(p.volume+'-files');expect(p.enforcement).toMatchObject({storageQuotaVerified:false,networkIsolationVerified:false,executionEnabled:false});expect(JSON.stringify(p)).not.toContain(config.key);expect(p.origin).toContain('107-90-116-157.sslip.io');
+ expect(body.services.coding).toMatchObject({read_only:true,cpus:'7.4',mem_limit:'6528m',cap_drop:['ALL'],networks:['workspace']});expect(body.services.coding).not.toHaveProperty('ports');expect(body.networks.workspace.internal).toBe(true);expect(body.volumes.files.name).toBe(p.volume+'-files');expect(p.enforcement).toMatchObject({storageQuotaVerified:false,networkIsolationVerified:false,executionEnabled:false});expect(JSON.stringify(p)).not.toContain(config.key);expect(p.origin).toContain('107-90-116-157.sslip.io');
 });
 it('uses pinned REST method/query/body and refuses foreign source before any deploy/delete',async()=>{
  const sent=[];const p=allocationPlan({binding:'b'.repeat(64),verificationKey:'ed25519:FAKE_PUBLIC',idleTimeoutMs:14400000},config);
@@ -51,15 +51,15 @@ it('starts the trusted manager even while resource admission queues the first wo
 it('creates an owned private allocation without host telemetry when explicitly configured best effort',async()=>{
  const {w,record}=await world(),provider=fixtureProvider();delete w.ctx.env.PLAYGROUND_ADMISSION;w.ctx.env.PLAYGROUND_RESOURCE_MODE='best_effort';
  const result=await ensureAllocation(w.ctx,record,{provider,config,manager:async()=>{}});
- expect(result.phase).toBe('allocated');expect(result.plan.isolationProfile).toBe('dedicated-internal-v1');expect(result.enforcementVerified).toBe(false);expect(provider.calls.filter(x=>x==='create')).toHaveLength(1);
+ expect(result.phase).toBe('allocated');expect(result.plan.isolationProfile).toBe('dedicated-ingress-v2');expect(result.enforcementVerified).toBe(false);expect(provider.calls.filter(x=>x==='create')).toHaveLength(1);
 });
 it('does not accept a recovered ingress with the private Git broker route missing',async()=>{
  const {w,record}=await world(),provider=fixtureProvider();await ensureAllocation(w.ctx,record,{provider,config,manager:async()=>{}});
  const old=await allocationRecord(w.ctx,record),key='playground.'+old.binding.slice(0,40);
  await w.ctx.db.compareAndSetSetting(key,old.revision,{...old,revision:old.revision+1,phase:'exposing'});
- const row=provider.rows.get(old.composeId);row.domains=[{host:old.plan.host,port:3000,https:true,serviceName:'coding',path:'/'}];
+ const row=provider.rows.get(old.composeId);row.domains=[{host:old.plan.host,port:3000,https:true,serviceName:'ingress',path:'/'}];
  await expect(ensureAllocation(w.ctx,record,{provider,config,manager:async()=>{}})).rejects.toThrow(/Ingress/);
- row.domains.push({host:old.plan.host,port:3000,https:true,serviceName:'broker',path:'/v1/workspace'});
+ row.domains.push({host:old.plan.host,port:3000,https:true,serviceName:'ingress',path:'/v1/workspace'});
  expect((await ensureAllocation(w.ctx,record,{provider,config,manager:async()=>{}})).phase).toBe('allocated');
 });
 it('recovers a lost delete response by absence readback without requiring the deleted Compose to exist',async()=>{
@@ -80,13 +80,13 @@ it('supports an exact operator-owned quota group and isolated egress driver with
 });
 it('plans a genuinely smaller enforced aggregate allocation without weakening runtime controls',()=>{
  const p=allocationPlan({binding:'b'.repeat(64),verificationKey:'ed25519:FAKE_PUBLIC',idleTimeoutMs:14400000},{...config,cpuCpus:2,memoryBytes:2*1024**3}),body=JSON.parse(p.composeFile);
- expect(body.services.coding.cpus).toBe('1.5');expect(body.services.broker.cpus).toBe('0.5');expect(body.services.coding.mem_limit).toBe('1536m');expect(body.services.broker.mem_limit).toBe('512m');expect(body.services.coding.cap_drop).toEqual(['ALL']);expect(p.enforcement.memoryConfiguredBytes).toBe(2*1024**3);
+ expect(body.services.coding.cpus).toBe('1.4');expect(body.services.broker.cpus).toBe('0.5');expect(body.services.coding.mem_limit).toBe('1408m');expect(body.services.broker.mem_limit).toBe('512m');expect(body.services.coding.cap_drop).toEqual(['ALL']);expect(p.enforcement.memoryConfiguredBytes).toBe(2*1024**3);
 });
 it('selects smaller ceilings from fresh host headroom before creating a queued allocation',async()=>{
  const {w,record}=await world(),provider=fixtureProvider();delete w.ctx.env.PLAYGROUND_ADMISSION;
  await ensureAllocation(w.ctx,record,{provider,config,manager:async()=>{}});
  w.ctx.env.PLAYGROUND_ADMISSION=JSON.stringify({project:config.project,observedAt:w.ctx.now(),availableCpuCpus:2,availableMemoryBytes:2*1024**3,availableDiskBytes:2*1024**3,pressure:0});
- const result=await ensureAllocation(w.ctx,record,{provider,config,manager:async()=>{}});expect(result.phase).toBe('allocated');const plan=JSON.parse(result.plan.composeFile);expect(plan.services.coding.cpus).toBe('1.5');expect(plan.services.coding.mem_limit).toBe('1536m');expect(provider.calls.filter(x=>x==='create')).toHaveLength(1);
+ const result=await ensureAllocation(w.ctx,record,{provider,config,manager:async()=>{}});expect(result.phase).toBe('allocated');const plan=JSON.parse(result.plan.composeFile);expect(plan.services.coding.cpus).toBe('1.4');expect(plan.services.coding.mem_limit).toBe('1408m');expect(provider.calls.filter(x=>x==='create')).toHaveLength(1);
 });
 
 it('uses scoped independent cleanup proof when host volume inspection is forbidden, never delete success alone',async()=>{

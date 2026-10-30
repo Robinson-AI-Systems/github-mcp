@@ -40,7 +40,7 @@ export async function ensureAllocation(ctx,record,{provider,config,manager=ensur
  if(!plan.providerAppName){const a=await provider.inspect(stored.composeId,plan,{adoptAssignedName:true});plan=pinProviderIdentity(plan,a?.appName);await save({plan});}
  await provider.inspect(stored.composeId,plan);
  if(stored.phase==='created'){await save({phase:'exposing'});await provider.expose(stored.composeId,plan);await save({phase:'exposed'});}
- if(stored.phase==='exposing'){const observed=await provider.inspect(stored.composeId,plan);if([['/','coding'],['/v1/workspace','broker']].every(([path,service])=>observed?.domains?.some(d=>d.host===plan.host&&d.port===3000&&d.https===true&&d.serviceName===service&&d.path===path)))await save({phase:'exposed'});}
+ if(stored.phase==='exposing'){const observed=await provider.inspect(stored.composeId,plan);if([['/',plan.ingressService??'coding'],['/v1/workspace',plan.ingressService??'broker']].every(([path,service])=>observed?.domains?.some(d=>d.host===plan.host&&d.port===3000&&d.https===true&&d.serviceName===service&&d.path===path)))await save({phase:'exposed'});}
  if(stored.phase==='exposing')throw fail('Ingress creation is uncertain. Inspect exact allocation domains before resuming; no duplicate domain was created.');
  if(stored.phase==='exposed'){await save({phase:'deploying'});await provider.deploy(stored.composeId,plan);}
  if(stored.phase==='deploying'){const a=await provider.inspect(stored.composeId,plan);if(a?.composeStatus==='done')await save({phase:'allocated',origin:plan.origin,repositoryAttached:false,enforcementVerified:false});}
