@@ -7,7 +7,7 @@ import {createHash} from 'node:crypto';
 import {playgroundBinding} from './client.js';
 import {nativeWorkerPublicKey} from '../native-git/signing.js';
 import {nativeConnection} from '../native-git/client.js';
-import {allocationPlan,dokployConfig,dokployProvider,allocationProcessesStopped} from './dokploy.js';
+import {allocationPlan,dokployConfig,dokployProvider,allocationProcessesStopped,pinProviderIdentity} from './dokploy.js';
 const fail=message=>Object.assign(new TypeError(message),{safeMessage:true,safeCode:'playground_allocation_recovery'});
 const providerScope=(stored,config)=>{if(stored&&(stored.providerOrigin!==config.origin||stored.providerProject!==config.project||stored.providerEnvironment!==config.environment))throw fail('Allocation provider scope changed; preserve the original resources.');};
 export const allocationKey=binding=>'playground.'+binding.slice(0,40);
@@ -24,6 +24,7 @@ export async function ensureAllocation(ctx,record,{provider,config,manager=ensur
  provider??=dokployProvider(config,{fetch:ctx.fetch});
  const binding=playgroundBinding(record),key=allocationKey(binding);let plan=allocationPlan({binding,verificationKey:nativeWorkerPublicKey(ctx.env),idleTimeoutMs:record.job.idleTimeoutMs},{...config,scope:ctx.db.playgroundScope,worker:record.worker,nativeBinding:createHash('sha256').update(JSON.stringify(['authority','connection','owner','repo'].map(k=>record.binding[k]))).digest('hex')});
  let stored=await allocationRecord(ctx,record);providerScope(stored,config);
+ if(stored?.plan?.providerAppName&&stored.planHash===plan.planHash)plan=stored.plan;
  if(stored&&stored.planHash!==plan.planHash){if(stored.providerOrigin!==config.origin||stored.providerProject!==config.project||stored.providerEnvironment!==config.environment)throw fail('Allocation provider scope changed; preserve the original resources.');if(!admission.allowed||stored.composeId||!['requested','waiting_resources'].includes(stored.phase))plan=stored.plan;}
  const save=async patch=>{const next=await ctx.db.compareAndSetSetting(key,stored?.revision??0,{...stored,...patch,revision:(stored?.revision??0)+1});if(!next)throw fail('Another allocation transition is in progress; inspect the existing state.');stored=next;await indexAllocation(ctx,stored);};
  if(!stored){await provider.project();await save({kind:'playground-allocation',scope:ctx.db.playgroundScope??{legacy:true},delegated:ctx.connection.pass===true,providerOrigin:config.origin,providerProject:config.project,providerEnvironment:config.environment,binding,connection:nativeConnection(ctx),clientId:ctx.connection.client_id??null,passId:ctx.connection.pass_id??null,workspace:record.row.id,owner:record.row.owner,repo:record.row.repo,phase:'requested',planHash:plan.planHash,plan,native:{binding:record.binding,worker:record.worker,job:record.job},createdAt:(ctx.now??Date.now)(),expiresAt:new Date(record.row.expires_at).getTime()});
@@ -31,11 +32,12 @@ export async function ensureAllocation(ctx,record,{provider,config,manager=ensur
  await manager(ctx,config,provider);
  if(admission.allowed&&stored.planHash!==plan.planHash)await save({planHash:plan.planHash,plan});if(!admission.allowed){if(stored.phase==='requested'||stored.phase==='waiting_resources')await save({phase:'waiting_resources',admission});return stored;}
  if(stored.phase==='requested'||stored.phase==='waiting_resources'){await save({phase:'creating'});
-  const a=await provider.create(plan);if(typeof a?.composeId!=='string'||!a.composeId)throw fail('Provider create was not confirmed. Inspect this same allocation intent.');await save({composeId:a.composeId,phase:'created'});
+  const a=await provider.create(plan);if(typeof a?.composeId!=='string'||!a.composeId)throw fail('Provider create was not confirmed. Inspect this same allocation intent.');plan=pinProviderIdentity(plan,a.appName);await save({composeId:a.composeId,phase:'created',plan});
  }else if(stored.phase==='creating'){
-  const matches=(await provider.inventory()).filter(a=>a.appName===plan.name);if(matches.length!==1)throw fail('Original create is uncertain. No replacement allocation was created.');await provider.inspect(matches[0].composeId,plan);await save({composeId:matches[0].composeId,phase:'created'});
+  const matches=(await provider.inventory()).filter(a=>a.name===plan.name||a.appName===plan.name);if(matches.length!==1)throw fail('Original create is uncertain. No replacement allocation was created.');const a=await provider.inspect(matches[0].composeId,plan,{adoptAssignedName:true});plan=pinProviderIdentity(plan,a.appName);await save({composeId:a.composeId,phase:'created',plan});
  }
  if(['cleanup_requested','stopped','deleting','disposed'].includes(stored.phase))return stored;
+ if(!plan.providerAppName){const a=await provider.inspect(stored.composeId,plan,{adoptAssignedName:true});plan=pinProviderIdentity(plan,a?.appName);await save({plan});}
  await provider.inspect(stored.composeId,plan);
  if(stored.phase==='created'){await save({phase:'exposing'});await provider.expose(stored.composeId,plan);await save({phase:'exposed'});}
  if(stored.phase==='exposing'){const observed=await provider.inspect(stored.composeId,plan);if([['/','coding'],['/v1/workspace','broker']].every(([path,service])=>observed?.domains?.some(d=>d.host===plan.host&&d.port===3000&&d.https===true&&d.serviceName===service&&d.path===path)))await save({phase:'exposed'});}

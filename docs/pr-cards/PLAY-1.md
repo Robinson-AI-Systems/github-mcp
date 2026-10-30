@@ -13,10 +13,10 @@ PR476 merged a separately deployable, tested execution image; no command tool, a
 ## Acceptance
 
 - [ ] Registered execute/read/cancel tools through search/describe/call and all existing doors; actual command status, exit code/signal, complete hash-pinned redacted logs and cross-time replay. Named repository/current principal/pass restrictions and no provider credentials in the executor.
-- [ ] Real isolated allocation attached to the exact workspace files, expected source/generation protections, automatic provisioning and independent CPU/RAM/disk enforcement observations. Preserve existing workspaces and host pins.
+- [ ] Real isolated allocation attached to the exact workspace files, expected source/generation protections and automatic provisioning. Report configured/read-back resources honestly; optional quota/monitoring guarantees are not required for owner-selected best-effort mode. Preserve existing workspaces and host pins.
 - [ ] Authenticated development preview and actual dependency/build/test/PostgreSQL/browser workflow through the deployed custom MCP; no bare public application ports.
 - [ ] Revocation/expiry stops the entire allocation, exact lifecycle cleanup and no destructive shortening of old leases; independently verify no run-owned process/volume/fixture remains.
-- [ ] Existing project backup/restore prerequisite remains explicit; test safe quota/pressure/recovery and benchmark before any superiority claim. No paid increase or host-wide permission expansion.
+- [ ] Test pressure/recovery and benchmark before any superiority claim. Report resource guarantees only when verified; best-effort mode is owner-authorized. No paid increase or host-wide permission expansion. Backup activation/restoration is optional future work under the2026-10-30 owner decision, not an activation or completion gate.
 
 Implementation, source/image proof, merged/deployed source and real acceptance must be reported separately. Current finite command-tool outcome and exact next steps: [connector checkpoint](../status/2026-10-29-playground-connector.md). Infrastructure and remaining integration contract: [Playground](../CODING-WORKSPACES.md).
 

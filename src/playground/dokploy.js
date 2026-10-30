@@ -1,6 +1,13 @@
 import {createHash} from 'node:crypto';
 const fail=(code,message)=>Object.assign(new TypeError(message),{safeMessage:true,safeCode:code});
 const hash=x=>createHash('sha256').update(JSON.stringify(x)).digest('hex');
+// Dokploy assigns a suffix even when appName was supplied. Pin its exact
+// independently read-back identity once; never use a wildcard for mutations.
+export function pinProviderIdentity(plan,appName){
+ if(typeof appName!=='string'||!(appName===plan.name||appName.startsWith(plan.name+'-')&&/^[a-z0-9]{6}$/.test(appName.slice(plan.name.length+1))))throw fail('playground_allocation_ownership','Provider-assigned allocation name differs from its exact requested identity.');
+ if(plan.providerAppName&&plan.providerAppName!==appName)throw fail('playground_allocation_ownership','Pinned provider allocation name changed; no mutation was sent.');
+ return {...plan,providerAppName:appName};
+}
 export function allocationProcessesStopped(rows){return Array.isArray(rows)&&rows.every(row=>['created','exited','dead'].includes(typeof row.State==='string'?row.State:typeof row.state==='string'?row.state:row.State?.Status));}
 function operatorDriver(env,prefix){
  const name=env[prefix+'_DRIVER'];if(!name)return null;
@@ -48,14 +55,14 @@ export function dokployProvider(config,{fetch:fetchImpl=globalThis.fetch}={}){
  };
  const project=async()=>{const p=await call('project.one',{projectId:config.project});if(p?.projectId!==config.project||!p.environments?.some(e=>e.environmentId===config.environment))throw fail('playground_provider_scope','Dokploy did not confirm the configured exact project/environment.');return p;};
  const inventory=async()=>{const p=await project();return p.environments.find(e=>e.environmentId===config.environment).compose??[];};
- const inspect=async(id,plan)=>{const a=await call('compose.one',{composeId:id});if(a===null)return null;if(a.composeId!==id||a.environmentId!==config.environment||a.environment?.projectId!==config.project||a.appName!==plan.name||a.description!==plan.description||a.composeFile!==plan.composeFile||a.sourceType!=='raw')throw fail('playground_allocation_ownership','Allocation ownership, source or project changed; no mutation was sent.');return a;};
+ const inspect=async(id,plan,{adoptAssignedName=false}={})=>{const a=await call('compose.one',{composeId:id});if(a===null)return null;const expected=adoptAssignedName?pinProviderIdentity(plan,a.appName).providerAppName:plan.providerAppName??plan.name;if(a.composeId!==id||a.environmentId!==config.environment||a.environment?.projectId!==config.project||a.appName!==expected||adoptAssignedName&&a.name!==plan.name||a.description!==plan.description||a.composeFile!==plan.composeFile||a.sourceType!=='raw')throw fail('playground_allocation_ownership','Allocation ownership, source or project changed; no mutation was sent.');return a;};
  return {project,inventory,inspect,
-  async create(plan){await project();return call('compose.create',{name:plan.name,appName:plan.name,description:plan.description,environmentId:config.environment,composeType:'docker-compose',sourceType:'raw',composeFile:plan.composeFile});},
+  async create(plan){await project();const created=await call('compose.create',{name:plan.name,appName:plan.name,description:plan.description,environmentId:config.environment,composeType:'docker-compose',sourceType:'raw',composeFile:plan.composeFile});if(!created?.composeId)throw fail('playground_provider_uncertain','Provider create was not confirmed; inspect this original allocation intent.');return inspect(created.composeId,plan,{adoptAssignedName:true});},
   async expose(id,plan){if(!await inspect(id,plan))throw fail('playground_allocation_missing','The owned allocation is missing.');const domains=[];for(const [path,serviceName] of [['/','coding'],['/v1/workspace','broker']])domains.push(await call('domain.create',{host:plan.host,https:true,port:3000,path,composeId:id,serviceName,domainType:'compose',certificateType:'letsencrypt',internalPath:path,stripPath:false}));return domains;},
   async deploy(id,plan){if(!await inspect(id,plan))throw fail('playground_allocation_missing','The owned allocation is missing.');return call('compose.deploy',{composeId:id,title:'Bound Robinson Playground allocation',description:plan.description,freshVolumes:false});},
   async start(id,plan){if(!await inspect(id,plan))throw fail('playground_allocation_missing','The owned allocation is missing.');await call('compose.start',{composeId:id});},
   async stop(id,plan){if(await inspect(id,plan)===null)return;await call('compose.stop',{composeId:id});},
-  async containers(plan){const rows=await call('docker.getContainersByAppNameMatch',{appName:plan.name,appType:'docker-compose'});if(!Array.isArray(rows))throw fail('playground_cleanup_unverified','Container inventory is unavailable; absence is not proven.');return rows;},
+  async containers(plan){const rows=await call('docker.getContainersByAppNameMatch',{appName:plan.providerAppName??plan.name,appType:'docker-compose'});if(!Array.isArray(rows))throw fail('playground_cleanup_unverified','Container inventory is unavailable; absence is not proven.');return rows;},
   async volume(plan){const rows=[];for(const volumeName of plan.volumes)rows.push(await call('dockerVolume.getVolumeConfig',{volumeName}));return rows.some(Boolean)?rows:null;},
   async remove(id,plan){if(await inspect(id,plan)===null)return;if(!allocationProcessesStopped(await this.containers(plan)))throw fail('playground_cleanup_pending','Allocation processes remain; its volume was preserved.');await call('compose.delete',{composeId:id,deleteVolumes:true});},
   async absent(id,plan){return await inspect(id,plan)===null&&(await this.containers(plan)).length===0&&await this.volume(plan)===null;}

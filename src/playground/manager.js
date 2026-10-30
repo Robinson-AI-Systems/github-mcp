@@ -7,20 +7,21 @@ import {createDb,productionSql} from '../db.js';
 import {allocationScope,allocationAuthority} from './lifecycle.js';
 import {ensureAllocation,disposeAllocation} from './allocations.js';
 import {indexAllocation,rootAllocationDb} from './index.js';
-import {dokployConfig,dokployProvider} from './dokploy.js';
+import {dokployConfig,dokployProvider,pinProviderIdentity} from './dokploy.js';
 const hash=x=>createHash('sha256').update(x).digest('hex');
 export const sweepKey=env=>hash(signNativeWorkerBody(JSON.stringify({purpose:'robinson-playground-maintenance/v1',origin:publicOrigin(env)}),env));
 export async function ensureProjectManager(ctx,config,provider){
  const root=rootAllocationDb(ctx),origin=publicOrigin(ctx.env),name='ras-pg-manager-'+hash(origin).slice(0,16),description='robinson-playground-manager/v1 '+hash(origin);
  let state=await root.getSetting('playground_manager');if(state?.phase==='running')return;
- const source=config.image?{image:config.image}:{image:'ras-playground:'+config.sourceSha,build:{context:'https://github.com/Robinson-AI-Systems/github-mcp.git#'+config.sourceSha,dockerfile:'workers/coding-workspace/Dockerfile',target:'production'}};
+ const source=state?.source??(config.image?{image:config.image}:{image:'ras-playground:'+config.sourceSha,build:{context:'https://github.com/Robinson-AI-Systems/github-mcp.git#'+config.sourceSha,dockerfile:'workers/coding-workspace/Dockerfile',target:'production'}});
  const composeFile=JSON.stringify({name,services:{manager:{...source,user:'1000:1000',init:true,restart:'unless-stopped',read_only:true,cap_drop:['ALL'],security_opt:['no-new-privileges:true'],mem_limit:'128m',cpus:'0.1',command:['node','workers/coding-workspace/manager.js'],environment:{PLAYGROUND_SWEEP_URL:new URL('/api/playground/sweep',origin).href,PLAYGROUND_SWEEP_KEY:sweepKey(ctx.env)},tmpfs:['/tmp:rw,noexec,nosuid,nodev,size=16m,mode=1777']}}});
  // Regenerated only in trusted memory: the manager's cleanup-only capability is
  // never stored in the ordinary allocation registry or returned by an MCP tool.
- const plan={name,description,composeFile,planHash:hash(composeFile)};
+ let plan={name,description,composeFile,planHash:hash(composeFile),...(state?.providerAppName?{providerAppName:state.providerAppName}:{})};
  const save=async patch=>{const next=await root.compareAndSetSetting('playground_manager',state?.revision??0,{...state,...patch,revision:(state?.revision??0)+1});if(!next)throw new TypeError('Manager provisioning is already in progress.');state=next;};
- if(!state){await save({phase:'creating',name,description});const created=await provider.create(plan);if(!created?.composeId)throw new TypeError('Manager creation is uncertain.');await save({phase:'created',composeId:created.composeId});}
- else if(state.phase==='creating'){const matches=(await provider.inventory()).filter(x=>x.appName===name);if(matches.length!==1)throw new TypeError('Manager creation is uncertain; no duplicate was created.');await provider.inspect(matches[0].composeId,plan);await save({phase:'created',composeId:matches[0].composeId});}
+ if(!state){await save({phase:'creating',name,description,source});const created=await provider.create(plan);if(!created?.composeId)throw new TypeError('Manager creation is uncertain.');plan=pinProviderIdentity(plan,created.appName);await save({phase:'created',composeId:created.composeId,providerAppName:plan.providerAppName});}
+ else if(state.phase==='creating'){const matches=(await provider.inventory()).filter(x=>x.name===name||x.appName===name);if(matches.length!==1)throw new TypeError('Manager creation is uncertain; no duplicate was created.');const observed=await provider.inspect(matches[0].composeId,plan,{adoptAssignedName:true});plan=pinProviderIdentity(plan,observed.appName);await save({phase:'created',composeId:observed.composeId,providerAppName:plan.providerAppName,source});}
+ if(!plan.providerAppName){const observed=await provider.inspect(state.composeId,plan,{adoptAssignedName:true});plan=pinProviderIdentity(plan,observed?.appName);await save({providerAppName:plan.providerAppName,source});}
  if(state.phase==='created'){await save({phase:'deploying'});await provider.deploy(state.composeId,plan);}
  if(state.phase==='deploying'&&(await provider.inspect(state.composeId,plan))?.composeStatus==='done')await save({phase:'running'});
 }
@@ -34,7 +35,7 @@ export async function sweepAllocations({root,load=allocationScope,env=process.en
    if(!authority.cleanup&&!s.cleanupRequested&&!['cleanup_requested','stopped','deleting'].includes(s.phase))continue;
    ctx.connection={client_id:s.clientId,pass_id:s.passId};ctx.publicDb=root;
    const config=dokployConfig(env),provider=providerFactory(config,{fetch:ctx.fetch});
-   if(!s.composeId&&!['requested','waiting_resources','disposed'].includes(s.phase)){const matches=(await provider.inventory()).filter(a=>a.appName===s.plan.name);if(matches.length!==1){pending++;continue;}await provider.inspect(matches[0].composeId,s.plan);const next=await ctx.db.compareAndSetSetting('playground.'+s.binding.slice(0,40),s.revision,{...s,composeId:matches[0].composeId,revision:s.revision+1});if(!next){pending++;continue;}await indexAllocation(ctx,next);ctx.stored=next;}
+   if(!s.composeId&&!['requested','waiting_resources','disposed'].includes(s.phase)){const matches=(await provider.inventory()).filter(a=>a.name===s.plan.name||a.appName===s.plan.name);if(matches.length!==1){pending++;continue;}const observed=await provider.inspect(matches[0].composeId,s.plan,{adoptAssignedName:true});const next=await ctx.db.compareAndSetSetting('playground.'+s.binding.slice(0,40),s.revision,{...s,composeId:observed.composeId,plan:pinProviderIdentity(s.plan,observed.appName),revision:s.revision+1});if(!next){pending++;continue;}await indexAllocation(ctx,next);ctx.stored=next;}
    const record={row:{id:s.workspace,owner:s.owner,repo:s.repo},...s.native};
    const result=await disposeAllocation(ctx,record,{config,provider});
    if(result.disposed){

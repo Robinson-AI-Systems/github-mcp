@@ -1,5 +1,9 @@
 # Native Git backup activation and recovery
 
+## Current owner decision2026-10-30: optional future activation
+
+Backups and restore acceptance are optional future operations and do not block production GitHub MCP/Playground implementation or activation. The owner has selected an existing interim off-server S3-compatible destination with100GB capacity and Chris as encryption-key custodian; production restores require his approval of the exact target. Private endpoint/credentials are intentionally absent from this public document. The latest destination.all read still returns401 unauthorized for destination; no backup was started and no restore was attempted. Do not bypass that refusal, purchase storage or present an unverified backup as recovery proof. Resume this runbook only when backup activation is requested and destination access is available. The historical prerequisites below apply to that optional activation, not the production service.
+
 This is the prepared operational procedure, not a claim that off-host backup is active. On 2026-10-29 the project-scoped Dokploy `volumeBackups.list` call returned no backup jobs for the GitHub worker. The pinned API can schedule volume backups with a destination ID, volume name, cron expression, retention count and optional service stop. Its create contract has no explicit client-side encryption/key-custody field; that alone cannot establish encrypted independent recovery. No existing destination credential was retrieved, and no raw backup was silently enabled.
 
 ## Inputs required before activation
