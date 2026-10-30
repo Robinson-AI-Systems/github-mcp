@@ -1,3 +1,4 @@
+import {readWorkspaceFile,writeWorkspaceFile,removeWorkspaceFile} from './safe-files.js';
 import {evaluateFileProtection,findingFingerprint} from '../../src/github/file-protection.js';
 import {defaultScannerSettings} from '../../src/github/scanner-policy.js';
 // Portable execution plane: fixed argv, no shell, hooks, filters or caller-supplied config.
@@ -157,9 +158,7 @@ export class NativeGitWorker {
       return { historical: true, observed_at: record.finished_at ?? null, result: record.result ?? { status: 'uncertain', next: 'Intent was started without a verified receipt. Inspect workspace and remote refs before a new intent.' } };
     }
     if (!writing && ['read_file', 'protection_check'].includes(operation)) {
-      const path = await this.filePath(w.repo, args.path);
-      if ((await lstat(path)).size > 20 * 1024 * 1024) throw new TypeError('File exceeds the worker read limit; use local Git export.');
-      const data = await readFile(path);
+      const data = await readWorkspaceFile(w.repo,args.path);
       if (data.length > 20 * 1024 * 1024) throw new TypeError('File exceeds the worker read limit; use the documented local Git export.');
       const source=data.toString('utf8'),blobSha=createHash('sha1').update(Buffer.from(`blob ${data.length}\0`)).update(data).digest('hex');
       const specific=data.length<=1000000&&this.scannerPolicy.settings.suppressions.some(s=>s.fileReadException&&s.path===args.path&&s.blobSha===blobSha);
@@ -193,10 +192,10 @@ export class NativeGitWorker {
         if (operation === 'write_file') {
           if (typeof args.base64 !== 'string' || args.base64.length > 1400000 || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(args.base64)) throw new TypeError('Supply canonical base64 of at most 1 MiB.');
           const bytes = Buffer.from(args.base64, 'base64'); if (containsCredential(bytes.toString('utf8'))) throw new TypeError('Credential-shaped file input belongs in protected setup, not tool arguments.');
-          const path = await this.filePath(w.repo, args.path); await mkdir(dirname(path), { recursive: true }); const file = await open(path, 'w', 0o600); try { await file.writeFile(bytes); await file.sync(); } finally { await file.close(); }
-          if (!(await readFile(path)).equals(bytes)) throw new Error('File readback differed.');
+          await writeWorkspaceFile(w.repo,args.path,bytes);
+          if (!(await readWorkspaceFile(w.repo,args.path)).equals(bytes)) throw new Error('File readback differed.');
           result = { code: 0, file_hash: createHash('sha256').update(bytes).digest('hex') };
-        } else if (operation === 'remove_file') { await rm(await this.filePath(w.repo, args.path)); result = { code: 0 }; }
+        } else if (operation === 'remove_file') { await removeWorkspaceFile(w.repo,args.path); result = { code: 0 }; }
         else if (operation.startsWith('worktree_')) {
           if (!/^[a-zA-Z0-9_-]{1,60}$/.test(args.name ?? '')) throw new TypeError('Worktree name must be a simple local identifier.');
           const path = join(w.dir, 'worktrees', args.name); await mkdir(dirname(path), { recursive: true });
@@ -223,9 +222,12 @@ export class NativeGitWorker {
     } finally { await lock.close(); await rm(join(w.dir, 'mutation.lock'), { force: true }); }
   }
   async close(id, binding) {
+    if (!ID.test(id ?? '')) throw new TypeError('Invalid workspace ID.');
+    await this.access(binding, true);
+    try { await realpath(join(this.root,id)); } catch(error) { if(error.code!=='ENOENT')throw error;await rm(join(this.root,'.attachments',id),{recursive:true,force:true});return {disposed:true,alreadyAbsent:true}; }
     const w = await this.workspace(id, binding, true, true);
     let lock; try { lock = await open(join(w.dir, 'mutation.lock'), 'wx', 0o600); } catch { throw new TypeError('Workspace is busy; no files deleted.'); }
-    try { await rm(w.dir, { recursive: true, force: true }); return { disposed: true }; } finally { await lock.close(); }
+    try { await rm(w.dir, { recursive: true, force: true });await rm(join(this.root,'.attachments',id),{recursive:true,force:true}); return { disposed: true }; } finally { await lock.close(); }
   }
   async prune({ skip = new Set(), limit = 100 } = {}) {
     let removed = 0;
@@ -237,7 +239,7 @@ export class NativeGitWorker {
         const meta = await json(join(dir, 'workspace.json'));
         if (!Number.isFinite(meta.expiresAt) || meta.expiresAt > this.now()) continue;
         lock = await open(join(dir, 'mutation.lock'), 'wx', 0o600);
-        await rm(dir, { recursive: true, force: true }); removed++;
+        await rm(dir, { recursive: true, force: true });await rm(join(this.root,'.attachments',id),{recursive:true,force:true}); removed++;
       } catch (e) { if (!['EEXIST', 'ENOENT'].includes(e.code)) throw e; }
       finally { if (lock) await lock.close(); }
     }

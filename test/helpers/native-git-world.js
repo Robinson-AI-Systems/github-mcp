@@ -4,6 +4,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
+import {createResourceMonitor} from '../../workers/native-git/resources.js';
+import {setTimeout as pause} from 'node:timers/promises';
 import { nativeGitServer } from '../../workers/native-git/server.js';
 import { NativeGitWorker } from '../../workers/native-git/engine.js';
 import { nativeConnection } from '../../src/native-git/client.js';
@@ -18,7 +20,11 @@ export async function prepareNativeWorld(w, { existing = false } = {}) {
   const opened = await worker.create(binding, { requestKey: 'fixture', fixtureRemote: seed });
   await w.db.createJob({ id: 'job_0123456789abcdef', connection: nativeConnection(w.ctx), owner: 'example-org', repo: 'hello', kind: 'native-git-workspace', ttlMinutes:240, providerRef: JSON.stringify({ authority: binding.authority, worker: opened.workspace_id }) });
  }
- const server = nativeGitServer({ root, key: KEY, now: w.ctx.now, allowLocalFixtures: true, fixtureRemote: () => seed });
+ const resources=createResourceMonitor({root});
+ // These signed HTTP fixtures share the test runner's event loop. Wait for
+ // observed readiness after fixture/module startup, without overriding limits.
+ w.nativeReady=async()=>{const deadline=Date.now()+3000;let sample;do{sample=await resources.check();if(sample.allowed)return;await pause(25);}while(Date.now()<deadline);throw new Error('Native fixture not ready: '+sample.reason);};
+ const server = nativeGitServer({ resources, root, key: KEY, now: w.ctx.now, allowLocalFixtures: true, fixtureRemote: () => seed });
  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve)); const origin = `http://127.0.0.1:${server.address().port}`;
  const providerFetch = w.gh.fetch;
  const multiplex = async (url, init) => {

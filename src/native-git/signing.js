@@ -23,3 +23,5 @@ export function signCodingWorkerBody(body,env=process.env){
  const claim=JSON.parse(body);if(claim.purpose!=='robinson-coding/v1'||Object.hasOwn(claim,'credential'))throw new TypeError('Invalid coding lease.');
  return 'ed25519:'+sign(null,Buffer.from(body),signingKey(env)).toString('base64url');
 }
+
+export function signPreviewBody(body,env=process.env){const claim=JSON.parse(body);if(claim.purpose!=='robinson-playground-preview/v1'||Object.hasOwn(claim,'credential'))throw new TypeError('Invalid preview delegation.');return sign(null,Buffer.from(body),signingKey(env)).toString('base64url');}

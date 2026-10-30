@@ -1,3 +1,7 @@
+import {createPreviewEntry} from '../playground/preview-entry.js';
+import {attachRepository} from '../playground/attachment.js';
+import {dokployConfig} from '../playground/dokploy.js';
+import {ensureAllocation,disposeAllocation,allocationRecord,inspectAllocation,resumeAllocation} from '../playground/allocations.js';
 import {playgroundAvailability,playgroundFallback,requirePlaygroundExecution} from '../playground/availability.js';
 import {defineRead} from './define-read.js';
 import {defineGithubWrite} from './define-github-write.js';
@@ -19,11 +23,12 @@ const execute=defineGithubWrite({name:'github_playground_execute',area:'playgrou
  present:({after})=>({execution_id:after.expected,accepted:after.execution.state!=='uncertain',command_finished:['completed','failed'].includes(after.execution.state),command_succeeded:after.execution.state==='completed'&&after.execution.exitCode===0,execution:after.execution,next:'Use github_playground_read status/logs with this execution_id; applied means accepted, not command success.'})
 });
 const read=defineRead({name:'github_playground_read',area:'playground',audience:['B','O','Op'],description:'Inspect Playground availability, safe fallback, command status, protected logs and private development text previews.',guidance,byteWindow:true,
- properties:{...properties,operation:{type:'string',enum:['capabilities','availability','status','logs','preview']},port:{type:'integer',minimum:1024,maximum:65535},path:{type:'string',maxLength:4096},expectedBodyHash:{type:'string',pattern:'^[a-f0-9]{64}$'},execution_id:EXECUTION,requestKey:{type:'string',minLength:1,maxLength:128},byteOffset:{type:'integer',minimum:0},byteLength:{type:'integer',minimum:1,maximum:32768},expectedLogHash:{type:'string',pattern:'^[a-f0-9]{64}$'}},required:['operation'],
+ properties:{...properties,operation:{type:'string',enum:['capabilities','availability','allocation','status','logs','preview']},port:{type:'integer',minimum:1024,maximum:65535},path:{type:'string',maxLength:4096},expectedBodyHash:{type:'string',pattern:'^[a-f0-9]{64}$'},execution_id:EXECUTION,requestKey:{type:'string',minLength:1,maxLength:128},byteOffset:{type:'integer',minimum:0},byteLength:{type:'integer',minimum:1,maximum:32768},expectedLogHash:{type:'string',pattern:'^[a-f0-9]{64}$'}},required:['operation'],
  handler:async(a,c)=>{
   if(a.operation==='availability'&&!a.workspace_id)return playgroundFallback('workspace_required');
-  if(a.operation==='capabilities'&&!a.workspace_id)return{product:"Robinson's Playground",operations:['github_playground_execute','github_playground_read','github_playground_cancel'],runtime_attached:false,setup_required:true,next:'Use an attached workspace_id and repository to check its actual runtime. Installation alone does not attach a runtime.',setup:'https://github.com/Robinson-AI-Systems/github-mcp/blob/main/docs/CODING-WORKSPACES.md'};
-  const record=await playgroundRecord(c,a,{allowUnattached:['capabilities','availability'].includes(a.operation)});
+  if(a.operation==='capabilities'&&!a.workspace_id)return{product:"Robinson's Playground",operations:['github_playground_execute','github_playground_read','github_playground_cancel','github_playground_workspace'],runtime_attached:false,setup_required:true,next:'Use an attached workspace_id and repository to check its actual runtime. Installation alone does not attach a runtime.',setup:'https://github.com/Robinson-AI-Systems/github-mcp/blob/main/docs/CODING-WORKSPACES.md'};
+  const record=await playgroundRecord(c,a,{allowUnattached:['capabilities','availability','allocation'].includes(a.operation)});
+  if(a.operation==='allocation')return await inspectAllocation(c,record);
   if(a.operation==='availability')return await availability(c,record);
   if(!record.allocation)return playgroundSetup(c,record);
   if(a.operation==='capabilities')return await callPlayground(c,record,'capabilities');
@@ -39,5 +44,14 @@ const cancel=defineGithubWrite({name:'github_playground_cancel',area:'playground
  apply:({args:a,ctx:c,target:t})=>callPlayground(c,t.record,'cancel',{id:a.execution_id}),readAfter:({args:a,ctx:c,target:t})=>callPlayground(c,t.record,'status',{id:a.execution_id}),
  verify:({args:a,after})=>after.id===a.execution_id&&['completed','failed'].includes(after.state),present:({after})=>({execution_id:after.id,execution:after,process_group_stopped:after.reason!=='cancelled_before_start',command_never_started:after.no_operation_started===true,whole_allocation_disposed:false})
 });
-export const tools=[execute.tool,read.tool,cancel.tool];
-export const handlers=Object.fromEntries([execute,read,cancel].map(x=>[x.tool.name,x.handler]));
+const workspace=defineGithubWrite({name:'github_playground_workspace',area:'playground',audience:['B','O','Op'],description:'Provision or dispose this workspace’s dedicated Playground allocation, with exact ownership and lifecycle readback.',
+ guidance:'Use operation provision with a stable requestKey; an allocation may remain deploying or awaiting repository attachment/enforcement. Read allocation to inspect progress. Dispose deletes only this exact owned allocation and volume after whole-process absence is independently verified. No provider secrets or runtime URLs are tool arguments.',
+ properties:{...properties,operation:{type:'string',enum:['provision','attach','resume','preview','dispose']},port:{type:'integer',minimum:1024,maximum:65535}},required:[...required,'operation','requestKey'],declarations:{production:'never',confirm:'when-needed',profiles:['full']},target:targetFor(true),explain,
+ read:async(a,c,t)=>{if(a.operation!=='dispose')dokployConfig(c.env);return {allocation:await allocationRecord(c,t.record)};},classify:()=>({}),summarize:({args:a,target:t})=>`${({provision:'Provision',attach:'Attach the repository to',resume:'Resume',preview:'Open a private preview for',dispose:'Delete the files and volumes of'})[a.operation]} the exact dedicated Playground allocation for ${t.owner}/${t.repo}; uses configured host resources, no additional paid plan.`,
+ apply:({args:a,ctx:c,target:t})=>a.operation==='provision'?ensureAllocation(c,t.record):a.operation==='attach'?attachRepository(c,t.record):a.operation==='resume'?resumeAllocation(c,t.record):a.operation==='preview'?createPreviewEntry(c,t.record,a.port??4173):disposeAllocation(c,t.record),
+ readAfter:async({args:a,ctx:c,target:t,response})=>({response,allocation:await allocationRecord(c,t.record),observed:await inspectAllocation(c,t.record),operation:a.operation}),
+ verify:({after})=>after.operation==='preview'?typeof after.response.entry_url==='string':after.operation==='dispose'?after.response.disposed===true:['requested','waiting_resources'].includes(after.allocation?.phase)||after.observed?.provider_observed===true&&!!after.allocation?.composeId&&['created','exposed','deploying','allocated','attaching','attached'].includes(after.allocation.phase),
+ present:({after})=>after.operation==='preview'?after.response:({workspace_id:after.allocation?.workspace,phase:after.allocation?.phase??'absent',allocation_ready:['allocated','attached'].includes(after.allocation?.phase),repository_attached:after.allocation?.repositoryAttached===true,disposed:after.response.disposed===true,execution_available:false,next:'Read allocation and availability. Provisioning acceptance is not repository attachment, enforcement or command success.'})
+});
+export const tools=[execute.tool,read.tool,cancel.tool,workspace.tool];
+export const handlers=Object.fromEntries([execute,read,cancel,workspace].map(x=>[x.tool.name,x.handler]));

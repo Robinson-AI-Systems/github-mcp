@@ -27,5 +27,6 @@ export async function preparePlaygroundWorld(w,{real=false,ports}={}){
  const prior=w.ctx.fetch;w.playgroundRequests=[];const fetchRuntime=(url,init)=>{if(!String(url).startsWith('https://playground.example.test/'))return prior(url,init);w.playgroundRequests.push(JSON.parse(init.body));return fetch(origin+'/v1/coding',init);};
  w.gh.fetch=fetchRuntime;w.ctx={...w.ctx,fetch:fetchRuntime,env:{...w.ctx.env,PLAYGROUND_ENFORCEMENT:JSON.stringify([{workspace_id:record.row.id,binding,observedAt:w.ctx.now(),expiresAt:w.ctx.now()+14400000,isolation:true,termination:true,repositoryAttached:true,cpuCpus:8,memoryBytes:8*1024**3,storageQuotaBytes:150*1000**3}]),PLAYGROUND_ALLOCATIONS:JSON.stringify([{workspace_id:record.row.id,binding,origin:'https://playground.example.test/'}])}};
  w.playground={runtime,root,binding,starts:()=>starts,cancels:()=>cancels};
+ await w.nativeReady();
  return async()=>{server.closeAllConnections();await new Promise(resolve=>server.close(resolve));await runtime.shutdown();await closeNative();await rm(root,{recursive:true,force:true});};
 }

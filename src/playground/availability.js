@@ -1,3 +1,4 @@
+import {refreshAdmission} from './admission.js';
 // Protected operator observations are prerequisites, never a capacity reservation
 // or a replacement for independent host acceptance. No caller may submit these.
 const CPU=8,MEMORY=8*1024**3,DISK=150*1000**3;
@@ -15,11 +16,14 @@ export function enforcementObservation(ctx,record){
  return o;
 }
 export async function playgroundAvailability(ctx,record,probe){
+ ctx=await refreshAdmission(ctx,{project:ctx.env?.PLAYGROUND_DOKPLOY_PROJECT_ID});
  if(!record.allocation)return playgroundFallback('runtime_unattached');
+ if(record.allocation.repositoryAttached===false)return playgroundFallback('repository_unattached');
  const evidence=enforcementObservation(ctx,record);
  if(!evidence)return playgroundFallback('enforcement_unverified');
  let cap;try{cap=await probe();}catch(e){if(['playground_transport','playground_response'].includes(e.safeCode))return playgroundFallback('runtime_unavailable',{retryable:true,mode:'recovery'});throw e;}
  if(cap.protocol!==1||cap.arbitraryCommands!==true||cap.idleTimeoutMs!==record.job.idleTimeoutMs)return playgroundFallback('runtime_incompatible');
+ if(cap.authority?.required===true&&cap.authority.allowed!==true)return playgroundFallback('authority_unavailable',{retryable:true,mode:'recovery'});
  const cpu=cap.capacity?.cpu?.cgroupQuotaCpus,memory=cap.capacity?.memory?.cgroupLimitBytes;
  if(!Number.isFinite(cpu)||cpu<=0||cpu>evidence.cpuCpus||!Number.isSafeInteger(memory)||memory<=0||memory>evidence.memoryBytes)return playgroundFallback('runtime_limits_unconfirmed');
  const constrained=cpu<CPU||memory<MEMORY||evidence.storageQuotaBytes<DISK;

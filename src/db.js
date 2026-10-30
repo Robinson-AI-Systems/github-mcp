@@ -1326,6 +1326,12 @@ export function createDb(sql = productionSql()) {
       await sql`UPDATE secret_entry_requests SET completed_at = NULL WHERE id = ${id}`;
     },
 
+    /** Trusted maintenance inventory; bounded pages are not user/workspace quotas. */
+    async listPlaygroundIndexes({after='',limit=50}={}) {
+      if(typeof after!=='string'||after.length>63||!Number.isSafeInteger(limit)||limit<1||limit>100)throw new TypeError('Invalid allocation inventory page.');
+      return sql`SELECT setting,value FROM server_settings WHERE setting LIKE 'pg_index.%' AND setting>${after}
+        AND value->>'kind'='playground-index' AND value->'allocation'->>'phase'<>'disposed' ORDER BY setting LIMIT ${limit}`;
+    },
     /** An owner setting (JSON), or null. Settings hold names and numbers, never a credential. */
     async getSetting(key) {
       const rows = await sql`SELECT value FROM server_settings WHERE setting = ${key}`;

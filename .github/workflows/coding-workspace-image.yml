@@ -34,3 +34,6 @@ jobs:
         run: docker build --target connector-test -f workers/coding-workspace/Dockerfile -t robinson-coding-connector:test .
       - name: Exercise real MCP command tools against actual unprivileged commands
         run: docker run --rm --network none --read-only --cap-drop ALL --cap-add SETUID --cap-add SETGID --cap-add KILL --cap-add CHOWN --cap-add DAC_OVERRIDE --security-opt no-new-privileges --memory 2g --cpus 2 --tmpfs /tmp:rw,nosuid,nodev,size=1g,mode=1777 robinson-coding-connector:test
+
+      - name: Verify dedicated broker/runtime shared files and whole-allocation cleanup
+        run: node workers/coding-workspace/allocation-smoke.mjs

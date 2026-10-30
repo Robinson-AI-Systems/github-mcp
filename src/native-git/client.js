@@ -40,7 +40,11 @@ export async function nativeRecord(ctx, id, { allowDisposed = false } = {}) {
  await authorizeNativeRepo(ctx, row.owner, row.repo);
  const idleTimeoutMs = meta.idleTimeoutMs ?? new Date(row.expires_at).getTime() - new Date(row.created_at).getTime();
  if (!Number.isSafeInteger(idleTimeoutMs) || idleTimeoutMs < 60000 || idleTimeoutMs > 86400000) throw new TypeError('Invalid stored workspace idle timeout.');
- return { row, job: { id, idleTimeoutMs, host: meta.host, createdAt: row.created_at }, binding: { authority: meta.authority, connection: nativeConnection(ctx), owner: row.owner, repo: row.repo }, worker: meta.worker };
+ const binding={authority:meta.authority,connection:nativeConnection(ctx),owner:row.owner,repo:row.repo};
+ const allocationBinding=createHash('sha256').update(JSON.stringify(['robinson-playground/v1',row.id,binding.authority,binding.connection,binding.owner.toLowerCase(),binding.repo.toLowerCase(),meta.worker])).digest('hex');
+ const allocation=typeof ctx.db.getSetting==='function'?await ctx.db.getSetting('playground.'+allocationBinding.slice(0,40)):null;
+ if(allocation&&(allocation.binding!==allocationBinding||allocation.connection!==binding.connection||allocation.workspace!==id))throw new TypeError('Dedicated broker allocation does not match this workspace.');
+ return {row,job:{id,idleTimeoutMs,host:meta.host,createdAt:row.created_at,...(allocation?.phase==='attached'?{brokerOrigin:allocation.brokerOrigin,allocationBinding}:{})},binding,worker:meta.worker};
 }
 export async function callNativeWorker(ctx, { binding, action, workspace_id, operation, options, requestKey, expectedGeneration, allowWrite = false, network = false, job, renewLease = true }) {
  const url = nativeWorkerRoute(ctx.env, job);
@@ -61,7 +65,7 @@ export async function callNativeWorker(ctx, { binding, action, workspace_id, ope
  });
  let response;
  try {
-  response = await (ctx.fetch ?? globalThis.fetch)(url, { method: 'POST', redirect: 'error', signal: AbortSignal.timeout(50000), headers: { 'Content-Type': 'application/json', 'x-robinson-signature': signNativeWorkerBody(body, ctx.env) }, body });
+  response = await (ctx.fetch ?? globalThis.fetch)(url, { method: 'POST', redirect: 'error', signal: AbortSignal.timeout(50000), headers: { 'Content-Type': 'application/json', 'x-robinson-signature': signNativeWorkerBody(body, job?.brokerOrigin?{...ctx.env,NATIVE_GIT_WORKER_KEY:undefined}:ctx.env) }, body });
  } catch {
   throw failure('native_transport', 'Native Git worker could not be reached. Inspect workspace state and the same intent receipt before retrying; the outcome may be unknown.');
  }

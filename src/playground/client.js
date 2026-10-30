@@ -20,7 +20,14 @@ export async function playgroundRecord(ctx,args,{allowUnattached=false}={}){
  const owner=args.owner??ctx.connection.default_account;
  if(typeof args.repo!=='string'||`${record.row.owner}/${record.row.repo}`.toLowerCase()!==`${owner}/${args.repo}`.toLowerCase())throw fail('playground_repository','Requested repository does not match this connection’s workspace.');
  if(new Date(record.row.expires_at).getTime()<=(ctx.now??Date.now)())throw fail('playground_expired','Workspace inactivity lease expired. No runtime request was sent.');
- let allocation;try{allocation=playgroundAllocation(ctx.env,record);}catch(error){if(!allowUnattached||error.safeCode!=='playground_setup_required')throw error;allocation=null;}
+ let allocation;try{allocation=playgroundAllocation(ctx.env,record);}catch(error){
+  if(error.safeCode!=='playground_setup_required')throw error;
+  const binding=playgroundBinding(record),stored=await ctx.db.getSetting('playground.'+binding.slice(0,40));
+  if(['allocated','attached'].includes(stored?.phase)){
+   if(stored.binding!==binding||stored.workspace!==record.row.id||stored.connection!==nativeConnection(ctx))throw fail('playground_binding','Stored allocation ownership does not match this exact workspace.');
+   allocation={...playgroundAllocation({PLAYGROUND_ALLOCATIONS:JSON.stringify([{workspace_id:record.row.id,binding,origin:stored.origin}])},record),repositoryAttached:stored.repositoryAttached===true};
+  }else{if(!allowUnattached)throw error;allocation=null;}
+ }
  return {...record,allocation};
 }
 export const playgroundSetup=(ctx,record)=>({product:"Robinson's Playground",runtime_attached:false,setup_required:true,workspace_id:record.row.id,allocation_binding:playgroundBinding(record),verification_key:nativeWorkerPublicKey(ctx.env),native_repository_ref:record.worker,idleTimeoutMs:record.job.idleTimeoutMs,next:"Provision the exact isolated repository mount and runtime, then attach its protected HTTPS allocation. The binding and verification key are not credentials."});
