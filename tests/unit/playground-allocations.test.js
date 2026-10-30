@@ -57,10 +57,11 @@ it('does not accept a recovered ingress with the private Git broker route missin
  const {w,record}=await world(),provider=fixtureProvider();await ensureAllocation(w.ctx,record,{provider,config,manager:async()=>{}});
  const old=await allocationRecord(w.ctx,record),key='playground.'+old.binding.slice(0,40);
  await w.ctx.db.compareAndSetSetting(key,old.revision,{...old,revision:old.revision+1,phase:'exposing'});
- const row=provider.rows.get(old.composeId);row.domains=[{host:old.plan.host,port:3000,https:true,serviceName:'ingress',path:'/'}];
+ const row=provider.rows.get(old.composeId);row.domains=[{host:old.plan.host,port:3000,https:true,serviceName:'ingress',path:'/',internalPath:'/',stripPath:false}];
  await expect(ensureAllocation(w.ctx,record,{provider,config,manager:async()=>{}})).rejects.toThrow(/Ingress/);
- row.domains.push({host:old.plan.host,port:3000,https:true,serviceName:'ingress',path:'/v1/workspace'});
- expect((await ensureAllocation(w.ctx,record,{provider,config,manager:async()=>{}})).phase).toBe('allocated');
+ row.domains.push({host:old.plan.host,port:3000,https:true,serviceName:'ingress',path:'/v1/workspace',internalPath:'/v1/workspace',stripPath:false});
+ await expect(ensureAllocation(w.ctx,record,{provider,config,manager:async()=>{}})).rejects.toThrow(/Ingress/);
+ row.domains[1].internalPath='/';expect((await ensureAllocation(w.ctx,record,{provider,config,manager:async()=>{}})).phase).toBe('allocated');
 });
 it('recovers a lost delete response by absence readback without requiring the deleted Compose to exist',async()=>{
  const {w,record}=await world(),provider=fixtureProvider();await ensureAllocation(w.ctx,record,{provider,config,manager:async()=>{}});

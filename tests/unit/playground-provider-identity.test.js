@@ -16,6 +16,10 @@ it('pins only independently read-back exact assigned names and uses them for con
  expect(calls.filter(c=>c==='compose.deploy')).toHaveLength(deployed);
  expect(()=>pinProviderIdentity(p,'foreign-d5ggar')).toThrow();expect(()=>pinProviderIdentity(p,p.name+'-d5ggar-extra')).toThrow();expect(()=>pinProviderIdentity(pinned,p.name+'-abcdef')).toThrow();
 });
+it('preserves the full broker path instead of asking Dokploy to prepend it again',async()=>{
+ const p=plan(),created=[];const provider=dokployProvider(config,{fetch:async(url,init)=>{const op=new URL(url).pathname.split('/').pop();if(op==='compose.one')return Response.json({composeId:'owned',name:p.name,appName:p.name,description:p.description,composeFile:p.composeFile,sourceType:'raw',environmentId:config.environment,environment:{projectId:config.project}});if(op==='domain.create'){const body=JSON.parse(init.body);created.push(body);return Response.json(body);}throw Error('Unexpected provider request');}});
+ await provider.expose('owned',p);expect(created.map(d=>({path:d.path,internalPath:d.internalPath,stripPath:d.stripPath,service:d.serviceName}))).toEqual([{path:'/',internalPath:'/',stripPath:false,service:'ingress'},{path:'/v1/workspace',internalPath:'/',stripPath:false,service:'ingress'}]);
+});
 it('never accepts foreign bootstrap source just because its assigned name has a plausible suffix',async()=>{
  const p=plan();const provider=dokployProvider(config,{fetch:async(url)=>{const op=new URL(url).pathname.split('/').pop();if(op==='project.one')return Response.json({projectId:config.project,environments:[{environmentId:config.environment}]});if(op==='compose.create')return Response.json({composeId:'owned'});return Response.json({composeId:'owned',name:p.name,appName:p.name+'-d5ggar',environmentId:config.environment,environment:{projectId:config.project},description:p.description,composeFile:'{}',sourceType:'raw'});}});
  await expect(provider.create(p)).rejects.toThrow(/ownership/);
