@@ -22,7 +22,12 @@ export async function ensureProjectManager(ctx,config,provider){
  if(!state){await save({phase:'creating',name,description,source});const created=await provider.create(plan);if(!created?.composeId)throw new TypeError('Manager creation is uncertain.');plan=pinProviderIdentity(plan,created.appName);await save({phase:'created',composeId:created.composeId,providerAppName:plan.providerAppName});}
  else if(state.phase==='creating'){const matches=(await provider.inventory()).filter(x=>x.name===name||x.appName===name);if(matches.length!==1)throw new TypeError('Manager creation is uncertain; no duplicate was created.');const observed=await provider.inspect(matches[0].composeId,plan,{adoptAssignedName:true});plan=pinProviderIdentity(plan,observed.appName);await save({phase:'created',composeId:observed.composeId,providerAppName:plan.providerAppName,source});}
  if(!plan.providerAppName){const observed=await provider.inspect(state.composeId,plan,{adoptAssignedName:true});plan=pinProviderIdentity(plan,observed?.appName);await save({providerAppName:plan.providerAppName,source});}
- if(state.phase==='created'){await save({phase:'deploying'});await provider.deploy(state.composeId,plan);}
+ // The pre-suffix-fix controller recorded deploying before its ownership
+ // preflight refused. Recover that legacy no-dispatch state once, only after
+ // exact source/identity plus idle/empty provider deployment readback. Never
+ // repeatedly resubmit an uncertain new dispatch.
+ if(state.phase==='deploying'&&!state.dispatchVersion&&provider.deployments&&(await provider.inspect(state.composeId,plan))?.composeStatus==='idle'&&(await provider.deployments(state.composeId,plan)).length===0)await save({phase:'created',dispatchVersion:1});
+ if(state.phase==='created'){await save({phase:'deploying',dispatchVersion:1});await provider.deploy(state.composeId,plan);}
  if(state.phase==='deploying'&&(await provider.inspect(state.composeId,plan))?.composeStatus==='done')await save({phase:'running'});
 }
 export async function sweepAllocations({root,load=allocationScope,env=process.env,budgetMs=20000,now=Date.now,providerFactory=dokployProvider}={}){

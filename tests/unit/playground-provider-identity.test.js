@@ -27,7 +27,19 @@ it('recovers the same suffixed manager after an uncertain create and keeps its o
  await ensureProjectManager(w.ctx,{...config,image:'later-controller-image'},provider);
  expect(creates).toBe(1);const stored=await w.db.getSetting('playground_manager');expect(stored).toMatchObject({phase:'running',providerAppName:row.appName,source:{image:'fixture-image'}});expect(JSON.stringify(stored)).not.toContain('PLAYGROUND_SWEEP_KEY');
 });
-it('selects the authorized best-effort deployment and keeps execution source immutable without credentials in the manifest',async()=>{
+it('recovers only a legacy proven-undispatched manager and never repeats an uncertain versioned dispatch',async()=>{
+ const w=await makeWorld({profile:'full',mode:'production',gates:[]});closes.push(await prepareNativeWorld(w,{existing:true}));w.ctx.env.PUBLIC_BASE_URL='https://mcp.example.test';
+ let dispatches=0,history=[],status='idle';
+ const provider={create:async p=>({composeId:'owned',appName:p.name+'-d5ggar'}),inspect:async()=>({composeStatus:status}),deployments:async()=>history,deploy:async()=>{dispatches++;throw Error('uncertain dispatch');}};
+ await expect(ensureProjectManager(w.ctx,config,provider)).rejects.toThrow('uncertain dispatch');
+ await ensureProjectManager(w.ctx,config,provider);expect(dispatches).toBe(1);
+ const current=await w.db.getSetting('playground_manager');await w.db.setSetting('playground_manager',{...current,dispatchVersion:undefined});
+ history=[{status:'error'}];await ensureProjectManager(w.ctx,config,provider);expect(dispatches).toBe(1);
+ history=[];status='running';await ensureProjectManager(w.ctx,config,provider);expect(dispatches).toBe(1);
+ status='idle';await expect(ensureProjectManager(w.ctx,config,provider)).rejects.toThrow('uncertain dispatch');expect(dispatches).toBe(2);
+ await ensureProjectManager(w.ctx,config,provider);expect(dispatches).toBe(2);
+});
+it('selects best-effort policy and derives new execution builds from the immutable serving source without a stale manifest pin',async()=>{
  const manifest=JSON.parse(await readFile(new URL('../../vercel.json',import.meta.url),'utf8'));
- expect(manifest.env).toEqual({PLAYGROUND_RESOURCE_MODE:'best_effort',PLAYGROUND_BUILD_SOURCE_SHA:'029a53a1d391d46a6b838ca1435337ab1711daee'});expect(manifest.git.deploymentEnabled).toEqual({'**':false,live:true});
+ expect(manifest.env).toEqual({PLAYGROUND_RESOURCE_MODE:'best_effort'});expect(manifest.git.deploymentEnabled).toEqual({'**':false,live:true});
 });

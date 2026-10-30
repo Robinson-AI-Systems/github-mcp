@@ -21,6 +21,13 @@ test('real command UID, protected control, clean environment and nonzero exit',a
   const denied=await r.start({requestKey:'denied',argv:[node,'-e',"require('fs').readdirSync('../control')"]});assert.notEqual((await settled(r,denied.id)).exitCode,0);assert.equal((await stat(join(r.root,'control'))).mode&0o077,0);
  }finally{delete process.env.CODING_TEST_PRIVATE;await cleanup(r);}
 });
+test('only the fixed isolated gateway is exposed as the clean command egress proxy',async()=>{
+ assert.throws(()=>new CodingRuntime({root:'/tmp/unused',binding,egressProxy:'http://foreign:3128'}));
+ const r=await fixture({egressProxy:'http://ingress:3128'});try{
+  const x=await r.start({requestKey:'proxy-env',argv:[node,'-e',"const a=require('node:assert/strict');for(const k of ['HTTP_PROXY','HTTPS_PROXY','http_proxy','https_proxy'])a.equal(process.env[k],'http://ingress:3128');a.equal(process.env.NODE_USE_ENV_PROXY,'1');a.equal(process.env.NO_PROXY,'127.0.0.1,localhost,::1');console.log('fixed proxy ready')"]});
+  assert.equal((await settled(r,x.id)).exitCode,0);
+ }finally{await cleanup(r);}
+});
 test('durable replay, concurrent duplicate admission, conflict and restart recovery',async()=>{
  const r=await fixture();try{
   const args={requestKey:'once',argv:[node,'-e',"require('fs').appendFileSync('counter','1')"]};const calls=await Promise.allSettled([r.start(args),r.start(args)]);const x=calls.find(x=>x.status==='fulfilled').value;await settled(r,x.id);assert.equal((await r.start(args)).replayed,true);await assert.rejects(r.start({...args,argv:['true']}),{code:'intent_conflict'});assert.equal(await readFile(join(r.root,'repo/counter'),'utf8'),'1');

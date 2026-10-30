@@ -1196,3 +1196,5 @@ Owner-approved follow-up is tracked in [the active plan](designs/AUTHORITY-PARIT
 2026-10-29 Playground graceful fallback: see [current checkpoint](status/2026-10-29-playground-degradation.md). Source modes and durable pressure deferral are under verification; PLAY-1 integrated allocation/attachment/lifecycle remains incomplete.
 
 2026-10-30 Playground integrated release and scoped operator follow-through: see [verified live integration checkpoint](status/2026-10-30-playground-live-integration.md). Source/image/merged/deployed proof is separate from the still-unpassed real allocation contract and full disposable acceptance.
+
+2026-10-30 Playground trusted ingress successor: implement a separate gateway, bounded YAML/JSON network readback, peer-restricted public HTTP(S) dependency egress and once-only proven-undispatched manager recovery. New builds follow immutable serving source. See docs/status/2026-10-30-playground-isolated-ingress.md; source validation is separate from checked release/live acceptance. Backups remain optional.

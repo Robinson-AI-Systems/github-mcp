@@ -80,3 +80,12 @@ it('does not infer private isolation from unsupported YAML, missing readback or 
  for(const value of ['services:\n  coding:\n    networks: [workspace, dokploy-network]\n',null,{}, {...original,networks:{workspace:{...original.networks.workspace,internal:false}}},{...original,services:{...original.services,coding:{...original.services.coding,network_mode:'host'}}}]){w.converted=value;expect((await available(w)).execution_available).toBe(false);}
  w.converted=JSON.stringify(original);expect((await available(w)).execution_available).toBe(true);
 });
+it('accepts complete serialized YAML readback while refusing an ingress user mount or changed egress policy',async()=>{
+ const {w}=await world(),original=structuredClone(w.converted);
+ const yaml=(value,indent=0)=>Object.entries(value).map(([key,v])=>' '.repeat(indent)+JSON.stringify(key)+':'+(v&&typeof v==='object'&&!Array.isArray(v)?'\n'+yaml(v,indent+2):' '+JSON.stringify(v))).join('\n');
+ w.converted=yaml(original);expect((await available(w)).execution_available).toBe(true);
+ for(const patch of [{command:['node','foreign.js']},{cap_add:['SYS_ADMIN']},{volumes:['files:/workspace']},{environment:{...original.services.ingress.environment,EGRESS_BLOCKED_HOSTS:'[]'}},{networks:['workspace','foreign']},{ports:['3128:3128']}]){
+  w.converted={...original,services:{...original.services,ingress:{...original.services.ingress,...patch}}};expect((await available(w)).execution_available).toBe(false);
+ }
+ expect(w.playground.starts()).toBe(0);
+});

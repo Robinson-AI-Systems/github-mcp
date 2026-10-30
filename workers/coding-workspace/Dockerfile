@@ -15,7 +15,7 @@ COPY src/github/content-protection.js src/github/open-secret-rules.js src/github
 COPY vendor/gitleaks/ ./vendor/gitleaks/
 COPY workers/native-git/ ./workers/native-git/
 COPY src/native-git/commands.js src/native-git/protocol.js ./src/native-git/
-COPY workers/coding-workspace/runtime.js workers/coding-workspace/server.js workers/coding-workspace/capacity.js workers/coding-workspace/preview.js workers/coding-workspace/initialize.js workers/coding-workspace/authority.js workers/coding-workspace/browser-preview.js workers/coding-workspace/manager.js workers/coding-workspace/test-database ./workers/coding-workspace/
+COPY workers/coding-workspace/runtime.js workers/coding-workspace/server.js workers/coding-workspace/capacity.js workers/coding-workspace/preview.js workers/coding-workspace/initialize.js workers/coding-workspace/authority.js workers/coding-workspace/browser-preview.js workers/coding-workspace/manager.js workers/coding-workspace/ingress.js workers/coding-workspace/egress.js workers/coding-workspace/test-database ./workers/coding-workspace/
 # Only supervisor is root. Every command runs UID/GID1000 with a clean environment.
 USER 0:0
 ENV PORT=3000 CODING_STORAGE_ROOT=/workspace
