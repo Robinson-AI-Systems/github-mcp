@@ -1,5 +1,9 @@
 # PLAY-1 — Robinson's Playground integrated coding workspaces
 
+## Owner-authorized best-effort production outcome2026-10-30
+
+Support protected PLAYGROUND_RESOURCE_MODE=best_effort across allocation, availability, command admission, resume and heartbeat lifecycle without mandatory host resource telemetry or quota assertions. Preserve the existing verified mode, configured-feed failure/known-pressure refusal, exact automatic plan/attachment identity, private internal network, current grants, read-only Git metadata, idempotent commands and strict exact cleanup. Unit/transport tests cover all public execution doors, replay, absent/foreign/tampered identities, lifecycle revocation and provisioning without observations. Source tests and exact-head CI/images do not establish live activation. The default internal-network profile has no dependency-download egress, and the protected backend account credential still needs setup; these remain explicit limitations rather than invented passes.
+
 Owner approval2026-10-29: full coding environments,8CPU equivalents/8GiB RAM/up to150GB disk per workspace; no daily job quota, actual-resource admission and four-hour default inactivity. GitHub coding workspace first. Commands are agent-facing MCP operations, never a human-only UI or new owner confirmation ritual.
 
 ## Drift check

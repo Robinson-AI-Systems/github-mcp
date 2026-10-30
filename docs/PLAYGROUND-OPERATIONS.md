@@ -4,13 +4,25 @@ Keep Vercel for MCP, Neon for metadata and Dokploy for execution. The control pl
 
 ## Protected deployment configuration
 
-Configure PLAYGROUND_DOKPLOY_ORIGIN (HTTPS root), PLAYGROUND_DOKPLOY_API_KEY (project-scoped), PLAYGROUND_DOKPLOY_PROJECT_ID, PLAYGROUND_DOKPLOY_ENVIRONMENT_ID, PUBLIC_BASE_URL and PLAYGROUND_INGRESS_IPV4. Generated domains must target107.90.116.157. Use an immutable PLAYGROUND_IMAGE digest or full40-character PLAYGROUND_BUILD_SOURCE_SHA; otherwise the deployed Vercel source SHA pins the public Git build context. Do not publish project IDs/keys or enter credentials into tool arguments/chat.
+Configure PLAYGROUND_DOKPLOY_ORIGIN (HTTPS root), PLAYGROUND_DOKPLOY_API_KEY (the account credential), PLAYGROUND_DOKPLOY_PROJECT_ID, PLAYGROUND_DOKPLOY_ENVIRONMENT_ID, PUBLIC_BASE_URL and PLAYGROUND_INGRESS_IPV4. Dokploy does not issue a separate project-scoped key: the application pins and verifies project/environment/source/resource ownership before mutations. Generated domains must target107.90.116.157. Use an immutable PLAYGROUND_IMAGE digest or full40-character PLAYGROUND_BUILD_SOURCE_SHA; otherwise the deployed Vercel source SHA pins the public Git build context. Do not publish project IDs/keys or enter credentials into tool arguments/chat.
 
 Automatic clone enqueue records a bound intent. A trusted project manager advances provisioning/attachment and sweeps revoked/expired allocations. It holds only a cleanup-recheck capability; it cannot bypass current authorization or access command volumes. Provisioning and cleanup use exact Compose source/project/binding ownership and durable CAS state. An ambiguous create is recovered by exact inventory, never duplicate allocation. A lost delete response is recovered by absence readback. Unknown/denied inventory is not proof of cleanup.
 
 The new native attachment protocol must be deployed to the primary worker without replacing its persistent volume, verifier, credentials or unrelated workspaces. Preserve legacy host pins and all tenant schemas. Do not retire Render as part of this deployment.
 
 ## Operator-supported storage and networking contract
+
+### Optional best-effort resource mode
+
+Owner decision2026-10-30 permits implementation before specific resource controls/monitoring become available. Set protected PLAYGROUND_RESOURCE_MODE=best_effort to provision without a capacity feed and enable the managed private allocation baseline. The default remains verified for existing deployments. Without fresh measurements, the provider may refuse the configured allocation; do not invent headroom, reservations or an automatic paid upgrade. Valid measured pressure still queues work. A configured telemetry feed still fails closed; remove/reconfigure it deliberately through protected setup rather than silently substituting stale data.
+
+Best effort is accepted only for an exact automatically managed attached allocation using the generated dedicated internal-network profile. It requires persisted immutable plan hash, matching provider project/environment/origin, runtime identity, verified shared repository/read-only Git mounts and a current signed grant heartbeat. URL-only attachments and custom network drivers require the existing verified path. No caller can select resource mode or supply enforcement assertions.
+
+Availability reports mode best_effort, unknown storageQuotaBytes:null, configured CPU/memory separately from any measured runtime cgroup limits, resourceGuarantees:false and no reserved capacity. Unknown runtime resource measurements are not invented. Normal runtime pressure admission, replay, log scanning, grant revocation, inactivity, process termination and strict cleanup readback remain active. Missing host-volume readback leaves cleanup unconfirmed and recoverable; delete acknowledgement is never proof of disposal.
+
+The default internal network deliberately has no external dependency-download egress. Offline/preinstalled builds, tests, PostgreSQL, Chromium and private ingress are supported by the image; do not claim arbitrary online dependency installation in this profile. The existing100MiB/no-symlink source transfer bound also remains. A verified isolated egress driver can provide external downloads through the verified profile. No broad host access, Docker socket or paid resource is introduced.
+
+### Verified resource mode
 
 Default ordinary named volumes and internal bridge network do not establish a quota or dependency egress. Arbitrary commands remain unavailable until independently protected enforcement evidence exists. Safe Git/GitHub operations remain available.
 

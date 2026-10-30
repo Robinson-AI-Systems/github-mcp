@@ -1,3 +1,7 @@
+## 2026-10-30 — owner-authorized best-effort resource mode
+
+The owner permits production implementation before specific resource controls/monitoring are available and clarifies Dokploy uses account credentials. The new protected best-effort path supports automatic allocation and exactly attached command execution without claiming verified quotas/headroom; private allocation/identity/grant/attachment checks remain required. Default verified mode and configured-feed failure, pressure refusal and cleanup proof remain unchanged. See [current outcome](status/2026-10-30-playground-best-effort.md). Source verification/checked merge/release and live activation remain separate; PLAY-1 and its required live acceptance are not marked complete.
+
 ## 2026-10-29 — Playground private agent previews in progress
 
 Main428f40b7 and live/independently READY ac0d2805 were reconciled with the permanent PR477 handoff. The PLAY-1 preview outcome adds authenticated development text reads through the existing agent tool and dedicated runtime, without public app ports or forwarded credentials. Source/image verification and merge are pending; this is not a live preview/browser-session claim. Allocation, exact repository attachment, enforceable quotas/network isolation, revocation/whole-allocation termination, volume cleanup and the original operational prerequisites remain unfinished. See [preview checkpoint](status/2026-10-29-playground-private-preview.md).
