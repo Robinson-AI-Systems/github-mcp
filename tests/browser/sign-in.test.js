@@ -341,7 +341,9 @@ describe('My connection', () => {
     await b.page.goto(ORIGIN + '/api/oauth/authorize?forget=1');
     await b.page.click('#forget-start');
     await b.page.click('#delete');
-    await b.page.waitForSelector('h1');
+    // WebKit may expose the proxy's loading document (which also has an h1)
+    // before the POST navigation commits. Wait for the exact completed page.
+    await b.page.waitForFunction(() => document.title === 'Your data is deleted');
     expect(await b.page.title()).toBe('Your data is deleted');
     const gone = await world.call({ method: 'POST', path: '/api/mcp', headers: { authorization: 'Bearer ' + tokens.access_token,
       accept: 'application/json, text/event-stream', 'content-type': 'application/json' }, body: { jsonrpc: '2.0', id: 1, method: 'tools/list' } });
