@@ -1,3 +1,7 @@
+## 2026-10-30 — live ingress network isolation finding
+
+PR483 is merged/released at independently READY3ce97ad8 and the provider-name repair advanced the owned live allocation. Actual converted Compose exposed provider-added shared networks on the executor. No repository attachment or command was attempted; the owned build was killed, Compose404/container absence read back, volume absence remains unverified401. Execution/heartbeat/resume must fail closed on unverified converted networks. See [repair and exact next engineering](status/2026-10-30-playground-network-readback.md). Backups remain optional; this is a separate ingress-isolation implementation gap, not a request for backup or resource-monitoring permissions.
+
 ## 2026-10-30 — backups optional; live provider-identity recovery
 
 The owner defers backup activation/restoration as optional future operations, removing that production gate while preserving data/cleanup safeguards. Backend credential verification now reaches Dokploy. An owned live provisioning attempt exposed provider-added appName suffixes; exact assigned-name pinning/recovery and stable manager-source configuration are in progress. See [current outcome](status/2026-10-30-playground-provider-identity.md). No backup, runtime acceptance pass or production restore is claimed.

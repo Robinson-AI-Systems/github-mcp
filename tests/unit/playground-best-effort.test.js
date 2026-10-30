@@ -13,7 +13,7 @@ const base={owner:'example-org',repo:'hello',workspace_id:'job_0123456789abcdef'
 afterEach(async()=>{for(const close of closes.splice(0))await close();});
 async function world(){
  const w=await makeWorld({profile:'full',mode:'production',gates:[]});w.gh.when('GET /repos/{owner}/{repo}').reply(200,{full_name:'example-org/hello'});closes.push(await preparePlaygroundWorld(w));
- Object.assign(w.ctx.env,{PLAYGROUND_RESOURCE_MODE:'best_effort',PLAYGROUND_DOKPLOY_ORIGIN:'https://dokploy.example.test',PLAYGROUND_DOKPLOY_PROJECT_ID:'fixture',PLAYGROUND_DOKPLOY_ENVIRONMENT_ID:'fixture-env'});delete w.ctx.env.PLAYGROUND_ENFORCEMENT;
+ Object.assign(w.ctx.env,{PLAYGROUND_RESOURCE_MODE:'best_effort',PLAYGROUND_DOKPLOY_ORIGIN:'https://dokploy.example.test',PLAYGROUND_DOKPLOY_PROJECT_ID:'fixture',PLAYGROUND_DOKPLOY_ENVIRONMENT_ID:'fixture-env',PLAYGROUND_DOKPLOY_API_KEY:'FAKE_PROVIDER_KEY',PLAYGROUND_IMAGE:'ghcr.io/example/runtime@sha256:'+'a'.repeat(64),PLAYGROUND_INGRESS_IPV4:'107.90.116.157'});delete w.ctx.env.PLAYGROUND_ENFORCEMENT;
  const record=await playgroundRecord(w.ctx,base),binding=record.allocation.binding;
  const config={origin:w.ctx.env.PLAYGROUND_DOKPLOY_ORIGIN,project:'fixture',environment:'fixture-env',image:'fixture',ingress:'107.90.116.157',worker:record.worker,nativeBinding:'a'.repeat(64)};
  const plan=allocationPlan({binding,verificationKey:'ed25519:FAKE_PUBLIC',idleTimeoutMs:record.job.idleTimeoutMs},config),mounts={worktree:'fixture-worktree',git:'fixture-git',gitReadOnly:true};
@@ -23,7 +23,8 @@ async function world(){
  // Unit transport fixture: actual signed HTTP commands still use the existing
  // fake engine; capabilities model an independently attached container.
  const prior=w.ctx.fetch;w.cap={execution:'dedicated-container',providerCredentials:false,identity_key:stored.runtimePublicKey,repository:mounts,authority:{required:true,allowed:true}};
- w.ctx.fetch=async(url,init)=>{if(String(url).startsWith(plan.origin+'/v1/workspace')){url=new URL('/v1/workspace',w.ctx.env.NATIVE_GIT_WORKER_URL).href;init={...init,headers:{...init.headers,'x-robinson-signature':signNativeWorkerBody(init.body,w.ctx.env)}};}if(String(url).startsWith(plan.origin+'/v1/coding'))url='https://playground.example.test/v1/coding';const response=await prior(url,init);if(String(url).startsWith('https://playground.example.test/')&&JSON.parse(init.body).action==='capabilities')return Response.json({...await response.json(),...w.cap});return response;};
+ w.converted=JSON.parse(plan.composeFile);
+ w.ctx.fetch=async(url,init)=>{if(String(url).startsWith(config.origin+'/api/')){const op=new URL(url).pathname.split('/').pop();if(op==='compose.one')return Response.json({composeId:stored.composeId,name:plan.name,appName:plan.name,environmentId:config.environment,environment:{projectId:config.project},description:plan.description,composeFile:plan.composeFile,sourceType:'raw'});if(op==='compose.getConvertedCompose')return Response.json(w.converted);throw Error('Unexpected provider call');}if(String(url).startsWith(plan.origin+'/v1/workspace')){url=new URL('/v1/workspace',w.ctx.env.NATIVE_GIT_WORKER_URL).href;init={...init,headers:{...init.headers,'x-robinson-signature':signNativeWorkerBody(init.body,w.ctx.env)}};}if(String(url).startsWith(plan.origin+'/v1/coding'))url='https://playground.example.test/v1/coding';const response=await prior(url,init);if(String(url).startsWith('https://playground.example.test/')&&JSON.parse(init.body).action==='capabilities')return Response.json({...await response.json(),...w.cap});return response;};
  w.gh.fetch=w.ctx.fetch;
  return {w,stored,key,record,config};
 }
@@ -65,4 +66,17 @@ it('keeps grant revocation, repository authorization, expiry and exact provider 
  let starts=0;const provider={start:async(id,plan)=>{expect(id).toBe(stored.composeId);expect(plan).toEqual(stored.plan);starts++;}};
  await resumeAllocation(ctx,record,{provider,config});expect(starts).toBe(1);
  await expect(resumeAllocation(ctx,record,{provider,config:{...config,project:'foreign'}})).rejects.toThrow(/scope changed/);expect(starts).toBe(1);
+});
+it('refuses provider-added shared ingress networks at every execution door before sending any command',async()=>{
+ const definition={tool:tools.tools.find(t=>t.name==='github_playground_execute'),handler:tools.handlers.github_playground_execute};
+ for(const door of doorsFor(definition)){
+  const {w}=await world();w.converted.services.coding.networks.push('dokploy-network','default');
+  expect(await available(w)).toMatchObject({execution_available:false,reason:'network_isolation_unverified'});
+  expect(parse(await door.call(w,{...base,argv:['true'],requestKey:'unsafe-ingress'}))).toMatchObject({done:false,no_change_sent:true,reason_code:'network_isolation_unverified'});expect(w.playground.starts()).toBe(0);expect(w.playgroundRequests).toHaveLength(0);
+ }
+});
+it('does not infer private isolation from unsupported YAML, missing readback or default/host/public network configuration',async()=>{
+ const {w}=await world(),original=structuredClone(w.converted);
+ for(const value of ['services:\n  coding:\n    networks: [workspace, dokploy-network]\n',null,{}, {...original,networks:{workspace:{...original.networks.workspace,internal:false}}},{...original,services:{...original.services,coding:{...original.services.coding,network_mode:'host'}}}]){w.converted=value;expect((await available(w)).execution_available).toBe(false);}
+ w.converted=JSON.stringify(original);expect((await available(w)).execution_available).toBe(true);
 });

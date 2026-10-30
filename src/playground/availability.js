@@ -1,5 +1,5 @@
 import {refreshAdmission} from './admission.js';
-import {managedResourceBaseline} from './resource-policy.js';
+import {managedResourceBaseline,managedNetworkVerified} from './resource-policy.js';
 // Protected operator observations are prerequisites, never a capacity reservation
 // or a replacement for independent host acceptance. No caller may submit these.
 const CPU=8,MEMORY=8*1024**3,DISK=150*1000**3;
@@ -22,7 +22,7 @@ export async function playgroundAvailability(ctx,record,probe){
  if(record.allocation.repositoryAttached===false)return playgroundFallback('repository_unattached');
  const evidence=enforcementObservation(ctx,record);
  let baseline=null;
- if(!evidence){const stored=await ctx.db.getSetting('playground.'+record.allocation.binding.slice(0,40));baseline=managedResourceBaseline(ctx.env,stored,{workspace:record.row.id,binding:record.allocation.binding});if(stored?.connection!==record.binding.connection||new URL(record.allocation.url).origin!==stored?.origin)baseline=null;}
+ if(!evidence){const stored=await ctx.db.getSetting('playground.'+record.allocation.binding.slice(0,40));baseline=managedResourceBaseline(ctx.env,stored,{workspace:record.row.id,binding:record.allocation.binding});if(stored?.connection!==record.binding.connection||new URL(record.allocation.url).origin!==stored?.origin)baseline=null;if(baseline&&!await managedNetworkVerified(ctx,stored))return playgroundFallback('network_isolation_unverified');}
  if(!evidence&&!baseline)return playgroundFallback('enforcement_unverified');
  let cap;try{cap=await probe();}catch(e){if(['playground_transport','playground_response'].includes(e.safeCode))return playgroundFallback('runtime_unavailable',{retryable:true,mode:'recovery'});throw e;}
  if(cap.protocol!==1||cap.arbitraryCommands!==true||cap.idleTimeoutMs!==record.job.idleTimeoutMs)return playgroundFallback('runtime_incompatible');
