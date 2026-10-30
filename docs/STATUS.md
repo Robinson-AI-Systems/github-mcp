@@ -1180,3 +1180,5 @@ Owner-approved follow-up is tracked in [the active plan](designs/AUTHORITY-PARIT
 
 
 2026-10-29 Playground follow-through: owner-approved integrated coding scope is IN_PROGRESS under [PLAY-1](pr-cards/PLAY-1.md); command adapter source and real-image verification are tracked in [the connector checkpoint](status/2026-10-29-playground-connector.md). This is not a new live acceptance pass or a claim of completed provisioning/preview/lifecycle.
+
+2026-10-29 Playground graceful fallback: see [current checkpoint](status/2026-10-29-playground-degradation.md). Source modes and durable pressure deferral are under verification; PLAY-1 integrated allocation/attachment/lifecycle remains incomplete.

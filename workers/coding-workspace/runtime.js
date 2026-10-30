@@ -13,7 +13,7 @@ export class CodingRuntime {
  constructor({root,binding,uid=1000,gid=1000,now=Date.now,maxLogBytes=32*1024*1024,idleMs=4*3600000,resources}={}){
   if(process.getuid?.()!==0)throw fail('isolation_required','Run the supervisor as the isolated container root; commands always use a different unprivileged UID.');
   if(!isAbsolute(root??'')||!ID.test(binding??'')||uid!==1000||gid!==1000||!Number.isSafeInteger(maxLogBytes)||maxLogBytes<1024||maxLogBytes>64*1024*1024||!Number.isSafeInteger(idleMs)||idleMs<60000||idleMs>86400000)throw fail('invalid_configuration','Invalid isolated workspace configuration.');
-  Object.assign(this,{root:resolve(root),binding,uid,gid,now,maxLogBytes,idleMs});this.active=new Map();this.lastActivity=now();this.expired=false;this.stopping=false;this.leaseWrites=Promise.resolve();this.resources=resources??createResourceMonitor({root:this.root});
+  Object.assign(this,{root:resolve(root),binding,uid,gid,now,maxLogBytes,idleMs});this.active=new Map();this.admitting=new Set();this.lastActivity=now();this.expired=false;this.stopping=false;this.leaseWrites=Promise.resolve();this.resources=resources??createResourceMonitor({root:this.root});
  }
  async init(){
   const {chown}=await import('node:fs/promises');
@@ -36,8 +36,14 @@ export class CodingRuntime {
   if(typeof requestKey!=='string'||requestKey.length<1||requestKey.length>128||!Array.isArray(argv)||argv.length<1||argv.length>128||argv.some(s=>typeof s!=='string'||s.includes('\0')||s.length>16384)||!argv[0]||typeof cwd!=='string'||isAbsolute(cwd)||!Number.isSafeInteger(timeoutMs)||timeoutMs<1||timeoutMs>4*3600000)throw fail('invalid_command','Supply argv, a repository-relative directory and a finite timeout up to four hours.');
   const directory=await realpath(resolve(this.root,'repo',cwd)),repo=join(this.root,'repo');if(directory!==repo&&!directory.startsWith(repo+'/'))throw fail('invalid_directory','Command directory must remain inside this workspace.');
   const id=hash([this.binding,requestKey]),intent=hash({argv,cwd,timeoutMs});const p=this.paths(id);
-  try{const prior=await this.inspect(id);if(prior.intent!==intent)throw fail('intent_conflict','Request key belongs to different command arguments.');return {...prior,replayed:true};}catch(e){if(e.code!=='execution_not_found')throw e;}
-  const admission=await this.resources.check();if(!admission.allowed)throw fail('resource_pressure','Measured workspace resources are under pressure; no command started.');
+  if(this.admitting.has(id))throw fail('execution_busy','This execution admission is in progress; inspect the same intent.');
+  this.admitting.add(id);try{
+  try{const prior=await this.inspect(id);if(prior.intent!==intent)throw fail('intent_conflict','Request key belongs to different command arguments.');if(prior.state!=='deferred')return {...prior,replayed:true};}catch(e){if(e.code!=='execution_not_found')throw e;}
+  const admission=await this.resources.check();if(!admission.allowed){
+   const reason=/^[a-z_]{1,64}$/.test(admission.reason??'')?admission.reason:'resource_pressure';
+   await atomic(p.receipt,{id,intent,state:'deferred',reason,startedAt:null,exitCode:null,signal:null,bytes:0,no_operation_started:true,retryAfterSeconds:admission.retryAfterSeconds??2,untrusted:true});
+   throw fail('resource_pressure','Command deferred without execution. Retry the same requestKey and identical arguments after capacity recovers; no background command was scheduled.');
+  }
   if(this.expired||this.stopping)throw fail('workspace_expired','Runtime stopped before command admission.');
   // Reserve synchronously before the first filesystem await so concurrent identical starts cannot spawn twice.
   if(this.active.has(id))throw fail('execution_busy','The same execution is being admitted; inspect its receipt.');
@@ -63,6 +69,7 @@ export class CodingRuntime {
    // The already durable starting receipt is sufficient after a crash; running status is in memory.
    return {...receipt};
   }catch(e){this.active.delete(id);throw e;}
+  }finally{this.admitting.delete(id);}
  }
  async status(id){await this.touch();const receipt=await this.inspect(id);return this.active.has(id)?{...receipt,state:'running'}:receipt;}
  async logs(id,{offset=0,length=8192,expectedLogHash}={}){
@@ -72,9 +79,10 @@ export class CodingRuntime {
   // Scan the entire retained stream before paging: credentials split across chunks/windows stay masked.
   const safe=Buffer.from(redact(raw.toString('utf8'))),end=Math.min(safe.length,offset+length);
   const logHash=createHash('sha256').update(safe).digest('hex');if(offset>0&&expectedLogHash!==logHash)throw fail('log_changed','Pass the previous logHash for continuation; if output changed, restart at offset zero or wait for completion.');
-  return {id,untrusted:true,logHash,base64:safe.subarray(offset,end).toString('base64'),offset,nextOffset:Math.max(offset,end),totalBytes:safe.length,complete:!this.active.has(id)&&end>=safe.length,state:this.active.has(id)?'running':receipt.state,redacted:!safe.equals(raw),logLimitBytes:this.maxLogBytes};
+  return {id,untrusted:true,logHash,base64:safe.subarray(offset,end).toString('base64'),offset,nextOffset:Math.max(offset,end),totalBytes:safe.length,complete:!this.active.has(id)&&receipt.state!=='deferred'&&end>=safe.length,state:this.active.has(id)?'running':receipt.state,redacted:!safe.equals(raw),logLimitBytes:this.maxLogBytes};
  }
- async cancel(id){await this.touch();const receipt=await this.inspect(id),slot=this.active.get(id);if(slot){slot.kill('cancelled');await slot.done;return await this.inspect(id);}return {...receipt,replayed:true};}
+ async cancel(id){await this.touch();this.paths(id);if(this.admitting.has(id))throw fail('execution_busy','Admission is in progress; retry cancellation for the same execution.');this.admitting.add(id);try{const receipt=await this.inspect(id),slot=this.active.get(id);if(receipt.state==='deferred'){const cancelled={...receipt,state:'failed',reason:'cancelled_before_start',finishedAt:this.now()};await atomic(this.paths(id).receipt,cancelled);return cancelled;}if(slot){slot.kill('cancelled');await slot.done;return await this.inspect(id);}return {...receipt,replayed:true};}finally{this.admitting.delete(id);}}
+
  async expire(){if(this.lastActivity+this.idleMs>this.now())return false;this.expired=true;await this.shutdown('idle_timeout');return true;}
  async shutdown(reason='runtime_stopped'){this.stopping=true;this.resources.close();const slots=[...this.active.values()];for(const slot of slots)slot.kill?.(reason);await Promise.all(slots.map(s=>s.done));}
 }

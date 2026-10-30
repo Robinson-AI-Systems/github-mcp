@@ -23,9 +23,9 @@ export async function preparePlaygroundWorld(w,{real=false,ports}={}){
   async logs(id){this.lastActivity=w.ctx.now();return{id,base64:Buffer.from('complete fixture output\n').toString('base64'),complete:true,logHash:'a'.repeat(64),nextOffset:24};},
   async cancel(id){this.lastActivity=w.ctx.now();cancels++;const r={id,state:'failed',exitCode:null,signal:'SIGKILL',reason:'cancelled'};receipts.set(id,r);return r;},async expire(){return false;},async shutdown(){}
  };
- const server=codingServer({runtime,key:nativeWorkerPublicKey(w.ctx.env),now:w.ctx.now,...(ports?{ports}:{})});await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));const origin='http://127.0.0.1:'+server.address().port;
+ const server=codingServer({runtime,...(!real?{capacity:async()=>w.playgroundCapacity??({cpu:{cgroupQuotaCpus:8},memory:{cgroupLimitBytes:8*1024**3}})}:{}),key:nativeWorkerPublicKey(w.ctx.env),now:w.ctx.now,...(ports?{ports}:{})});await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));const origin='http://127.0.0.1:'+server.address().port;
  const prior=w.ctx.fetch;w.playgroundRequests=[];const fetchRuntime=(url,init)=>{if(!String(url).startsWith('https://playground.example.test/'))return prior(url,init);w.playgroundRequests.push(JSON.parse(init.body));return fetch(origin+'/v1/coding',init);};
- w.gh.fetch=fetchRuntime;w.ctx={...w.ctx,fetch:fetchRuntime,env:{...w.ctx.env,PLAYGROUND_ALLOCATIONS:JSON.stringify([{workspace_id:record.row.id,binding,origin:'https://playground.example.test/'}])}};
+ w.gh.fetch=fetchRuntime;w.ctx={...w.ctx,fetch:fetchRuntime,env:{...w.ctx.env,PLAYGROUND_ENFORCEMENT:JSON.stringify([{workspace_id:record.row.id,binding,observedAt:w.ctx.now(),expiresAt:w.ctx.now()+14400000,isolation:true,termination:true,repositoryAttached:true,cpuCpus:8,memoryBytes:8*1024**3,storageQuotaBytes:150*1000**3}]),PLAYGROUND_ALLOCATIONS:JSON.stringify([{workspace_id:record.row.id,binding,origin:'https://playground.example.test/'}])}};
  w.playground={runtime,root,binding,starts:()=>starts,cancels:()=>cancels};
  return async()=>{server.closeAllConnections();await new Promise(resolve=>server.close(resolve));await runtime.shutdown();await closeNative();await rm(root,{recursive:true,force:true});};
 }

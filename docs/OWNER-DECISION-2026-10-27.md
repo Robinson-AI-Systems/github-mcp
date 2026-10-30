@@ -35,3 +35,7 @@ The owner requests a complete coding environment, beyond typed Git: dependency i
 ## 2026-10-29 — Robinson's Playground name and integration
 
 Name the sandbox/runtime Robinson's Playground, published by Robinson AI Systems. The owner clarified GitHub coding workspace first, rather than Google Workspace. The target is one integrated workspace for edit/Git/install/build/run/test/preview, with8CPU equivalents,8GiB RAM and up to150GB persistent disk shared by all its components. Keep the150GB ceiling and allocate actual storage as used, with no implied purchase or unverified reservation.
+
+## 2026-10-29 — graceful Playground degradation
+
+Owner requests finishing the software with graceful fallback when resources are unavailable or enforcement cannot be established. Continue safe Git/GitHub operations under existing grants; allow smaller observed/enforced runtime ceilings without promising reserved capacity. Resource-pressure commands may remain durably deferred and retry under the same intent after fresh authorization. Never weaken isolation, run arbitrary commands in the shared Git worker, silently start deferred work after revocation, move providers, spend, discard edits or claim unsafe/unavailable compute still executed successfully.
