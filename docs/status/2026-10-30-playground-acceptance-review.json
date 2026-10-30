@@ -1,6 +1,6 @@
 {
   "snapshot": "b616f8d7e8bd9a37dcb310a1241b137f80cd14931ebd0e0adc4d41b94384fc18",
-  "deployed": "afeee1ad931154c910aad96ff55e2cca59fc0beb",
+  "deployed": "07bef52540b9a19e0992b83f219ee8f7b9cefbca",
   "deploymentState": "READY",
   "tasks": [
     {
@@ -88,9 +88,9 @@
       "requiredRevision": "f606a7d799955fc38dd4142ab939c24110141a18",
       "disposition": "RECHECK_EXTERNAL_GATE",
       "outcome": "DEFERRED",
-      "evidence": "PR480 source f606a7d passed exact ci/policy/native/coding image gates including actual Chromium private entry/API/WebSocket, shared files, read-only Git, UID1000, daemon namespace termination and volume absence. Merged/released afeee1ad independently READY with matching primary Git worker afeee1ad and signed sealed-mounted-v1 capability. Live provision returned playground_provider_setup/no_change_sent; allocation remained absent. Live execution denied runtime_unattached/no_change_sent; safe Git write journal4797 and exact hash readback survived, own fixture closed journal4799 and subsequent read found no active workspace. This does not pass whole runtime/provider acceptance.",
+      "evidence": "PR480 integrated source and PR481 scoped cleanup proof both passed exact ci/policy/native/coding image gates. Actual Chromium entry/app/API/WebSocket, shared files/read-only Git/UID1000, daemon namespace termination and volume absence passed image CI. Main/live07bef525 is independently READY with primary Git worker afeee1ad (worker sources unchanged by PR481) and signed sealed-mounted-v1 capability. Fresh live clone4842 automatically reported provider_setup_required/Git-only; explicit provision refused playground_provider_setup/no_change_sent, allocation absent. Runtime execute refused runtime_unattached/no_change_sent. Git write4844 and exact hash readback survived; owned close4846 confirmed disposal and subsequent lookup found no active workspace. Whole runtime/provider acceptance remains unpassed.",
       "prerequisite": "Protected project-scoped Dokploy provider configuration and an operator-supported independently observed quota/isolated-egress/termination contract with fresh capacity/enforcement feed. Volume config and host health currently return401 resource docker.",
-      "remedy": "Implemented and merged integrated provision/attachment/interactive-preview/lifecycle control; corrected measured test readiness, constrained CPU/RAM planning, initializer capabilities and browser origin checks. Checked release and necessary worker upgrade preserved volumes/verifier/credentials/host pins. No paid resources, broad host access, invented quota or shared-worker shell fallback.",
+      "remedy": "Completed and released integrated allocation/attachment/private preview/lifecycle, verified actual smaller cgroups and real browser/daemon/volume behavior in CI, corrected measured resource readiness without threshold changes, added signed exact-volume cleanup evidence for project-scope volume-inspection denial. Retained unknown enforcement fallback and all original restrictions; no host-admin credential, paid purchase or synthetic approval.",
       "nextAction": "Configure the project-scoped provider key through protected deployment setup (never chat), verify supported quota/isolated egress and signed telemetry, then automatically provision a disposable attached workspace and run authenticated full Git/install/build/test/PostgreSQL/browser/preview/revoke/expiry/cleanup acceptance."
     },
     {
