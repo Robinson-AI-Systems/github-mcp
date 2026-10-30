@@ -1,5 +1,9 @@
 # PLAY-1 — Robinson's Playground integrated coding workspaces
 
+## Live manager JSONB recovery correction2026-10-30
+
+PR485 is checked/released at8ffad0d2. Live provisioning of one disposable native workspace preserved its uncommitted edit but refused before manager dispatch: persisted Postgres JSONB normalizes source/build key order, while provider ownership requires byte-exact regenerated Compose. Reconstruct the original immutable source field order and test nested JSONB normalization across controller changes. Preserve source, exact ownership checks and uncertain-dispatch protection; no replacement manager/allocation or host permission change. Resume the same disposable allocation after checked release; integrated acceptance remains unpassed.
+
 ## Trusted ingress and controlled download outcome2026-10-30
 
 Implement a separate credential-free, volume-free gateway as the sole domain target. The executor stays on its exact internal workspace network. Gateway forwards fixed authenticated control/preview destinations, and a peer-restricted HTTP80/HTTPS443 proxy permits public IPv4 dependency downloads with per-connection DNS pinning, private/metadata/admin-address refusal and bounded connections. Commands receive only this fixed proxy configuration. Broker, executor and gateway share the configured allocation CPU/RAM total; storage remains an unverified ceiling. Strict bounded data-only Compose YAML/JSON readback checks actual provider networking and gateway policy before execution. Unsupported serialization fails closed.

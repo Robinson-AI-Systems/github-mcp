@@ -39,6 +39,14 @@ it('recovers only a legacy proven-undispatched manager and never repeats an unce
  status='idle';await expect(ensureProjectManager(w.ctx,config,provider)).rejects.toThrow('uncertain dispatch');expect(dispatches).toBe(2);
  await ensureProjectManager(w.ctx,config,provider);expect(dispatches).toBe(2);
 });
+it('preserves byte-exact pinned manager source after Postgres JSONB reorders nested keys',async()=>{
+ const w=await makeWorld({profile:'full',mode:'production',gates:[]});closes.push(await prepareNativeWorld(w,{existing:true}));w.ctx.env.PUBLIC_BASE_URL='https://mcp.example.test';
+ let original,deploys=0;const provider={create:async p=>{original=p.composeFile;return {composeId:'owned',appName:p.name+'-d5ggar'};},inspect:async(_id,p)=>{expect(p.composeFile).toBe(original);return {composeStatus:'idle'};},deploy:async()=>{deploys++;throw Error('uncertain dispatch');}};
+ await expect(ensureProjectManager(w.ctx,{...config,image:undefined,sourceSha:'a'.repeat(40)},provider)).rejects.toThrow('uncertain dispatch');
+ const normalize=x=>Array.isArray(x)?x.map(normalize):x&&typeof x==='object'?Object.fromEntries(Object.keys(x).sort().map(k=>[k,normalize(x[k])])):x;
+ await w.db.setSetting('playground_manager',normalize(await w.db.getSetting('playground_manager')));
+ await ensureProjectManager(w.ctx,{...config,image:'later-controller-image'},provider);expect(deploys).toBe(1);
+});
 it('selects best-effort policy and derives new execution builds from the immutable serving source without a stale manifest pin',async()=>{
  const manifest=JSON.parse(await readFile(new URL('../../vercel.json',import.meta.url),'utf8'));
  expect(manifest.env).toEqual({PLAYGROUND_RESOURCE_MODE:'best_effort'});expect(manifest.git.deploymentEnabled).toEqual({'**':false,live:true});
