@@ -21,3 +21,19 @@ it('actual connector handler, dispatcher and github_call execute real UID1000 co
   }finally{await close();}
  }
 });
+
+it('actual unprivileged development server is privately previewed through every connector read door',async()=>{
+ const w=await makeWorld({profile:'full',mode:'production',gates:[]});w.gh.when('GET /repos/{owner}/{repo}').reply(200,{full_name:'example-org/hello'});const close=await preparePlaygroundWorld(w,{real:true});
+ const definition={tool:tools.tools.find(t=>t.name==='github_playground_read'),handler:tools.handlers.github_playground_read};
+ try{
+  const command=parse(await tools.handlers.github_playground_execute({...base,argv:[process.execPath,'-e',"require('http').createServer((req,res)=>{res.setHeader('Content-Type','text/html');res.end('<h1>UID '+process.getuid()+' private app</h1>')}).listen(4173,'127.0.0.1',()=>require('fs').writeFileSync('preview-ready','ready'))"],requestKey:'private-preview-server'},w.ctx));
+  expect(command.status).toBe('applied');
+  // Bounded readiness wait for the actual child, never a substituted HTTP fake.
+  let ready=false;for(let i=0;i<50;i++){try{ready=await readFile(join(w.playground.root,'repo/preview-ready'),'utf8')==='ready';}catch{}if(ready)break;await new Promise(r=>setTimeout(r,20));}expect(ready).toBe(true);
+  for(const door of doorsFor(definition)){
+   const result=await door.call(w,{...base,operation:'preview',port:4173});const page=result.content?parse(result):result;expect(page).toMatchObject({status:200,complete:true,untrusted:true,browserSession:false});expect(Buffer.from(page.base64,'base64').toString()).toBe('<h1>UID 1000 private app</h1>');
+  }
+  const stopped=parse(await tools.handlers.github_playground_cancel({...base,execution_id:command.result.execution_id},w.ctx));expect(stopped.status).toBe('applied');
+  await expect(tools.handlers.github_playground_read({...base,operation:'preview',port:4173},w.ctx)).rejects.toMatchObject({safeCode:'preview_unavailable'});
+ }finally{await close();}
+});

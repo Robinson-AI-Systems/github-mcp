@@ -17,6 +17,8 @@ services:
     environment:
       CODING_WORKSPACE_BINDING: ${CODING_WORKSPACE_BINDING:?Use a unique immutable authenticated workspace binding}
       CODING_CONTROL_PUBLIC_KEY: ${CODING_CONTROL_PUBLIC_KEY:?Pin the control plane Ed25519 public verifier, never its private key}
+      # Control port3000 and PostgreSQL5432 are never preview destinations.
+      CODING_PREVIEW_PORTS: "3001,4173,5173,8000,8080"
     volumes:
       - workspace:/workspace
     tmpfs:
