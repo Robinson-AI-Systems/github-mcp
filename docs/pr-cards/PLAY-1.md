@@ -15,3 +15,7 @@ PR476 merged a separately deployable, tested execution image; no command tool, a
 - [ ] Existing project backup/restore prerequisite remains explicit; test safe quota/pressure/recovery and benchmark before any superiority claim. No paid increase or host-wide permission expansion.
 
 Implementation, source/image proof, merged/deployed source and real acceptance must be reported separately. Current finite command-tool outcome and exact next steps: [connector checkpoint](../status/2026-10-29-playground-connector.md). Infrastructure and remaining integration contract: [Playground](../CODING-WORKSPACES.md).
+
+## Current finite outcome — private agent preview reads
+
+Extend github_playground_read with operation preview: authenticated, exact-bound loopback GET to configured development ports; full-text scanner protection before hash-pinned byte windows, bounded time/body, no forwarded credentials, redirects or public app ports. Tests cover actual signed transport through all three tool doors, authorization denial, pagination/change, failure bounds and a real UID1000 development server in dedicated image CI. This delivers agent text preview reads, not an interactive browser session, automatic allocation, file attachment or whole-allocation disposal. The larger card remains IN_PROGRESS.
