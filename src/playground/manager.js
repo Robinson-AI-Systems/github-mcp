@@ -13,7 +13,11 @@ export const sweepKey=env=>hash(signNativeWorkerBody(JSON.stringify({purpose:'ro
 export async function ensureProjectManager(ctx,config,provider){
  const root=rootAllocationDb(ctx),origin=publicOrigin(ctx.env),name='ras-pg-manager-'+hash(origin).slice(0,16),description='robinson-playground-manager/v1 '+hash(origin);
  let state=await root.getSetting('playground_manager');if(state?.phase==='running')return;
- const source=state?.source??(config.image?{image:config.image}:{image:'ras-playground:'+config.sourceSha,build:{context:'https://github.com/Robinson-AI-Systems/github-mcp.git#'+config.sourceSha,dockerfile:'workers/coding-workspace/Dockerfile',target:'production'}});
+ const pinnedSource=state?.source??(config.image?{image:config.image}:{image:'ras-playground:'+config.sourceSha,build:{context:'https://github.com/Robinson-AI-Systems/github-mcp.git#'+config.sourceSha,dockerfile:'workers/coding-workspace/Dockerfile',target:'production'}});
+ // JSONB normalizes object key order. Reconstruct the original pinned source
+ // shape before byte-exact provider ownership comparison; never repin to the
+ // current controller image merely because settings were read from Postgres.
+ const source={image:pinnedSource.image,...(pinnedSource.build?{build:{context:pinnedSource.build.context,dockerfile:pinnedSource.build.dockerfile,target:pinnedSource.build.target}}:{})};
  const composeFile=JSON.stringify({name,services:{manager:{...source,user:'1000:1000',init:true,restart:'unless-stopped',read_only:true,cap_drop:['ALL'],security_opt:['no-new-privileges:true'],mem_limit:'128m',cpus:'0.1',command:['node','workers/coding-workspace/manager.js'],environment:{PLAYGROUND_SWEEP_URL:new URL('/api/playground/sweep',origin).href,PLAYGROUND_SWEEP_KEY:sweepKey(ctx.env)},tmpfs:['/tmp:rw,noexec,nosuid,nodev,size=16m,mode=1777']}}});
  // Regenerated only in trusted memory: the manager's cleanup-only capability is
  // never stored in the ordinary allocation registry or returned by an MCP tool.

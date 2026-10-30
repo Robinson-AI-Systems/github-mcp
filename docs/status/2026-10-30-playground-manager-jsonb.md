@@ -1,0 +1,7 @@
+# Playground manager JSONB recovery
+
+Actual base/main/READY:8ffad0d2a68b097348afec7ed9ebde848f4d106c, PR485. Exact head4fbb0452 passed ci41105810478, release-policy41105810295, native image41105819985 and coding image41105810238. Merged ci41106244700 and checked release41106267049 passed; independent Vercel metadata and public alias matched8ffad0d2.
+
+Live disposable native open and an uncommitted write passed. Provision refused at the existing trusted manager's ownership preflight before deployment. Independent provider source and narrowed read-only Postgres metadata confirm phase deploying with pinned original source, no dispatch version, idle provider. Postgres JSONB normalizes nested source object key order; spreading it into generated Compose changes byte serialization despite equivalent immutable fields. Reconstruct image/build context/dockerfile/target order before comparison. Never change the stored immutable source or relax exact provider identity/source checks.
+
+Regression simulates nested JSONB normalization and a controller image change after uncertain dispatch, requiring exact original Compose and no repeat dispatch. Actual-base checks and exact-head CI/images are required before merge. Resume the same owned allocation after checked release; no commands or repository transfer have run in this live allocation. Existing prior allocation volume absence remains unconfirmed under the provider docker authorization refusal. Backups/resource monitoring remain optional. Tool contracts/catalog unchanged.
