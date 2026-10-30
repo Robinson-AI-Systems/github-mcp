@@ -48,6 +48,11 @@ it('starts the trusted manager even while resource admission queues the first wo
  const result=await ensureAllocation(w.ctx,record,{provider,config,manager:async()=>{managers++;}});
  expect(result.phase).toBe('waiting_resources');expect(managers).toBe(1);expect(provider.calls).not.toContain('create');
 });
+it('creates an owned private allocation without host telemetry when explicitly configured best effort',async()=>{
+ const {w,record}=await world(),provider=fixtureProvider();delete w.ctx.env.PLAYGROUND_ADMISSION;w.ctx.env.PLAYGROUND_RESOURCE_MODE='best_effort';
+ const result=await ensureAllocation(w.ctx,record,{provider,config,manager:async()=>{}});
+ expect(result.phase).toBe('allocated');expect(result.plan.isolationProfile).toBe('dedicated-internal-v1');expect(result.enforcementVerified).toBe(false);expect(provider.calls.filter(x=>x==='create')).toHaveLength(1);
+});
 it('does not accept a recovered ingress with the private Git broker route missing',async()=>{
  const {w,record}=await world(),provider=fixtureProvider();await ensureAllocation(w.ctx,record,{provider,config,manager:async()=>{}});
  const old=await allocationRecord(w.ctx,record),key='playground.'+old.binding.slice(0,40);

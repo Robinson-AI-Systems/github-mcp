@@ -39,3 +39,9 @@ Name the sandbox/runtime Robinson's Playground, published by Robinson AI Systems
 ## 2026-10-29 — graceful Playground degradation
 
 Owner requests finishing the software with graceful fallback when resources are unavailable or enforcement cannot be established. Continue safe Git/GitHub operations under existing grants; allow smaller observed/enforced runtime ceilings without promising reserved capacity. Resource-pressure commands may remain durably deferred and retry under the same intent after fresh authorization. Never weaken isolation, run arbitrary commands in the shared Git worker, silently start deferred work after revocation, move providers, spend, discard edits or claim unsafe/unavailable compute still executed successfully.
+
+## 2026-10-30 — resource controls and monitoring may follow production implementation
+
+The owner explicitly permits building the production environment before specific resource controls and monitoring are available. Support a protected best-effort resource mode for managed, exactly attached, isolated allocations without claiming storage quotas, reserved CPU/RAM or host-capacity measurements. Preserve current grants, tenant isolation, separate command/Git containers, credential secrecy, read-only executor Git metadata, runtime identity, expiry and exact ownership/cleanup readback. Actual measured resource pressure still refuses or defers work. Do not substitute a static runtime URL for managed allocation identity or open unrestricted networking. The existing verified mode remains available and unchanged unless explicitly selected otherwise. A configured measurement feed must not fail into unobserved execution.
+
+Dokploy credentials are account credentials; do not require a nonexistent project-scoped API key. Keep the account key in protected service setup and enforce exact project/environment/resource ownership in the application. This does not authorize host-wide administration or additional spending.

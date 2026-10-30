@@ -1,6 +1,11 @@
+import {resourceMode} from './resource-policy.js';
 // A fresh protected host observation controls starting new resource-consuming
 // allocations. Unknown headroom queues work; it never invents a reservation.
 export function allocationAdmission(env,config,now=Date.now()){
+ // An explicitly selected best-effort deployment may attempt provider admission
+ // without a capacity feed. Configured feeds still fail closed; known pressure
+ // remains a refusal. Never invent observed or reserved capacity.
+ if(resourceMode(env)==='best_effort'&&!env.PLAYGROUND_TELEMETRY_URL&&!env.PLAYGROUND_ADMISSION)return {allowed:true,reason:'capacity_unknown_best_effort',observedAt:null,reservation:false,capacityVerified:false};
  let observed;try{observed=JSON.parse(env.PLAYGROUND_ADMISSION??'null');}catch{return {allowed:false,reason:'capacity_unverified'};}
  if(!observed||observed.project!==config.project||!Number.isSafeInteger(observed.observedAt)||observed.observedAt>now||now-observed.observedAt>60000||!Number.isSafeInteger(observed.availableMemoryBytes)||!Number.isSafeInteger(observed.availableDiskBytes)||!Number.isFinite(observed.pressure)||observed.pressure<0||(observed.availableCpuCpus!==undefined&&(!Number.isFinite(observed.availableCpuCpus)||observed.availableCpuCpus<0.2)))return {allowed:false,reason:'capacity_unverified'};
  const memory=Number(env.PLAYGROUND_MIN_HOST_MEMORY_BYTES??536870912),disk=Number(env.PLAYGROUND_MIN_HOST_DISK_BYTES??1073741824),pressure=Number(env.PLAYGROUND_MAX_HOST_PRESSURE??0.9);

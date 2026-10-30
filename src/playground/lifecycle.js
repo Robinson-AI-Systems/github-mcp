@@ -1,6 +1,7 @@
 import {refreshAdmission} from './admission.js';
 import {indexKey,orphanAllocationContext} from './index.js';
 import {enforcementObservation} from './availability.js';
+import {managedResourceBaseline} from './resource-policy.js';
 import {createPublicKey,verify} from 'node:crypto';
 import {createDb,productionSql} from '../db.js';
 import {createTenantDirectory,createTenantSql,assertTenantSearchPath,tenantSchemaName} from '../tenancy/directory.js';
@@ -39,7 +40,7 @@ export async function allocationAuthority(ctx){
  if(!rows.every(permits))return {allowed:false,cleanup:true,reason:'grant_restricted'};
 
  const connection={client_id:s.clientId,default_account:s.owner,accounts:[s.owner],profile:'full',mode:rows[0].mode,listing:'compact',...(s.delegated?{pass:true,allow_writes:true,areas:rows[0].pass.areas,repos:rows[0].pass.repos}:{})};
- if(s.phase==='attached'&&!enforcementObservation(ctx,{row:{id:s.workspace},allocation:{binding:s.binding}}))return {allowed:false,cleanup:false,reason:'enforcement_unverified'};
+ if(s.phase==='attached'&&!enforcementObservation(ctx,{row:{id:s.workspace},allocation:{binding:s.binding}})&&!managedResourceBaseline(ctx.env,s,{workspace:s.workspace,binding:s.binding}))return {allowed:false,cleanup:false,reason:'enforcement_unverified'};
  try{await authorizeNativeRepo({...ctx,connection},s.owner,s.repo);}catch{return {allowed:false,cleanup:false,reason:'repository_authority_unavailable'};}
  if(s.phase!=='attached')return {allowed:false,bootstrap:!s.runtimePublicKey&&['requested','waiting_resources','creating','created','exposing','exposed','allocated','attaching','deploying'].includes(s.phase),cleanup:['cleanup_requested','stopped','deleting','disposed'].includes(s.phase),reason:'allocation_not_active',connection,job};
  return {allowed:true,cleanup:false,reason:'current_grant',connection,job};
