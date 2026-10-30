@@ -1,3 +1,4 @@
+import {playgroundExecutionId,playgroundRuntimeKey} from '../../src/playground/client.js';
 // Mandatory image integration, not included in the ordinary unit runner.
 import {it,expect} from 'vitest';
 import {readFile} from 'node:fs/promises';
@@ -36,4 +37,20 @@ it('actual unprivileged development server is privately previewed through every 
   const stopped=parse(await tools.handlers.github_playground_cancel({...base,execution_id:command.result.execution_id},w.ctx));expect(stopped.status).toBe('applied');
   await expect(tools.handlers.github_playground_read({...base,operation:'preview',port:4173},w.ctx)).rejects.toMatchObject({safeCode:'preview_unavailable'});
  }finally{await close();}
+});
+
+it('every command door defers under pressure without work, then retries the same intent exactly once',async()=>{
+ const definition={tool:tools.tools.find(t=>t.name==='github_playground_execute'),handler:tools.handlers.github_playground_execute};
+ for(const door of doorsFor(definition)){
+  const w=await makeWorld({profile:'full',mode:'production',gates:[]});w.gh.when('GET /repos/{owner}/{repo}').reply(200,{full_name:'example-org/hello'});const close=await preparePlaygroundWorld(w,{real:true});
+  try{
+   const args={...base,argv:[process.execPath,'-e',"require('fs').appendFileSync('pressure-once','1')"],requestKey:'resource-recovery'};
+   const runtime=w.playground.runtime;runtime.resources.check=async()=>({allowed:false,reason:'memory_pressure',retryAfterSeconds:2});
+   const deferred=parse(await door.call(w,args));expect(deferred).toMatchObject({status:'rejected',done:false,retryable:true});
+   const id=playgroundExecutionId(w.playground.binding,playgroundRuntimeKey(w.ctx,args));expect(await runtime.inspect(id)).toMatchObject({state:'deferred',no_operation_started:true});
+   await expect(readFile(join(w.playground.root,'repo/pressure-once'))).rejects.toMatchObject({code:'ENOENT'});
+   runtime.resources.check=async()=>({allowed:true});const admitted=parse(await door.call(w,args));expect(admitted.status).toBe('applied');const slot=runtime.active.get(id);if(slot)await slot.done;
+   expect((await runtime.inspect(id)).exitCode).toBe(0);expect(parse(await door.call(w,args)).replayed).toBe(true);expect(await readFile(join(w.playground.root,'repo/pressure-once'),'utf8')).toBe('1');
+  }finally{await close();}
+ }
 });

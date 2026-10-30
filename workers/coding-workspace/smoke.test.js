@@ -63,3 +63,21 @@ test('packaged dependency install, TypeScript build/test, PostgreSQL and browser
   const browser=await r.start({requestKey:'browser',argv:[node,'--input-type=module','-e',"import {chromium} from '/app/node_modules/playwright/index.mjs';const b=await chromium.launch({headless:true});const p=await b.newPage();await p.setContent('<button>Works</button>');if(await p.locator('button').textContent()!=='Works')process.exitCode=1;await b.close();"]});assert.equal((await settled(r,browser.id)).exitCode,0);
  }finally{await cleanup(r);}
 });
+
+test('resource deferral survives restart, resumes only on an authorized retry, and cancels without spawning',async()=>{
+ const r=await fixture();let restored;try{
+  r.resources.check=async()=>({allowed:false,reason:'memory_pressure',retryAfterSeconds:2});
+  const args={requestKey:'deferred',argv:[node,'-e',"require('fs').appendFileSync('deferred-once','1')"]};
+  await assert.rejects(r.start(args),{code:'resource_pressure'});
+  const {createHash}=await import('node:crypto');const id=createHash('sha256').update(JSON.stringify([binding,args.requestKey])).digest('hex');
+  assert.equal((await r.status(id)).state,'deferred');assert.equal((await r.logs(id)).complete,false);
+  await assert.rejects(readFile(join(r.root,'repo/deferred-once')),{code:'ENOENT'});await r.shutdown();
+  restored=await new CodingRuntime({root:r.root,binding,resources:resources()}).init();
+  assert.equal((await restored.status(id)).state,'deferred');await assert.rejects(readFile(join(r.root,'repo/deferred-once')),{code:'ENOENT'});
+  await assert.rejects(restored.start({...args,argv:['false']}),{code:'intent_conflict'});
+  const admitted=await restored.start(args);assert.equal((await settled(restored,admitted.id)).exitCode,0);assert.equal((await restored.start(args)).replayed,true);assert.equal(await readFile(join(r.root,'repo/deferred-once'),'utf8'),'1');
+  restored.resources.check=async()=>({allowed:false,reason:'storage_pressure'});
+  const cancelledArgs={...args,requestKey:'cancel-before-start'};await assert.rejects(restored.start(cancelledArgs),{code:'resource_pressure'});const cancelledId=createHash('sha256').update(JSON.stringify([binding,cancelledArgs.requestKey])).digest('hex');assert.equal((await restored.cancel(cancelledId)).reason,'cancelled_before_start');
+  restored.resources.check=async()=>({allowed:true});assert.equal((await restored.start(cancelledArgs)).state,'failed');assert.equal(await readFile(join(r.root,'repo/deferred-once'),'utf8'),'1');
+ }finally{if(restored)await restored.shutdown();await cleanup(r);}
+});
