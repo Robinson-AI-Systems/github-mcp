@@ -1,119 +1,51 @@
-# Go-live checklist — everything that must be switched on before this server changes production
+# Go-live checklist
 
-Written for Chris (not a developer). Rule: everything is built and tested against a **fake GitHub** and, for real-account
-tests, a **scratch organization**; anything that can change your real `main` branches, releases, settings, access or
-spending is **off** until you complete the step here. "Production" means: a repository's default branch and protected
-branches, releases and tags, repository and organization settings, rules, webhooks, production environments, members
-and access (`docs/designs/BATCH-B.md` B2). Tick a box only after the "how you know it worked" check is done. Every PR that
-adds a switch adds a line here.
+Switches and settings behind the live service. Names only; never put values in chat, files or PRs. "Owner" means only you; "Agent" means Claude can do it when you say go. Rule: your own full connection is not gated by old production, spend or protected-list ceremonies ([decision](OWNER-DECISION-2026-10-27.md)). The items below are setup, not permission gates. Today's status for each: see [STATUS](STATUS.md); anything not shown by code is marked unverified.
 
-Legend: **Owner** = only Chris · **Agent** = Claude can do it once you say go.
+## 1. The server (done)
 
-## 1. The server itself
+- [x] Vercel project `github-mcp` and its own Neon database (IN-02). Node 24.x (`package.json`).
+- [x] Production settings exist: `DATABASE_URL`, `PUBLIC_BASE_URL`, `ADMIN_PASSPHRASE`, `TOKEN_ENCRYPTION_KEY`. Unverified: that you saved the last two in a password manager (Owner).
+- [ ] This repo's own GitHub rules: `main` needs `ci`, merge commits, secret scanning and push protection. Ask Claude to run `github_workflow_repo_health` on it. Unverified today.
+- [x] Releases: pull requests go to `main`; only the daily job moves `live`; Vercel builds only `live` (`.github/RELEASE-POLICY.md`, `vercel.json` `git.deploymentEnabled`). Do not deploy by hand.
 
-| Done | Item | Where / how | Today | How you know it worked |
-|---|---|---|---|---|
-| [x] | Vercel project `github-mcp` and own Neon database created on existing paid plans (IN-02) | Vercel / Neon | READY; 27 tables created by `initSchema()` (20 were live on 2026-10-12) | Live production deployment; `/` now rewrites to the landing function (re-verify live) |
-| [x] | Node 24.x runtime | Vercel project / package engines | Deployed | Vercel deployment metadata |
-| [x] | `DATABASE_URL` for isolated Neon database only (IN-02) | Vercel production variables | Encrypted and configured | Application tables in dedicated DB (27 in code; 20 verified live on 2026-10-12) |
-| [x] | `PUBLIC_BASE_URL` configured to the canonical HTTPS origin | Vercel production variables | Set | Live OAuth issuer matches domain |
-| [x] | `ADMIN_PASSPHRASE` and `TOKEN_ENCRYPTION_KEY` set (IN-03) | Vercel production variables | Both configured; owner private backup unverified | App credentials are encrypted; no casual encryption-key rotation |
-| [ ] | Repository settings for this repo: ruleset on `main` requiring `ci`, merge commits, secret scanning and push protection on (IN-01) | github.com (Owner) or, ask Claude (`github_workflow_repo_health`, with your confirm) | Not set | `github_workflow_repo_health` on `Robinson-AI-Systems/github-mcp` shows all ok |
+## 2. GitHub accounts (Owner, on the setup page)
 
-## 2. Signing in to GitHub, per account
+Setup page: `https://github.robinsonaisystems.com/api/github/setup`. Steps are in [DEPLOY](DEPLOY.md) Part 3.
 
-Per-account onboarding for `Robinson-AI-Systems` and `christcr2012` is still pending. The isolated scratch Organization has completed its custom App owner setup (IN-06).
+- [x] Scratch organization `robinson-ai-scratch` (IN-06).
+- [ ] App created and installed for `Robinson-AI-Systems` and for `christcr2012` (IN-04, IN-05). Unverified; use "Show my accounts" to check.
+- [ ] "Authorize as me" done for each account (needed for a few personal-only actions).
+- [ ] Optional: notifications token (IN-11); package token (classic, `read:packages`, plus `delete:packages` / `write:packages` if wanted).
+- [ ] Approve new App permissions on github.com (IN-15). `github_check_permissions` lists them.
+- [ ] Connector added in Claude: [START-HERE](START-HERE.md).
 
-| Done | Item | Where / how | Today | How you know it worked |
-|---|---|---|---|---|
-| [ ] | Credential type chosen (IN-04): two private GitHub Apps (recommended) or one fine-grained token per account | Answer in chat | Not decided | — |
-| [ ] | "Create the GitHub App" clicked for the account (manifest flow; GitHub hands the keys straight to the server) | Server setup page → GitHub (Owner) | Not created | `github_list_accounts` shows the App |
-| [ ] | App installed on the account with the repositories you chose (IN-05) | Setup page → "Install" (Owner) | Not installed | `github_check_permissions` shows every area ok |
-| [ ] | "Authorize as me" done (user authorization, for personal settings and a few user-only actions) | Setup page (Owner) | Not done | `github_whoami` shows your user and the refresh date |
-| [ ] | Optional: notifications token (classic, `notifications` scope only) (IN-11) | GitHub → Developer settings → Tokens (classic), then paste on the setup page (Owner) | Not added | `github_notify_list` answers |
-| [ ] | Connector added in Claude, **preview** mode | claude.ai → Settings → Connectors (Owner) | Not added | Claude answers "which GitHub accounts am I connected to?" correctly |
-| [ ] | Default settings confirmed: protected repositories (IN-08), production names (IN-12), own people (IN-13), user-selected spend cap (unset unless explicitly configured), developer's independent $0 test budget, pass defaults (IN-10) | Answer in chat; edits that widen anything happen only on the setup page | Recommended defaults | `github_list_protected_resources`, `github_whoami` show them |
+## 3. Public sign-in switches (all off unless set)
 
-## 3. Production, per account
+Set in Vercel Production, then redeploy.
 
-| Done | Item | Where / how | Today | How you know it worked |
-|---|---|---|---|---|
-| [ ] | Production enabled for the account (IN-07): ask the agent, then re-enter your passphrase on the setup page within 10 minutes | Owner | **`robinson-ai-scratch` ON as of Oct 18; normal owner accounts not enrolled.** Existing custom ChatGPT login still PREVIEW pending reviewed mode-correction release and owner confirmation. | Account switch ON and **genuine session** reports PRODUCTION/full for selected account; these are separate checks |
-| [ ] | First production action done with you watching: merge one small green PR at its exact head | Owner + Agent | Not done | The PR shows merged with a merge commit; `github_recent_changes` lists it as PRODUCTION |
-| [ ] | Choose an **optional end-user monthly spend cap**, if desired; even $0 is an explicit user selection (IN-09 clarified by END-USER-AUTHORITY.md). Paid provider tools are available to authorized end-user agents without inheriting our developer's $0 budget | Setup page (Owner) | Legacy account default zero is treated as **not configured** until you set a user cap | `github_whoami` displays `spend_limit: not configured` or your explicit cap |
-| [ ] | Approve the new GitHub App permissions (IN-15): `packages`, `merge_queues`, `artifact_metadata`, `organization_self_hosted_runners`, `organization_events`; for Y-9d also upgrade **Organization Administration (write)**, **Copilot agent settings (write)**, **Copilot content exclusion (write)**, and **Agent tasks (read/write)** for the required App user authorization where GitHub offers it | github.com → Settings → Developer settings → GitHub Apps → the App → Permissions & events, then accept on each installation (`github_where_is_setting` "app permissions" lists the steps) | Scratch installation accepted the available grants on 2026-10-17; real-account installations remain separate. Existing Apps never gain permissions by themselves | `github_check_permissions` reports zero missing App grants after deployment, with Packages separately capability-unverified; actual operations still require supported credentials and provider/package access |
+- `GITHUB_PUBLIC_CONNECT=enabled` turns on the GitHub sign-in and Approve page for everyone. It also needs `GITHUB_PRIVATE_TENANT_PILOT=enabled`, `GITHUB_PILOT_APP_ID` and `GITHUB_TENANT_ROUTING_KEY`. Remove it to stop new sign-ins; existing connections keep working. Whether it is on in production: unverified.
+- Limits with defaults: `GITHUB_PUBLIC_MAX_CLIENTS` (100000), `GITHUB_PUBLIC_MAX_OPEN_FLOWS` (5000), `GITHUB_PUBLIC_MAX_OPEN_FLOWS_PER_CLIENT` (20). Free use per person: `PUBLIC_FREE_CALLS_PER_DAY` (5000), `PUBLIC_FREE_WRITES_PER_HOUR` (300). People who never return are cleaned up after `PUBLIC_INACTIVE_DAYS` (180). Source: `src/tenancy/public-connect.js`, `public-usage.js`. These are server fairness settings, not limits on your own connection; `PUBLIC_UNLIMITED_SUBJECTS` exempts named people.
+- `GITHUB_PUBLIC_INVITE_ONLY=enabled` limits NEW people to the invite list on the setup page. Existing people are never locked out.
+- `GITHUB_PUBLIC_NEW_SIGNUPS=paused` closes new sign-ups by hand. They also pause on their own when the cost estimate reaches `PUBLIC_COST_PAUSE_CENTS` (5000). Estimate settings: `PUBLIC_COST_PER_1K_CALLS_CENTS` (5), `PUBLIC_COST_ALERT_CENTS` (2000).
+- `PUBLIC_SUPPORT_EMAIL`, then `LEGAL_APPROVED=yes` after you approve the text. Until then `/privacy`, `/terms`, `/security`, `/support` show a DRAFT banner.
+- GitHub App settings for public sign-in: "Request user authorization (OAuth) during installation" OFF; Setup URL `/api/github/setup`; webhook `https://github.robinsonaisystems.com/api/github/webhook`; callback `/api/github/user-callback`. The webhook address was moved 2026-10-24 (per earlier record; not rechecked today).
+- My connection page: `/connection` (public sign-in only).
 
-## 4. Developer tools
+## 4. Keys
 
-| Done | Item | Where / how | Today | How you know it worked |
-|---|---|---|---|---|
-| [x] | Owner completed scratch Organization, custom GitHub App and scratch designation (IN-06 setup stage) | Protected setup page | Active/all repositories; `is_scratch=true`; **production ON Oct 18 by separate owner passphrase**; product spend cap not configured, autonomous developer spend $0. Real custom connection remains PREVIEW until owner-authorized mode upgrade following next reviewed release. | Real server account status + separate connection `github_whoami` check; scratch writes/cleanup still require distinct approvals |
-| [ ] | Custom OAuth connection and connected scratch read/write/cleanup acceptance | Custom `/api/mcp` preview-only connection | OAuth connected and scratch reads verified (Oct 15); V-2 cleanup built; live write/cleanup acceptance pending | `github_list_accounts` says scratch true; after cleanup is safe, verify isolated run-owned seed and exact-object cleanup |
+- Change the encryption key without logging everyone out: put the old key in `TOKEN_ENCRYPTION_KEY_PREVIOUS` (at most two), set the new one in `TOKEN_ENCRYPTION_KEY`, release (`src/core/crypto.js:17-20`). Remove an old key only after everything sealed with it is re-saved.
+- Changing `GITHUB_TENANT_ROUTING_KEY` signs everyone out at once (emergency lever). No overlap period.
+- Optional test: `GITHUB_STATELESS_INSTALLATION_TOKENS=enabled`, make a few calls, then remove the setting (`disabled` forces the old tokens).
 
-## 4b. Private public-scale and dual-platform release gate (owner decision 2026-10-18)
+## 5. Marketplace (only if wanted; not activated)
 
-**Do not publish or enroll the public yet.** The standalone current service still has global owner passphrase/account configuration and is not a publicly usable multi-tenant service. Requirements, implementation order and test contract: `docs/designs/PUBLIC-SCALE.md`.
+After the Marketplace code is deployed: privately set `GITHUB_MARKETPLACE_WEBHOOK_SECRET` and `CRON_SECRET` (32+ characters each), the same webhook secret in the listing. Set `GITHUB_MARKETPLACE_PLAN_ID` (the free plan's number) and `GITHUB_MARKETPLACE_CONNECT=enabled`. Webhook `/api/marketplace/webhook`; hourly sweep `/api/marketplace/sweep` (`vercel.json` cron, minute 17). Then test a real purchase, cancellation and data deletion. Details: [listing](marketplace/LISTING.md).
 
-| Done | Item | Who / where | How to verify |
-|---|---|---|---|
-| [ ] | Complete the **55 required** original provider real-world acceptance rows, independently reviewing any legitimate provider exception; preserve two historical optional Hub-owned route checks | Implementing agent and owner | The ledger retains 57 historical rows (14 passed, 28 pending, 15 blocked), but only `GITHUB-RTC-RELAY` and `GITHUB-RTC-SANDBOX` are `completionGate:false`. Direct provider RTC conformance remains required; no optional test is called passed without real evidence. |
-| [ ] | Complete secure PUB-1/PUB-2 tenant identity + OAuth/credentials isolation and private allowlisted pilot | Developer, zero spend | Reviewed private PUB-1 source in PR #263 passes real PostgreSQL A/B isolation suite at corrected head (final exact-head merge/release still mandatory); **no new public route**. PUB-2 provider-issued identities and scoped login/read/write proof remain separately unimplemented. Do NOT open enrollment or migrate real owner tokens. |
-| [ ] | Complete PUB-3 rate/abuse/reliability/monitoring controls without unapproved spending | Developer | PUB-3 source branch adds PostgreSQL atomic quotas and bounded retention; **tests, incident cleanup, CI/review/merge and real private pilot/load evidence still pending**. No paid capacity or public signup permitted. |
-| [ ] | Prove genuine Android/iOS AND desktop/web ChatGPT connections separately using private plugins and service-owned OAuth and full safeguards | Owner + agent | Two real `github_whoami` scope/mode readbacks and independently approved disposable provider read/write/revoke |
-| [ ] | Complete privacy, support, credentials revocation, retention, incident handling and public developer/business verification | Owner decision with evidence | Legal/operations readiness checklist and policy acceptance |
-| [ ] | **Confirm third-party distribution eligibility before any public Directory work (IN-18)** | Owner + OpenAI/GitHub policy/authorization, BEFORE public implementation | Current directory policy says unofficial third-party connectors are not approvable; stop Directory submission unless written authorization and applicable eligibility are established. PRIVATE/workspace distribution remains the fallback. |
-| [ ] | **Owner separately approves any eligible public discoverability, public GitHub App installation and outside-user enrollment** | Owner only, LAST | Explicit eligibility proof plus fresh owner publication decision after all other gates; current PRIVATE state remains until then |
+## 6. Git workspaces and Playground
 
-## 5. Projects (one section per profiled project)
+Settings (names only): `NATIVE_GIT_WORKER_KEY`, `PLAYGROUND_DOKPLOY_ORIGIN`, `PLAYGROUND_DOKPLOY_API_KEY`, `PLAYGROUND_DOKPLOY_PROJECT_ID`, `PLAYGROUND_DOKPLOY_ENVIRONMENT_ID`, `PLAYGROUND_INGRESS_IPV4`. `PLAYGROUND_RESOURCE_MODE=best_effort` is in `vercel.json`. All enrolled per your 2026-10-29/30 notes (unverified from code). See [PLAYGROUND-OPERATIONS](PLAYGROUND-OPERATIONS.md). Backups: optional, not a go-live gate.
 
-### Appliance Desk
+## 7. Appliance Desk and other repos (Agent can check)
 
-Run `github_workflow_app_readiness` for `appliance-desk` and work through what it lists. The full list with
-explanations is `docs/APP-NEEDS-APPLIANCE-DESK.md`; the app's own checklist stays the authority for its launch.
-
-| Done | Item | Today |
-|---|---|---|
-| [ ] | `main` ruleset requires `ci` only (no Preview deployment, no Copilot review) — Appliance Desk IN-67 | Done 2026-10-09 (Chris) |
-| [ ] | `main` blocks force pushes and deletion | Not verified |
-| [ ] | Secret scanning and push protection on | Not verified (an owner step in the app's ARCHITECTURE) |
-| [ ] | Fork pull request workflows need approval for all outside contributors | Not verified |
-| [ ] | `live` branch exists and only `release.yml` moves it; Vercel tracks `live` (Appliance Desk IN-68, a Vercel setting) | `live` not created yet |
-| [ ] | No repository secrets; CI keeps `contents: read` and no `pull_request_target` | Matches (2026-10-10) |
-
-### The Robinson servers' repositories
-
-| Done | Item | Today |
-|---|---|---|
-| [ ] | Each repo (`github-mcp`, `stripe-mcp`, `google-workspace-mcp`, `robinsons-toolkit-hub`, `vercel-mcp`, `neon-mcp`) has a `main` ruleset requiring `ci`, merge commits, secret scanning and push protection | Not verified |
-| [ ] | All of them are `pr-only` protected resources in this server (IN-08) | Built (B-3, #19); seeded default per IN-08, owner confirms the list on the setup page |
-
-## Daily deployment cost controls (2026-10-12)
-
-- [ ] Before linking or activating this server, verify that GitHub has both main and live; initialize live from main only if absent and verify both SHA references.
-- [ ] In each linked Vercel project's Production environment, set Branch Tracking to live and read it back. Disable automatic Preview deployments and verify that setting. No Vercel project setting is implied by vercel.json.
-- [ ] Confirm exact-head existing application CI and release-policy pass; development PRs never require a paid Vercel preview. Apply live-only Git rules to any nested Vercel root configuration.
-- [ ] Verify the first scheduled daily promotion and its live-promotion date tag; validate the resulting production deployment from live. Keep all existing access, spending and activation gates.
-
-## Simple public connect switches (PUB-6, all default off)
-- [ ] `GITHUB_PUBLIC_CONNECT=enabled` turns the flow on (needs `GITHUB_PRIVATE_TENANT_PILOT=enabled`, `GITHUB_PILOT_APP_ID`, production deployment). Unset it to stop new sign-ins at once; existing connections keep working until revoked.
-- [ ] Caps (stored as environment settings, sensible defaults): `GITHUB_PUBLIC_MAX_CLIENTS` (100000; app registrations with no token in 30 days are cleaned away as new ones arrive), `GITHUB_PUBLIC_MAX_OPEN_FLOWS` (5000, shared by everyone), `GITHUB_PUBLIC_MAX_OPEN_FLOWS_PER_CLIENT` (20 open sign-in steps per app; the My connection and Delete my data pages have their own cap of 200). **There is no cap on the number of people** (the old 25-person build default was removed by PUB-5 PR B on Chris's decision 2026-10-24). Cost is protected instead by per-person fair-use limits (`PUBLIC_FREE_CALLS_PER_DAY` 5000, `PUBLIC_FREE_WRITES_PER_HOUR` 300, `PUBLIC_UNLIMITED_SUBJECTS` numeric GitHub ids, empty by default), the cost auto-pause of NEW sign-ups (`PUBLIC_COST_PAUSE_CENTS` 5000; `0` turns it off), the manual pause (`GITHUB_PUBLIC_NEW_SIGNUPS=paused`) and the clean-up of people inactive for `PUBLIC_INACTIVE_DAYS` (180). Also turn on Vercel and Neon spend alerts.
-- [ ] Invite-only opening (LAUNCH-1): `GITHUB_PUBLIC_INVITE_ONLY=enabled` limits NEW people to the invite list on the owner setup page ("Invite list"); people who already connected are never locked out. Default off.
-- [ ] Trust pages (LAUNCH-1): set `PUBLIC_SUPPORT_EMAIL` and, once the wording is approved, `LEGAL_APPROVED=yes` in Vercel. Until then `/privacy`, `/terms`, `/security`, `/support` show a DRAFT banner.
-- [ ] GitHub App settings: "Request user authorization (OAuth) during installation" must be OFF and the Setup URL must be `/api/github/setup`; the App must be installable by the people being invited.
-- [ ] My connection lives at `/connection` (rewrite in `vercel.json`). The App's callback stays `/api/github/user-callback`; no new GitHub setting is needed for it.
-
-## Changing the encryption or routing key (public sign-in)
-- **Encryption key (`TOKEN_ENCRYPTION_KEY`)** seals stored GitHub grants and optional keys. To change it without making everyone reconnect: put the OLD key into `TOKEN_ENCRYPTION_KEY_PREVIOUS` (up to two old keys, comma separated), set the NEW key in `TOKEN_ENCRYPTION_KEY`, and release. Old values stay readable; every value written afterwards is sealed with the new key. Remove an old key only after the people it covers have reconnected or their grants have been rewritten; anyone still sealed with a removed key simply sees "reconnect".
-- **Routing key (`GITHUB_TENANT_ROUTING_KEY`)** signs every public client, access and refresh token. Changing it signs EVERYONE out at once (an emergency lever, for example if the key leaked). People reconnect with one click; nothing is lost. There is deliberately no overlap period for this key.
-- Neither key is ever typed into a chat, a tool or a pull request.
-- [ ] Cost estimate rates (LAUNCH-1): optionally set `PUBLIC_COST_PER_1K_CALLS_CENTS` and `PUBLIC_COST_ALERT_CENTS` in Vercel to match real prices and your alert level; defaults are 5 cents per 1,000 calls and 2000 cents.- [x] GitHub App webhook address moved to `https://github.robinsonaisystems.com/api/github/webhook` (2026-10-24, HARD-1 B.1; read back: host correct, TLS verified). First real delivery from the new address is still to be seen in the delivery list (none yet; acceptance row, not a blocker). Setup URL is the owner row in OWNER-CHECKLIST.
-
-## Temporary: GitHub stateless installation tokens (2026-10-24)
-- [ ] Optional validation: set `GITHUB_STATELESS_INSTALLATION_TOKENS=enabled` on production, make a few normal calls (read, preview,
-      one scratch write), then **remove the setting** so GitHub's rollout decides. `disabled` forces the old short tokens if anything breaks.
-
-## Marketplace lifecycle activation (owner-approved 2026-10-24; not activated)
-
-After Marketplace lifecycle PR is merged and deployed, enroll `GITHUB_MARKETPLACE_WEBHOOK_SECRET` and `CRON_SECRET` privately in Vercel Production (at least 32 characters each); put the same webhook secret in the Marketplace listing's webhook settings. Never send either through tools, chat, files or logs. Use `/api/marketplace/webhook` for signed Marketplace deliveries, `/api/marketplace/sweep` for the hourly authenticated cleanup cron, and the existing `/api/github/setup` installation return.
-
-Configure `GITHUB_MARKETPLACE_PLAN_ID` with the actual published free plan's numeric ID and `GITHUB_MARKETPLACE_CONNECT=enabled` only for Production after tests/review and secure setup. Redeploy through the authorized release path. Verify an actual signed purchase, GitHub subscription readback, customer-specific resource consent, cancellation denial, individual token revocation, data deletion and direct-connection survival. Monitoring must flag 503 cleanup responses. Complete publisher email verification, trader declaration, approved trust pages and Marketplace agreement before submission. A draft listing or active free plan is not proof this workflow works.
+Run `github_workflow_app_readiness` for `appliance-desk` ([APP-NEEDS-APPLIANCE-DESK](APP-NEEDS-APPLIANCE-DESK.md)). Done 2026-10-09: `main` requires `ci` only. Not verified: force-push and deletion blocked, secret scanning, fork-PR approval, a `live` branch. Same ruleset wanted on `stripe-mcp`, `google-workspace-mcp`, `robinsons-toolkit-hub`, `vercel-mcp`, `neon-mcp`; not verified.

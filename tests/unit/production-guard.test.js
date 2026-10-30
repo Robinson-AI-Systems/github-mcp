@@ -118,11 +118,16 @@ describe('production switch gate', () => {
   const input = async (mode, production, enabled) => {
     const w = await makeWorld({ mode });
     await w.db.setProductionEnabled('example-org', enabled);
-    return { ctx: w.ctx, target: T, classification: { production } };
+    return { ctx: { ...w.ctx, connection: { ...w.ctx.connection, pass: true } }, target: T, classification: { production } };
   };
   it('lets a production change through only when the account\'s switch is on', async () => {
     expect(await gate(await input('production', 'x', true))).toBeNull();
     expect(await gate(await input('production', 'x', false))).toMatchObject({ by: 'production switch' });
+  });
+  it('does not veto a normal sign-in connection, only a delegated pass', async () => {
+    const w = await makeWorld({ mode: 'production' });
+    await w.db.setProductionEnabled('example-org', false);
+    expect(await gate({ ctx: w.ctx, target: T, classification: { production: 'x' } })).toBeNull();
   });
   it('does not apply to non-production changes or preview connections (the mode refuses those)', async () => {
     expect(await gate(await input('production', null, false))).toBeNull();

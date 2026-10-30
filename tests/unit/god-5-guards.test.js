@@ -124,7 +124,7 @@ describe('the extra-place gate', () => {
 });
 
 describe('production changes on an extra place', () => {
-  const prod = async (db, target) => productionEnabledGate()({ ctx: { db, connection: { mode: 'production' } }, target, classification: { production: 'it changes the default branch' } });
+  const prod = async (db, target, connection = { mode: 'production', pass: true }) => productionEnabledGate()({ ctx: { db, connection }, target, classification: { production: 'it changes the default branch' } });
   it('are authorized by the person allowing changes for that place, and by nothing else', async () => {
     const { db } = await setup(); await addPlace(db);
     // changes are off: the extra-place gate refuses first; the production gate alone would also refuse
@@ -133,6 +133,8 @@ describe('production changes on an extra place', () => {
     expect(await prod(db, { owner: PLACE, repo: 'website' })).toBeNull();
     // a connected account still needs its own production switch
     expect(await prod(db, { owner: 'example-org', repo: 'x' })).toMatchObject({ by: 'production switch' });
+    // a normal sign-in connection is not vetoed by the per-account switch (owner decision 2026-10-27)
+    expect(await prod(db, { owner: 'example-org', repo: 'x' }, { mode: 'production', profile: 'everyday' })).toBeNull();
   });
 });
 

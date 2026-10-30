@@ -21,15 +21,16 @@ export function createGithubPolicy({ env = process.env } = {}) {
       const noneChosen = chosen.size === 0;
       const defaultLogin = typeof params.default_account === 'string' ? params.default_account : accounts.find((a) => a.is_default)?.login;
       const listing = params.listing || (/claude/i.test(client?.client_name || '') ? 'catalog' : 'compact');
-      const productionOffered = isProductionDeployment(env) && accounts.some((a) => a.production_enabled);
+      const productionOffered = isProductionDeployment(env);
       const hidden = HIDDEN_FIELDS.map((name) => `<input type="hidden" name="${name}" value="${escapeHtml(params[name])}">`).join('');
       const rows = accounts.map((a) => {
         const on = noneChosen ? Boolean(a.is_default) : chosen.has(a.login);
-        const note = a.production_enabled ? ' (production enabled)' : '';
-        return `<label class="row"><input type="checkbox" name="${escapeHtml(ACCOUNT_FIELD_PREFIX + a.login)}" value="on"${on ? ' checked' : ''}> ${escapeHtml(a.label)} <small>${escapeHtml(a.login)}${note}</small></label>`;
+        return `<label class="row"><input type="checkbox" name="${escapeHtml(ACCOUNT_FIELD_PREFIX + a.login)}" value="on"${on ? ' checked' : ''}> ${escapeHtml(a.label)} <small>${escapeHtml(a.login)}</small></label>`;
       }).join('');
       const defaults = accounts.map((a) => option(a.login, a.login === defaultLogin, `${a.label} (${a.login})`)).join('');
-      const modes = CONNECTION_MODES.filter((m) => m === 'preview' || productionOffered).map((m) => option(m, params.mode === m)).join('');
+      const modeList = productionOffered ? ['production', 'preview'] : ['preview'];
+      const chosenMode = modeList.includes(params.mode) ? params.mode : modeList[0];
+      const modes = modeList.filter((m) => CONNECTION_MODES.includes(m)).map((m) => option(m, chosenMode === m)).join('');
       const names={read_only:'Read only — never change GitHub',everyday:'Everyday — routine changes (default)',
         full:'Full — every operation allowed by your real GitHub grant and user policy'};
       const profiles = CONNECTION_PROFILES.map(v=>option(v,(params.profile||'everyday')===v,names[v]||v)).join('');
@@ -40,7 +41,7 @@ export function createGithubPolicy({ env = process.env } = {}) {
         : '<p>No GitHub accounts are connected yet. Add an account securely through the setup page first.</p>') + addAccount;
       const profileNote='<small>Full is included in normal GitHub connection setup; no God Mode or extra token is required. Full never changes your provider grant, installed repositories, production permissions or chosen safety limits.</small>';
       const modeNote = isProductionDeployment(env)
-        ? '<small>Production works only for accounts where it has been turned on.</small>'
+        ? '<small>Production is the default on this deployment; choose preview for a dry run.</small>'
         : '<small>This is a preview deployment: production mode is not available here.</small>';
       return '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
         '<title>Connect Robinson GitHub MCP</title><style>body{font:16px system-ui,sans-serif;max-width:430px;margin:6vh auto;padding:20px}form{display:grid;gap:14px}' +
@@ -56,7 +57,7 @@ export function createGithubPolicy({ env = process.env } = {}) {
         `<button type="submit"${accounts.length ? '' : ' disabled'}>Authorize this connection</button></form></body></html>`;
     },
 
-    /** The login's choices, checked against the real account list. Production needs the deployment AND every account. */
+    /** The login's choices, checked against the real account list. Production needs the production deployment. */
     validate({ params, choices: accounts }) {
       const known = new Map(accounts.map((a) => [a.login, a]));
       const picked = selectedLogins(params);
@@ -70,8 +71,6 @@ export function createGithubPolicy({ env = process.env } = {}) {
       }
       if (params.mode === 'production') {
         if (!isProductionDeployment(env)) return { error: 'Production mode is not available on this deployment.' };
-        const missing = logins.filter((login) => !known.get(login).production_enabled);
-        if (missing.length) return { error: `Production is not turned on for: ${missing.join(', ')}.` };
       }
       return { settings: { defaultAccount, accounts: logins, mode: params.mode, profile: params.profile, listing: params.listing } };
     },

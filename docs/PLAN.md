@@ -1,29 +1,28 @@
 # PLAN — remaining scope and acceptance
 
-Written 2026-10-10 for an empty repository. Order is in [MASTER-ROADMAP](MASTER-ROADMAP.md); current head and blockers in
-[STATUS](STATUS.md). AGENTS owns workflow rules. This file owns acceptance; designs own semantic decisions; cards own the
-next bounded implementation. Every line below maps to evidence named in its design's "6. Acceptance mapping".
+Order and state: [MASTER-ROADMAP](MASTER-ROADMAP.md), `docs/pr-cards/work-index.json`, [STATUS](STATUS.md). `AGENTS.md` owns
+workflow rules; this file owns acceptance; designs own semantic decisions; cards own the next bounded implementation.
 
-## CAP — maximum legitimate authority (owner-approved 2026-10-21)
+> **Precedence:** [owner decision 2026-10-27](OWNER-DECISION-2026-10-27.md) and [AUTHORITY-PARITY](designs/AUTHORITY-PARITY-2026-10-28.md)
+> supersede any acceptance line below that restricts the owner's own connection (production guard and two-step enable,
+> self-protection lists, message/own-people guard, spend guard default $0, mandatory green-check merges, bypass
+> prohibitions, fixed write pacing, "preview by default"). Those lines record what was built and tested historically;
+> they are not current product requirements and must not be re-added. Disclosure, journaling, replay protection,
+> readback, credential/tenant isolation and restrictions on explicitly delegated passes remain required.
+>
+> **Docs audit 2026-10-16:** every checked box in Batches A–P, U, W is MERGED per `work-index.json` plus named tests in
+> `tests/`; anything needing a live account stays an owner-run step in `GO-LIVE-CHECKLIST.md`. Older checkbox states for
+> CAP and PUB below are snapshots; the work index is authoritative (CAP-1..CAP-5 and PUB-1..PUB-5 cards are MERGED there).
 
-The contracts and full acceptance are in [MAXIMUM-AUTHORITY](designs/MAXIMUM-AUTHORITY.md).
-These are new open requirements; this plan does not change historical acceptance evidence.
+## CAP and PUB (status moved to the work index)
 
-- [ ] **CAP-1:** Reproducible operation/credential inventory, reconciled interfaces and honest coverage denominators.
-- [ ] **CAP-2:** Accessible Standard Full setup, explicit upgrade/recovery and effective-access diagnostics without forced God Mode.
-- [ ] **CAP-3:** Secure guided additional credential lifecycle with verified authority gain and tenant/resource-bound routing.
-- [ ] **CAP-4:** Full advanced enterprise, package/registry, credential administration, App/integration and active-service gap closure.
-- [ ] **CAP-5:** Genuine deployed Standard/additional-authority acceptance, denial/revocation/recovery and reproducible reporting.
-
-## PUB — PRIVATE first mobile/desktop and multi-user scale engineering (2026-10-18)
-
-Owner-approved **engineering scope** and approved original acceptance remain distinct. PUB-1 and PUB-2 are merged and green; PUB-3 implemented in source on PR #267 awaiting final exact-head CI/review/merge, while PUB-4 remains **APPROVED / NOT IMPLEMENTED**; PUB-5 is **BLOCKED** (IN-18: public Directory disallows unofficial third-party connector submissions unless appropriate eligibility and authorization have been resolved, and owner has not authorized publication). Read `docs/designs/PUBLIC-SCALE.md` and the five indexed units in `docs/pr-cards/work-index.json`. Individual JIT cards are mandatory before implementation. No checkbox below is counted complete merely because PR #261 created this design.
-
-- [x] **PUB-1 (source implementation only; PR #263 exact-head gates required):** Dormant owner identity/membership directory, per-tenant isolated account/OAuth/token/result/job/policy/audit stores, legacy owner preserved without production migration; two genuine disposable PostgreSQL tenants with overlapping GitHub login and cross-tenant denial. **PUB-2** retains real provider-issued identity and customer authorization; live/public acceptance is not claimed.
-- [x] **PUB-2 (source implementation; PR #264 exact-head merge pending):** Provider-verified numeric GitHub identity, GitHub App installation/consent, protected private pilot enrollment, tenant/human-specific OAuth clients/codes/refresh/revocation, standard MCP authorization routing and isolated user credentials; real PostgreSQL and mocked-provider tests passed. **This does NOT mark any original live acceptance or actual mobile/desktop client login passed.** Private pilot invitations are a temporary test channel, not a permanent product restriction.
-- [x] **PUB-3 (source verified in PR #267; final head CI/review/merge pending, actual provider/device acceptance separate):** Tenant-aware rate budget, spend/abuse controls, bounded background jobs and reliable incident/telemetry/disposal semantics under a no-extra-spend load/failure proof.
-- [ ] **PUB-4:** Real independently connected ChatGPT Android/iOS **and** desktop/web modes with end-to-end service OAuth, correct actual `github_whoami` mode/account, approved bounded provider operations, recovery and revocation; plugins stay PRIVATE.
-- [ ] **PUB-5:** Security/privacy/support/retention/capacity and external platform/provider eligibility proof plus **separate owner public-launch approval**; blocked unless all prerequisites are genuinely met. If unofficial GitHub connector directory submission remains prohibited, maintain private/workspace-distribution and never publish to the ChatGPT universal directory.
+CAP-1..CAP-5 ([MAXIMUM-AUTHORITY](designs/MAXIMUM-AUTHORITY.md)) and PUB-1..PUB-6 ([PUBLIC-SCALE](designs/PUBLIC-SCALE.md),
+`docs/pr-cards/PUB-*.md`) are MERGED in `work-index.json`; their acceptance lines (inventory and honest denominators,
+Standard Full setup, additional-credential lifecycle, advanced gap closure, tenant isolation, delegated onboarding,
+capacity, real mobile/desktop client acceptance, public launch) are tracked item by item in the acceptance ledger in
+`docs/STATUS.md` (`npm run session:status`). Merged source is not live acceptance: the 2026-10-16 historical notes that
+called PUB-5 blocked, or PUB-3 pending PR #267, are superseded by the PUB-5 public-launch approval of 2026-10-24 and the
+merged cards. Do not infer completed acceptance from a checked box; read the ledger.
 
 ## Rules that apply to every batch
 
@@ -36,9 +35,8 @@ Owner-approved **engineering scope** and approved original acceptance remain dis
   write-safety, token budgets, core imports.
 - No secret in code, docs, tests, logs, PR text or tool results (key-scan test). No tool takes or returns a credential or
   a secret value.
-- Preview by default. No production write on Chris's real repositories outside the card flow, no access widening on a real
-  account, no purchase, no real credential in tests (AGENTS hard limits). Real-account writes only in the scratch
-  organization (IN-06).
+- Builder limits (AGENTS hard limits): no production write on Chris's real repositories outside the card flow, no access
+  widening on a real account, no purchase, no real credential in tests; real-account writes only in the scratch organization (IN-06).
 - Every tool name starts with `github_`; every tool is in `docs/TOOL-CATALOG.md` with the marks its code declares.
 - Owner inputs are inputs, not things to invent: build the mechanism, keep the dependent behavior off, list the `IN-xx`.
 - Money shown in dollars and cents, stored in cents; times stored UTC and shown in each person's own saved zone (UTC when none is saved).
@@ -46,7 +44,6 @@ Owner-approved **engineering scope** and approved original acceptance remain dis
 
 ## Batch A — Foundation (`designs/BATCH-A.md`)
 
-*Docs audit 2026-10-16: every card in this batch is MERGED (see `pr-cards/work-index.json`); boxes below are ticked on that basis plus the named test files in `tests/`. Anything needing a live account stays an owner-run step in `GO-LIVE-CHECKLIST.md`.*
 - [x] Node 24.x in `package.json` and every CI job; CI runs check, unit, database and request-shape jobs on every PR with a
   single `ci` gate; a deliberately failing test turned it red once. — A-1, PR #1 (red proof: https://github.com/Robinson-AI-Systems/github-mcp/actions/runs/38077330755; green run linked in the PR).
 - [x] Connector login with default account, allowed accounts, mode (preview unless the account has production enabled),
@@ -62,7 +59,6 @@ Owner-approved **engineering scope** and approved original acceptance remain dis
 
 ## Batch B — Trust layer (`designs/BATCH-B.md`)
 
-*Docs audit 2026-10-16: every card in this batch is MERGED (see `pr-cards/work-index.json`); boxes below are ticked on that basis plus the named test files in `tests/`. Anything needing a live account stays an owner-run step in `GO-LIVE-CHECKLIST.md`.*
 - [x] `defineWrite` with target/classify hooks, preview first line in plain English, confirm, read-back, change log,
   request-key replay, inverse; the nine write-contract checks exist and run.
 - [x] Production guard (eight rules, failed read = production) and two-step production enable (tool + passphrase).
@@ -76,7 +72,6 @@ Owner-approved **engineering scope** and approved original acceptance remain dis
 
 ## Batch C — Cheap on context (`designs/BATCH-C.md`)
 
-*Docs audit 2026-10-16: every card in this batch is MERGED (see `pr-cards/work-index.json`); boxes below are ticked on that basis plus the named test files in `tests/`. Anything needing a live account stays an owner-run step in `GO-LIVE-CHECKLIST.md`.*
 - [x] Summaries, `fields`, `detail`, text caps, handles (24 h, same connection only), annotations, structured output.
 - [x] Catalog and compact listing; meta-tools dispatch into the wrapped handlers, so every guard applies (write-contract
   through `github_call`).
@@ -85,14 +80,12 @@ Owner-approved **engineering scope** and approved original acceptance remain dis
 
 ## Batch D — Repositories, code, branches and tags (`designs/BATCH-D.md`)
 
-*Docs audit 2026-10-16: every card in this batch is MERGED (see `pr-cards/work-index.json`); boxes below are ticked on that basis plus the named test files in `tests/`. Anything needing a live account stays an owner-run step in `GO-LIVE-CHECKLIST.md`.*
 - [x] Every D-1 … D-3 tool in TOOL-CATALOG built and marked `built #n`.
 - [x] No literal default branch (audit G4); file writes and ref moves are compare-and-swap; force moves previewed with
   the commits dropped.
 
 ## Batch E — Pull requests, merges, stacks, reviews (`designs/BATCH-E.md`)
 
-*Docs audit 2026-10-16: every card in this batch is MERGED (see `pr-cards/work-index.json`); boxes below are ticked on that basis plus the named test files in `tests/`. Anything needing a live account stays an owner-run step in `GO-LIVE-CHECKLIST.md`.*
 - [x] Every E-1 … E-3 tool built and marked.
 - [x] Merges only at the exact head and only when every required check is green there (`src/github/ci-state.js`);
   merge commits by default; `bypass_rules` never sent (grep test over the fake-GitHub request log).
@@ -109,7 +102,6 @@ Owner-approved **engineering scope** and approved original acceptance remain dis
 
 ## Batch V — Developer tools (`designs/BATCH-V.md`)
 
-*Docs audit 2026-10-16: every card in this batch is MERGED (see `pr-cards/work-index.json`); boxes below are ticked on that basis plus the named test files in `tests/`. Anything needing a live account stays an owner-run step in `GO-LIVE-CHECKLIST.md`.*
 - [x] Every `github_dev_*` tool refuses production (a test per tool); scratch repositories only in the scratch account.
 - [x] Runs record every created object; cleanup touches only recorded objects and reports per object.
 - [x] Dispatch-and-wait stays inside the time budget; simulated check runs; forwarded deliveries verify like real GitHub
@@ -118,14 +110,12 @@ Owner-approved **engineering scope** and approved original acceptance remain dis
 
 ## Batch F — Issues, labels, discussions, projects, search (`designs/BATCH-F.md`)
 
-*Docs audit 2026-10-16: every card in this batch is MERGED (see `pr-cards/work-index.json`); boxes below are ticked on that basis plus the named test files in `tests/`. Anything needing a live account stays an owner-run step in `GO-LIVE-CHECKLIST.md`.*
 - [x] Every F-1 … F-3 tool built and marked.
 - [x] Audit G7 (rows dropped after paging) and G18 (cannot clear a field) cannot recur (regression tests).
 - [x] Message guard on outsider mentions and assignees; user-owned projects explain the credential they need.
 
 ## Batch H — Governance and security (`designs/BATCH-H.md`)
 
-*Docs audit 2026-10-16: every card in this batch is MERGED (see `pr-cards/work-index.json`); boxes below are ticked on that basis plus the named test files in `tests/`. Anything needing a live account stays an owner-run step in `GO-LIVE-CHECKLIST.md`.*
 - [x] Every H-1 … H-4 tool built and marked.
 - [x] Protection and ruleset changes never drop other settings (audit G2, G3); bypass actors are access-widening.
 - [x] Webhook secrets server-generated and shown once (audit G14); deploy keys public only.
@@ -133,7 +123,6 @@ Owner-approved **engineering scope** and approved original acceptance remain dis
 
 ## Batch O — Owner and administration (`designs/BATCH-O.md`)
 
-*Docs audit 2026-10-16: every card in this batch is MERGED (see `pr-cards/work-index.json`); boxes below are ticked on that basis plus the named test files in `tests/`. Anything needing a live account stays an owner-run step in `GO-LIVE-CHECKLIST.md`.*
 - [x] Admin overview well-formed (contract §9/§11): each item ok / needs_attention / not_readable / not_available_on_plan.
 - [x] Every settings page of a repository, an organization and the personal account in the dashboard map with structured
   steps; read-back wherever GitHub exposes the value; never reported done without it.
@@ -142,7 +131,6 @@ Owner-approved **engineering scope** and approved original acceptance remain dis
 
 ## Batch P — Project profiles (`designs/BATCH-P.md`)
 
-*Docs audit 2026-10-16: every card in this batch is MERGED (see `pr-cards/work-index.json`); boxes below are ticked on that basis plus the named test files in `tests/`. Anything needing a live account stays an owner-run step in `GO-LIVE-CHECKLIST.md`.*
 - [x] `known_projects` with the Appliance Desk and Robinson-server profiles, each item traceable to the project's files.
 - [x] Production guard and project ownership read profiles and name the owning workflow; `agentMay` steps honoured.
 - [x] `github_workflow_app_readiness` covers every row G1–G20 of `docs/APP-NEEDS-APPLIANCE-DESK.md` and works with an
@@ -151,7 +139,6 @@ Owner-approved **engineering scope** and approved original acceptance remain dis
 
 ## Batch W — Workflows (`designs/BATCH-W.md`)
 
-*Docs audit 2026-10-16: every card in this batch is MERGED (see `pr-cards/work-index.json`); boxes below are ticked on that basis plus the named test files in `tests/`. Anything needing a live account stays an owner-run step in `GO-LIVE-CHECKLIST.md`.*
 - [x] All W-1 … W-7 workflows built; merge on green exactly as W3; stacks as W4.
 - [x] Review threads verified at the current head before resolving.
 - [x] No waiting loops; the 50-second budget is respected (a test per workflow); second automatic rerun refused.
@@ -160,7 +147,6 @@ Owner-approved **engineering scope** and approved original acceptance remain dis
 
 ## Batch U — Universal tools (`designs/BATCH-U.md`)
 
-*Docs audit 2026-10-16: every card in this batch is MERGED (see `pr-cards/work-index.json`); boxes below are ticked on that basis plus the named test files in `tests/`. Anything needing a live account stays an owner-run step in `GO-LIVE-CHECKLIST.md`.*
 - [x] Six tools; every request validated against the vendored description or schema; unknown → refused in words.
 - [x] Classification tables with the safe default for unclassified operations and mutations; hand-built tools win;
   `bypass_rules` and secret writes refused.
