@@ -26,7 +26,7 @@ export function browserPreview({runtime,key,ports,origin,controlOrigin,now=Date.
     res.setHeader('Set-Cookie',COOKIE+'='+value+'; Secure; HttpOnly; SameSite=Strict; Path=/; Max-Age='+Math.max(1,Math.floor((grant.expiresAt-now())/1000)));
     res.setHeader('Content-Type','text/html; charset=utf-8');return res.end('<!doctype html><meta name="referrer" content="no-referrer"><title>Private preview</title><script>location.replace("/")</script>');
    }
-   const grant=authenticated(req);if(!req.url?.startsWith('/')||req.url.startsWith('//')||/[\x00-\x1f\\]/.test(req.url))throw new TypeError('Invalid preview path.');
+   const grant=authenticated(req);if(req.headers.origin&&req.headers.origin!==origin)throw new TypeError('Foreign preview origin.');if(!req.url?.startsWith('/')||req.url.startsWith('//')||/[\x00-\x1f\\]/.test(req.url))throw new TypeError('Invalid preview path.');
    const headers=upstreamHeaders(req);const proxy=request({hostname:'127.0.0.1',port:grant.port,method:req.method,path:req.url,headers,agent:false},upstream=>{
     res.statusCode=upstream.statusCode??502;
     for(const [name,value] of Object.entries(upstream.headers)){
@@ -43,7 +43,7 @@ export function browserPreview({runtime,key,ports,origin,controlOrigin,now=Date.
   }catch{res.statusCode=401;res.setHeader('Content-Type','text/plain; charset=utf-8');res.end('Private preview authorization is expired or unavailable. Open a new preview through the authenticated MCP.');}
  };
  const upgrade=(req,socket,head)=>{
-  let grant;try{grant=authenticated(req);if(req.method!=='GET'||!req.url?.startsWith('/')||req.url.startsWith('//')||/[\x00-\x1f\\]/.test(req.url))throw Error();}catch{socket.end('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n');return;}
+  let grant;try{grant=authenticated(req);if(req.headers.origin!==origin)throw Error();if(req.method!=='GET'||!req.url?.startsWith('/')||req.url.startsWith('//')||/[\x00-\x1f\\]/.test(req.url))throw Error();}catch{socket.end('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n');return;}
   const upstream=connect({host:'127.0.0.1',port:grant.port}),timer=setTimeout(()=>{upstream.destroy();socket.destroy();},Math.max(1,grant.expiresAt-now()));timer.unref();
   upstream.on('connect',()=>{const headers={...upstreamHeaders(req),connection:'Upgrade',upgrade:'websocket'};upstream.write(req.method+' '+req.url+' HTTP/1.1\r\n'+Object.entries(headers).map(([k,v])=>k+': '+v).join('\r\n')+'\r\n\r\n');if(head.length)upstream.write(head);socket.pipe(upstream);upstream.pipe(socket);});
   const close=()=>{clearTimeout(timer);upstream.destroy();socket.destroy();};upstream.on('error',close);socket.on('error',close);socket.on('close',close);upstream.on('close',close);

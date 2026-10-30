@@ -20,6 +20,7 @@ it('redeems a signed single-use preview and proxies private application traffic 
   const entered=await redeem();expect(entered.status).toBe(200);const cookie=entered.headers.get('set-cookie');expect(cookie).toContain('Secure; HttpOnly; SameSite=Strict');expect((await redeem()).status).toBe(401);
   const response=await fetch(endpoint+'/app',{headers:{Host:new URL(origin).host,cookie:cookie.split(';')[0]+'; app=ok',Authorization:'withheld','x-api-key':'withheld','x-robinson-signature':'withheld'}});
   expect(await response.text()).toBe('private app');expect(response.headers.get('set-cookie')).toBe('app=next');expect(response.headers.get('cache-control')).toContain('no-store');expect(runtime.lastActivity).toBe(now);
+  expect((await fetch(endpoint+'/app',{method:'POST',headers:{cookie:cookie.split(';')[0],Origin:'https://foreign.example.test'},body:'attack'})).status).toBe(401);expect(requests).toBe(1);
   runtime.authorityLease.allowed=false;expect((await fetch(endpoint,{headers:{Host:new URL(origin).host,cookie:cookie.split(';')[0]}})).status).toBe(401);expect(requests).toBe(1);
   for(const change of [{binding:'c'.repeat(64)},{origin:'https://foreign.example.test'},{port:port+1},{now:now+300001}])expect(()=>previewGrant(grant,key,change.binding??binding,{ports:[change.port??port],origin:change.origin??origin,now:change.now??now})).toThrow();
  }finally{server.closeAllConnections();app.closeAllConnections();await Promise.all([new Promise(r=>server.close(r)),new Promise(r=>app.close(r))]);await rm(root,{recursive:true,force:true});}

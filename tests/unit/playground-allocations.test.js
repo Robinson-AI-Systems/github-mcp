@@ -72,3 +72,13 @@ it('supports an exact operator-owned quota group and isolated egress driver with
  const binding='b'.repeat(64),p=allocationPlan({binding,verificationKey:'ed25519:FAKE_PUBLIC',idleTimeoutMs:14400000},{...config,storageDriver:{name:'fixture-quota',options:{group:'{binding}',role:'{volume}'}},networkDriver:{name:'fixture-isolated',options:{tenant:'{binding}'}}}),body=JSON.parse(p.composeFile);
  expect(body.volumes.files.driver_opts).toEqual({group:binding,role:'files'});expect(body.volumes.git.driver_opts.group).toBe(binding);expect(body.networks.workspace.driver_opts.tenant).toBe(binding);expect(body.networks.workspace.internal).toBe(false);expect(p.enforcement.storageQuotaVerified).toBe(false);expect(p.enforcement.executionEnabled).toBe(false);
 });
+it('plans a genuinely smaller enforced aggregate allocation without weakening runtime controls',()=>{
+ const p=allocationPlan({binding:'b'.repeat(64),verificationKey:'ed25519:FAKE_PUBLIC',idleTimeoutMs:14400000},{...config,cpuCpus:2,memoryBytes:2*1024**3}),body=JSON.parse(p.composeFile);
+ expect(body.services.coding.cpus).toBe('1.5');expect(body.services.broker.cpus).toBe('0.5');expect(body.services.coding.mem_limit).toBe('1536m');expect(body.services.broker.mem_limit).toBe('512m');expect(body.services.coding.cap_drop).toEqual(['ALL']);expect(p.enforcement.memoryConfiguredBytes).toBe(2*1024**3);
+});
+it('selects smaller ceilings from fresh host headroom before creating a queued allocation',async()=>{
+ const {w,record}=await world(),provider=fixtureProvider();delete w.ctx.env.PLAYGROUND_ADMISSION;
+ await ensureAllocation(w.ctx,record,{provider,config,manager:async()=>{}});
+ w.ctx.env.PLAYGROUND_ADMISSION=JSON.stringify({project:config.project,observedAt:w.ctx.now(),availableCpuCpus:2,availableMemoryBytes:2*1024**3,availableDiskBytes:2*1024**3,pressure:0});
+ const result=await ensureAllocation(w.ctx,record,{provider,config,manager:async()=>{}});expect(result.phase).toBe('allocated');const plan=JSON.parse(result.plan.composeFile);expect(plan.services.coding.cpus).toBe('1.5');expect(plan.services.coding.mem_limit).toBe('1536m');expect(provider.calls.filter(x=>x==='create')).toHaveLength(1);
+});

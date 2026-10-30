@@ -16,16 +16,18 @@ export async function allocationRecord(ctx,record){
 // Every state transition is a DB compare-and-set. A lost provider create response
 // is recovered by exact owned source/plan, never by blindly creating another stack.
 export async function ensureAllocation(ctx,record,{provider,config,manager=ensureProjectManager}={}){
- config??=dokployConfig(ctx.env);provider??=dokployProvider(config,{fetch:ctx.fetch});
+ config??=dokployConfig(ctx.env);
+ const refreshed=await refreshAdmission(ctx,config),admission=allocationAdmission(refreshed.env,config,(ctx.now??Date.now)());
+ if(admission.allowed){const observed=JSON.parse(refreshed.env.PLAYGROUND_ADMISSION);config={...config,cpuCpus:Math.min(config.cpuCpus??8,observed.availableCpuCpus??config.cpuCpus??8),memoryBytes:Math.min(config.memoryBytes??8*1024**3,observed.availableMemoryBytes)};}
+ provider??=dokployProvider(config,{fetch:ctx.fetch});
  const binding=playgroundBinding(record),key=allocationKey(binding);let plan=allocationPlan({binding,verificationKey:nativeWorkerPublicKey(ctx.env),idleTimeoutMs:record.job.idleTimeoutMs},{...config,scope:ctx.db.playgroundScope,worker:record.worker,nativeBinding:createHash('sha256').update(JSON.stringify(['authority','connection','owner','repo'].map(k=>record.binding[k]))).digest('hex')});
  let stored=await allocationRecord(ctx,record);
- if(stored&&stored.planHash!==plan.planHash){if(stored.providerOrigin!==config.origin||stored.providerProject!==config.project||stored.providerEnvironment!==config.environment)throw fail('Allocation provider scope changed; preserve the original resources.');plan=stored.plan;}
+ if(stored&&stored.planHash!==plan.planHash){if(stored.providerOrigin!==config.origin||stored.providerProject!==config.project||stored.providerEnvironment!==config.environment)throw fail('Allocation provider scope changed; preserve the original resources.');if(!admission.allowed||stored.composeId||!['requested','waiting_resources'].includes(stored.phase))plan=stored.plan;}
  const save=async patch=>{const next=await ctx.db.compareAndSetSetting(key,stored?.revision??0,{...stored,...patch,revision:(stored?.revision??0)+1});if(!next)throw fail('Another allocation transition is in progress; inspect the existing state.');stored=next;await indexAllocation(ctx,stored);};
  if(!stored){await provider.project();await save({kind:'playground-allocation',scope:ctx.db.playgroundScope??{legacy:true},delegated:ctx.connection.pass===true,providerOrigin:config.origin,providerProject:config.project,providerEnvironment:config.environment,binding,connection:nativeConnection(ctx),clientId:ctx.connection.client_id??null,passId:ctx.connection.pass_id??null,workspace:record.row.id,owner:record.row.owner,repo:record.row.repo,phase:'requested',planHash:plan.planHash,plan,native:{binding:record.binding,worker:record.worker,job:record.job},createdAt:(ctx.now??Date.now)(),expiresAt:new Date(record.row.expires_at).getTime()});
  }
  await manager(ctx,config,provider);
- const refreshed=await refreshAdmission(ctx,config);
- const admission=allocationAdmission(refreshed.env,config,(ctx.now??Date.now)());if(!admission.allowed){if(stored.phase==='requested'||stored.phase==='waiting_resources')await save({phase:'waiting_resources',admission});return stored;}
+ if(admission.allowed&&stored.planHash!==plan.planHash)await save({planHash:plan.planHash,plan});if(!admission.allowed){if(stored.phase==='requested'||stored.phase==='waiting_resources')await save({phase:'waiting_resources',admission});return stored;}
  if(stored.phase==='requested'||stored.phase==='waiting_resources'){await save({phase:'creating'});
   const a=await provider.create(plan);if(typeof a?.composeId!=='string'||!a.composeId)throw fail('Provider create was not confirmed. Inspect this same allocation intent.');await save({composeId:a.composeId,phase:'created'});
  }else if(stored.phase==='creating'){

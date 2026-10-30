@@ -16,7 +16,7 @@ Default ordinary named volumes and internal bridge network do not establish a qu
 
 An operator can supply a project-supported quota volume driver using PLAYGROUND_STORAGE_DRIVER and nonsecret JSON PLAYGROUND_STORAGE_OPTIONS, and an isolated egress network driver using PLAYGROUND_NETWORK_DRIVER and nonsecret JSON PLAYGROUND_NETWORK_OPTIONS. Driver option values can use {binding} and {volume}. All four volumes must share the binding's aggregate quota group; separate150GB quotas on each volume would violate the workspace total. Network policy must prevent access to other tenants, host/admin endpoints, metadata addresses and control networks while permitting development dependency downloads. Driver credentials belong in the operator's driver configuration, never these options or command containers. Do not install host plugins or request broad administration from the agent.
 
-A custom driver name/configuration is not enforcement proof. The operator must provide supported driver semantics and independently observed quota/network/termination readback. Built-in local/bridge/host/overlay drivers are not accepted as substitutes for this contract. Missing support keeps safe fallback active; do not pretend150GB has been reserved or purchased. CPU8 and memory8GiB are aggregate ceilings; actual smaller enforced allocations may operate in constrained mode. Workload builds, browser, PostgreSQL and commands share that allowance.
+A custom driver name/configuration is not enforcement proof. The operator must provide supported driver semantics and independently observed quota/network/termination readback. Built-in local/bridge/host/overlay drivers are not accepted as substitutes for this contract. Missing support keeps safe fallback active; do not pretend150GB has been reserved or purchased. Protected PLAYGROUND_CPU_CPUS and PLAYGROUND_MEMORY_BYTES can select a smaller aggregate allocation (defaults8CPU/8GiB, never above those targets). CPU8 and memory8GiB are aggregate ceilings; actual smaller enforced allocations may operate in constrained mode. Workload builds, browser, PostgreSQL and commands share that allowance.
 
 ## Continuous signed telemetry
 
@@ -29,6 +29,7 @@ Envelope:
   "purpose":"robinson-playground-capacity/v1",
   "project":"OPERATOR_PROJECT",
   "observedAt":1793318400000,
+  "availableCpuCpus":8,
   "availableMemoryBytes":8589934592,
   "availableDiskBytes":10737418240,
   "pressure":0.1,
@@ -49,7 +50,7 @@ Envelope:
 }
 ```
 
-Examples are shapes, not real observations. Capacity observations expire after60seconds. Workspace evidence is exact-bound and expiry-checked, with independent runtime cgroup readback before admission; use short evidence leases. The sensor must measure the actual per-workspace aggregate resource/quota/network/termination controls, not infer them from YAML. No daily job quota or arbitrary request-count admission is added. Protected static PLAYGROUND_ADMISSION / PLAYGROUND_ENFORCEMENT remain compatibility inputs when no continuous feed is configured; they are not perpetual observations.
+Examples are shapes, not real observations. Capacity observations expire after60seconds. Before provider creation, fresh availableCpuCpus (when supplied) and availableMemoryBytes select smaller ceilings below the protected targets; queued never-created plans can adapt without touching an existing allocation or lease. Workspace evidence is exact-bound and expiry-checked, with independent runtime cgroup readback before admission; use short evidence leases. The sensor must measure the actual per-workspace aggregate resource/quota/network/termination controls, not infer them from YAML. No daily job quota or arbitrary request-count admission is added. Protected static PLAYGROUND_ADMISSION / PLAYGROUND_ENFORCEMENT remain compatibility inputs when no continuous feed is configured; they are not perpetual observations.
 
 ## Repository, preview and expiry
 

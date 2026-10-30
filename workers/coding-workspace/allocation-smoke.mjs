@@ -18,7 +18,7 @@ try{
  await source.execute(worker,binding,{operation:'write_file',args:{path:'uncommitted.txt',base64:Buffer.from('preserved').toString('base64')},requestKey:'edit',expectedGeneration:opened.generation});
  const bytes=await exportWorkspace({root:source.root,id:worker,key});
  const nativeBinding=createHash('sha256').update(JSON.stringify(['authority','connection','owner','repo'].map(k=>binding[k]))).digest('hex');
- plan=allocationPlan({binding:allocationBinding,verificationKey,idleTimeoutMs:14400000},{image:'robinson-coding:test',worker,nativeBinding,ingress:'107.90.116.157'});
+ plan=allocationPlan({binding:allocationBinding,verificationKey,idleTimeoutMs:14400000},{cpuCpus:2,memoryBytes:2*1024**3,image:'robinson-coding:test',worker,nativeBinding,ingress:'107.90.116.157'});
  const model=JSON.parse(plan.composeFile);
  // This scenario isolates mounted-file and namespace teardown proof. Signed
  // heartbeat/expiry behavior has separate tests; no authority claim comes from it.
@@ -30,7 +30,7 @@ try{
  const imported=run(['exec','-i',broker,'node','--input-type=module','-e',"import {importMountedWorkspace} from './workers/native-git/snapshot.js';let data='';for await(const b of process.stdin)data+=b;console.log(JSON.stringify(await importMountedWorkspace({...JSON.parse(data),bytes:Buffer.from(JSON.parse(data).bytes,'base64')})));"],{input:JSON.stringify({root:'/data',id:worker,key,expectedBinding,bytes:bytes.toString('base64')})});assert.equal(JSON.parse(imported).complete,true);
  const port=compose('port','coding','3000').split(':').at(-1),origin='http://127.0.0.1:'+port;
  const call=async(action,options={})=>{const body=JSON.stringify({purpose:'robinson-coding/v1',binding:allocationBinding,expiresAt:Date.now()+60000,action,options});const res=await fetch(origin+'/v1/coding',{method:'POST',headers:{'Content-Type':'application/json','x-robinson-signature':'ed25519:'+sign(null,Buffer.from(body),privateKey).toString('base64url')},body});assert(res.ok,await res.clone().text());return res.json();};
- let ready=false;for(let i=0;i<100;i++){try{ready=(await call('capabilities')).repository.gitReadOnly===true;}catch{}if(ready)break;await new Promise(r=>setTimeout(r,50));}assert(ready);
+ let ready=false;for(let i=0;i<100;i++){try{const cap=await call('capabilities');assert.equal(cap.capacity.cpu.cgroupQuotaCpus,1.5);assert.equal(cap.capacity.memory.cgroupLimitBytes,1536*1024**2);ready=cap.repository.gitReadOnly===true;}catch{}if(ready)break;await new Promise(r=>setTimeout(r,50));}assert(ready);
  const started=await call('start',{requestKey:'shared-files',argv:['node','-e',"const fs=require('fs');if(process.getuid()!==1000)process.exit(3);if(fs.readFileSync('uncommitted.txt','utf8')!=='preserved')process.exit(4);try{fs.writeFileSync('.git/config','attack');process.exit(5)}catch(e){if(e.code!=='EROFS')throw e}fs.writeFileSync('tracked.txt','edited by runtime');const p=require('child_process').spawn(process.execPath,['-e',`setInterval(()=>{},1000)`],{detached:true,stdio:'ignore'});p.unref();fs.writeFileSync('daemon.pid',String(p.pid));"]});
  let terminal;for(let i=0;i<100;i++){terminal=await call('status',{id:started.id});if(['completed','failed'].includes(terminal.state))break;await new Promise(r=>setTimeout(r,50));}assert.equal(terminal.exitCode,0);
  assert.equal(run(['exec',broker,'cat','/data/'+worker+'/repo/tracked.txt']),'edited by runtime');assert.equal(run(['exec',broker,'git','-C','/data/'+worker+'/repo','rev-parse','HEAD']),opened.head);
