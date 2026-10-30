@@ -63,3 +63,24 @@ Revoked/expired authority stops the runtime container namespace; process-group c
 ## Verification boundaries
 
 Unit/transport tests, exact-head images/CI, merged source, deployed matching worker/MCP revisions and authenticated disposable client/provider acceptance are separate evidence. The multi-container image scenario includes actual Chromium private entry, secure HttpOnly cookies, application/API/WebSocket traffic and anonymous denial, alongside shared edits, read-only Git metadata, UID1000 execution, a deliberately daemonized child, container termination and exact volume absence. Its heartbeat-free fixture isolates mount/namespace proof and does not count as live revocation proof. Full current-grant/browser/lifecycle and real quota/network acceptance remain required before declaring PLAY-1 complete.
+
+### Scoped cleanup proof when host volume reads are forbidden
+
+Project-scoped keys may read their Compose/container inventory while Docker volume/health endpoints return401. Do not widen the agent to unrestricted Docker/server administration. An operator sensor can instead include one replacement record for the exact workspace in the signed envelope's allocations array:
+
+```json
+{
+  "workspace_id":"job_0123456789abcdef",
+  "binding":"EXACT_64_HEX_BINDING",
+  "observedAt":1793318400000,
+  "expiresAt":1793318460000,
+  "cleanup":{
+    "composeId":"EXACT_OWNED_COMPOSE",
+    "composeAbsent":true,
+    "containersAbsent":true,
+    "volumesAbsent":["EXACT_FILES_VOLUME","EXACT_GIT_VOLUME","EXACT_BROKER_VOLUME","EXACT_EXECUTION_VOLUME"]
+  }
+}
+```
+
+This shape is not a real observation. The operator must independently inspect actual absence before signing it. Do not send both active and cleanup records for the same workspace. The service verifies the signature/project, exact binding/Compose, all four distinct expected volume names and a maximum60second evidence lease. It also independently requires its project-visible Compose to be absent and container inventory empty. A delete acknowledgement, static environment assertion, missing volume, foreign name, stale proof or failed telemetry cannot confirm cleanup. This fallback applies only to401/403 inspection denial; ownership/other errors are not bypassed.
