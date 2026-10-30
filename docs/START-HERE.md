@@ -1,46 +1,35 @@
-# START HERE — Robinson GitHub MCP
+# Start here
 
-A hosted MCP server (Node 24.x, plain ES modules, Vercel serverless + Neon Postgres) that gives Chris's AI agents safe,
-almost-complete control of his GitHub accounts. Same family and conventions as `Robinson-AI-Systems/stripe-mcp` (the
-reference implementation of the server playbook) and `Robinson-AI-Systems/google-workspace-mcp`. General-purpose across
-Chris's projects; projects whose own automation manages GitHub get a project profile (Batch P), the first being the
-Appliance Desk rental app and the Robinson servers themselves (`docs/APP-NEEDS-APPLIANCE-DESK.md`). Chris operates mostly
-from a phone; everything he reads must be plain language.
+Robinson GitHub MCP lets your AI (Claude and others) work in your GitHub accounts. It is live at `https://github.robinsonaisystems.com`. Nothing here needs you to code.
 
-## Read only what this work needs
+## What to read
 
-1. Implementing a card: [SESSION-START](SESSION-START.md) (one page). Otherwise AGENTS — workflow and hard limits.
-2. [STATUS](STATUS.md) — current head/state/next item. **The newest entry is at the top and states the current head, open owner steps and what is next.**
-3. [MASTER-ROADMAP](MASTER-ROADMAP.md) — order of batches and work coverage.
-4. Next card, then its named design headings and code. If JIT, write the short card from the design first;
-   [drift protocol](implementation-contracts/DRIFT-PROTOCOL.md) applies every time.
-5. PLAN's acceptance for the batch and PLAYBOOK's verification commands.
+1. [OWNER-CHECKLIST](OWNER-CHECKLIST.md): the short list of things only you can do.
+2. [OWNER-GUIDE](OWNER-GUIDE.md): what you can ask for, and your safety switches.
+3. [DEPLOY](DEPLOY.md): how the server is set up, and what to do if it breaks.
+4. [GO-LIVE-CHECKLIST](GO-LIVE-CHECKLIST.md) and [OWNER-INPUTS](OWNER-INPUTS.md): switches and your recorded decisions.
 
-## Code map (target; confirm the actual path before editing)
+Current progress is in [STATUS](STATUS.md). The governing decision is [OWNER-DECISION-2026-10-27](OWNER-DECISION-2026-10-27.md).
 
-`api/` Vercel functions (`mcp.js` connector, `oauth/*` login, `github/setup.js` setup page, `github/manifest-callback.js`
-and `github/user-callback.js` credential flows, `github/webhook.js` App installation events, `tools/*` HTTPS API,
-`contract.js` RTC manifest) · `src/core/` contract-generic code (no GitHub imports; extracted later into
-`robinson-mcp-core`) · `src/github/` the only GitHub client, credentials, rate discipline, CI-state helper, prices,
-operation classes, OpenAPI index · `src/tools/` one module per area (`repos.js`, `pulls-read.js`, `pulls-write.js`, `actions-read.js`, …) plus the
-guards (`production-guard.js`, `protect-guard.js`, `people-guard.js`, `spend-guard.js`), `summaries.js`, `errors.js`,
-`util.js`, `index.js` (registry) · `src/dev/` scenarios · `src/data/` dashboard map, profile schema · `src/db.js` all SQL ·
-`tests/unit|db|shapes` (RTC door tests are `tests/unit/rtc-*.test.js`; shared fixtures in `test/helpers|contract`) · `scripts/` checks and finders · `vendor/github-openapi/` and `vendor/github-graphql/`
-GitHub's published API description and schema for the pinned version.
+## Connect from Claude on your phone
 
-## One authority per fact
+Claude's phone apps can use a connector but cannot add one. Add it once on the web or desktop, then use it on your phone. Source: [Claude help article](https://support.claude.com/en/articles/11503834). Needs a Pro, Max, Team or Enterprise plan.
 
-| Fact | Authority |
-|---|---|
-| Workflow / hard limits | AGENTS; PLAYBOOK for command recipes |
-| Current state / ordered work | STATUS / MASTER-ROADMAP / `pr-cards/work-index.json` |
-| Remaining acceptance | PLAN |
-| How each batch works | `designs/BATCH-*.md` (targeted headings); the card for exact execution |
-| Every tool and its safety marks | TOOL-CATALOG (`scripts/count-catalog.py` keeps the totals honest) |
-| What each profiled project needs | `APP-NEEDS-<PROJECT>.md` (first: APP-NEEDS-APPLIANCE-DESK), `designs/BATCH-P.md` |
-| Owner-only inputs / production switches | OWNER-INPUTS / GO-LIVE-CHECKLIST |
-| Runtime facts | code and tests; ARCHITECTURE updated as behavior ships |
-| Historical evidence | `audits/`, dated DECISIONS; never current instructions |
+1. On claude.ai (or Claude Desktop), open **Customize**, then **Connectors**. (Menu names move around; on the desktop app it is Settings, then Connectors.)
+2. Choose **Add custom connector**.
+3. Paste `https://github.robinsonaisystems.com/api/mcp` and choose **Add**.
+4. Choose **Connect**. Your browser opens the sign-in page on our server (`/api/oauth/authorize`).
+5. On that page, pick your GitHub account or accounts, the default account, the **Mode**, the **Profile** (Read only, Everyday or Full) and the tool listing. Type your administrator passphrase and press **Authorize this connection**.
+6. Open Claude on your phone, start a chat, turn the connector on, and ask: "Which GitHub accounts am I connected to?"
 
-Preserve stable IDs (cards, `IN-xx`, decisions). Anything that could touch production, widen access or spend money
-starts off. Do not turn a plan or a passing test into a claim of production readiness.
+Notes:
+
+- On a team plan, an owner adds the connector first, then members press Connect.
+- If the sign-in page instead says "Sign in with GitHub" and then shows an **Approve** page, that is the public sign-in. Press **Approve** (tick Read-only if you want no changes). The code switches between the two pages with the `GITHUB_PUBLIC_CONNECT` setting (`src/oauth/routes.js:16-30`). Which one production uses today: unverified.
+- Adding the connector from the phone app itself: unverified. The owner reported it worked on 2026-10-24 (comment in `src/brand/home-page.js:30`), but Claude's help article says it is not supported.
+- Use a full browser (Chrome, Safari), not an app's built-in browser, for the sign-in and setup pages.
+- Disconnect or change permissions later at `/connection` (public sign-in only).
+
+## For agents
+
+Read [AGENTS.md](../AGENTS.md) first. Then [SESSION-START](SESSION-START.md), [STATUS](STATUS.md) and [MASTER-ROADMAP](MASTER-ROADMAP.md). Tool list: [TOOL-CATALOG](TOOL-CATALOG.md). Runtime facts: [ARCHITECTURE](ARCHITECTURE.md). Older dated notes and `docs/archive/` are history, not instructions.

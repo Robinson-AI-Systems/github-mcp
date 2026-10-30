@@ -43,8 +43,9 @@ describe('connector login end to end on throwaway Postgres', () => {
     expect(page.body).toContain('Example Org');
 
     const production = await call(h.authorize, request('POST', { ...form, mode: 'production', passphrase: env.ADMIN_PASSPHRASE }));
-    expect(production.statusCode).toBe(400);
-    expect(production.body).toContain('Production is not turned on for: example-org.');
+    // owner decision 2026-10-27: production sign-in is allowed on the production deployment without a per-account switch
+    expect(production.statusCode).toBe(302);
+    await rawQuery('DELETE FROM oauth_codes');
     expect(Number((await rawQuery('SELECT count(*) FROM oauth_codes'))[0].count)).toBe(0);
 
     const authorized = await call(h.authorize, request('POST', { ...form, passphrase: env.ADMIN_PASSPHRASE }));

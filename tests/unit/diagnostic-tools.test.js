@@ -127,7 +127,7 @@ describe('CAP-2 Standard Full diagnosis without token or permission escalation',
     expect(html).not.toContain('value="full" selected');
     const args={'acct:example-org':'on',default_account:'example-org',mode:'preview',profile:'full',listing:'compact'};
     expect(policy.validate({params:args,choices:[account]}).settings.profile).toBe('full');
-    expect(policy.validate({params:{...args,mode:'production'},choices:[account]}).error).toContain('not turned on');
+    expect(policy.validate({params:{...args,mode:'production'},choices:[account]}).settings.mode).toBe('production');
   });
   it('never confuses stored credentials with verified grants or silently widens a scope',()=>{
     const account={login:'example-org',credential_kind:'app',app_id:500,installation_id:501,

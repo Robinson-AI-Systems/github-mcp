@@ -172,7 +172,8 @@ describe('authorize page', () => {
     expect(page.body).toMatch(/<option value="example-org" selected>/);
     expect(page.body).toContain('<option value="everyday" selected>');
     expect(page.body).toContain('<option value="compact" selected>');
-    expect(page.body).toContain('<option value="production">');
+    expect(page.body).toContain('<option value="production" selected>');
+    expect(page.body).toContain('<option value="preview">');
     const claude = await register(h, 'Claude');
     const claudePage = await call(h.authorize, request('GET', { ...form(claude), listing: undefined }));
     expect(claudePage.body).toContain('<option value="catalog" selected>');
@@ -190,18 +191,20 @@ describe('authorize page', () => {
     expect(posted.statusCode).toBe(302);
   });
 
-  it('offers production only on the production deployment and only when some account has it turned on', async () => {
+  it('offers production, selected by default, on the production deployment whatever the per-account setting; preview deployments offer preview only', async () => {
     for (const [env, accounts, expected] of [
       [baseEnv, ACCOUNTS, false],
       [{ ...baseEnv, VERCEL_ENV: 'preview' }, ACCOUNTS, false],
-      [{ ...baseEnv, VERCEL_ENV: 'production' }, ACCOUNTS.map((a) => ({ ...a, production_enabled: false })), false],
+      [{ ...baseEnv, VERCEL_ENV: 'production' }, ACCOUNTS.map((a) => ({ ...a, production_enabled: false })), true],
       [{ ...baseEnv, VERCEL_ENV: 'production' }, ACCOUNTS, true]
     ]) {
       const { h } = await fixture(env, accounts);
       const client = await register(h);
-      const page = await call(h.authorize, request('GET', form(client)));
+      const page = await call(h.authorize, request('GET', form(client, { mode: undefined })));
       expect(page.body.includes('<option value="production"')).toBe(expected);
       expect(page.body).toContain('<option value="preview"');
+      if (expected) expect(page.body).toContain('<option value="production" selected>');
+      else expect(page.body).toContain('<option value="preview" selected>');
     }
   });
 
@@ -302,7 +305,7 @@ describe('sign-in and what a login may choose', () => {
     expect(res.statusCode).toBe(302);
   });
 
-  it('refuses a forged mode=production with the correct passphrase on a preview deployment, and on accounts without production turned on', async () => {
+  it('refuses a forged mode=production on a preview deployment, but grants it on the production deployment even for an account without the old per-account switch', async () => {
     for (const env of [baseEnv, { ...baseEnv, VERCEL_ENV: 'preview' }]) {
       const { h } = await fixture(env);
       const client = await register(h);
@@ -314,12 +317,11 @@ describe('sign-in and what a login may choose', () => {
     const { h } = await fixture({ ...baseEnv, VERCEL_ENV: 'production' });
     const client = await register(h);
     const res = await call(h.authorize, request('POST', form(client, { mode: 'production', passphrase: baseEnv.ADMIN_PASSPHRASE })));
-    expect(res.statusCode).toBe(400);
-    expect(res.body).toContain('Production is not turned on for: example-org.');
-    expect(res.headers.Location).toBeUndefined();
+    expect(res.statusCode).toBe(302);
+    expect(res.body ?? '').not.toContain('Production is not turned on');
   });
 
-  it('grants a production connection only on the production deployment, and only when every selected account has it', async () => {
+  it('grants a production connection only on the production deployment', async () => {
     const { h, db } = await fixture({ ...baseEnv, VERCEL_ENV: 'production' });
     const client = await register(h);
     const granted = await call(h.authorize, request('POST', form(client, {

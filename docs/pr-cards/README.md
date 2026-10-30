@@ -1,9 +1,9 @@
 # Execution cards — just in time
 
 Same system as the Stripe MCP and Appliance Desk. The implementing agent writes short cards for the related approved units selected for the current bundle and,
-when useful, its immediate successor. Sol 5.6 at light/medium effort is the intended routine use. Avoid writing distant
+when useful, its immediate successor. Sol 5.6 at light/medium effort is the intended routine use (`SOL-GUIDE.md`). Avoid writing distant
 cards whose prerequisites are hypothetical; `work-index.json` preserves all later scope. A missing card is work, not a
-reason to stop. Designs govern behavior; cards cannot silently override them. A card preserves an existing subsection ID and full acceptance, not a mandatory separate PR. Group related cards under AGENTS' bundle/card/PR boundary rule; do not invent or subdivide IDs to inflate completion.
+reason to stop. Designs govern behavior; cards cannot silently override them. A card preserves an existing subsection ID and full acceptance, not a mandatory separate PR. Size PRs by outcome (AGENTS "Size a PR by outcome"); do not invent or subdivide IDs to inflate completion.
 
 ## Minimum card (usually 40–100 lines)
 
