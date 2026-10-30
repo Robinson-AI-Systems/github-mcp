@@ -98,6 +98,7 @@ export async function resolvePrivateTenantMcpBearer({
     });
     if (tenant.namespace !== authorized.namespace ||
         tenant.membershipRevision !== authorized.membershipRevision) return null;
+    db.playgroundScope=Object.freeze({...db.playgroundScope,pilotRevision:authorized.pilotRevision});
     const grant = await db.getAccessToken(value);
     // The token must be a real tenant-scoped connector issued to exactly
     // this identity, with its registered client also MAC-bound to the same

@@ -1,3 +1,4 @@
+import {runtimeIdentity} from './authority.js';
 // One separately isolated container per workspace. Never import this into native-git.
 import {spawn} from 'node:child_process';
 import {createHash,randomBytes} from 'node:crypto';
@@ -10,10 +11,10 @@ const hash=x=>createHash('sha256').update(JSON.stringify(x)).digest('hex');
 const fail=(code,message)=>Object.assign(new TypeError(message),{code});
 async function atomic(path,value){const temp=path+'.'+randomBytes(8).toString('hex')+'.new';const f=await open(temp,'w',0o600);try{await f.writeFile(JSON.stringify(value));await f.sync();}finally{await f.close();}await rename(temp,path);const d=await open(resolve(path,'..'),'r');try{await d.sync();}finally{await d.close();}}
 export class CodingRuntime {
- constructor({root,binding,uid=1000,gid=1000,now=Date.now,maxLogBytes=32*1024*1024,idleMs=4*3600000,resources}={}){
+ constructor({root,binding,uid=1000,gid=1000,now=Date.now,maxLogBytes=32*1024*1024,idleMs=4*3600000,resources,authorityRequired=false}={}){
   if(process.getuid?.()!==0)throw fail('isolation_required','Run the supervisor as the isolated container root; commands always use a different unprivileged UID.');
   if(!isAbsolute(root??'')||!ID.test(binding??'')||uid!==1000||gid!==1000||!Number.isSafeInteger(maxLogBytes)||maxLogBytes<1024||maxLogBytes>64*1024*1024||!Number.isSafeInteger(idleMs)||idleMs<60000||idleMs>86400000)throw fail('invalid_configuration','Invalid isolated workspace configuration.');
-  Object.assign(this,{root:resolve(root),binding,uid,gid,now,maxLogBytes,idleMs});this.active=new Map();this.admitting=new Set();this.lastActivity=now();this.expired=false;this.stopping=false;this.leaseWrites=Promise.resolve();this.resources=resources??createResourceMonitor({root:this.root});
+  Object.assign(this,{root:resolve(root),binding,uid,gid,now,maxLogBytes,idleMs});this.authorityRequired=authorityRequired;this.authorityLease=null;this.active=new Map();this.admitting=new Set();this.lastActivity=now();this.expired=false;this.stopping=false;this.leaseWrites=Promise.resolve();this.resources=resources??createResourceMonitor({root:this.root});
  }
  async init(){
   const {chown}=await import('node:fs/promises');
@@ -26,13 +27,15 @@ export class CodingRuntime {
   catch(e){if(e.code!=='ENOENT')throw e;await atomic(state,{binding:this.binding,lastActivity:this.lastActivity});}
   // A container restart must never silently rerun a command whose result is unknown.
   for(const name of await readdir(join(this.root,'control'))){if(!/^[a-f0-9]{64}\.json$/.test(name))continue;const p=join(this.root,'control',name),r=JSON.parse(await readFile(p,'utf8'));if(['starting','running'].includes(r.state)){r.state='uncertain';r.reason='runtime_restarted';await atomic(p,r);}}
-  return this;
+  this.identity=await runtimeIdentity(this.root);return this;
  }
+ async recordAuthorizedActivity(at){if(!Number.isSafeInteger(at)||at>this.now()+90000||this.expired||this.stopping)throw fail('workspace_expired','Invalid authorized activity.');this.lastActivity=Math.max(this.lastActivity,Math.min(at,this.now()));const write=this.leaseWrites.catch(()=>{}).then(()=>atomic(join(this.root,'control','workspace.json'),{binding:this.binding,lastActivity:this.lastActivity}));this.leaseWrites=write;await write;}
  async touch(){if(this.expired||this.stopping||this.lastActivity+this.idleMs<=this.now())throw fail('workspace_expired','Four-hour inactivity lease expired or runtime is stopping.');this.lastActivity=Math.max(this.lastActivity,this.now());const write=this.leaseWrites.catch(()=>{}).then(()=>atomic(join(this.root,'control','workspace.json'),{binding:this.binding,lastActivity:this.lastActivity}));this.leaseWrites=write;await write;}
  paths(id){if(!ID.test(id??''))throw fail('invalid_execution','Invalid execution identity.');return {receipt:join(this.root,'control',id+'.json'),log:join(this.root,'control',id+'.log')};}
  async inspect(id){const p=this.paths(id);let r;try{r=JSON.parse(await readFile(p.receipt,'utf8'));}catch(e){if(e.code==='ENOENT')throw fail('execution_not_found','No execution belongs to this workspace.');throw e;}return r;}
  async start({requestKey,argv,cwd='.',timeoutMs=600000}={}){
   await this.touch();
+  if(this.authorityRequired&&(!this.authorityLease?.allowed||this.authorityLease.expiresAt<=this.now()))throw fail('authority_unavailable','Current allocation authority is unavailable; no command started.');
   if(typeof requestKey!=='string'||requestKey.length<1||requestKey.length>128||!Array.isArray(argv)||argv.length<1||argv.length>128||argv.some(s=>typeof s!=='string'||s.includes('\0')||s.length>16384)||!argv[0]||typeof cwd!=='string'||isAbsolute(cwd)||!Number.isSafeInteger(timeoutMs)||timeoutMs<1||timeoutMs>4*3600000)throw fail('invalid_command','Supply argv, a repository-relative directory and a finite timeout up to four hours.');
   const directory=await realpath(resolve(this.root,'repo',cwd)),repo=join(this.root,'repo');if(directory!==repo&&!directory.startsWith(repo+'/'))throw fail('invalid_directory','Command directory must remain inside this workspace.');
   const id=hash([this.binding,requestKey]),intent=hash({argv,cwd,timeoutMs});const p=this.paths(id);

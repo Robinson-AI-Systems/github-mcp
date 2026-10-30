@@ -24,7 +24,7 @@ export function verifyWorkerBody(body, signature, key, now = Date.now()) {
  }
  const data = JSON.parse(body);
  if (![2, WORKER_PROTOCOL].includes(data.version) || !Number.isSafeInteger(data.expiresAt) || data.expiresAt <= now || data.expiresAt > now + 90000) throw new TypeError('Expired or invalid worker lease.');
- if (!['capabilities', 'open', 'inspect', 'read', 'run', 'close'].includes(data.action)) throw new TypeError('Unsupported worker action.');
+ if (!['capabilities', 'open', 'inspect', 'read', 'run', 'close', 'attachment_export', 'attachment_import'].includes(data.action)) throw new TypeError('Unsupported worker action.');
  return data;
 }
 export function workerUrl(env) {
@@ -44,6 +44,7 @@ export const nativeWorkspaceId = (binding, key) => {
 // eligible; a stored workspace can never supply an arbitrary credential target.
 export const nativeWorkerHost = env => createHash('sha256').update(new URL(workerUrl(env)).origin).digest('hex').slice(0,32);
 export function nativeWorkerRoute(env, job) {
+ if(job?.brokerOrigin){const url=new URL(job.brokerOrigin);if(!/^[a-f0-9]{64}$/.test(job.allocationBinding??'')||url.protocol!=='https:'||url.username||url.password||url.pathname!=='/'||url.search||url.hash)throw new TypeError('Invalid bound dedicated Git broker.');return new URL('/v1/workspace',url).href;}
  const primary=workerUrl(env);
  const previous=env?.NATIVE_GIT_PREVIOUS_WORKER_URL ? workerUrl({...env,NATIVE_GIT_WORKER_URL:env.NATIVE_GIT_PREVIOUS_WORKER_URL}) : null;
  if (job?.host!==undefined) {

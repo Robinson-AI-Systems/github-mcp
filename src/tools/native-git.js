@@ -1,3 +1,5 @@
+import {passRefusal} from '../rtc/pass-scope.js';
+import {enqueueAllocation,disposeAllocation} from '../playground/allocations.js';
 import { nativeWorkerPublicKey } from '../native-git/signing.js';
 import { randomBytes } from 'node:crypto';
 import { defineRead } from './define-read.js';
@@ -45,12 +47,14 @@ const open = defineGithubWrite({
    if(error instanceof TenantCapacityError) throw Object.assign(new TypeError('Active workspace capacity was reached before any clone was sent. Close a finished workspace or wait for idle cleanup, then start a new clone intent. There is no daily job-creation quota.'),{status:429,safeMessage:true,safeRetryable:true});
    throw error;
   });
-  try { return { workspace_id: id, result: await callNativeWorker(c, { action: 'open', binding, job: {id,host,idleTimeoutMs:(a.leaseMinutes ?? 240)*60000}, requestKey, allowWrite: true, network: true, options: { branch: a.branch, depth: a.depth, authorName: a.authorName, authorEmail: a.authorEmail, ttlMs: (a.leaseMinutes ?? 240) * 60000 } }) }; }
+  try {const result=await callNativeWorker(c, { action: 'open', binding, job: {id,host,idleTimeoutMs:(a.leaseMinutes ?? 240)*60000}, requestKey, allowWrite: true, network: true, options: { branch: a.branch, depth: a.depth, authorName: a.authorName, authorEmail: a.authorEmail, ttlMs: (a.leaseMinutes ?? 240) * 60000 } });let playground={phase:'git_only',reason:'provider_setup_required'};
+   if(result.state==='ready'&&c.env.PLAYGROUND_DOKPLOY_ORIGIN&&!passRefusal({tool:{name:'github_playground_workspace',area:'playground',writes:true,inputSchema:{properties:{repo:{}}}},args:{owner:t.owner,repo:t.repo},connection:c.connection})){try{const allocated=await enqueueAllocation(c,await nativeRecord(c,id));playground={phase:allocated.phase,workspace_id:id,next:'Allocation manager will provision and attach this workspace; read Playground allocation for progress.'};}catch{playground={phase:'git_only',reason:'allocation_recovery_required',next:'Git work is preserved; inspect Playground allocation with this same workspace ID.'};}}
+   return {workspace_id:id,result,playground};}
   catch(error) {if(error.nativeNoOperationStarted){await c.db.finishJob(id,nativeConnection(c),{state:'failed',detail:'Worker resource admission declined before clone.'});throw error;}return { workspace_id: id, result: { state: 'uncertain' } }; }
  },
  readAfter: async ({ ctx: c, response }) => {
   const record = await nativeRecord(c, response.workspace_id);
-  try { return { workspace_id: response.workspace_id, ...await callNativeWorker(c, { action: 'inspect', binding: record.binding, job: record.job, workspace_id: record.worker }) }; }
+  try { return { workspace_id: response.workspace_id, playground:response.playground, ...await callNativeWorker(c, { action: 'inspect', binding: record.binding, job: record.job, workspace_id: record.worker }) }; }
   catch { return { workspace_id: response.workspace_id, state: 'uncertain', next: 'Use github_git_workspace_read status; do not open another clone to retry this intent.' }; }
  },
  verify: ({ after }) => after.state === 'ready', present: ({ after, response }) => after ?? response
@@ -99,7 +103,7 @@ const close = defineGithubWrite({
  explain: error => error?.safeMessage ? error.message : 'Native Git operation could not be confirmed. Inspect workspace state and the same intent receipt before retrying.',
  classifyError: error => [401,409,429].includes(error?.status) ? 'rejected' : 'uncertain', target: (a, c) => target(a, c, true),
  read: async (_a, c, t) => { try { return await invoke(c, t, { action: 'inspect', renewLease: false }); } catch (e) { if (e.status === 404) return { disposed: true }; throw e; } }, classify: () => ({}), summarize: ({ target: t }) => `Dispose native workspace for ${t.owner}/${t.repo}; uncommitted local work is deleted.`,
- apply: async ({ ctx: c, target: t, before }) => { if (before.disposed) return { disposed: true }; const result = await invoke(c, t, { action: 'close', allowWrite: true }); return result; },
+ apply: async ({ ctx: c, target: t, before }) => { const allocation=await disposeAllocation(c,t.record);if(allocation.disposed!==true)throw Object.assign(new TypeError('Playground cleanup is pending; native files were preserved.'),{safeMessage:true});if (before.disposed) return { disposed: true }; const result = await invoke(c, {...t,record:{...t.record,job:{...t.record.job,brokerOrigin:undefined,allocationBinding:undefined}}}, { action: 'close', allowWrite: true }); return result; },
  readAfter: async ({ args: a, ctx: c, target: t }) => {
   try { await invoke(c, t, { action: 'inspect', renewLease: false }); return { state: 'pending' }; }
   catch (error) { if (error.status !== 404) throw error; }

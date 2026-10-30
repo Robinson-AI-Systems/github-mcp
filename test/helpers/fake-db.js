@@ -557,6 +557,7 @@ export function createFakeDb({ clock = Date.now } = {}) {
       return { id: r.id, account: r.account, scope: structuredClone(r.scope) };
     },
     async releaseSecretRequest(id) { const r = secretRequests.get(id); if (r) r.completed = false; },
+    async listPlaygroundIndexes({after='',limit=50}={}){return [...settings].filter(([key,v])=>key.startsWith('pg_index.')&&key>after&&v.kind==='playground-index'&&v.allocation.phase!=='disposed').sort(([a],[b])=>a.localeCompare(b)).slice(0,limit).map(([setting,value])=>({setting,value:structuredClone(value)}));},
     async getSetting(key) { return settings.has(key) ? structuredClone(settings.get(key)) : null; },
     async setSetting(key, value) {
       if (typeof key !== 'string' || !/^[a-z][a-z0-9_.]{0,62}$/.test(key)) throw new TypeError('A setting key is lowercase words.');

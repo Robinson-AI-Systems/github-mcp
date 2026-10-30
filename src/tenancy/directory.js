@@ -1276,6 +1276,7 @@ export async function openAuthorizedTenantDb({ directory, tenantId, verifiedIden
   const sql = createTenantSql(connectionString, tenantId, sqlFactory);
   await assertTenantSearchPath(sql, tenantId);
   const db = createDb(sql);
+  db.playgroundScope=Object.freeze({tenantId,identityId:verifiedIdentityId,membershipRevision:bound.membershipRevision});
   await upgradeTenantSchemaOnce(tenantId, connectionString, db, sql);
   return { tenant: Object.freeze(bound), db, sql };
 }
