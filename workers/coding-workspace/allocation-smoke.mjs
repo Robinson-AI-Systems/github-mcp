@@ -35,9 +35,9 @@ try{
  let terminal;for(let i=0;i<100;i++){terminal=await call('status',{id:started.id});if(['completed','failed'].includes(terminal.state))break;await new Promise(r=>setTimeout(r,50));}assert.equal(terminal.exitCode,0);
  assert.equal(run(['exec',broker,'cat','/data/'+worker+'/repo/tracked.txt']),'edited by runtime');assert.equal(run(['exec',broker,'git','-C','/data/'+worker+'/repo','rev-parse','HEAD']),opened.head);
  assert.match(run(['exec',broker,'git','-C','/data/'+worker+'/repo','status','--porcelain']),/tracked.txt/);
- const pid=run(['exec',coding,'cat','/workspace/repo/daemon.pid']);assert(Number(pid)>0);run(['exec',coding,'kill','-0',pid]);
+ const pid=run(['exec',coding,'cat','/workspace/repo/daemon.pid']);assert(Number(pid)>0);run(['exec',coding,'node','-e','process.kill(Number(process.argv[1]),0)',pid]);
  compose('stop');const state=JSON.parse(run(['inspect',coding]));assert.equal(state[0].State.Running,false);assert.equal(state[0].State.Pid,0);
  compose('down','--volumes','--remove-orphans');
- for(const volume of plan.volumes){let absent=false;try{run(['volume','inspect',volume]);}catch(error){absent=/No such volume/.test(String(error.stderr));}assert(absent,'Exact owned volume must be absent.');}
+ for(const volume of plan.volumes){let absent=false;try{run(['volume','inspect',volume]);}catch(error){absent=/no such volume/i.test(String(error.stderr));}assert(absent,'Exact owned volume must be absent.');}
  assert.equal(compose('ps','-aq'),'');console.log('PASS: real shared files, read-only Git metadata, UID1000, daemon namespace termination and exact volume absence.');
-}finally{if(compose)try{compose('down','--volumes','--remove-orphans');}catch{}await rm(dir,{recursive:true,force:true});}
+}catch(error){if(compose)try{process.stderr.write(compose('logs','--no-color')+'\n');}catch{}throw error;}finally{if(compose)try{compose('down','--volumes','--remove-orphans');}catch{}await rm(dir,{recursive:true,force:true});}
