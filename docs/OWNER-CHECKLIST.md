@@ -10,10 +10,10 @@ Only things that need you (your sign-in, phone or desktop, money, or a decision)
 
 ## Do when you have time
 
-1. **Fleet machine tool.** Install `ras-github` on the external machine using [its guide](../tools/ras-github/ras-github.README.md), then have an agent test a real push. Agents cannot install on your machine.
+1. ~~**Fleet machine tool.**~~ **Done (owner-verified 2026-10-30).** `ras-github` is installed and works as expected on the external machine; Chris's other AI agent checked it on its own virtual machine. Recorded as the owner's report; this repository has not run it there and agents cannot reach that machine. Guide: [its guide](../tools/ras-github/ras-github.README.md).
 2. **Test sign-ins for agents.** Provide spare sign-ins through the protected setup page: a fresh consent, a read-only one, a capped one, and one that may be deliberately revoked. See [DISPOSABLE-CONNECTION-ACCEPTANCE](DISPOSABLE-CONNECTION-ACCEPTANCE.md). Never paste tokens in chat. Agents run the tests.
 
-3. **Docker network address pools (Playground).** On 2026-10-30 a new workspace failed with "all predefined address pools have been fully subnetted": the Dokploy host ran out of private network addresses (about nine workspaces use three networks each). On the host, set `default-address-pools` in Docker's `daemon.json` to a larger range with small subnets (for example base `10.64.0.0/12`, size `24`), then restart Docker. Needs host access; the project's Dokploy key cannot do it. Agents must not delete existing test workspaces without your say-so. Evidence: failed deployment of `ras-pg-88af4607...`.
+3. **Docker network address pools (Playground).** On 2026-10-30 a new workspace failed with "all predefined address pools have been fully subnetted": the Dokploy host ran out of private network addresses (about nine workspaces use three networks each). On the host, set `default-address-pools` in Docker's `daemon.json` to a larger range with small subnets (for example base `10.64.0.0/12`, size `24`), then restart Docker. Needs host access; the project's Dokploy key cannot do it. Agents must not delete existing test workspaces without your say-so. Evidence: failed deployment of `ras-pg-88af4607...`. Chris does not do server settings himself: hand the exact steps in [docker-address-pools](status/2026-10-30-docker-address-pools.md) to whichever AI agent or person has shell access to the Dokploy server.
 
 ## Only if you want them
 
