@@ -25,7 +25,7 @@ export async function refreshAdmission(ctx,config){
   const {createPublicKey,verify}=await import('node:crypto'),encoded=ctx.env.PLAYGROUND_TELEMETRY_PUBLIC_KEY;
   if(!/^ed25519:[A-Za-z0-9+/=]+$/.test(encoded??'')||!/^ed25519:[A-Za-z0-9_-]{86}$/.test(signature??''))throw new TypeError('Invalid telemetry proof.');
   const key=createPublicKey({key:Buffer.from(encoded.slice(8),'base64'),format:'der',type:'spki'});
-  if(!verify(null,body,key,Buffer.from(signature.slice(8),'base64url')))throw new TypeError('Invalid telemetry proof.');
+  if(key.asymmetricKeyType!=='ed25519'||!verify(null,body,key,Buffer.from(signature.slice(8),'base64url')))throw new TypeError('Invalid telemetry proof.');
   const observation=JSON.parse(body);if(observation.purpose!=='robinson-playground-capacity/v1'||observation.project!==config.project)throw new TypeError('Telemetry scope differs.');
   env.PLAYGROUND_ADMISSION=JSON.stringify(observation);
   if(Array.isArray(observation.allocations))env.PLAYGROUND_ENFORCEMENT=JSON.stringify(observation.allocations);

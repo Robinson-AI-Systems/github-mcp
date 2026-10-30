@@ -7,7 +7,7 @@ const COOKIE='__Host-robinson-preview';
 export function previewGrant(value,key,binding,{now=Date.now(),ports,origin}={}){
  if(typeof value!=='string'||value.length>4096)throw new TypeError('Invalid preview grant.');const [payload,signature,...extra]=value.split('.');if(extra.length||!payload||!signature)throw new TypeError('Invalid preview grant.');
  const body=Buffer.from(payload,'base64url'),pub=createPublicKey({key:Buffer.from(key.slice(8),'base64'),format:'der',type:'spki'});
- if(!verify(null,body,pub,Buffer.from(signature,'base64url')))throw new TypeError('Invalid preview grant.');const c=JSON.parse(body);
+ if(pub.asymmetricKeyType!=='ed25519'||!verify(null,body,pub,Buffer.from(signature,'base64url')))throw new TypeError('Invalid preview grant.');const c=JSON.parse(body);
  if(c.purpose!=='robinson-playground-preview/v1'||c.binding!==binding||c.origin!==origin||!Number.isSafeInteger(c.expiresAt)||c.expiresAt<=now||c.expiresAt>now+300000||!Number.isSafeInteger(c.port)||!ports.includes(c.port)||!/^[a-f0-9]{32}$/.test(c.nonce??''))throw new TypeError('Preview grant is expired or belongs to another allocation.');return c;
 }
 const cookie=req=>String(req.headers.cookie??'').split(';').map(s=>s.trim()).find(s=>s.startsWith(COOKIE+'='))?.slice(COOKIE.length+1);

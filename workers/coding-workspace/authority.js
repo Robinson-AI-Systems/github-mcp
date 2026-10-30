@@ -8,7 +8,7 @@ export async function runtimeIdentity(root){
 }
 export function verifyAuthority(body,signature,key,binding,nonce,now=Date.now()){
  const pub=createPublicKey({key:Buffer.from(key.slice(8),'base64'),format:'der',type:'spki'});
- if(typeof signature!=='string'||!signature.startsWith('ed25519:')||!verify(null,Buffer.from(body),pub,Buffer.from(signature.slice(8),'base64url')))throw new TypeError('Invalid control authority.');
+ if(pub.asymmetricKeyType!=='ed25519'||typeof signature!=='string'||!signature.startsWith('ed25519:')||!verify(null,Buffer.from(body),pub,Buffer.from(signature.slice(8),'base64url')))throw new TypeError('Invalid control authority.');
  const c=JSON.parse(body);if(c.purpose!=='robinson-coding/v1'||c.binding!==binding||c.action!=='authority'||c.requestNonce!==nonce||!Number.isSafeInteger(c.expiresAt)||c.expiresAt<=now||c.expiresAt>now+90000||typeof c.allowed!=='boolean')throw new TypeError('Invalid bound authority lease.');return c;
 }
 export function watchAuthority({runtime,key,url,onLost,fetch:fetchImpl=globalThis.fetch,intervalMs=30000}){
