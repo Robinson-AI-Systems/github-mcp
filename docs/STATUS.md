@@ -1159,13 +1159,13 @@ open obligations, original fixture ownership, approvals and deployment provenanc
   {
     "id": "PLAYGROUND-COMMANDS",
     "priority": 1,
-    "requiredRevision": "328828bde6996aba3009b97e24d707154fcb56b1",
-    "task": "Use deployed agent-facing Playground execute/read/cancel on one exact isolated attached workspace; verify real file output, exit/log/status, replay, permission denial and cancellation.",
-    "procedure": "docs/pr-cards/PLAY-1.md; docs/CODING-WORKSPACES.md",
+    "requiredRevision": "f606a7d799955fc38dd4142ab939c24110141a18",
+    "task": "Use deployed Playground allocation/attachment/execute/read/cancel/private-browser/lifecycle tools on an exact disposable workspace; verify actual Git/files, dependency/build/test/PostgreSQL/browser, grants/replay/expiry and whole-allocation/process/volume cleanup.",
+    "procedure": "docs/pr-cards/PLAY-1.md; docs/PLAYGROUND-OPERATIONS.md; docs/CODING-WORKSPACES.md",
     "gates": "Reviewed source deployed READY; separately isolated allocation and exact repository mount; operator-verified storage/network controls; protected binding/origin; authenticated disposable fixture only, no spending.",
     "dependsOn": [],
     "status": "BLOCKED",
-    "lastEvidence": "Source328828b: ci40973062749, policy40973062690, native image40973062633 and coding image40973062634 passed. The image executed actual UID1000 commands through handler/dispatcher/github_call with real output, nonzero exit, logs, replay and cancellation. Live MCP independently remained READY ac0d2805; no attached live Playground allocation, repository mount or150GB quota was verified. Source/image tests are not actual provider/client acceptance."
+    "lastEvidence": "PR480 source f606a7d passed exact ci41000142089, policy41000142113, native image41000142073 and coding image41000142093, including actual Chromium private entry/API/WebSocket, shared files, UID1000, daemon namespace termination and volume absence. Merged/released afeee1ad is independently READY with matching primary Git worker. Live provision refused playground_provider_setup/no_change_sent; allocation absent. Git write journal4797, exact hash readback and owned close4799 passed while execution correctly refused runtime_unattached/no_change_sent. Operator quota/isolated-egress/continuous observations remain unverified; volume/host reads401 do not prove their absence. Whole Playground provider/client acceptance remains unpassed."
   }
 ]
 ```
@@ -1182,3 +1182,5 @@ Owner-approved follow-up is tracked in [the active plan](designs/AUTHORITY-PARIT
 2026-10-29 Playground follow-through: owner-approved integrated coding scope is IN_PROGRESS under [PLAY-1](pr-cards/PLAY-1.md); command adapter source and real-image verification are tracked in [the connector checkpoint](status/2026-10-29-playground-connector.md). This is not a new live acceptance pass or a claim of completed provisioning/preview/lifecycle.
 
 2026-10-29 Playground graceful fallback: see [current checkpoint](status/2026-10-29-playground-degradation.md). Source modes and durable pressure deferral are under verification; PLAY-1 integrated allocation/attachment/lifecycle remains incomplete.
+
+2026-10-30 Playground integrated release and scoped operator follow-through: see [verified live integration checkpoint](status/2026-10-30-playground-live-integration.md). Source/image/merged/deployed proof is separate from the still-unpassed real allocation contract and full disposable acceptance.

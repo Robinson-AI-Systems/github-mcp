@@ -1,3 +1,4 @@
+import {generateKeyPairSync,sign} from 'node:crypto';
 import {it,expect,afterEach} from 'vitest';
 import {makeWorld,parse} from '../../test/helpers/write-contract.js';
 import {preparePlaygroundWorld} from '../../test/helpers/playground-world.js';
@@ -81,4 +82,20 @@ it('selects smaller ceilings from fresh host headroom before creating a queued a
  await ensureAllocation(w.ctx,record,{provider,config,manager:async()=>{}});
  w.ctx.env.PLAYGROUND_ADMISSION=JSON.stringify({project:config.project,observedAt:w.ctx.now(),availableCpuCpus:2,availableMemoryBytes:2*1024**3,availableDiskBytes:2*1024**3,pressure:0});
  const result=await ensureAllocation(w.ctx,record,{provider,config,manager:async()=>{}});expect(result.phase).toBe('allocated');const plan=JSON.parse(result.plan.composeFile);expect(plan.services.coding.cpus).toBe('1.5');expect(plan.services.coding.mem_limit).toBe('1536m');expect(provider.calls.filter(x=>x==='create')).toHaveLength(1);
+});
+
+it('uses scoped independent cleanup proof when host volume inspection is forbidden, never delete success alone',async()=>{
+ const {w,record}=await world(),provider=fixtureProvider();const original=await ensureAllocation(w.ctx,record,{provider,config,manager:async()=>{}});
+ provider.absent=async()=>{throw Object.assign(Error('volume inspection forbidden'),{safeCode:'playground_provider_refused',status:401});};
+ await expect(disposeAllocation(w.ctx,record,{provider,config})).rejects.toThrow('volume inspection forbidden');expect((await allocationRecord(w.ctx,record)).phase).toBe('deleting');
+ const {privateKey,publicKey}=generateKeyPairSync('ed25519');let valid=false;
+ w.ctx.env.PLAYGROUND_TELEMETRY_URL='https://operator.example.test/observations';w.ctx.env.PLAYGROUND_TELEMETRY_PUBLIC_KEY='ed25519:'+publicKey.export({format:'der',type:'spki'}).toString('base64');
+ w.ctx.fetch=async()=>{const body=JSON.stringify({purpose:'robinson-playground-capacity/v1',project:config.project,observedAt:w.ctx.now(),allocations:[{workspace_id:record.row.id,binding:original.binding,observedAt:w.ctx.now(),expiresAt:w.ctx.now()+60000,cleanup:{composeId:original.composeId,composeAbsent:true,containersAbsent:true,volumesAbsent:valid?original.plan.volumes:original.plan.volumes.slice(1)}}]});return new Response(body,{headers:{'x-robinson-telemetry-signature':'ed25519:'+sign(null,Buffer.from(body),privateKey).toString('base64url')}});};
+ await expect(disposeAllocation(w.ctx,record,{provider,config})).rejects.toThrow('volume inspection forbidden');valid=true;
+ expect((await disposeAllocation(w.ctx,record,{provider,config})).disposed).toBe(true);expect(provider.calls.filter(x=>x==='remove')).toHaveLength(1);
+});
+it('refuses provider project changes before disposal even when the caller retains the original plan',async()=>{
+ const {w,record}=await world(),provider=fixtureProvider();await ensureAllocation(w.ctx,record,{provider,config,manager:async()=>{}});const before=[...provider.calls];
+ await expect(disposeAllocation(w.ctx,record,{provider,config:{...config,project:'foreign'}})).rejects.toThrow(/scope changed/);expect(provider.calls).toEqual(before);
+ await expect(ensureAllocation(w.ctx,record,{provider,config:{...config,project:'foreign'},manager:async()=>{}})).rejects.toThrow(/scope changed/);expect(provider.calls).toEqual(before);
 });

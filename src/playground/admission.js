@@ -32,3 +32,16 @@ export async function refreshAdmission(ctx,config){
  }catch{/* No stale fallback after an authoritative feed fails. */}
  return {...ctx,env};
 }
+
+// Independent operator evidence for a project key that cannot inspect host
+// volumes. This is never inferred from delete success or caller assertions.
+export async function cleanupEvidence(ctx,stored){
+ if(!ctx.env?.PLAYGROUND_TELEMETRY_URL)return false;
+ const current=await refreshAdmission(ctx,{project:stored.providerProject}),now=(ctx.now??Date.now)();let rows;
+ try{rows=JSON.parse(current.env.PLAYGROUND_ENFORCEMENT??'null');}catch{return false;}
+ if(!Array.isArray(rows))return false;
+ const matches=rows.filter(r=>r?.workspace_id===stored.workspace);if(matches.length!==1)return false;
+ const o=matches[0],c=o.cleanup,names=stored.plan?.volumes;
+ if(Object.keys(o).some(k=>!['workspace_id','binding','observedAt','expiresAt','cleanup'].includes(k))||o.binding!==stored.binding||!Number.isSafeInteger(o.observedAt)||!Number.isSafeInteger(o.expiresAt)||o.observedAt>now||now-o.observedAt>60000||o.expiresAt<=now||o.expiresAt>o.observedAt+60000||!c||Object.keys(c).some(k=>!['composeId','composeAbsent','containersAbsent','volumesAbsent'].includes(k))||c.composeId!==stored.composeId||c.composeAbsent!==true||c.containersAbsent!==true||!Array.isArray(names)||names.length!==4||!Array.isArray(c.volumesAbsent)||c.volumesAbsent.length!==names.length||new Set(c.volumesAbsent).size!==names.length||!names.every(name=>c.volumesAbsent.includes(name)))return false;
+ return true;
+}

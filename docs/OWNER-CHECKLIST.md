@@ -34,3 +34,7 @@ The implementation and public-use authorization already exist. The following dis
 - [ ] Choose pricing only if monetization is wanted, and choose provider spend alerts/limits using actual billing observations. No new price, quota or monthly ceiling is inferred here.
 
 See the latest dated repair/release note for exact source, CI, deployment, acceptance and cleanup evidence. Builder no-spend and project-isolation rules remain distinct from full-owner product authority.
+
+## Playground operator activation — existing hosting plan
+
+The integrated source is released; this is protected setup, not another owner-policy approval. The operator must configure the project-scoped Dokploy provider credential through protected deployment setup and supply a supported aggregate quota/isolated-egress/termination contract with fresh signed observations. See [the exact contract](PLAYGROUND-OPERATIONS.md) and [live evidence](status/2026-10-30-playground-live-integration.md). Current project/container reads work, while host-volume/health reads return401; a narrowly bound signed cleanup proof can substitute for forbidden host-volume inspection. Do not request unrestricted server administration, put credentials in chat, or buy/increase resources. Existing backup/key-custody and fleet/Render obligations remain separate.
