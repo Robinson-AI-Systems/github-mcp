@@ -1,3 +1,7 @@
+## 2026-10-30 — backups optional; live provider-identity recovery
+
+The owner defers backup activation/restoration as optional future operations, removing that production gate while preserving data/cleanup safeguards. Backend credential verification now reaches Dokploy. An owned live provisioning attempt exposed provider-added appName suffixes; exact assigned-name pinning/recovery and stable manager-source configuration are in progress. See [current outcome](status/2026-10-30-playground-provider-identity.md). No backup, runtime acceptance pass or production restore is claimed.
+
 ## 2026-10-30 — owner-authorized best-effort resource mode
 
 The owner permits production implementation before specific resource controls/monitoring are available and clarifies Dokploy uses account credentials. The new protected best-effort path supports automatic allocation and exactly attached command execution without claiming verified quotas/headroom; private allocation/identity/grant/attachment checks remain required. Default verified mode and configured-feed failure, pressure refusal and cleanup proof remain unchanged. See [current outcome](status/2026-10-30-playground-best-effort.md). Source verification/checked merge/release and live activation remain separate; PLAY-1 and its required live acceptance are not marked complete.

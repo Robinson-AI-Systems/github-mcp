@@ -1,4 +1,8 @@
 {
+  "env": {
+    "PLAYGROUND_RESOURCE_MODE": "best_effort",
+    "PLAYGROUND_BUILD_SOURCE_SHA": "029a53a1d391d46a6b838ca1435337ab1711daee"
+  },
   "functions": {
     "api/**/*.js": {
       "maxDuration": 60
