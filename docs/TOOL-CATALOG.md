@@ -131,7 +131,7 @@ Card(s): D-2.
 | `github_content_delete_file` | Delete one file with a commit | C·Prod* | C | I | B | E | D-2 built #32 |
 | `github_content_commit_git_data` | Atomic 1–50 binary/text operations (2 MB); expected count, optional absent-branch createFrom, exact parent and full manifest readback | P·Prod* | N | I | B | E | PAR-3 |
 | `github_content_push_files` | Commit several file changes at once on a branch, signed by GitHub (GraphQL `createCommitOnBranch`, expected head checked) | P·Prod* | N | I | B | E | D-2 built #32 |
-| `github_content_edit_files` | Edit files by find-and-replace (text must match exactly once unless `all`) and commit on a branch, signed by GitHub; sends only the changed text | P·Prod* | N | I | B | E | D-2 follow-up built |
+| `github_content_edit_files` | Edit files by find-and-replace (text must match exactly once unless `all`) or by line number (`lineEdits`: replace, insert or delete lines; numbers refer to the file as it is now, with an optional `expectFirstLine` safety check) and commit on a branch, signed by GitHub; sends only the changed text | P·Prod* | N | I | B | E | D-2 follow-up built |
 | `github_content_get_archive_link` | Safe queryless archive URL or GitHub page when signed redirect withheld (all detail modes) | — | N | I | B | R | D-2 built #30 |
 | `github_content_check_codeowners` | Problems GitHub found in a CODEOWNERS file on a branch (bad lines, unknown users or teams), in plain words | — | C | I | B,O | R | D-2 built #30 |
 | `github_commit_list` | Commits on a branch or path, by author or date | — | C | I | B,Op | R | D-2 built #30 |

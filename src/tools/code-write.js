@@ -156,7 +156,14 @@ const MAX_EDIT_CHARS = 20_000;
 const EDIT_ITEM = { type: 'object', properties: { find: { type: 'string', minLength: 1, maxLength: MAX_EDIT_CHARS, description: 'Exact text to find (must appear once unless all is true)' },
   replace: { type: 'string', maxLength: MAX_EDIT_CHARS, description: 'Text to put in its place (empty removes it)' }, all: { type: 'boolean', description: 'Replace every occurrence' } },
 required: ['find', 'replace'], additionalProperties: false };
-const EDIT_FILE_ITEM = { type: 'object', properties: { path: { type: 'string', minLength: 1, maxLength: 1000 }, edits: { type: 'array', items: EDIT_ITEM, minItems: 1, maxItems: 50 } }, required: ['path', 'edits'], additionalProperties: false };
+const LINE_EDIT_ITEM = { type: 'object', properties: {
+  startLine: { type: 'integer', minimum: 1, description: 'First line to replace, numbered as in the file now (line 1 is the first line)' },
+  endLine: { type: 'integer', minimum: 0, description: 'Last line to replace. Use startLine - 1 to insert before startLine without removing anything' },
+  replace: { type: 'string', maxLength: MAX_EDIT_CHARS * 5, description: 'New text for those lines (empty deletes them). Do not add the final line break' },
+  expectFirstLine: { type: 'string', maxLength: 2000, description: 'Optional safety check: exact current text of startLine; refused if it differs' } },
+required: ['startLine', 'endLine', 'replace'], additionalProperties: false };
+const EDIT_FILE_ITEM = { type: 'object', properties: { path: { type: 'string', minLength: 1, maxLength: 1000 }, edits: { type: 'array', items: EDIT_ITEM, minItems: 1, maxItems: 50 },
+  lineEdits: { type: 'array', items: LINE_EDIT_ITEM, minItems: 1, maxItems: 50, description: 'Replace, insert or delete whole lines by number. All line numbers refer to the file as it is now; they are applied before any find-and-replace edits' } }, required: ['path'], additionalProperties: false };
 
 function checkEditFiles(files) {
   const seen = new Set();
@@ -165,7 +172,9 @@ function checkEditFiles(files) {
     const path = cleanPath(f.path);
     if (seen.has(path)) throw new TypeError(`${path} is listed twice.`);
     seen.add(path);
-    for (const e of f.edits) total += e.find.length + e.replace.length;
+    if (!f.edits?.length && !f.lineEdits?.length) throw new TypeError(`${path} needs edits or lineEdits.`);
+    for (const e of f.edits ?? []) total += e.find.length + e.replace.length;
+    for (const e of f.lineEdits ?? []) total += e.replace.length;
   }
   if (total > MAX_TOTAL_CHARS) throw new TypeError('Those edits are too large for one commit through this tool (500,000 characters).');
 }
@@ -183,13 +192,33 @@ export function applyEdits(text, edits, path) {
   }
   return { text: out, problems };
 }
+/** Line-number edits. Numbers refer to the original text; they must not overlap. Returns the new text and any problems. */
+export function applyLineEdits(text, lineEdits, path) {
+  const problems = [];
+  const lines = text.split('\n');
+  const trailing = lines.length > 1 && lines[lines.length - 1] === '';
+  if (trailing) lines.pop();
+  const list = [...lineEdits].sort((a, b) => a.startLine - b.startLine || a.endLine - b.endLine);
+  let prevEnd = 0;
+  for (const e of list) {
+    if (e.endLine < e.startLine - 1) problems.push(`${path}: lines ${e.startLine}-${e.endLine} are backwards`);
+    else if (e.startLine > lines.length + 1 || e.endLine > lines.length) problems.push(`${path}: lines ${e.startLine}-${e.endLine} are past the end (the file has ${lines.length} lines)`);
+    else if (e.startLine <= prevEnd) problems.push(`${path}: line edits overlap at line ${e.startLine}`);
+    else if (e.expectFirstLine !== undefined && e.endLine >= e.startLine && lines[e.startLine - 1] !== e.expectFirstLine) problems.push(`${path}: line ${e.startLine} is not the text you expected (it is ${snippet(lines[e.startLine - 1])})`);
+    prevEnd = Math.max(prevEnd, e.endLine);
+  }
+  if (problems.length) return { text, problems };
+  for (const e of [...list].reverse()) lines.splice(e.startLine - 1, e.endLine - e.startLine + 1, ...(e.replace === '' && e.endLine >= e.startLine ? [] : e.replace.split('\n')));
+  return { text: lines.join('\n') + (trailing ? '\n' : ''), problems };
+}
 const planEdits = (args, before) => {
   const changes = [], problems = [];
   for (const f of args.files) {
     const path = cleanPath(f.path);
     const have = before.files.find((x) => x.path === path);
     if (!have || have.text === null) { problems.push(have ? `${path} is not a text file this tool can edit` : `${path} could not be read`); continue; }
-    const r = applyEdits(have.text, f.edits, path);
+    const lr = f.lineEdits?.length ? applyLineEdits(have.text, f.lineEdits, path) : { text: have.text, problems: [] };
+    const r = lr.problems.length ? lr : applyEdits(lr.text, f.edits ?? [], path);
     problems.push(...r.problems);
     if (!r.problems.length && r.text === have.text) problems.push(`${path}: the edits change nothing`);
     if (!r.problems.length && r.text !== have.text) changes.push({ path, text: r.text, before: have.text.length });
@@ -199,7 +228,7 @@ const planEdits = (args, before) => {
 
 const contentEditFiles = defineGithubWrite(overridable({
   name: 'github_content_edit_files', area: 'content', audience: ['B'],
-  description: 'Edit files by find-and-replace and commit on a named branch, signed by GitHub. Send only the changed text, not whole files.',
+  description: 'Edit files by find-and-replace or by line number and commit on a branch, signed by GitHub. Send only the changed text, not whole files.',
   properties: { owner: OWNER, repo: REPO, branch: BRANCH, message: MESSAGE, files: { type: 'array', items: EDIT_FILE_ITEM, minItems: 1, maxItems: 20 },
     expectedHead: { type: 'string', minLength: 40, maxLength: 40, description: 'The branch head shown in the preview; the commit is refused if the branch has moved' }, ...OUTSIDE_PROJECT },
   required: ['repo', 'branch', 'message', 'files'],
