@@ -292,12 +292,26 @@ describe('W-3 bounded exact-head file context',()=>{
     const w=await world(),ref='a'.repeat(40),text='one\ntwo\nthree\nfour';
     w.gh.when('GET /repos/{owner}/{repo}/contents/{path}').reply(200,fileBody({content:b64(text),size:text.length}));
     const {body}=await run(w,'github_content_get',{...R,path:'docs/a.md',ref,startLine:2,endLine:3});
-    expect(body).toMatchObject({content:'two\nthree',start_line:2,end_line:3,total_lines:4});
+    expect(body).toMatchObject({content:'two\nthree',start_line:2,end_line:3,total_lines:4,complete:false,next_start_line:4});
     expect(w.gh.calls[0].query).toEqual({ref});expect(w.gh.invalid).toEqual([]);
+  });
+  it('returns a 300-line window of a large file whole, with a cursor, not a 4 KB preview',async()=>{
+    const w=await world(),ref='a'.repeat(40),text=Array.from({length:1000},(_,i)=>'line '+(i+1)+' '+'x'.repeat(30)).join('\n');
+    w.gh.when('GET /repos/{owner}/{repo}/contents/{path}').reply(200,fileBody({content:b64(text),size:text.length}));
+    const {body}=await run(w,'github_content_get',{...R,path:'docs/a.md',ref,startLine:101,endLine:400});
+    expect(body.content.split('\n')).toHaveLength(300);expect(body.content.startsWith('line 101 ')).toBe(true);
+    expect(body).toMatchObject({end_line:400,total_lines:1000,complete:false,next_start_line:401});expect(body.kept_result).toBeUndefined();
+  });
+  it('tells an agent in plain words how to read a cut-short file whole',async()=>{
+    const w=await world(),text=Array.from({length:400},(_,i)=>'row '+i+' '+'y'.repeat(40)).join('\n');
+    w.gh.when('GET /repos/{owner}/{repo}/contents/{path}').reply(200,fileBody({content:b64(text),size:text.length}));
+    const {body}=await run(w,'github_content_get',{...R,path:'docs/a.md'});
+    expect(body.read_all.arguments).toMatchObject({path:'docs/a.md',fullText:true});expect(body.read_all.note).toMatch(/fullText: true/);
+    expect(body.continuation.arguments.byteLength).toBe(32768);
   });
   it('refuses half, reversed or oversized ranges before calling GitHub',async()=>{
     const w=await world();
-    for(const range of [{startLine:2},{startLine:3,endLine:2},{startLine:1,endLine:101}])
+    for(const range of [{startLine:2},{startLine:3,endLine:2},{startLine:1,endLine:501}])
       expect((await run(w,'github_content_get',{...R,path:'a.js',...range})).result.isError).toBe(true);
     expect(w.gh.calls).toEqual([]);
   });

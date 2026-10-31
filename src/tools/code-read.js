@@ -45,8 +45,8 @@ export const contentGet = defineRead({
     if (args.fullText === true && (args.startLine !== undefined || args.byteOffset !== undefined || args.byteLength !== undefined))
       throw new TypeError('fullText cannot be combined with line or byte ranges.');
     if ((args.startLine === undefined) !== (args.endLine === undefined) ||
-        (args.startLine !== undefined && (args.endLine < args.startLine || args.endLine - args.startLine >= 100)))
-      throw new TypeError('Supply both startLine and endLine, covering at most 100 lines.');
+        (args.startLine !== undefined && (args.endLine < args.startLine || args.endLine - args.startLine >= 500)))
+      throw new TypeError('Supply both startLine and endLine, covering at most 500 lines.');
     if ((args.byteOffset !== undefined || args.byteLength !== undefined) &&
         (args.startLine !== undefined || args.endLine !== undefined))
       throw new TypeError('Byte ranges cannot be combined with line ranges.');
@@ -88,8 +88,9 @@ export const contentGet = defineRead({
     if (args.startLine !== undefined) {
       const lines = protectedFile.lines.split('\n');
       const view=lines.slice(args.startLine-1,args.endLine).join('\n');registerFileView(view,text);
-      return { ...base, start_line: args.startLine, end_line: Math.min(args.endLine, lines.length),
-        total_lines: lines.length, content: view };
+      const last = Math.min(args.endLine, lines.length);
+      return { ...base, start_line: args.startLine, end_line: last,
+        total_lines: lines.length, complete: last >= lines.length, ...(last < lines.length ? { next_start_line: last + 1 } : {}), content: view };
     }
     registerFileView(protectedFile.text,text);
     return { ...base, content: protectedFile.text };
