@@ -7,5 +7,5 @@ quoting long unique anchors. Numbers refer to the file as it is at the branch he
 overlap; an optional `expectFirstLine` refuses the edit if the line is not what the agent expected. Line edits apply
 first, then find-and-replace. The existing `expectedHead` guard still refuses if the branch moved.
 
-Verified: unit tests in `tests/unit/code-write.test.js` (apply, insert, delete, stale/overlap/past-end/backwards refusals).
+Verified locally: lint clean and unit tests in `tests/unit/code-write.test.js` (apply, insert, delete, stale/overlap/past-end/backwards refusals).
 Not done: the Playground terminal/runtime (PLAY-1) is still blocked on the Docker address-pool fix on the host.
