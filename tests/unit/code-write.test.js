@@ -219,6 +219,24 @@ describe('file and ref changes: extra checks (BATCH-D §4 D-2)', () => {
       dup.files.push(dup.files[0]);
       expect((await call('github_content_edit_files', w, dup)).error).toContain('listed twice');
     });
+    it('edits by line number (replace, insert, delete) against the original numbering, then find-and-replace', async () => {
+      const w = await makeWorld();
+      arrangeEdit(w, 'a\nb\nc\nd\n');
+      const args = EDIT([{ find: 'c', replace: 'C' }]);
+      args.files[0].lineEdits = [{ startLine: 2, endLine: 2, replace: 'B1\nB2', expectFirstLine: 'b' }, { startLine: 3, endLine: 2, replace: 'new' }, { startLine: 4, endLine: 4, replace: '' }];
+      const out = await call('github_content_edit_files', w, args);
+      expect(out).toMatchObject({ status: 'applied' });
+      expect(w.gh.graphql[0].variables.input.fileChanges.additions[0].contents).toBe(b64('a\nB1\nB2\nnew\nC\n'));
+    });
+    it('refuses line edits that are stale, overlapping, past the end, or backwards', () => {
+      const t = 'a\nb\nc\n';
+      const bad = (e, words) => expect(code.applyLineEdits(t, e, 'f').problems.join()).toContain(words);
+      bad([{ startLine: 2, endLine: 2, replace: 'x', expectFirstLine: 'zzz' }], 'not the text you expected');
+      bad([{ startLine: 1, endLine: 2, replace: 'x' }, { startLine: 2, endLine: 3, replace: 'y' }], 'overlap');
+      bad([{ startLine: 2, endLine: 9, replace: 'x' }], 'past the end');
+      bad([{ startLine: 3, endLine: 1, replace: 'x' }], 'backwards');
+      expect(code.applyLineEdits(t, [{ startLine: 4, endLine: 3, replace: 'end' }], 'f').text).toBe('a\nb\nc\nend\n');
+    });
     it('applyEdits is plain-text (no patterns) and applies edits in order', () => {
       expect(code.applyEdits('a.c abc', [{ find: 'a.c', replace: 'X' }], 'f').text).toBe('X abc');
       expect(code.applyEdits('a b', [{ find: 'a', replace: 'b' }, { find: 'b b', replace: 'c' }], 'f').text).toBe('c');
