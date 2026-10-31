@@ -59,9 +59,11 @@ async function readReply({ tool, args, raw, connection, db, mode }) {
     value?.byte_length <= 32768;
   const fullFile = tool.name === 'github_content_get' && args?.fullText === true &&
     shaped?.type === 'file' && typeof value.content === 'string' && Buffer.byteLength(value.content) <= 1_000_000;
+  // A requested line window (up to 500 lines) may be as large as a byte window; it is the caller's explicit choice.
+  const lineWindow = tool.name === 'github_content_get' && args?.startLine !== undefined && typeof value?.content === 'string' && Buffer.byteLength(value.content) <= 48000;
   const boundedWindow=tool.boundedWindow===true&&Buffer.byteLength(JSON.stringify(value))<=8192;
-  const capped = boundedWindow?{value,cut:[]}:capText(value, fullFile ? { textLimit: 1_000_000 } : byteWindow ? { textLimit: 48000 } : {});
-  const fit = fitToBudget(capped.value, fullFile ? 2_000_000 : byteWindow ? 48000 : undefined);
+  const capped = boundedWindow?{value,cut:[]}:capText(value, fullFile ? { textLimit: 1_000_000 } : (byteWindow || lineWindow) ? { textLimit: 48000 } : {});
+  const fit = fitToBudget(capped.value, fullFile ? 2_000_000 : (byteWindow || lineWindow) ? 48000 : undefined);
   const notes = {};
   if (unknown.length) notes.unknown_fields = unknown.slice(0, 10);
   if (capped.cut.length || fit.fitted) {
@@ -76,6 +78,9 @@ async function readReply({ tool, args, raw, connection, db, mode }) {
     if (tool.name === 'github_content_get' && shaped?.type === 'file' && shaped.sha &&
         typeof value.content === 'string' && !value.content.includes('[hidden]')) {
       notes.content_complete = false;
+      // Plain-words first choice: the whole text in one call (up to 1 MB) or a window of lines, before exact base64 byte windows.
+      if ((shaped.size ?? 0) <= 1_000_000) notes.read_all = { tool: 'github_content_get', arguments: { owner: args.owner ?? connection.default_account, repo: args.repo, path: shaped.path, ...(args.ref ? { ref: args.ref } : { blobSha: shaped.sha }), fullText: true },
+        note: 'This text was cut short. Call again with fullText: true for the whole file (up to 1 MB), or pass startLine and endLine (up to 500 lines) for part of it.' };
       notes.continuation = { tool: 'github_content_get', arguments: {
         owner: args.owner ?? connection.default_account, repo: args.repo, path: shaped.path,
         blobSha: shaped.sha, byteOffset: 0, byteLength: 32768 },

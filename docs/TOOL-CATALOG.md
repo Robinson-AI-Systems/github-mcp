@@ -124,7 +124,7 @@ Card(s): D-2.
 | `github_git_workspace_run` | Typed native Git; branch name/branch aliases, switch ref alias, independent branch readback and verified push | P·D·Prod* | N | I | B,O,Op | F | PAR-2 |
 | `github_git_workspace_close` | Dispose only the owned local workspace, verify absence and retain immutable disposal replay | P·D·Prod* | N | I | B,O,Op | F | PAR-2 |
 | `github_git_workspace_list` | Page current connection workspaces with fresh repository access checks and explicit omissions/cursor | — | N | I | B,O,Op | R | PAR-2 |
-| `github_content_get` | A file or directory at any ref; compact text by default, byte-exact base64 via `byteOffset`/`byteLength` (up to 32 KiB per explicit call) and a retained handle for overflow | — | F | I | B,Op | R | D-2 built #30 |
+| `github_content_get` | A file or directory at any ref; compact text by default (a cut-short file says plainly how to read it whole with `fullText`, up to 1 MB, or by `startLine`/`endLine` windows of up to 500 lines returned whole with a `next_start_line` cursor), byte-exact base64 via `byteOffset`/`byteLength` (up to 32 KiB per explicit call) and a retained handle for overflow | — | F | I | B,Op | R | D-2 built #30 |
 | `github_content_protection_check` | Explain matching rules and locations without values; provide a safe false-positive report and exact local-Git retrieval guidance | — | N | I | B,O,Op | R | PAR-2 |
 | `github_content_get_tree` | Recursive tree with blob SHA/mode, glob and pinned offset continuation beyond 500 entries | — | C | I | B | R | D-2 built #30 |
 | `github_content_put_file` | Create or update one file with a commit (checks the file's current version first) | P·Prod* | F | I | B | E | D-2 built #32 |
