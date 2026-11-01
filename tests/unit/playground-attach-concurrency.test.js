@@ -9,7 +9,9 @@ vi.mock('../../src/native-git/client.js', () => ({
     calls.push(request);
     const {action, options = {}} = request;
     if (action === 'capabilities') return {repository_attachment: 'sealed-mounted-v1'};
-    if (action === 'inspect') return {generation: 2, head: 'h'.repeat(40), status: ''};
+    // Mirrors the worker: a non-renewing inspect without includeRepository returns metadata only.
+    if (action === 'inspect') return request.renewLease === false && !options.includeRepository ? {generation: 2} : {generation: 2, head: 'a'.repeat(40), status: ''};
+    if (action === 'attachment_export' && options.mode === 'release') { behaviour.released = (behaviour.released ?? 0) + 1; return {released: true}; }
     if (action === 'attachment_export' && options.mode === 'prepare') return {transferId: options.transferId, generation: 2, bytes: 64, digest: 'd'.repeat(64)};
     if (action === 'attachment_export' && options.mode === 'read') return {digest: 'd'.repeat(64), offset: options.offset, nextOffset: options.offset + 4, base64: Buffer.from('abcd').toString('base64')};
     if (action === 'attachment_import' && options.mode === 'begin') return {transferId: 't'.repeat(64), bytes: 64, digest: 'd'.repeat(64), offset: 0};
@@ -23,8 +25,8 @@ vi.mock('../../src/native-git/client.js', () => ({
 const {attachRepository} = await import('../../src/playground/attachment.js');
 
 const binding = 'b'.repeat(64);
-function world({casFails = false, fresh = false} = {}) {
-  const transfer = {transferId: 't'.repeat(64), bytes: 64, digest: 'd'.repeat(64), generation: 1, offset: 0};
+function world({casFails = false, fresh = false, headless = false} = {}) {
+  const transfer = {transferId: 't'.repeat(64), bytes: 64, digest: 'd'.repeat(64), generation: 1, offset: 0, ...(headless ? {} : {sourceHead: 'a'.repeat(40), sourceStatus: ''})};
   let row = {revision: 3, binding, composeId: 'c1', phase: fresh ? 'allocated' : 'attaching', plan: {origin: 'https://ras-pg.example.test/'}, ...(fresh ? {} : {transfer})};
   const db = {
     getSetting: async () => row,
@@ -32,7 +34,7 @@ function world({casFails = false, fresh = false} = {}) {
     playgroundScope: null
   };
   const record = {binding: {authority: 'a', connection: 'c', owner: 'o', repo: 'r'}, worker: 'git_' + '1'.repeat(32), job: {idleTimeoutMs: 600000}, allocation: {binding}};
-  return {ctx: {db, env: {NATIVE_GIT_WORKER_KEY: 'FAKE-local-native-contract-worker-key'}}, record};
+  return {ctx: {db, env: {NATIVE_GIT_WORKER_KEY: 'FAKE-local-native-contract-worker-key'}}, record, row: () => row};
 }
 vi.mock('../../src/playground/client.js', async (orig) => ({...(await orig()), playgroundBinding: () => binding}));
 vi.mock('../../src/playground/index.js', () => ({indexAllocation: async () => {}}));
@@ -63,5 +65,18 @@ describe('attach while another attach of the same workspace is running', () => {
     const workerCalls = calls.filter(c => c.workspace_id || c.action === 'inspect');
     expect(workerCalls.some(c => c.action === 'inspect')).toBe(true);
     for (const c of workerCalls) expect([c.action, c.renewLease]).toEqual([c.action, false]);
+  });
+  it('records the source head and status when preparing a transfer (needed to verify the attachment)', async () => {
+    const {ctx, record, row} = world({fresh: true});
+    await attachRepository(ctx, record, {budgetMs: 0}).catch(() => {});
+    expect(row().transfer).toMatchObject({sourceHead: 'a'.repeat(40), sourceStatus: ''});
+    const inspect = calls.find(c => c.action === 'inspect');
+    expect(inspect).toMatchObject({renewLease: false, options: {includeRepository: true}});
+  });
+  it('heals a transfer saved without its source head: releases the lock and prepares a fresh one', async () => {
+    const {ctx, record, row} = world({headless: true});
+    await attachRepository(ctx, record, {budgetMs: 0}).catch(() => {});
+    expect(behaviour.released).toBe(1);
+    expect(row().transfer.sourceHead).toBe('a'.repeat(40));
   });
 });

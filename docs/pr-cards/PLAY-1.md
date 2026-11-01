@@ -106,3 +106,7 @@ manager's inherited runtime `HEALTHCHECK` (port 3000, which the manager never op
 "unhealthy" no longer shows falsely (applies when the manager is next recreated). After release the five rows expire
 normally (≤ 4 h idle) and the sweep disposes them — that is the live check for this fix. Expiry cleanup of a new
 workspace (`job_5369bc0a1bbe5b6f`, 3-minute lease) already passed live: closed and no containers left within ~8 min.
+
+## 2026-11-01 — Attach regression from #516 fixed
+
+See the status note `docs/status/2026-11-01-play1-acceptance.md` (last section).

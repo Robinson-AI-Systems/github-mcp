@@ -19,10 +19,19 @@ export async function attachRepository(ctx,record,{budgetMs=15000}={}){
  // "not ready yet", not an uncertain write: nothing was sent to either copy.
  let brokerCap;try{brokerCap=await callNativeWorker(ctx,{action:'capabilities',job:brokerJob});}catch{throw Object.assign(failure('The runtime is not reachable yet (still starting, or its HTTPS address is being set up). Nothing was transferred; run attach again in a minute.'),{safeRetryable:true,noOperationStarted:true});}
  if(sourceCap.repository_attachment!=='sealed-mounted-v1'||brokerCap.repository_attachment!=='sealed-mounted-v1')throw failure('Update the Git worker/broker to the checked sealed attachment protocol. No shared-worker command execution is used.');
+ // Heal a transfer saved without its source head/status (it could never verify): release its
+ // source lock and prepare a fresh one.
+ if(stored.transfer&&!/^[a-f0-9]{40}$/.test(stored.transfer.sourceHead??'')){
+  try{await invoke(sourceJob,'attachment_export',{mode:'release',transferId:stored.transfer.transferId});}catch{/* An absent lock is fine. */}
+  await save({phase:'allocated',transfer:null});
+ }
  if(!stored.transfer){
   // Never renew the workspace lease here: the maintenance sweep retries unfinished attaches,
   // and a renewing read kept abandoned workspaces alive (and uncleaned) forever.
-  const state=await callNativeWorker(ctx,{binding:record.binding,workspace_id:record.worker,job:sourceJob,action:'inspect',renewLease:false});
+  // includeRepository: without it a non-renewing inspect returns metadata only (no head/status),
+  // and the transfer could never be verified (regression in #516, fixed here).
+  const state=await callNativeWorker(ctx,{binding:record.binding,workspace_id:record.worker,job:sourceJob,action:'inspect',renewLease:false,options:{includeRepository:true}});
+  if(!/^[a-f0-9]{40}$/.test(state?.head??''))throw failure('The workspace state could not be read completely; nothing was transferred. Run attach again.');
   const id=hash(JSON.stringify([binding,state.generation])),key=keyFor(ctx,binding,id);
   // Lean (FLEET-6): send only what GitHub lacks; the source falls back to a full copy when ineligible.
   const prepared=await invoke(sourceJob,'attachment_export',{mode:'prepare',transferId:id,key,expectedGeneration:state.generation,lean:true});
