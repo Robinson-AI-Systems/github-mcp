@@ -13,6 +13,8 @@ const denied=()=>new Error(DENIED);
 const spec=Object.freeze({
   // GOD-1: 'M' (master token) has no per-account probe; see master-credential.js. Present so its AAD context is valid.
   M:{operation:'GET /user',scope:null,endpoint:()=>'https://api.github.com/user',resource:(account,subject)=>'user/'+subject},
+  // PUB-9: 'F' (fine-grained token) is enrolled by fine-grained-credential.js only; present so its AAD context is valid.
+  F:{operation:'GET /user/repos',scope:null,endpoint:()=>'https://api.github.com/user/repos',resource:account=>'owner/'+account.account_id},
   K:{operation:'GET /notifications',scope:'notifications',
     endpoint:()=>'https://api.github.com/notifications?per_page=1',
     resource:(account,subject)=>'user/'+subject},
@@ -42,7 +44,7 @@ export async function enrollVerifiedPilotOptionalCredential({
   directory,db,tenant,accountLogin,kind,bearer,expectedFingerprint=null,
   env=process.env,fetchImpl=fetch,now=Date.now
 }={}){
-  const selected=spec[kind];
+  const selected=['K','P'].includes(kind)?spec[kind]:null;
   if(!selected||typeof accountLogin!=='string'||!LOGIN.test(accountLogin.toLowerCase())||
       typeof bearer!=='string'||bearer.length<8||bearer.length>4096||
       /[^\x21-\x7e]/.test(bearer)||
@@ -120,7 +122,7 @@ export async function enrollVerifiedPilotOptionalCredential({
 export function currentPilotOptionalReadback({
   row,tenant,account,subject,kind,operation,resource,now=Date.now()
 }={}){
-  const selected=spec[kind];
+  const selected=['K','P'].includes(kind)?spec[kind]:null;
   if(!row||!selected||operation!==selected.operation||!safeAccount(account)||
       typeof subject!=='string'||!SUBJECT.test(subject)||
       !tenant?.tenantId||!tenant?.identityId||

@@ -2815,7 +2815,7 @@
       "design": "docs/designs/GATED-EXPANSION-2026-11-01.md",
       "dependencies": [],
       "card": "docs/pr-cards/PUB-9.md",
-      "status": "APPROVED",
+      "status": "MERGED",
       "migration": "none",
       "budget": 800,
       "units": [
@@ -2823,7 +2823,9 @@
       ],
       "readiness": "READY",
       "ownerInputs": [],
-      "pr": []
+      "pr": [
+        521
+      ]
     },
     {
       "id": "CAP-6",

@@ -230,6 +230,8 @@ export function createCredentials({ db, env = process.env, fetch = globalThis.fe
       if (cred === 'U') return await userToken(row);
       // The master token exists only for signed-in tenant connections; the legacy owner vault has none.
       if (cred === 'M') throw missing(row.login, 'the master token is only available on a signed-in connection.');
+      // PUB-9: fine-grained tokens of signed-in people live in their private vault; the owner vault never holds kind 'F'.
+      if (cred === 'F') throw missing(row.login, 'a fine-grained token place is only available on a signed-in connection.');
       if (cred === 'P') {
         if (scope?.repositories?.length || scope?.permissions)
           throw missing(row.login, 'a classic package token cannot be narrowed to this pass scope.');

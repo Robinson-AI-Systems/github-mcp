@@ -15,7 +15,7 @@ import { isAppOnly } from './app-only.js';
 export const GITHUB_API_VERSION = '2026-03-10';
 /** How long one request may spend waiting on GitHub's `retry-after` / reset times before it gives up (A9). */
 export const DEFAULT_BUDGET_MS = 20_000;
-export const CREDENTIAL_KINDS = Object.freeze(['I', 'U', 'K', 'P', 'M']);
+export const CREDENTIAL_KINDS = Object.freeze(['I', 'U', 'K', 'P', 'M', 'F']);
 const USER_AGENT = 'robinson-github-mcp';
 const KEY_EXCLUDED_ARGS = Object.freeze(['dryRun', 'confirm', 'fields', 'detail', 'requestKey']);
 const BUCKET_MS = 10 * 60 * 1000;
@@ -94,8 +94,12 @@ export async function credentialFor(ctx, { owner, cred = 'I', scope, forceApp = 
   const listed = (ctx.connection?.accounts || []).find((login) => login.toLowerCase() === wanted);
   const place = listed && typeof ctx.db?.getAccount === 'function' ? await ctx.db.getAccount(listed) : null;
   const extraPlace = place?.credential_kind === 'master' ? place : null;
-  if (extraPlace) cred = 'M';
-  if ((cred==='K'||cred==='P'||cred==='M') && ctx.connection?.pass===true &&
+  // PUB-9: a place reached with a fine-grained token uses that token ('F'); every other extra place uses the master token.
+  // Places exist only for accounts WITHOUT the App, so the App and the person's sign-in always come first.
+  if (extraPlace) cred = extraPlace.place_cred === 'F' ? 'F' : 'M';
+  // 'F' exists only for such a place; nothing else may ask for it.
+  if (cred === 'F' && !extraPlace) throw new GithubClientError('no_credentials', 'A fine-grained token is used only for the extra place it opens.');
+  if ((cred==='K'||cred==='P'||cred==='M'||cred==='F') && ctx.connection?.pass===true &&
       typeof ctx.credentials?.authorizeOptionalRequest==='function')
     throw new GithubClientError('outside_scope',
       'Private optional credentials cannot be delegated to a service pass.');
@@ -103,6 +107,9 @@ export async function credentialFor(ctx, { owner, cred = 'I', scope, forceApp = 
   if (cred==='M' && (ctx.connection?.profile==='read_only' || ctx.connection?.pass===true || scope?.repositories?.length || scope?.permissions))
     throw new GithubClientError('outside_scope',
       'The master token is not available to read-only connections or narrowed scopes.');
+  if (cred==='F' && (ctx.connection?.profile==='read_only' || ctx.connection?.pass===true || scope?.repositories?.length || scope?.permissions))
+    throw new GithubClientError('outside_scope',
+      'Your fine-grained token is not available to read-only connections or narrowed scopes.');
   const account = resolveAccount(ctx.connection, owner);
   // A pass limited to repositories gets installation tokens limited to them, whatever the tool asked for.
   const passRepos = Array.isArray(ctx.connection?.repos) ? ctx.connection.repos.map((slug) => slug.split('/')[1]) : null;
@@ -114,7 +121,7 @@ export async function credentialFor(ctx, { owner, cred = 'I', scope, forceApp = 
   const fetchBot = async () => {
     const token = await ctx.credentials?.token({ account, cred, scope: narrowed, profile: ctx.connection?.profile });
     if (typeof token !== 'string' || !token) {
-      throw new GithubClientError('no_credentials', extraPlace ? 'This extra place needs your master token.' : `No GitHub credential is set up for ${account}. Open the setup page to add one.`, { account });
+      throw new GithubClientError('no_credentials', extraPlace ? (cred === 'F' ? 'This extra place needs your fine-grained token.' : 'This extra place needs your master token.') : `No GitHub credential is set up for ${account}. Open the setup page to add one.`, { account });
     }
     return token;
   };
@@ -171,7 +178,7 @@ export function exactIntegers(value) {
 
 export async function githubFor(ctx, { owner, cred = 'I', scope } = {}) {
   const { account, token, place, personal, botToken, note: startNote } = await credentialFor(ctx, { owner, cred: cred, scope });
-  if (place) cred = 'M';
+  if (place) cred = place.place_cred === 'F' ? 'F' : 'M';
   const now = ctx.now ?? Date.now;
   const deadline = now() + (ctx.budgetMs ?? DEFAULT_BUDGET_MS);
   const withinBudget = (retryAfterSeconds, retryCount) => retryCount < 1 && now() + retryAfterSeconds * 1000 <= deadline;
@@ -235,16 +242,18 @@ export async function githubFor(ctx, { owner, cred = 'I', scope } = {}) {
       const rateKey=personal&&useMe?`~me:${personal.subject}`:
         actual==='I'?account:`~cred:${actual}:${account.toLowerCase()}`;
       const credential=personal&&useMe?'personal':
-        ({I:'app',U:'user',K:'notifications',P:'package',M:'god_mode'}[actual]??'unknown');
+        ({I:'app',U:'user',K:'notifications',P:'package',M:'god_mode',F:'fine_grained'}[actual]??'unknown');
       const observed=(headers,status=200)=>{
         const rate=rateFromHeaders(headers,{status,fallbackResource:resource,now});
         ctx.rateObservations?.record({account,credential,resource,observation:rate,source:'fresh'});
       };
       // Classic package credentials never authorize arbitrary REST, GraphQL or foreign accounts.
       // Validate the expanded URL BEFORE any request or rate/write side effect.
-      if ((actual === 'K' || actual === 'P' || actual === 'M') && typeof ctx.credentials?.authorizeOptionalRequest === 'function')
+      if ((actual === 'K' || actual === 'P' || actual === 'M' || actual === 'F') && typeof ctx.credentials?.authorizeOptionalRequest === 'function')
         await ctx.credentials.authorizeOptionalRequest({ account, kind: actual, method, url });
       else if (actual === 'P') await assertPackageRequest(ctx, account, method, url);
+      // PUB-9: a fine-grained token is never sent without its permission check (the owner's own vault has none at all).
+      else if (actual === 'F') throw new GithubClientError('no_credentials', 'A fine-grained token is only available on a signed-in connection.', { account });
       // The wrapped `request` is already bound to `options`, so the object itself must be changed (a copy would be ignored).
       const sent = options;
       sent.headers = { ...sent.headers, 'x-github-api-version': GITHUB_API_VERSION };
@@ -268,7 +277,7 @@ export async function githubFor(ctx, { owner, cred = 'I', scope } = {}) {
         cached = await ctx.db.getEtag(rateKey, urlKey);
         if (cached) sent.headers = { ...sent.headers, 'if-none-match': cached.etag };
       }
-      const noteActor = () => ctx.actor?.record?.({ as: useMe || actual === 'M' ? 'you' : 'app', note: why ?? null, viaUser: !useMe && cred === 'U' });
+      const noteActor = () => ctx.actor?.record?.({ as: useMe || actual === 'M' || actual === 'F' ? 'you' : 'app', note: why ?? null, viaUser: !useMe && cred === 'U' });
       let response;
       try {
         response = await request(sent);
@@ -276,6 +285,9 @@ export async function githubFor(ctx, { owner, cred = 'I', scope } = {}) {
         if (error?.status === 304 && cached) { observed(error.response?.headers,304); noteActor(); return { status: 200, url, headers: error.response?.headers ?? {}, data: cached.body, notModified: true }; }
         if (write) noteActor(); // a change may have been sent: it is on the record as made by this credential
         observed(error?.response?.headers,error?.status);
+        // PUB-9: remember what GitHub said about the fine-grained token (revoked, or a permission it lacks). Never the token.
+        if (actual === 'F' && typeof ctx.credentials?.noteFineOutcome === 'function')
+          await ctx.credentials.noteFineOutcome({ account, method, url, status: error?.status, message: error?.response?.data?.message ?? error?.message });
         throw await asRateLimited(ctx, rateKey, resource, error);
       }
       // Octokit returns integers beyond 2^53 as BigInt (webhook delivery IDs are now that large). A BigInt cannot be saved to the

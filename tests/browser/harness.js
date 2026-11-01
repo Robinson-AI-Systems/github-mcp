@@ -113,6 +113,12 @@ export function createFakeGithub() {
     state.tokens.set(token, { ...person, classicScopes: scopes, ref: person });
     return token;
   };
+  /** PUB-9: a fine-grained token for one owner and its repositories; `grants` are the permission names it may read. */
+  const fineToken = (person, { owner, repos, grants = [] }) => {
+    const token = 'github_pat_FAKE' + randomBytes(16).toString('hex');
+    state.tokens.set(token, { ...person, fine: { owner, repos, grants }, ref: person });
+    return token;
+  };
   const issueCode = (person) => {
     const code = 'code' + randomBytes(10).toString('hex');
     state.codes.set(code, person);
@@ -193,6 +199,21 @@ export function createFakeGithub() {
       if (person.classicScopes) res.headers.set('x-oauth-scopes', person.classicScopes.join(', '));
       return res;
     }
+    if (person.fine) {
+      // PUB-9: what a fine-grained token sees: only its owner's chosen repositories, and only the permissions it was given.
+      const bare = path.split('?')[0];
+      const NOPE = { message: 'Resource not accessible by personal access token' };
+      if (bare === '/user/repos') return json(200, person.fine.repos.map((name) => ({ name, full_name: person.fine.owner.login + '/' + name, owner: person.fine.owner, default_branch: 'main' })));
+      const fr = /^\/repos\/([^/]+)\/([^/]+)(?:\/(.*))?$/.exec(bare);
+      if (fr && fr[1] === person.fine.owner.login && person.fine.repos.includes(fr[2])) {
+        if (!fr[3]) return json(200, { name: fr[2], full_name: fr[1] + '/' + fr[2], owner: person.fine.owner, private: true, default_branch: 'main' });
+        const area = { commits: 'contents', issues: 'issues', pulls: 'pull_requests' }[fr[3].split('/')[0]];
+        if (!area) return json(404, { message: 'Not Found' });
+        return person.fine.grants.includes(area) ? json(200, []) : json(403, NOPE);
+      }
+      if (bare.startsWith('/orgs/')) return json(403, NOPE);
+      return json(404, { message: 'Not Found' });
+    }
     if (path.startsWith('/user/installations')) return json(200, { total_count: person.installs.length, installations: person.installs });
     if (path.startsWith('/user/memberships/orgs?'))
       return json(200, Object.entries(person.orgs).map(([login, o]) => ({ state: 'active', role: o.role, organization: { id: o.id, login } })));
@@ -213,7 +234,7 @@ export function createFakeGithub() {
     return json(404, { message: 'fake GitHub has no route for ' + path });
   }
 
-  return { state, addPerson, install, classicToken, browser, api };
+  return { state, addPerson, install, classicToken, fineToken, browser, api };
 }
 
 // ---------------------------------------------------------------- the local "internet": one HTTPS server, a proxy
