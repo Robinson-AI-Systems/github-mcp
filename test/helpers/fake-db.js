@@ -576,6 +576,7 @@ export function createFakeDb({ clock = Date.now } = {}) {
     },
     async releaseSecretRequest(id) { const r = secretRequests.get(id); if (r) r.completed = false; },
     async listPlaygroundIndexes({after='',limit=50}={}){return [...settings].filter(([key,v])=>key.startsWith('pg_index.')&&key>after&&v.kind==='playground-index'&&v.allocation.phase!=='disposed').sort(([a],[b])=>a.localeCompare(b)).slice(0,limit).map(([setting,value])=>({setting,value:structuredClone(value)}));},
+    async playgroundDemandSince(since){if(!Number.isSafeInteger(since)||since<0)throw new TypeError('Invalid allocation demand window.');const counts=new Map();for(const [key,v] of settings){const a=v?.allocation;if(!key.startsWith('pg_index.')||v.kind!=='playground-index'||typeof a?.createdAt!=='number'||a.createdAt<since||a.placement==='device')continue;const k=JSON.stringify([a.pool??'default',a.runtimeImage?.variant??'unknown']);counts.set(k,(counts.get(k)??0)+1);}return [...counts].sort(([a],[b])=>a.localeCompare(b)).map(([k,count])=>{const [pool,variant]=JSON.parse(k);return {pool,variant,count};});},
     async getSetting(key) { return settings.has(key) ? structuredClone(settings.get(key)) : null; },
     async setSetting(key, value) {
       if (typeof key !== 'string' || !/^[a-z][a-z0-9_.]{0,62}$/.test(key)) throw new TypeError('A setting key is lowercase words.');

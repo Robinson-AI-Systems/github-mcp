@@ -5,16 +5,14 @@
 // The owner's own identity is refused unless `includeOwnIdentity: true` is also given. No token or secret ever leaves this file.
 import { defineGithubWrite, explainGithubError } from './define-github-write.js';
 import { isOperatorConnection } from '../core/authority.js';
-import { bareOctokit } from '../github/client.js';
 import { productionSql } from '../db.js';
-import { createTenantRemoval, removalProven } from '../tenancy/tenant-removal.js';
+import { createTenantRemoval, removalProven, revokeStoredSignIns } from '../tenancy/tenant-removal.js';
 
 const safe = (message, code) => Object.assign(new TypeError(message), { safeMessage: true, safeCode: code });
 /** The owner's root database store. A test may hand its own store on the database object. */
 const storeFor = (ctx) => ctx.db?.tenantRemoval ?? createTenantRemoval({ rootSql: productionSql(), env: ctx.env ?? process.env });
 const plural = (n, one, many = one + 's') => `${n} ${n === 1 ? one : many}`;
 const sum = (plan, field) => plan.tenants.reduce((a, t) => a + (Array.isArray(t[field]) ? t[field].length : Number(t[field] ?? 0)), 0);
-const basic = (app) => 'Basic ' + Buffer.from(app.clientId + ':' + app.clientSecret).toString('base64');
 
 const remove = defineGithubWrite({
   name: 'github_tenant_remove',
@@ -58,18 +56,8 @@ const remove = defineGithubWrite({
     if (tokens.length) {
       let app;
       try { app = await store.appClient(); } catch { throw Object.assign(new TypeError('The service App\'s OAuth client is unavailable, so no sign-in could be revoked and nothing was removed.'), { noOperationStarted: true }); }
-      const api = bareOctokit({ fetch: ctx.fetch });
-      const headers = { authorization: basic(app) };
       // Tokens first: each is revoked at GitHub before any stored data goes. A refusal stops here with nothing removed.
-      for (const { account, token } of tokens) {
-        let state = 'revoked';
-        try { await api.request('DELETE /applications/{client_id}/token', { client_id: app.clientId, access_token: token, headers, request: { timeout: 10000 } }); }
-        catch (error) { if (error?.status === 404 || error?.status === 422) state = 'already_invalid'; else throw error; }
-        let stillValid = false;
-        try { await api.request('POST /applications/{client_id}/token', { client_id: app.clientId, access_token: token, headers, request: { timeout: 10000 } }); stillValid = true; }
-        catch (error) { if (error?.status !== 404 && error?.status !== 422) stillValid = null; }
-        revoked.push({ account, at_github: state, still_valid: stillValid });
-      }
+      revoked.push(...await revokeStoredSignIns({ tokens, app, fetch: ctx.fetch }));
     }
     const removed = await store.remove(plan);
     return { revoked, spaces_removed: removed };

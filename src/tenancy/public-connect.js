@@ -43,6 +43,7 @@ import { isPublicClientId, publicAuthCode, parsePublicCode } from './public-code
 import { MUSE_PUBLIC_CLIENT_ID, MUSE_REDIRECT_URI } from './muse-client.js';
 import { createMarketplaceStore } from '../marketplace/store.js';
 import { createEnrolledHostStore } from '../playground/enrolled-hosts.js';
+import { createTenantRemoval, revokeStoredSignIns } from './tenant-removal.js';
 import { accountFromResource, marketplaceAccount } from '../marketplace/resource.js';
 import { marketplaceEnabled, verifyMarketplacePurchase } from '../marketplace/lifecycle.js';
 
@@ -65,6 +66,8 @@ export class PublicConnectError extends Error {
 export const FORGET_CLIENT = 'pcl_forget_my_data_built_in_page_0000000';
 export const MANAGE_CLIENT = 'pcl_my_connection_built_in_page_00000000';
 export const MANAGE_PATH = '/connection';
+/** Shown when GitHub would not confirm a sign-in was cancelled: nothing was deleted, so the person can safely try again. */
+export const FORGET_RETRY = 'GitHub did not confirm that your saved sign-in was cancelled, so nothing was deleted yet. Your data is still here and nothing is left half-done. Please try again in a few minutes: open Delete my data and sign in with GitHub again.';
 // Claude asks for the permission names this server advertises in its discovery document; sign-in gives no extra power for them.
 // These OAuth scope labels are client-compatibility hints, NOT permission grants:
 // the tenant profile, GitHub installation and write confirmation remain authoritative.
@@ -741,6 +744,16 @@ export function createPublicConnect({ env = process.env, fetchImpl = fetch, root
     if (!STATE.test(String(handle ?? ''))) throw refused('r22');
     const flow = await directory().consumePublicFlow(sha(handle), 'god');
     if (!flow || flow.purpose !== 'forget' || !flow.tenantId) throw refused('r23');
+    // PUB-8: every stored GitHub sign-in is revoked at GitHub (and checked gone) BEFORE anything is deleted. If GitHub refuses or
+    // still accepts one, nothing is deleted and the person is told to try again, so no live token is ever left behind unseen.
+    const removal = createTenantRemoval({ rootSql: rootSql(), connectionString: env.DATABASE_URL, env, sqlFactory: tenantSqlFactory });
+    const tokens = await removal.revocationTokens({ tenants: [{ tenant_id: flow.tenantId }] });
+    if (tokens.length) {
+      let results;
+      try { results = await revokeStoredSignIns({ tokens, app: await removal.appClient(), fetch: fetchImpl }); }
+      catch { results = null; }
+      if (!results || results.some((r) => r.still_valid !== false)) throw new PublicConnectError('revoke', FORGET_RETRY);
+    }
     return await directory().forgetPublicTenant(flow.tenantId);
   }
 

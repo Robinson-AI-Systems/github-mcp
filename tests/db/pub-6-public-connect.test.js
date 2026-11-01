@@ -50,8 +50,11 @@ const revokedMarketplace = new Set();
 let failMarketplaceRevocation = false;
 const fetchImpl = async (url, opts = {}) => {
   if (url.startsWith('https://api.github.com/applications/fixture-app-client/token')) {
+    const token = JSON.parse(opts.body).access_token;
+    // PUB-8: "check a token" (POST) answers 404 once the token was revoked, as GitHub does.
+    if (String(opts.method).toUpperCase() === 'POST') return revokedMarketplace.has(token) ? new Response('{"message":"Not Found"}',{status:404}) : Response.json({id:1});
     if (failMarketplaceRevocation) return new Response('{}',{status:503});
-    revokedMarketplace.add(JSON.parse(opts.body).access_token);
+    revokedMarketplace.add(token);
     return new Response(null,{status:204});
   }
   if (url.startsWith('https://api.github.com/user/marketplace_purchases'))
@@ -59,6 +62,7 @@ const fetchImpl = async (url, opts = {}) => {
   if (url === 'https://github.com/login/oauth/access_token') {
     const who = people[String(opts.body.get('code')).split('-')[0]];
     if (!who) return { ok: false, status: 400, json: async () => ({}) };
+    revokedMarketplace.delete(who.token); // a fresh sign-in gives working access again
     return { ok: true, json: async () => ({ access_token: who.token, refresh_token: who.token + '-refresh', expires_in: 28800, refresh_token_expires_in: 15000000 }) };
   }
   const who = Object.values(people).find((p) => opts.headers?.authorization === 'Bearer ' + p.token);
@@ -724,6 +728,57 @@ describe('PUB-6 a person deletes their own data', () => {
     expect(foreign.statusCode).toBe(403);
     const off = await call((req, res) => publicForget(req, res, { env: { ...env, GITHUB_PUBLIC_CONNECT: undefined }, connect }), request('GET', { forget: '1' }));
     expect(off.statusCode).toBe(404);
+  });
+  it('PUB-8: revokes the saved GitHub sign-in at GitHub first; if GitHub refuses, keeps the data and says to retry; the retry deletes', async () => {
+    const c = make();
+    const client = await c.registerClient({ redirect_uris: [CB] });
+    const bob = await tokenFor(c, client, 'bob');
+    expect(await gateFor(bob)).not.toBeNull();
+    const tenantOfBob = async () => (await admin.query("SELECT b.tenant_id FROM gh_tenant_pilot_bootstraps b JOIN gh_tenant_identities i ON i.id=b.identity_id WHERE b.account_login='public-connect' AND i.provider_subject='31002'")).rows[0]?.tenant_id ?? null;
+    const tenant = await tenantOfBob();
+    expect(tenant).not.toBeNull();
+    const schemaExists = async () => (await admin.query('SELECT 1 FROM information_schema.schemata WHERE schema_name=$1', [tenantSchemaName(String(tenant))])).rowCount === 1;
+    const askToForget = async () => {
+      const started = await c.startForget();
+      return (await c.finish({ state: started.state, code: 'bob-fixture-code-1' })).forget;
+    };
+    const confirmPage = (handle) => call((req, res) => publicForget(req, res, { env, connect: c }), request('POST', { forget: '1', action: 'confirm', handle }, { origin: ORIGIN }));
+    // GitHub refuses: a plain page, nothing deleted, the saved sign-in still there, the connection still works.
+    failMarketplaceRevocation = true;
+    let refused;
+    try { refused = await confirmPage((await askToForget()).handle); } finally { failMarketplaceRevocation = false; }
+    expect(refused.statusCode).toBe(503);
+    expect(refused.body).toContain('Nothing was deleted yet');
+    expect(refused.body).toContain('nothing was deleted yet. Your data is still here');
+    expect(refused.body).toContain('?forget=1');
+    expect(revokedMarketplace.has(people.bob.token)).toBe(false);
+    expect(await schemaExists()).toBe(true);
+    expect((await admin.query('SELECT count(*)::int n FROM gh_tenant_user_authorizations WHERE tenant_id=$1', [tenant])).rows[0].n).toBe(1);
+    expect(await gateFor(bob)).not.toBeNull();
+    // Retry: sign in again, confirm; GitHub revokes and confirms it is gone, then everything is deleted.
+    const retry = await confirmPage((await askToForget()).handle);
+    expect(retry.statusCode).toBe(200);
+    expect(retry.body).toContain('Your data is deleted');
+    expect(revokedMarketplace.has(people.bob.token)).toBe(true);
+    expect(await schemaExists()).toBe(false);
+    expect(await tenantOfBob()).toBeNull();
+    expect((await admin.query('SELECT count(*)::int n FROM gh_tenant_user_authorizations WHERE tenant_id=$1', [tenant])).rows[0].n).toBe(0);
+    expect(await gateFor(bob)).toBeNull();
+  });
+  it('PUB-8: a sign-in GitHub still accepts after revocation is never left behind: nothing is deleted', async () => {
+    const c = make();
+    const client = await c.registerClient({ redirect_uris: [CB] });
+    const bob = await tokenFor(c, client, 'bob');
+    const stubborn = async (url, opts = {}) => {
+      // GitHub answers the revocation but the check still says the token works.
+      if (url.startsWith('https://api.github.com/applications/fixture-app-client/token')) return String(opts.method).toUpperCase() === 'POST' ? Response.json({ id: 1 }) : new Response(null, { status: 204 });
+      return fetchImpl(url, opts);
+    };
+    const s = createPublicConnect({ env, fetchImpl: stubborn, rootSqlFactory, tenantSqlFactory });
+    const started = await s.startForget();
+    const asked = (await s.finish({ state: started.state, code: 'bob-fixture-code-1' })).forget;
+    await expect(s.forgetConfirm({ handle: asked.handle })).rejects.toMatchObject({ code: 'revoke' });
+    expect(await gateFor(bob)).not.toBeNull();
   });
 });
 

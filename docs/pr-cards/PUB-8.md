@@ -61,3 +61,17 @@ Acceptance, item by item:
 
 Not done / not verified: never run against a real tenant or the live deployment (deployed acceptance is a later row);
 managed Playground allocations are disposed by the next sweep, not inside the call.
+
+## Follow-up 2026-11-01 (PR #524): "Delete my data" revokes at GitHub first
+
+- The person's own "Delete my data" confirm step (`forgetConfirm`, `src/tenancy/public-connect.js`) now runs the same
+  revoke-then-verify step as `github_tenant_remove` (`revokeStoredSignIns`, `src/tenancy/tenant-removal.js`) on every stored
+  GitHub sign-in BEFORE anything is deleted. Only when GitHub confirms each one is gone does the removal core run.
+- If GitHub refuses the revocation, the check fails, or GitHub still accepts a token, nothing is deleted and the page
+  "Nothing was deleted yet" (`src/tenancy/public-http.js`) tells the person in plain words that their data is still there
+  and to try again, with a Try again link. No live token is left behind with the data gone.
+- Tests: `tests/db/pub-6-public-connect.test.js` "PUB-8: revokes the saved GitHub sign-in at GitHub first; if GitHub
+  refuses, keeps the data and says to retry; the retry deletes" and "PUB-8: a sign-in GitHub still accepts after
+  revocation is never left behind: nothing is deleted"; `tests/browser/sign-in.test.js` "PUB-8 delete my data: GitHub
+  refuses to cancel the sign-in, nothing is deleted, a plain page says retry; the retry deletes" (real Chrome, phone fit).
+  The fake GitHubs now answer "check a token" with 404 after a revocation, as GitHub does.

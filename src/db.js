@@ -1354,6 +1354,14 @@ export function createDb(sql = productionSql()) {
       return sql`SELECT setting,value FROM server_settings WHERE setting LIKE 'pg_index.%' AND setting>${after}
         AND value->>'kind'='playground-index' AND value->'allocation'->>'phase'<>'disposed' ORDER BY setting LIMIT ${limit}`;
     },
+    /** FLEET-7 demand: new pool allocations (any phase, disposed included) created at or after `since` (ms), per pool and image variant. */
+    async playgroundDemandSince(since) {
+      if(!Number.isSafeInteger(since)||since<0)throw new TypeError('Invalid allocation demand window.');
+      const rows = await sql`SELECT coalesce(value->'allocation'->>'pool','default') AS pool, coalesce(value->'allocation'->'runtimeImage'->>'variant','unknown') AS variant, count(*)::int AS count
+        FROM server_settings WHERE setting LIKE 'pg_index.%' AND value->>'kind'='playground-index' AND jsonb_typeof(value->'allocation'->'createdAt')='number'
+        AND (value->'allocation'->>'createdAt')::numeric >= ${since} AND coalesce(value->'allocation'->>'placement','')<>'device' GROUP BY 1,2 ORDER BY 1,2`;
+      return rows.map(r => ({ pool: r.pool, variant: r.variant, count: Number(r.count) }));
+    },
     /** An owner setting (JSON), or null. Settings hold names and numbers, never a credential. */
     async getSetting(key) {
       const rows = await sql`SELECT value FROM server_settings WHERE setting = ${key}`;

@@ -9,6 +9,27 @@ import { decryptSecret, readEncryptionKey } from '../core/crypto.js';
 import { pilotAppClient } from './pilot-app-client.js';
 import { createTenantDirectory, tenantSchemaName } from './directory.js';
 import { findPublicTenantsByLogin } from './forget-person.js';
+import { bareOctokit } from '../github/client.js';
+
+/** The one revoke-then-verify step (owner tool and the person's own "Delete my data"): each stored GitHub user token is revoked
+ * by the service App (`DELETE /applications/{client_id}/token`), then GitHub is asked whether it still accepts it
+ * (`POST /applications/{client_id}/token`; 404/422 = gone). A refused revocation throws (callers then delete nothing).
+ * `still_valid` is false (gone), true (GitHub still accepts it) or null (the check itself failed). Tokens never leave. */
+export async function revokeStoredSignIns({ tokens, app, fetch }) {
+  const api = bareOctokit({ fetch });
+  const headers = { authorization: 'Basic ' + Buffer.from(app.clientId + ':' + app.clientSecret).toString('base64') };
+  const out = [];
+  for (const { account, token } of tokens) {
+    let state = 'revoked';
+    try { await api.request('DELETE /applications/{client_id}/token', { client_id: app.clientId, access_token: token, headers, request: { timeout: 10000 } }); }
+    catch (error) { if (error?.status === 404 || error?.status === 422) state = 'already_invalid'; else throw error; }
+    let stillValid = false;
+    try { await api.request('POST /applications/{client_id}/token', { client_id: app.clientId, access_token: token, headers, request: { timeout: 10000 } }); stillValid = true; }
+    catch (error) { if (error?.status !== 404 && error?.status !== 422) stillValid = null; }
+    out.push({ account, at_github: state, still_valid: stillValid });
+  }
+  return out;
+}
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const LOGIN = /^[a-z0-9][a-z0-9-]{0,38}$/;
