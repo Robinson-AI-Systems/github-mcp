@@ -7,7 +7,7 @@ const hash=b=>createHash('sha256').update(b).digest('hex');
 // Lean imports fetch from GitHub and can outlast one request; they continue here.
 const FINISHING=new Map();
 const wait=ms=>new Promise(r=>setTimeout(r,ms));
-export async function attachmentRequest(worker,claim,{singleWorkspaceId,finishWaitMs=30000}={}){
+export async function attachmentRequest(worker,claim,{singleWorkspaceId,finishWaitMs=30000,objectCache}={}){
  const o=claim.options??{},id=claim.workspace_id;
  if(!/^git_[a-f0-9]{32}$/.test(id??''))throw new TypeError('Invalid attachment workspace.');
  if(!/^[a-f0-9]{64}$/.test(o.transferId??'')||Object.keys(o).some(k=>!['transferId','mode','key','offset','base64','bytes','digest','expectedGeneration','lean'].includes(k)))throw new TypeError('Invalid private attachment envelope.');
@@ -51,7 +51,7 @@ export async function attachmentRequest(worker,claim,{singleWorkspaceId,finishWa
  const expectedBinding=createHash('sha256').update(JSON.stringify(['authority','connection','owner','repo'].map(k=>claim.binding[k]))).digest('hex');
  const token=typeof claim.credential==='string'&&claim.credential?claim.credential:null;
  let job=FINISHING.get(dir);
- if(!job){job=importMountedWorkspace({root:worker.root,id,bytes,key:o.key,expectedBinding,token,allowLocalFixtures:worker.allowLocalFixtures}).finally(()=>FINISHING.delete(dir));FINISHING.set(dir,job);job.catch(()=>{});}
+ if(!job){job=importMountedWorkspace({root:worker.root,id,bytes,key:o.key,expectedBinding,token,allowLocalFixtures:worker.allowLocalFixtures,objectCache:objectCache??process.env.NATIVE_GIT_OBJECT_CACHE??null}).finally(()=>FINISHING.delete(dir));FINISHING.set(dir,job);job.catch(()=>{});}
  const done=await Promise.race([job.then(r=>({r})),wait(finishWaitMs).then(()=>null)]);
  if(done)return done.r;
  return {transferId:o.transferId,complete:false,pending:true,next:'The broker is fetching history from GitHub; call finish again.'};

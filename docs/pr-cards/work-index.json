@@ -2675,11 +2675,33 @@
         "FLEET-3"
       ],
       "card": "docs/pr-cards/FLEET-4.md",
-      "status": "IN_PROGRESS",
+      "status": "MERGED",
       "migration": "none (pool id stored on new allocation rows)",
       "budget": 800,
       "units": [
         "FLEET-4"
+      ],
+      "readiness": "READY",
+      "ownerInputs": [],
+      "pr": [
+        508
+      ]
+    },
+    {
+      "id": "FLEET-5",
+      "title": "Caches that make repeat work fast on people's own machines",
+      "batch": "FIN",
+      "design": "docs/designs/RUNTIME-FLEET-2026-11-01.md",
+      "dependencies": [
+        "FLEET-3",
+        "FLEET-6"
+      ],
+      "card": "docs/pr-cards/FLEET-5.md",
+      "status": "IN_PROGRESS",
+      "migration": "none",
+      "budget": 800,
+      "units": [
+        "FLEET-5"
       ],
       "readiness": "READY",
       "ownerInputs": [],

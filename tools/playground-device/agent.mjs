@@ -156,10 +156,34 @@ export class HostAgent {
     services.ingress.ports = ['127.0.0.1::3000'];
     return c;
   }
+  // FLEET-5: two caches shared by every runtime on this machine (only its owner's work
+  // runs here): package downloads for commands, Git objects for the broker. Runtimes
+  // stopping never delete them; leaving or revocation does.
+  cacheNames() { const s = this.state.deviceId.slice(0, 12); return {deps: 'ras-cache-deps-' + s, git: 'ras-cache-git-' + s}; }
+  async ensureCaches() {
+    const names = this.cacheNames();
+    for (const name of Object.values(names)) {
+      try { await this.exec('docker', ['volume', 'inspect', name], {timeoutMs: 20000}); continue; } catch { /* create below */ }
+      await this.exec('docker', ['volume', 'create', '--label', OWNER_LABEL + '=device-cache', '--label', 'com.robinson.playground.device=' + this.state.deviceId, name], {timeoutMs: 20000});
+      await this.exec('docker', ['run', '--rm', '--network', 'none', '-v', name + ':/c', READY_IMAGE, 'chown', '1000:1000', '/c'], {timeoutMs: 300000});
+    }
+    return names;
+  }
+  withCaches(c, names) {
+    c.volumes = {...c.volumes, 'cache-deps': {name: names.deps, external: true}, 'cache-git': {name: names.git, external: true}};
+    c.services.coding.volumes = [...(c.services.coding.volumes ?? []), 'cache-deps:/cache'];
+    c.services.coding.environment = {...c.services.coding.environment, CODING_CACHE_ROOT: '/cache'};
+    if (c.services.broker) {
+      c.services.broker.volumes = [...(c.services.broker.volumes ?? []), 'cache-git:/git-cache'];
+      c.services.broker.environment = {...c.services.broker.environment, NATIVE_GIT_OBJECT_CACHE: '/git-cache'};
+    }
+    return c;
+  }
   async up(payload) {
     const project = payload.project;
     if (!/^ras-pg-[a-f0-9]{32}$/.test(project ?? '')) return {up: false, reason: 'bad_project'};
     let compose; try { compose = this.localCompose(payload); } catch (e) { return {up: false, reason: e.message}; }
+    try { compose = this.withCaches(compose, await this.ensureCaches()); } catch { /* caches are optional; run without them */ }
     const dir = join(this.dir, 'allocations', project), file = join(dir, 'compose.json');
     await mkdir(dir, {recursive: true, mode: 0o700}); await writeFile(file, JSON.stringify(compose), {mode: 0o600});
     try {
@@ -210,6 +234,7 @@ export class HostAgent {
   async terminate() {
     let all = true;
     for (const [binding, a] of Object.entries(this.state?.allocations ?? {})) { const e = await this.down({binding, project: a.project}); all &&= e.containersAbsent && e.volumesAbsent && e.networksAbsent; }
+    if (this.state?.deviceId) for (const name of Object.values(this.cacheNames())) { try { await this.exec('docker', ['volume', 'rm', name], {timeoutMs: 60000}); } catch { /* absent */ } }
     return {allAbsent: all};
   }
 

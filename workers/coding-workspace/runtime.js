@@ -11,11 +11,11 @@ const hash=x=>createHash('sha256').update(JSON.stringify(x)).digest('hex');
 const fail=(code,message)=>Object.assign(new TypeError(message),{code});
 async function atomic(path,value){const temp=path+'.'+randomBytes(8).toString('hex')+'.new';const f=await open(temp,'w',0o600);try{await f.writeFile(JSON.stringify(value));await f.sync();}finally{await f.close();}await rename(temp,path);const d=await open(resolve(path,'..'),'r');try{await d.sync();}finally{await d.close();}}
 export class CodingRuntime {
- constructor({root,binding,uid=1000,gid=1000,now=Date.now,maxLogBytes=32*1024*1024,idleMs=4*3600000,resources,authorityRequired=false,egressProxy=process.env.CODING_EGRESS_PROXY}={}){
+ constructor({root,binding,uid=1000,gid=1000,now=Date.now,maxLogBytes=32*1024*1024,idleMs=4*3600000,resources,authorityRequired=false,egressProxy=process.env.CODING_EGRESS_PROXY,cacheRoot=process.env.CODING_CACHE_ROOT}={}){
   if(process.getuid?.()!==0)throw fail('isolation_required','Run the supervisor as the isolated container root; commands always use a different unprivileged UID.');
   if(!isAbsolute(root??'')||!ID.test(binding??'')||uid!==1000||gid!==1000||!Number.isSafeInteger(maxLogBytes)||maxLogBytes<1024||maxLogBytes>64*1024*1024||!Number.isSafeInteger(idleMs)||idleMs<60000||idleMs>86400000)throw fail('invalid_configuration','Invalid isolated workspace configuration.');
   if(egressProxy!==undefined&&egressProxy!=='http://ingress:3128')throw fail('invalid_configuration','Use only the fixed private egress service.');this.egressProxy=egressProxy;
-  Object.assign(this,{root:resolve(root),binding,uid,gid,now,maxLogBytes,idleMs});this.authorityRequired=authorityRequired;this.authorityLease=null;this.active=new Map();this.admitting=new Set();this.lastActivity=now();this.expired=false;this.stopping=false;this.leaseWrites=Promise.resolve();this.resources=resources??createResourceMonitor({root:this.root});
+  Object.assign(this,{root:resolve(root),binding,uid,gid,now,maxLogBytes,idleMs});this.cacheRoot=typeof cacheRoot==='string'&&/^\/[A-Za-z0-9_./-]{1,200}$/.test(cacheRoot)&&!cacheRoot.includes('..')?cacheRoot:null;this.authorityRequired=authorityRequired;this.authorityLease=null;this.active=new Map();this.admitting=new Set();this.lastActivity=now();this.expired=false;this.stopping=false;this.leaseWrites=Promise.resolve();this.resources=resources??createResourceMonitor({root:this.root});
  }
  async init(){
   const {chown}=await import('node:fs/promises');
@@ -58,6 +58,9 @@ export class CodingRuntime {
    if(this.stopping||this.expired){await log.close();await atomic(p.receipt,{...receipt,state:'failed',reason:'runtime_stopped',finishedAt:this.now()});throw fail('workspace_expired','Runtime stopped before command spawn.');}
    // Explicit environment: no inherited host/provider/control secrets or process credentials.
    const env={PATH:'/usr/local/bin:/usr/bin:/bin',HOME:join(this.root,'home'),TMPDIR:'/tmp',LANG:'C.UTF-8',CI:'1',TERM:'dumb',PLAYWRIGHT_BROWSERS_PATH:'/opt/playwright',DATABASE_URL:'postgresql://workspace@127.0.0.1:5432/postgres'};
+   // FLEET-5: a person's own machine can give every runtime the same dependency cache
+   // (only that person's work ever runs there). Package managers reuse downloads.
+   if(this.cacheRoot)Object.assign(env,{XDG_CACHE_HOME:this.cacheRoot,NPM_CONFIG_CACHE:join(this.cacheRoot,'npm'),npm_config_cache:join(this.cacheRoot,'npm'),YARN_CACHE_FOLDER:join(this.cacheRoot,'yarn'),PNPM_STORE_DIR:join(this.cacheRoot,'pnpm'),PIP_CACHE_DIR:join(this.cacheRoot,'pip')});
    if(this.egressProxy)Object.assign(env,{HTTP_PROXY:this.egressProxy,HTTPS_PROXY:this.egressProxy,http_proxy:this.egressProxy,https_proxy:this.egressProxy,NO_PROXY:'127.0.0.1,localhost,::1',no_proxy:'127.0.0.1,localhost,::1',NODE_USE_ENV_PROXY:'1'});
    let child;try{child=spawn(argv[0],argv.slice(1),{cwd:directory,uid:this.uid,gid:this.gid,env,detached:true,stdio:['ignore','pipe','pipe']});}catch(e){await log.close();throw e;}
    slot.child=child;let chain=Promise.resolve(),bytes=0,logFailed=false;
