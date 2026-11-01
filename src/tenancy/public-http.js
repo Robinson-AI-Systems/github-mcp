@@ -201,9 +201,11 @@ function managePage(res, m) {
         (d.origin ? '<p><small>Tunnel: ' + h(d.origin) + '</small></p>' : '') +
         (d.fingerprint ? '<p><small>Signing-key fingerprint: <code>' + h(d.fingerprint) + '</code> — compare it with the one on your own computer before approving.</small></p>' : '') +
         (d.transportVerifiedAt ? '<p><small>Tunnel/device identity last proved at ' + h(new Date(d.transportVerifiedAt).toISOString()) + '. This does not permit commands.</small></p>' : '') +
+        (d.localCanaryAt ? '<p><small>Local image test observed at ' + h(new Date(d.localCanaryAt).toISOString()) + ' for immutable image ' + h(d.localCanaryImage) + '. Source not attached; commands still disabled.</small></p>' : '') +
         '</span></div>' +
         (d.status==='pending_confirm' ? act('approve_pair','Approve this exact device fingerprint (canary still required)',{value:d.deviceId,id:'approve-' + d.deviceId}) : '') +
         (d.status==='pending_canary' ? act('probe_pair','Check my signed device tunnel (no commands)',{value:d.deviceId,id:'probe-' + d.deviceId}) : '') +
+        (d.status==='pending_canary'&&d.transportVerifiedAt ? act('canary_pair','Verify my fixed local runtime test receipt (no commands)',{value:d.deviceId,id:'canary-' + d.deviceId}) : '') +
         (!['revoked','revocation_pending'].includes(d.status) ? act('revoke_pair','Revoke enrollment',{value:d.deviceId,plain:true,id:'revoke-' + d.deviceId}) : '')).join('') :
         '<p class="muted">No computers enrolled yet.</p>')) +
     '<h2>Time zone</h2>' +

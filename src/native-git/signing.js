@@ -34,3 +34,14 @@ export function signEnrolledDeviceProbeBody(body,env=process.env){
     Object.hasOwn(c,'argv')||Object.hasOwn(c,'options'))throw new TypeError('Invalid device reachability claim.');
  return 'ed25519:'+sign(null,Buffer.from(body),signingKey(env)).toString('base64url');
 }
+
+// PLAY-2: a readback claim for previously user-run local image tests, never an
+// authority to execute commands or change the installed image.
+export function signEnrolledLocalCanaryBody(body,env=process.env){
+ const claim=JSON.parse(body);
+ if(!claim||claim.purpose!=='robinson-playground-local-canary-read/v1'||
+    Object.hasOwn(claim,'credential')||Object.hasOwn(claim,'argv')||
+    Object.hasOwn(claim,'options')||Object.hasOwn(claim,'image')||
+    Object.hasOwn(claim,'workspaceBinding'))throw new TypeError('Invalid local canary readback claim.');
+ return 'ed25519:'+sign(null,Buffer.from(body),signingKey(env)).toString('base64url');
+}

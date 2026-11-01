@@ -108,4 +108,57 @@ describe('PLAY-2 real Postgres tenant enrollment',()=>{
   });
  });
 
+ it('CAS-records a real-tenant signed local canary as pending and denies foreign/revoked generations',async()=>{
+  const now=()=>1800000001000,image='ghcr.io/robinson/coding@sha256:'+'c'.repeat(64),binding='d'.repeat(64);
+  const probeClient=async({record})=>({deviceId:record.deviceId,generation:record.generation,
+   origin:record.origin,fingerprint:record.fingerprint,observedAt:now(),
+   transportVerified:true,executionReady:false});
+  const canaryClient=async({record})=>({deviceId:record.deviceId,generation:record.generation,
+   origin:record.origin,localCanaryAt:now(),image,binding,receiptHash:'e'.repeat(64),
+   repositoryAttached:false,executionReady:false});
+  const options={db:alice,root,tenantId:'tenant-1',identityId:'person-1',
+   clientId:'client-1',now,probeClient,canaryClient};
+  const ours=createEnrolledHostStore(options);
+  const other=createEnrolledHostStore({...options,db:bob,tenantId:'tenant-2',
+   identityId:'person-2',clientId:'client-2'});
+  const start=await ours.begin(),d=device(start);
+  await ours.claim(d);await ours.approve(start.deviceId);
+  await expect(ours.canary(start.deviceId)).rejects.toThrow(/fresh pinned/);
+  await ours.probe(start.deviceId);
+  await expect(other.canary(start.deviceId)).rejects.toThrow(/fresh pinned/);
+  expect(await ours.canary(start.deviceId)).toMatchObject({
+   deviceId:start.deviceId,status:'pending_canary',
+   localCanaryAt:now(),localCanaryImage:image,executionReady:false
+  });
+  expect((await ours.list()).find(x=>x.deviceId===start.deviceId)).toMatchObject({
+   localCanaryAt:now(),localCanaryImage:image,
+   localCanaryBinding:binding,status:'pending_canary'
+  });
+  await ours.revoke(start.deviceId);
+  await expect(ours.canary(start.deviceId)).rejects.toThrow();
+  expect((await ours.list()).find(x=>x.deviceId===start.deviceId)).toMatchObject({status:'revoked',generation:2});
+ });
+ it('requires a same-revision CAS so a revoked device cannot publish delayed local canary evidence',async()=>{
+  const now=()=>1800000002000,image='ghcr.io/robinson/coding@sha256:'+'b'.repeat(64);
+  let store;
+  store=createEnrolledHostStore({db:alice,root,tenantId:'tenant-1',identityId:'person-1',
+   clientId:'client-1',now,
+   probeClient:async({record})=>({deviceId:record.deviceId,generation:record.generation,
+    origin:record.origin,fingerprint:record.fingerprint,observedAt:now(),
+    transportVerified:true,executionReady:false}),
+   canaryClient:async({record})=>{
+    await store.revoke(record.deviceId);
+    return {deviceId:record.deviceId,generation:record.generation,origin:record.origin,
+     localCanaryAt:now(),image,binding:'c'.repeat(64),receiptHash:'e'.repeat(64),
+     repositoryAttached:false,executionReady:false};
+   }
+  });
+  const started=await store.begin();
+  await store.claim(device(started));await store.approve(started.deviceId);
+  await store.probe(started.deviceId);
+  await expect(store.canary(started.deviceId)).rejects.toThrow(/Enrollment changed/);
+  const rec=(await store.list()).find(x=>x.deviceId===started.deviceId);
+  expect(rec).toMatchObject({status:'revoked',localCanaryAt:null,generation:2});
+ });
+
 });
