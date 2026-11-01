@@ -24,7 +24,7 @@ const claimArgs=(start,device,origin='https://device-tunnel.example.test')=>({
  signature:sign(null,Buffer.from(pairingMessage({deviceId:start.deviceId,code:start.code,origin})),device.privateKey).toString('base64url')
 });
 const scope=(db,root,identityId='identity-1',now=()=>1000000)=>createEnrolledHostStore({
- db,root,tenantId:'tenant-1',identityId,now
+ db,root,tenantId:'tenant-1',identityId,clientId:'client-1',now
 });
 describe('PLAY-2 enrolled host pairing is a separate user-owned trust boundary',()=>{
  it('keeps a new device pending until signed possession and separate owner confirmation; canary not bypassed',async()=>{
