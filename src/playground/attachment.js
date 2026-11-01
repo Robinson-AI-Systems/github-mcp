@@ -23,7 +23,7 @@ export async function attachRepository(ctx,record,{budgetMs=15000}={}){
  // source lock and prepare a fresh one.
  if(stored.transfer&&!/^[a-f0-9]{40}$/.test(stored.transfer.sourceHead??'')){
   try{await invoke(sourceJob,'attachment_export',{mode:'release',transferId:stored.transfer.transferId});}catch{/* An absent lock is fine. */}
-  await save({phase:'allocated',transfer:null});
+  await save({phase:'allocated',transfer:null,transferAttempt:(Number.isSafeInteger(stored.transferAttempt)?stored.transferAttempt:0)+1});
  }
  if(!stored.transfer){
   // Never renew the workspace lease here: the maintenance sweep retries unfinished attaches,
@@ -32,14 +32,24 @@ export async function attachRepository(ctx,record,{budgetMs=15000}={}){
   // and the transfer could never be verified (regression in #516, fixed here).
   const state=await callNativeWorker(ctx,{binding:record.binding,workspace_id:record.worker,job:sourceJob,action:'inspect',renewLease:false,options:{includeRepository:true}});
   if(!/^[a-f0-9]{40}$/.test(state?.head??''))throw failure('The workspace state could not be read completely; nothing was transferred. Run attach again.');
-  const id=hash(JSON.stringify([binding,state.generation])),key=keyFor(ctx,binding,id);
+  // A re-prepared transfer gets a new ID (attempt > 0), so the receiver never mixes it with a stale partial import.
+  const attempt=Number.isSafeInteger(stored.transferAttempt)&&stored.transferAttempt>0?stored.transferAttempt:0;
+  const id=hash(JSON.stringify(attempt?[binding,state.generation,'attempt',attempt]:[binding,state.generation])),key=keyFor(ctx,binding,id);
   // Lean (FLEET-6): send only what GitHub lacks; the source falls back to a full copy when ineligible.
   const prepared=await invoke(sourceJob,'attachment_export',{mode:'prepare',transferId:id,key,expectedGeneration:state.generation,lean:true});
   if(prepared.transferId!==id||prepared.generation!==state.generation||!Number.isSafeInteger(prepared.bytes)||prepared.bytes<32||prepared.bytes>150*1024*1024||!/^[a-f0-9]{64}$/.test(prepared.digest??''))throw failure('Source attachment manifest was not independently confirmed.');
   await save({phase:'attaching',transfer:{...prepared,sourceHead:state.head,sourceStatus:state.status,offset:0}});
  }
  const t=stored.transfer,key=keyFor(ctx,binding,t.transferId);
- let receiver=await invoke(brokerJob,'attachment_import',{mode:'begin',transferId:t.transferId,bytes:t.bytes,digest:t.digest});
+ let receiver;
+ try{receiver=await invoke(brokerJob,'attachment_import',{mode:'begin',transferId:t.transferId,bytes:t.bytes,digest:t.digest});}
+ catch(error){
+  // The runtime holds a different partial import under this ID: start a fresh attempt with a new ID.
+  if(!/intent differs/i.test(String(error?.message)))throw error;
+  try{await invoke(sourceJob,'attachment_export',{mode:'release',transferId:t.transferId});}catch{/* An absent lock is fine. */}
+  await save({phase:'allocated',transfer:null,transferAttempt:(Number.isSafeInteger(stored.transferAttempt)?stored.transferAttempt:0)+1});
+  throw Object.assign(failure('The runtime held an older partial copy; a fresh transfer will start. Nothing was lost; run attach again.'),{safeRetryable:true});
+ }
  if(receiver.transferId!==t.transferId||receiver.bytes!==t.bytes||receiver.digest!==t.digest||!Number.isSafeInteger(receiver.offset)||receiver.offset<0||receiver.offset>t.bytes)throw failure('Receiver attachment identity/offset differs.');
  while(receiver.offset<t.bytes&&Date.now()-started<budgetMs){
   const page=await invoke(sourceJob,'attachment_export',{mode:'read',transferId:t.transferId,offset:receiver.offset});
