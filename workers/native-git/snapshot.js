@@ -37,7 +37,7 @@ export async function exportWorkspace(options){
 
 // Receiver-only bootstrap for an allocation with separately mounted worktree,
 // Git metadata and broker-control volumes. Never overwrites initialized work.
-export async function importMountedWorkspace({root,bytes,key,id,expectedBinding,token=null,allowLocalFixtures=false}){
+export async function importMountedWorkspace({root,bytes,key,id,expectedBinding,token=null,allowLocalFixtures=false,objectCache=null}){
  if(!ID.test(id)||!Buffer.isBuffer(bytes)||bytes.length<32||bytes.length>150*1024*1024||bytes.subarray(0,4).toString()!=='RNG1')throw new TypeError('Invalid attachment snapshot.');
  const cipher=createDecipheriv('aes-256-gcm',keyBytes(key),bytes.subarray(4,16));cipher.setAAD(Buffer.from('robinson-native-git-snapshot/v1'));cipher.setAuthTag(bytes.subarray(16,32));
  const payload=JSON.parse(Buffer.concat([cipher.update(bytes.subarray(32)),cipher.final()]).toString('utf8'));
@@ -66,7 +66,7 @@ export async function importMountedWorkspace({root,bytes,key,id,expectedBinding,
  // the index, THEN lay the changed/untracked files on top.
  for(const f of files.filter(f=>!working(f)))await write(f);
  let lean=null;
- if(plan){if(typeof token!=='string'||!token)throw new TypeError('A lean attachment needs short-lived network authorization.');lean=await completeLeanImport(dir,{plan,token,remote:meta.remote,allowLocalFixtures});}
+ if(plan){if(typeof token!=='string'||!token)throw new TypeError('A lean attachment needs short-lived network authorization.');lean=await completeLeanImport(dir,{plan,token,remote:meta.remote,allowLocalFixtures,objectCache});}
  for(const f of files.filter(working)){
   const path=join(dir,f.path),data=Buffer.from(f.base64,'base64');
   if(plan){await mkdir(dirname(path),{recursive:true,mode:0o700});if(await (await import('node:fs/promises')).realpath(dirname(path))!==dirname(path))throw new TypeError('Attachment parent contains a symlink.');await writeFile(path,data,{mode:(f.mode&0o111)?0o700:0o600});if(!(await readFile(path)).equals(data))throw new TypeError('Attachment file hash did not verify.');}

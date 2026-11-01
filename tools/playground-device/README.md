@@ -32,6 +32,9 @@ not touch anything else on the server — only containers, volumes and networks 
 `com.robinson.playground.*`. Several machines can be added; each shows on My connection with its last check-in and free
 capacity, and work goes to the ready one with the most free memory.
 
+**Caches:** each machine keeps a package-download cache and a Git object cache shared by your runtimes there, so repeat
+installs and attachments are fast. They are removed when you revoke the machine or run `node agent.mjs leave`.
+
 **Remove a machine:** press **Revoke** on My connection (its runtimes are stopped and deleted at its next check-in), then
 run `node agent.mjs leave` on it. `node agent.mjs status` shows what it is doing.
 

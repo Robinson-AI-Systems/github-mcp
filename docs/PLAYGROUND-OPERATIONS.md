@@ -30,7 +30,7 @@ hypervisor VMs.
 Set inside each allocation by the plan (never by hand): `CODING_WORKSPACE_BINDING`, `CODING_CONTROL_PUBLIC_KEY`,
 `CODING_IDLE_TIMEOUT_MS` (= the Git workspace's idle window, default 14,400,000 ms), `CODING_LIFECYCLE_URL`,
 `CODING_EGRESS_PROXY` (must be `http://ingress:3128`), `CODING_PUBLIC_ORIGIN`, `CODING_CONTROL_ORIGIN`,
-`CODING_STORAGE_ROOT`, `CODING_AUTHORITY_GRACE_MS` (300000), `CODING_PREVIEW_PORTS` (default 3001, 4173, 5173, 8000, 8080; 3000 and 5432 always excluded), the
+`CODING_STORAGE_ROOT`, `CODING_AUTHORITY_GRACE_MS` (300000), `CODING_CACHE_ROOT` (own machines only: shared package cache), `CODING_PREVIEW_PORTS` (default 3001, 4173, 5173, 8000, 8080; 3000 and 5432 always excluded), the
 broker's `NATIVE_GIT_SINGLE_*` values, and the gateway's `EGRESS_BLOCKED_HOSTS`/`EGRESS_BLOCKED_ADDRESSES`. The manager
 container gets `PLAYGROUND_SWEEP_URL` and a derived `PLAYGROUND_SWEEP_KEY`.
 
@@ -52,6 +52,12 @@ already-signed `/v1/coding` or `/v1/workspace` request, forwarded unchanged), `t
 - **Revocation:** bumps the device generation; the next check-in gets a `terminate` order; the agent deletes every runtime
   and attests absence; then the machine is refused (410). Cleanup evidence on a person's own machine is labelled
   `device_attested`.
+- **Caches (FLEET-5):** each machine keeps two Docker volumes shared by all of its owner's runtimes:
+  `ras-cache-deps-<device>` (mounted at `/cache`; commands get `NPM_CONFIG_CACHE`, `YARN_CACHE_FOLDER`, `PNPM_STORE_DIR`,
+  `PIP_CACHE_DIR`, `XDG_CACHE_HOME` under it) and `ras-cache-git-<device>` (the broker's Git object cache, so a repeat
+  attachment downloads only new objects; capped at 20 GB, then rebuilt; attached repositories never depend on it).
+  Stopping a runtime keeps them; revoking the machine or `agent.mjs leave` deletes them. Shared-pool runtimes have no
+  cross-runtime cache (different people share those hosts).
 - Endpoints answer only on the production deployment with the public-connect tenant mode enabled (same gate as pairing).
 
 ## Right-sized runtimes

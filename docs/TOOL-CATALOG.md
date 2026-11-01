@@ -1005,5 +1005,7 @@ Background clones (2026-11-01): `github_git_workspace_open` returns `state: "ope
 Own machines first (2026-11-01, FLEET-3): `github_git_workspace_open` reports `playground.placement` (`device` = one of the person's own ready computers or servers, tried first; `operator_pool` = shared Dokploy pool) or `reason: no_runtime_host` when neither exists. `github_playground_workspace` provision places a new allocation the same way. Interactive `preview` is not available on own machines yet. See [Playground operations](PLAYGROUND-OPERATIONS.md#placement-peoples-own-machines-first).
 
 Shared pools (2026-11-01, FLEET-4): `github_playground_workspace` provision no longer requires a shared pool when the person has a ready machine of their own; shared-pool allocations are spread across `PLAYGROUND_POOLS` and keep their pool for life. See [Playground operations](PLAYGROUND-OPERATIONS.md).
+Caches on own machines (2026-11-01, FLEET-5): runtimes on a person's own computer or server share a package cache and a Git object cache on that machine; tool arguments and results are unchanged. See [Playground operations](PLAYGROUND-OPERATIONS.md).
+
 
 Issue #509 fixes (2026-11-01): `github_playground_workspace` attach reports a retryable "runtime not reachable yet" (nothing transferred) while a new runtime starts, and dispose/close no longer fail on Dokploy's forbidden volume reads in best-effort mode (volumes recorded unverified). See [Playground operations](PLAYGROUND-OPERATIONS.md).

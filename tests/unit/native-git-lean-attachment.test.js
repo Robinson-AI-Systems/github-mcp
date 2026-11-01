@@ -72,3 +72,35 @@ it('falls back to a full copy when the workspace is shallow or mid-operation', a
     expect(b64('x')).toBe('eA==');
   } finally { await rm(root, {recursive: true, force: true}); }
 });
+
+it('reuses a per-machine object cache across attachments without changing the result', async () => {
+  const {readdir} = await import('node:fs/promises');
+  const root = await mkdtemp(join(tmpdir(), 'lean-cache-')), seed = join(root, 'seed'), cache = join(root, 'cache'); await mkdir(seed); await mkdir(cache);
+  const git = (cwd, ...args) => execFileSync('git', args, {cwd, stdio: 'pipe', encoding: 'utf8'}).trim();
+  try {
+    git(seed, 'init', '-b', 'main'); git(seed, 'config', 'user.name', 'F'); git(seed, 'config', 'user.email', 'f@example.test');
+    await writeFile(join(seed, 'big.bin'), Buffer.alloc(1024 * 1024, 5)); git(seed, 'add', '.'); git(seed, 'commit', '-m', 'base');
+    const attachOnce = async (n) => {
+      const b = {...binding, authority: 'fixture-' + n};
+      const source = new NativeGitWorker({root: join(root, 'source' + n), authorize: async () => true, allowLocalFixtures: true});
+      const target = new NativeGitWorker({root: join(root, 'target' + n), authorize: async () => true, allowLocalFixtures: true});
+      const {workspace_id: id} = await source.create(b, {fixtureRemote: seed, requestKey: 'open-' + n});
+      await writeFile(join(root, 'source' + n, id, 'repo', 'note.txt'), 'note ' + n + '\n');
+      const state = await source.inspect(id, b), key = Buffer.alloc(32, 3).toString('base64'), transferId = String(n).repeat(64).slice(0, 64);
+      const call = (w, action, options, extra = {}) => attachmentRequest(w, {action, binding: b, workspace_id: id, allowWrite: true, options, ...extra}, {singleWorkspaceId: w === target ? id : undefined, objectCache: cache});
+      const ex = await call(source, 'attachment_export', {mode: 'prepare', key, transferId, expectedGeneration: state.generation, lean: true});
+      await call(target, 'attachment_import', {mode: 'begin', transferId, bytes: ex.bytes, digest: ex.digest});
+      let offset = 0; while (offset < ex.bytes) { const page = await call(source, 'attachment_export', {mode: 'read', transferId, offset}); offset = (await call(target, 'attachment_import', {mode: 'append', transferId, offset, base64: page.base64})).offset; }
+      await call(source, 'attachment_export', {mode: 'freeze', transferId});
+      expect((await call(target, 'attachment_import', {mode: 'finish', transferId, key}, {credential: 'ghs_FAKE'})).complete).toBe(true);
+      const [a, t] = await Promise.all([source.inspect(id, b), target.inspect(id, b)]);
+      expect(t.head).toBe(a.head); expect(t.status).toBe(a.status);
+      git(join(root, 'target' + n, id, 'repo'), 'fsck', '--connectivity-only');
+      // The attached repository must not depend on the cache.
+      await expect(readFile(join(root, 'target' + n, id, 'repo', '.git', 'objects', 'info', 'alternates'), 'utf8')).rejects.toThrow();
+    };
+    await attachOnce(1);
+    expect((await readdir(join(cache, 'objects.git', 'objects', 'pack'))).some(f => f.endsWith('.pack'))).toBe(true);
+    await attachOnce(2);
+  } finally { await rm(root, {recursive: true, force: true}); }
+});

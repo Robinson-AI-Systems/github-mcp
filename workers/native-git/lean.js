@@ -3,8 +3,9 @@
 // local-only commits/stash/staged blobs, and changed or untracked files. The
 // receiving broker fetches everything else from GitHub itself. Removes the 100 MiB
 // limit for ordinary workspaces; only uncommitted bytes still count toward it.
-import {readdir, readFile, writeFile, rm, mkdir, lstat, rename} from 'node:fs/promises';
+import {readdir, readFile, writeFile, rm, mkdir, lstat, rename, copyFile} from 'node:fs/promises';
 import {join, resolve, dirname} from 'node:path';
+import {constants as fsConstants} from 'node:fs';
 import {NativeGitWorker} from './engine.js';
 
 const IN_PROGRESS = ['MERGE_HEAD', 'CHERRY_PICK_HEAD', 'REVERT_HEAD', 'rebase-merge', 'rebase-apply', 'BISECT_LOG'];
@@ -47,7 +48,7 @@ export async function cleanLeanExport(dir) { await rm(join(dir, 'lean.bundle'), 
 
 // Receiver side, after the .git metadata and non-repository files are written and
 // BEFORE changed/untracked working files are written.
-export async function completeLeanImport(dir, {plan, token, remote, timeoutMs = 900000, allowLocalFixtures = false}) {
+export async function completeLeanImport(dir, {plan, token, remote, timeoutMs = 900000, allowLocalFixtures = false, objectCache = null, objectCacheMaxBytes = 20e9}) {
   const repo = join(dir, 'repo'), gitDir = join(repo, '.git');
   if (plan?.version !== 1 || !Array.isArray(plan.fetch) || !plan.fetch.every(s => SHA.test(s)) || !Array.isArray(plan.deleted)) throw new TypeError('Invalid lean attachment plan.');
   await mkdir(join(gitDir, 'objects', 'pack'), {recursive: true, mode: 0o700});
@@ -59,15 +60,42 @@ export async function completeLeanImport(dir, {plan, token, remote, timeoutMs = 
   const scratch = join(gitDir, 'robinson-lean-fetch.git');
   await rm(scratch, {recursive: true, force: true});
   await git.git(gitDir, ['init', '--bare', '--quiet', scratch]);
+  // FLEET-5: on a person's own machine, a per-machine object cache (only that
+  // person's repositories) lets repeat attachments download only what is new.
+  const cache = await openObjectCache(git, objectCache, objectCacheMaxBytes);
+  if (cache) await writeFile(join(scratch, 'objects', 'info', 'alternates'), cache + '\n', {mode: 0o600});
   try {
-    // Fetch by exact commit in batches; GitHub serves any reachable commit by SHA.
+    // Fetch by exact commit in batches into scratch refs; GitHub serves any reachable commit by SHA.
     for (let i = 0; i < plan.fetch.length; i += 50)
-      await git.git(scratch, ['fetch', '--no-tags', '--no-write-fetch-head', '--', remote, ...plan.fetch.slice(i, i + 50)], {token, remote, timeoutMs});
-    if (plan.bundle) await git.git(scratch, ['bundle', 'unbundle', join(dir, 'lean.bundle')], {timeoutMs});
+      await git.git(scratch, ['fetch', '--no-tags', '--no-write-fetch-head', '--', remote, ...plan.fetch.slice(i, i + 50).map((sha, n) => `${sha}:refs/lean/r${i + n}`)], {token, remote, timeoutMs});
+    if (plan.bundle) {
+      await git.git(scratch, ['bundle', 'unbundle', join(dir, 'lean.bundle')], {timeoutMs});
+      const heads = (await git.git(scratch, ['bundle', 'list-heads', join(dir, 'lean.bundle')])).stdout.split('\n').map(l => l.split(' ')[0]).filter(x => SHA.test(x));
+      for (const [n, sha] of heads.entries()) await git.git(scratch, ['update-ref', `refs/lean/b${n}`, sha]);
+    }
+    if (cache) {
+      // Copy borrowed objects into this repository's own pack, then share the new pack with the cache.
+      await git.git(scratch, ['repack', '-a', '-d', '-q'], {timeoutMs});
+      await rm(join(scratch, 'objects', 'info', 'alternates'), {force: true});
+      // Pack names are content hashes: an existing one is identical. Cache trouble never fails an attachment.
+      try { for (const f of await readdir(join(scratch, 'objects', 'pack'))) if (/^pack-[a-f0-9]+\.(pack|idx|rev)$/.test(f) && !await exists(join(cache, 'pack', f))) await copyFile(join(scratch, 'objects', 'pack', f), join(cache, 'pack', f), fsConstants.COPYFILE_EXCL).catch(e => { if (e.code !== 'EEXIST') throw e; }); } catch { /* best effort */ }
+    }
     await moveObjects(join(scratch, 'objects'), join(gitDir, 'objects'));
   } finally { await rm(scratch, {recursive: true, force: true}); }
   await git.git(repo, ['checkout-index', '-a', '-f'], {timeoutMs});
   return git;
+}
+async function openObjectCache(git, root, maxBytes) {
+  if (typeof root !== 'string' || !/^\/[A-Za-z0-9_./-]{1,200}$/.test(root) || root.includes('..')) return null;
+  try {
+    const repo = join(root, 'objects.git'), objects = join(repo, 'objects');
+    if (await exists(join(objects, 'pack'))) {
+      let size = 0; for (const f of await readdir(join(objects, 'pack'))) size += (await lstat(join(objects, 'pack', f))).size;
+      if (size > maxBytes) await rm(repo, {recursive: true, force: true}); // simple bound: start over
+    }
+    if (!await exists(join(objects, 'pack'))) await git.git(root, ['init', '--bare', '--quiet', repo]);
+    return objects;
+  } catch { return null; } // a broken cache never blocks an attachment
 }
 async function moveObjects(from, to) {
   for (const entry of await readdir(from)) {

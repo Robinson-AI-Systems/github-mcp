@@ -24,7 +24,7 @@ const GIB = 1024 ** 3;
 
 // A fake Docker that behaves like an isolated compose run on loopback.
 function fakeDocker({internal = true, publishCoding = false, failUp = false} = {}) {
-  const calls = [], live = new Set();
+  const calls = [], live = new Set(), caches = new Set();
   const exec = async (cmd, a) => {
     calls.push([cmd, ...a].join(' '));
     const s = a.join(' ');
@@ -32,6 +32,10 @@ function fakeDocker({internal = true, publishCoding = false, failUp = false} = {
     if (s.startsWith('compose version')) return '2.29.7';
     if (s.startsWith('info')) return '/var/lib/docker';
     if (s.startsWith('network create') || s.startsWith('network rm')) return '';
+    if (s.startsWith('volume inspect')) { if (!caches.has(a[2])) throw new Error('no such volume'); return '[]'; }
+    if (s.startsWith('volume create')) { caches.add(a.at(-1)); return a.at(-1); }
+    if (s.startsWith('volume rm')) { caches.delete(a[2]); return ''; }
+    if (s.startsWith('run') && s.includes('chown 1000:1000')) return '';
     if (s.startsWith('run') && s.includes(' id -u')) return '1000';
     if (s.startsWith('run') && s.includes('wget')) { if (internal) throw Object.assign(new Error('network unreachable'), {stderr: 'bad address'}); return 'ok'; }
     if (s.startsWith('network ls -q --filter name=')) return '';
@@ -46,7 +50,7 @@ function fakeDocker({internal = true, publishCoding = false, failUp = false} = {
     if (/^(container|volume|network) ls/.test(s)) return '';
     throw new Error('unexpected docker call: ' + s);
   };
-  return {exec, calls, live};
+  return {exec, calls, live, caches};
 }
 
 async function setup({docker = fakeDocker(), freeMemoryBytes = 12 * GIB} = {}) {
@@ -113,6 +117,12 @@ describe('FLEET-3 dial-out hosts', () => {
     expect(allocated).toMatchObject({phase: 'allocated', deviceNetwork: {workspaceInternal: true, codingPublishedPorts: 0, source: 'device_attested'}});
     expect(t.docker.calls.some(c => c.includes('up -d --build'))).toBe(true);
     expect(t.agent.state.allocations[queued.binding].port).toBe(41234);
+    // FLEET-5: per-machine caches are mounted into the runtime and survive the runtime.
+    const local = JSON.parse(await (await import('node:fs/promises')).readFile(t.agent.state.allocations[queued.binding].file, 'utf8'));
+    expect(local.services.coding.environment.CODING_CACHE_ROOT).toBe('/cache');
+    expect(local.services.broker.environment.NATIVE_GIT_OBJECT_CACHE).toBe('/git-cache');
+    expect(local.volumes['cache-deps']).toMatchObject({external: true});
+    expect(t.docker.caches.size).toBe(2);
     // Signed command travels relay → agent → loopback gateway → runtime, signature intact.
     const attachedRecord = {...record, allocation: {binding: playgroundBinding(record), url: new URL('/v1/coding', allocated.origin).href}};
     const started = await callPlayground(t.w.ctx, attachedRecord, 'start', {requestKey: 'pg_exec_' + 'c'.repeat(64), argv: ['npm', 'test']});
@@ -122,6 +132,7 @@ describe('FLEET-3 dial-out hosts', () => {
     const disposed = await disposeAllocation(t.w.ctx, record, {deviceWaitMs: 5000});
     expect(disposed).toMatchObject({phase: 'disposed', cleanupEvidence: 'device_attested'});
     expect(t.agent.state.allocations[queued.binding]).toBeUndefined();
+    expect(t.docker.caches.size).toBe(2); // stopping a runtime keeps the caches
   });
 
   it('refuses an allocation whose runtime the machine would expose, and waits while the machine is offline', async () => {
@@ -151,6 +162,7 @@ describe('FLEET-3 dial-out hosts', () => {
     await t.drain(); // terminate order → down everything → allAbsent
     expect((await t.store.list())[0].status).toBe('revoked');
     expect(Object.keys(t.agent.state.allocations)).toHaveLength(0);
+    expect(t.docker.caches.size).toBe(0); // revocation removes this person's caches too
     expect((await disposeAllocation(t.w.ctx, record, {deviceWaitMs: 0})).cleanupEvidence).toBe('device_terminate_attested');
     expect(await t.agent.checkInOnce()).toMatchObject({revoked: true});
   });

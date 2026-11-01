@@ -28,6 +28,16 @@ test('only the fixed isolated gateway is exposed as the clean command egress pro
   assert.equal((await settled(r,x.id)).exitCode,0);
  }finally{await cleanup(r);}
 });
+test('a machine-provided dependency cache is handed to package managers; invalid cache paths are ignored',async()=>{
+ const r=await fixture({cacheRoot:'/tmp/robinson-cache'});try{
+  const x=await r.start({requestKey:'cache-env',argv:[node,'-e',"const a=require('node:assert/strict');a.equal(process.env.NPM_CONFIG_CACHE,'/tmp/robinson-cache/npm');a.equal(process.env.PIP_CACHE_DIR,'/tmp/robinson-cache/pip');a.equal(process.env.XDG_CACHE_HOME,'/tmp/robinson-cache');console.log('cache ready')"]});
+  assert.equal((await settled(r,x.id)).exitCode,0);
+ }finally{await cleanup(r);}
+ const bad=await fixture({cacheRoot:'../escape'});try{
+  const y=await bad.start({requestKey:'no-cache',argv:[node,'-e',"process.exit(process.env.NPM_CONFIG_CACHE===undefined?0:3)"]});
+  assert.equal((await settled(bad,y.id)).exitCode,0);
+ }finally{await cleanup(bad);}
+});
 test('durable replay, concurrent duplicate admission, conflict and restart recovery',async()=>{
  const r=await fixture();try{
   const args={requestKey:'once',argv:[node,'-e',"require('fs').appendFileSync('counter','1')"]};const calls=await Promise.allSettled([r.start(args),r.start(args)]);const x=calls.find(x=>x.status==='fulfilled').value;await settled(r,x.id);assert.equal((await r.start(args)).replayed,true);await assert.rejects(r.start({...args,argv:['true']}),{code:'intent_conflict'});assert.equal(await readFile(join(r.root,'repo/counter'),'utf8'),'1');

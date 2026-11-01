@@ -139,6 +139,7 @@ autoscaling pool.
 | `NATIVE_GIT_CONTROL_PUBLIC_KEY` | worker | Pinned MCP verification key |
 | `NATIVE_GIT_STORAGE_ROOT`, `PORT` (3000) | worker | Data root and port |
 | `NATIVE_GIT_CLONE_TIMEOUT_MS` (900000) | worker | Background clone watchdog, clamped to 45 s–60 min |
+| `NATIVE_GIT_OBJECT_CACHE` | Playground broker on a person's own machine | Per-machine Git object cache used by lean attachment (set by the host agent) |
 | `NATIVE_GIT_MEMORY_LIMIT` (2g), `NATIVE_GIT_CPUS` (2.0) | worker compose | Whole-container ceilings shared by every workspace |
 | `NATIVE_GIT_MIN_AVAILABLE_MEMORY_MB` (32), `NATIVE_GIT_MIN_AVAILABLE_DISK_MB` (64), `NATIVE_GIT_MAX_LOOP_DELAY_MS` (250) | worker | Admission floors |
 | `NATIVE_GIT_SNAPSHOT_KEY` | operator CLI | 32-byte base64 snapshot key (environment only) |
