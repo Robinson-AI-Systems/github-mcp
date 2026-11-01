@@ -105,7 +105,14 @@ requested → (waiting_resources) → creating → created → exposing → expo
   the whole runtime stops (`restart: no`; files are preserved and `resume` brings it back). The lease is never extended.
 - **Cleanup:** revoked/expired authority, idle expiry or `dispose` → stop, verify every container exited, delete the
   compose with its four volumes, read back absence, then close the exact source Git workspace. A delete acknowledgement
-  alone is never proof.
+  alone is never proof. Dokploy refuses volume reads (HTTP 401) to project keys: with no operator feed configured, disposal
+  completes once the compose and every container are independently gone and records
+  `cleanupEvidence: compose_and_containers_absent_volume_read_forbidden`, `volumesVerified: false` (issue #509); with a feed
+  configured, its signed observation is still required.
+- **Startup:** the runtime's first heartbeats go through the broker, which starts in parallel. Until the first signed
+  answer the runtime keeps retrying for up to 3 minutes (no command can start without a lease) instead of exiting; a
+  forged or tampered first answer still stops it. Attach reports "not reachable yet" (retryable, nothing transferred)
+  while the runtime or its HTTPS address is still coming up.
 
 ## Resource modes
 

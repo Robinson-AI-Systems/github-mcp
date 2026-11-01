@@ -14,7 +14,10 @@ export async function attachRepository(ctx,record,{budgetMs=15000}={}){
  const brokerJob={...record.job,brokerOrigin:stored.plan.origin,allocationBinding:binding};
  const invoke=(job,action,options,network=false)=>callNativeWorker(ctx,{binding:record.binding,workspace_id:record.worker,job,action,options,allowWrite:true,renewLease:false,network,preferShortLived:network});
  if(stored.phase==='attached'){if(stored.transfer)await invoke(sourceJob,'attachment_export',{mode:'release',transferId:stored.transfer.transferId});return stored;}
- const [sourceCap,brokerCap]=await Promise.all([callNativeWorker(ctx,{action:'capabilities',job:sourceJob}),callNativeWorker(ctx,{action:'capabilities',job:brokerJob})]);
+ const sourceCap=await callNativeWorker(ctx,{action:'capabilities',job:sourceJob});
+ // Issue #509: a runtime that is still starting (or whose HTTPS name is still being set up) is
+ // "not ready yet", not an uncertain write: nothing was sent to either copy.
+ let brokerCap;try{brokerCap=await callNativeWorker(ctx,{action:'capabilities',job:brokerJob});}catch{throw Object.assign(failure('The runtime is not reachable yet (still starting, or its HTTPS address is being set up). Nothing was transferred; run attach again in a minute.'),{safeRetryable:true,noOperationStarted:true});}
  if(sourceCap.repository_attachment!=='sealed-mounted-v1'||brokerCap.repository_attachment!=='sealed-mounted-v1')throw failure('Update the Git worker/broker to the checked sealed attachment protocol. No shared-worker command execution is used.');
  if(!stored.transfer){
   const state=await callNativeWorker(ctx,{binding:record.binding,workspace_id:record.worker,job:sourceJob,action:'inspect'});
