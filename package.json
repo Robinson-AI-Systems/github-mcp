@@ -28,6 +28,7 @@
     "session:prepare": "node scripts/session-prepare.mjs",
     "smoke:readonly": "node scripts/smoke-readonly.mjs",
     "test:load": "node scripts/load-test-public.mjs",
+    "launch:readiness": "node scripts/launch-readiness.mjs",
     "marketplace:screenshots": "MARKETPLACE_SHOTS=1 VITEST_CONFIG=vitest.browser.config.js bash scripts/local-postgres-test.sh tests/browser/home-page.test.js"
   },
   "dependencies": {

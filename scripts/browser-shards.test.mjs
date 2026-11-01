@@ -5,8 +5,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { BROWSER_SHARDS, actualBrowserSpecs, validateBrowserShards } from './browser-shards.mjs';
 
-test('all three browser spec files are in exactly one required CI shard', () => {
-  assert.deepEqual(validateBrowserShards(), { shards: 3, testFiles: 3 });
+test('all four browser spec files are in exactly one required CI shard', () => {
+  assert.deepEqual(validateBrowserShards(), { shards: 3, testFiles: 4 });
+  assert.deepEqual(BROWSER_SHARDS['home-page'], ['tests/browser/home-page.test.js', 'tests/browser/launch-pages.test.js']);
   assert.deepEqual(Object.keys(BROWSER_SHARDS), ['sign-in', 'home-page', 'fair-use']);
 });
 test('a newly added spec cannot vanish silently', () => {

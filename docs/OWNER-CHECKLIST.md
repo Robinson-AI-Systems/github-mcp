@@ -33,6 +33,11 @@ Only things that need you (your sign-in, phone or desktop, money, or a decision)
 - [ ] Official MCP Registry listing (only if wanted): choose where the signing key lives and finish the DNS step. Never put the key in chat or the repo.
 - [ ] Website button: [connect-button](website/connect-button.html) goes on the business site through that site's own work.
 
+**Before opening wider (PUB-7, added 2026-11-01).** The readiness report (`github_launch_readiness`, or `npm run launch:readiness`) reads these three boxes. Agents tick a box only after you say it is done. None of them blocks building; the report only says when to ask you about opening wider, and it never changes a setting.
+- [ ] Review draft legal pages with a lawyer before public opening. You approved the privacy, terms, security and support text on 2026-10-25; no lawyer has read it (agents are not lawyers). Also read the new draft `/status` page; if you are happy with it, set `STATUS_PAGE_APPROVED=yes` in Vercel production (until then it shows a draft banner).
+- [ ] Confirm the GitHub App is set up for public use: on GitHub's App settings page, check name, logo, homepage, support contact, the addresses in [GO-LIVE-CHECKLIST](GO-LIVE-CHECKLIST.md) section 3 and the permission list ([review](audits/APP-PERMISSIONS-2026-10.md)). Tell an agent "App settings checked".
+- [ ] Real-device check before opening: a first-time person (or you, signed in as a new person) connects on a real phone, installs the App, adds an extra token and sees tools unlock. Tell an agent how it went; agents run everything else in test browsers.
+
 ## Playground (coding workspaces)
 
 - [x] **Done 2026-11-01 (by Vivienne for Chris):** the `github-mcp-runtime` package is public (the org setting allowing public packages was turned on first). Anonymous pulls verified. Runtimes now use the published image of each release automatically — no digest to pin by hand.

@@ -28,7 +28,9 @@ Set in Vercel Production, then redeploy.
 - Limits with defaults: `GITHUB_PUBLIC_MAX_CLIENTS` (100000), `GITHUB_PUBLIC_MAX_OPEN_FLOWS` (5000), `GITHUB_PUBLIC_MAX_OPEN_FLOWS_PER_CLIENT` (20). Free use per person: `PUBLIC_FREE_CALLS_PER_DAY` (5000), `PUBLIC_FREE_WRITES_PER_HOUR` (300). People who never return are cleaned up after `PUBLIC_INACTIVE_DAYS` (180). Source: `src/tenancy/public-connect.js`, `public-usage.js`. These are server fairness settings, not limits on your own connection; `PUBLIC_UNLIMITED_SUBJECTS` exempts named people.
 - `GITHUB_PUBLIC_INVITE_ONLY=enabled` limits NEW people to the invite list on the setup page. Existing people are never locked out.
 - `GITHUB_PUBLIC_NEW_SIGNUPS=paused` closes new sign-ups by hand. They also pause on their own when the cost estimate reaches `PUBLIC_COST_PAUSE_CENTS` (5000). Estimate settings: `PUBLIC_COST_PER_1K_CALLS_CENTS` (5), `PUBLIC_COST_ALERT_CENTS` (2000).
-- `PUBLIC_SUPPORT_EMAIL`, then `LEGAL_APPROVED=yes` after you approve the text. Until then `/privacy`, `/terms`, `/security`, `/support` show a DRAFT banner.
+- `PUBLIC_SUPPORT_EMAIL`, then `LEGAL_APPROVED=yes` after you approve the text. Until then `/privacy`, `/terms`, `/security`, `/support` show a "DRAFT — not yet reviewed by a lawyer; not in effect" banner.
+- `STATUS_PAGE_APPROVED=yes` after you read the new `/status` page (PUB-7). Until then it shows the same draft banner. It is not linked from any page.
+- Before opening wider, ask the owner tool `github_launch_readiness` (or run `npm run launch:readiness`). It says per launch condition met / not met / needs you, and never changes a setting.
 - GitHub App settings for public sign-in: "Request user authorization (OAuth) during installation" OFF; Setup URL `/api/github/setup`; webhook `https://github.robinsonaisystems.com/api/github/webhook`; callback `/api/github/user-callback`. The webhook address was moved 2026-10-24 (per earlier record; not rechecked today).
 - My connection page: `/connection` (public sign-in only).
 

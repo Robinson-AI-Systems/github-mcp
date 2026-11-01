@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 
 export const BROWSER_SHARDS = Object.freeze({
   'sign-in': ['tests/browser/sign-in.test.js'],
-  'home-page': ['tests/browser/home-page.test.js'],
+  'home-page': ['tests/browser/home-page.test.js', 'tests/browser/launch-pages.test.js'],
   'fair-use': ['tests/browser/fair-use.test.js']
 });
 

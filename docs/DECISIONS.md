@@ -56,3 +56,12 @@ Chris approved building all nine previously unapproved items, each used only whe
 ("self aware on when to actually use the things that are built"). Item 5 (single-container runtime) is not built:
 it removes executed-code/Git-broker isolation and no demand level justifies that. Design:
 [GATED-EXPANSION](designs/GATED-EXPANSION-2026-11-01.md); cards FLEET-2, FLEET-7, PUB-7, PUB-8, PUB-9, CAP-6.
+
+## 2026-11-01 — PUB-7: approved live policies stay in effect; the lawyer review is an owner row
+
+The PUB-7 card asked for "draft" legal pages labelled for Chris and a lawyer. On `main` the privacy, terms, security and
+support pages were already approved by Chris on 2026-10-25 (`docs/legal/OWNER-REVIEW.md`) and live with `LEGAL_APPROVED=yes`.
+Relabelling them "not in effect" in production would withdraw a live, approved privacy notice, so they keep their approved
+text there; anywhere `LEGAL_APPROVED` is not `yes` they say "DRAFT — not yet reviewed by a lawyer; not in effect." The lawyer
+review is the owner checklist row "Review draft legal pages with a lawyer before public opening", which the readiness gate
+reads. The new `/status` page has its own approval (`STATUS_PAGE_APPROVED=yes`), because the 2026-10-25 approval did not cover it.

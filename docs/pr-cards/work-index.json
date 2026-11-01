@@ -2778,7 +2778,7 @@
       "design": "docs/designs/GATED-EXPANSION-2026-11-01.md",
       "dependencies": [],
       "card": "docs/pr-cards/PUB-7.md",
-      "status": "APPROVED",
+      "status": "MERGED",
       "migration": "none",
       "budget": 800,
       "units": [
@@ -2786,7 +2786,9 @@
       ],
       "readiness": "READY",
       "ownerInputs": [],
-      "pr": []
+      "pr": [
+        520
+      ]
     },
     {
       "id": "PUB-8",
