@@ -16,7 +16,7 @@ const CSP = "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; form
 const STYLE = BRAND_CSS + '.row{display:flex;justify-content:space-between;gap:10px;align-items:center;border-top:1px solid var(--border);padding:10px 0}' +
   '.row:first-of-type{border-top:0}.tag{font-size:.8rem;color:var(--muted)}.ok{color:var(--brand)}button.plain{background:none;border:1px solid var(--border);color:var(--text)}' +
   'a.button{display:block;text-align:center;font:600 16px Inter,-apple-system,sans-serif;color:#fff;background:var(--grad);border-radius:50px;padding:13px 20px;text-decoration:none}' +
-  '.notice{border:1px solid var(--brand);border-radius:12px;padding:12px;margin:0 0 14px}';
+  '.notice{border:1px solid var(--brand);border-radius:12px;padding:12px;margin:0 0 14px}.row>span{min-width:0;overflow-wrap:anywhere}code{overflow-wrap:anywhere}';
 const STEP = '/api/oauth/authorize';
 
 function page(res, status, title, body) {
