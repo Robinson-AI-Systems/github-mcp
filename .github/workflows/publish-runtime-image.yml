@@ -30,7 +30,14 @@ jobs:
         with:
           persist-credentials: false
       - name: Build the production runtime image
-        run: docker build --pull --target production -f workers/coding-workspace/Dockerfile -t "ghcr.io/robinson-ai-systems/github-mcp-runtime:${GITHUB_SHA}" .
+        # The source label links the package to this repository; GitHub only lets the
+        # workflow token create an organization package that is linked this way.
+        run: >-
+          docker build --pull --target production -f workers/coding-workspace/Dockerfile
+          --label "org.opencontainers.image.source=https://github.com/${GITHUB_REPOSITORY}"
+          --label "org.opencontainers.image.revision=${GITHUB_SHA}"
+          --label "org.opencontainers.image.description=Robinson Playground runtime (public source, no secrets)"
+          -t "ghcr.io/robinson-ai-systems/github-mcp-runtime:${GITHUB_SHA}" .
       - name: Smoke-test the exact image before publishing
         run: docker run --rm --network none --read-only --cap-drop ALL --user 1000:1000 "ghcr.io/robinson-ai-systems/github-mcp-runtime:${GITHUB_SHA}" node --version
       - name: Publish and record the digest
