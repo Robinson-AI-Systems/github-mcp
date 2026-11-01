@@ -65,3 +65,25 @@ node tools/playground-device/probe-server.mjs --device DEVICE_ID --origin 'https
 5. The enrollment **remains `pending_canary`**. A successful probe is only a signed tunnel/key reachability check. Actual Node 24/PostgreSQL/Chromium source attachment, current-grant runtime heartbeat, permissions, isolation, command/handle recovery and revocation still require separate proof. Stop the receiver when finished; to revoke, use your own My connection page.
 
 The receiver requires a live signature, matching device ID, generation, pinned origin and previously unseen nonce. It durably records used nonce hashes under `~/.config/ras-playground/probe-replay/` with owner-only permissions, so a receiver restart does not restore an old claim; this directory contains no GitHub keys or file contents. If the PC sleeps or loses the tunnel, the probe fails closed and does not create another host or rerun an uncertain command. No hosted fallback or paid tunnel is automatically started.
+
+## Device-signed local runtime proof — separate from host admission
+
+After you have **personally paired** the PC and already installed the reviewed immutable coding image, you can record that the fixed local Node/PostgreSQL/Chromium canary actually passed. This is user-initiated local work only; the MCP does not remotely run a Docker command.
+
+Use the same reviewed `deviceId`, generation, origin, workspace binding, image digest and control **public key** from your actual connection. In WSL2:
+
+```sh
+node tools/playground-device/install.mjs --action canary --device DEVICE_ID --binding EXACT_WORKSPACE_BINDING --image 'REVIEWED_IMAGE@sha256:DIGEST' --control-key 'ed25519:PUBLIC_CONTROL_KEY' --origin 'https://your-own-registered-tunnel.example' --generation YOUR_ENROLLMENT_GENERATION
+```
+
+This first runs the existing fixed image canary, then reads the **already paired, local Ed25519 signing key** and writes an owner-only, short-lived signed receipt under `~/.config/ras-playground/canary-receipts/`. No key or repo file body is in the receipt. If the local canary fails, no successful receipt is written. The receipt claims **no 150 GB guaranteed quota, no shared Git attachment and no execution authorization**.
+
+Run the same loopback probe receiver as above but add the exact local workspace binding and immutable image:
+
+```sh
+node tools/playground-device/probe-server.mjs --device DEVICE_ID --origin 'https://your-own-registered-tunnel.example' --generation YOUR_ENROLLMENT_GENERATION --control-key 'ed25519:PUBLIC_CONTROL_KEY' --port 4143 --binding EXACT_WORKSPACE_BINDING --image 'REVIEWED_IMAGE@sha256:DIGEST'
+```
+
+With your own HTTPS tunnel still forwarding only the two fixed enrollment paths to loopback, open **My connection**: first click **Check my signed device tunnel**, then within five minutes click **Verify my fixed local runtime test receipt**. The controller verifies that the receipt and fresh signed nonce are from your original paired device and records the precise immutable image and binding in your tenant. Any stale/missing/wrong-device report fails closed.
+
+**Do not treat this as completed enrollment.** The source/native-Git worktree must still be attached with exact generation and uncommitted data; the continuous current-grant lease, true network/egress boundaries and signed whole-allocation cleanup still need independent proof. Until that full admission, `github_playground_execute/read/cancel` never chooses this enrolled device and the status remains `pending_canary`. You can revoke the enrollment at any time.
