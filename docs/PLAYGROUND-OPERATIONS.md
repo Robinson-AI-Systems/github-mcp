@@ -26,6 +26,9 @@ hypervisor VMs.
 | `PLAYGROUND_TELEMETRY_URL`, `PLAYGROUND_TELEMETRY_PUBLIC_KEY` | — | Signed capacity/enforcement feed. **Setting the URL turns best-effort off**: every workspace then needs signed enforcement records |
 | `PLAYGROUND_ADMISSION`, `PLAYGROUND_ENFORCEMENT` | — | Static compatibility observations used only when no feed is configured; enforcement rows expire within 4 h |
 | `PLAYGROUND_STORAGE_DRIVER`/`_OPTIONS`, `PLAYGROUND_NETWORK_DRIVER`/`_OPTIONS` | — | Optional operator quota/egress drivers (verified mode) |
+| `PLAYGROUND_WARM_RUNTIMES` | `auto` | Warm-runtime gate (FLEET-7): `auto` lets the coded gate decide; `off` drains every warm image holder at the next sweep. Any other value counts as off |
+| `PLAYGROUND_WARM_MIN_ALLOCATIONS_PER_HOUR`, `PLAYGROUND_WARM_ALLOCATIONS_PER_IMAGE`, `PLAYGROUND_WARM_MAX_IMAGES` | 6, 6, 2 | Demand needed (new pool runtimes per hour averaged over the last 24 h), runtimes per hour per extra warm image, and the most images kept warm per pool (0–3). See [warm runtimes](#warm-runtimes-fleet-7-2026-11-01) |
+| `PLAYGROUND_WARM_MIN_HOST_MEMORY_BYTES`, `PLAYGROUND_WARM_MIN_HOST_DISK_BYTES`, `PLAYGROUND_WARM_MAX_HOST_PRESSURE`, `PLAYGROUND_WARM_DISK_PER_IMAGE_BYTES` | 8 GiB, 50 GB, 0.5, 6 GB | Fresh host headroom needed before anything is kept warm, and the disk one warm image is assumed to take. Stricter than allocation admission on purpose. An invalid value turns warm runtimes off |
 | `PLAYGROUND_ALLOCATIONS` | — | Legacy manual `{workspace_id,binding,origin}` list; managed allocations use stored records |
 
 Set inside each allocation by the plan (never by hand): `CODING_WORKSPACE_BINDING`, `CODING_CONTROL_PUBLIC_KEY`,
@@ -115,6 +118,43 @@ stop) and the container's cgroup `memory.events` `oom_kill` counter rose during 
 `reason: out_of_memory`. `github_playground_read` status, `github_playground_execute` and `github_playground_run` then add
 `upsize: {next_size, hint}` (small → medium → large; on large: split the job). Reading the counter is best effort; when it
 is unreadable the old reasons are kept.
+
+### Warm runtimes (FLEET-7, 2026-11-01)
+
+**What it is.** A warm runtime is a tiny **image holder**: a one-service compose (`ras-pg-warm-<16 hex>`, 0.05 CPU,
+64 MiB, `network_mode: none`, read-only, UID 1000, all capabilities dropped, `restart: no`) whose only job is to keep the
+exact digest-pinned runtime image on the pool's host, so a new workspace's own containers start without downloading it.
+It has no environment variables, volumes, networks, ports, domains, binding labels, keys or credentials. No allocation
+ever adopts, binds to or reuses a holder: every workspace still gets its own fresh, single-use, per-binding allocation
+(plan, volumes, networks, lease and cleanup unchanged). Its name contains `warm`, so it can never match an allocation
+(`ras-pg-<32 hex>`). Source builds are not warmed (only digest-pinned images).
+
+**When it is used (the gate, `src/playground/warm-runtimes.js`).** Evaluated per pool by every cleanup sweep:
+
+1. Demand: new pool runtimes in the last 24 h (stored allocation index, disposed ones included, people's own computers
+   excluded) divided by 24 must reach `PLAYGROUND_WARM_MIN_ALLOCATIONS_PER_HOUR` (6/hour = 144 a day). Below that it is
+   off and no telemetry, registry or Dokploy call is made.
+2. Fresh host headroom: the same signed capacity observation allocations use (`PLAYGROUND_TELEMETRY_URL`, or a static
+   `PLAYGROUND_ADMISSION`), at most 60 s old and for this pool's project, must show at least 8 GiB free memory, 50 GB
+   free disk and pressure ≤ 0.5 (settings above). No fresh reading = off.
+3. Size: `min(MAX_IMAGES, ceil(demand per hour ÷ ALLOCATIONS_PER_IMAGE), images in use, holders already warm + whole
+   6 GB images that fit above the free-disk minimum)`. Images are the operator pin, or the published `full`/`slim` tags
+   ranked by how many new runtimes used each.
+
+When the gate stops wanting a holder (demand fell, headroom shrank or went stale, setting `off`, image changed with a
+new release) the sweep drains it: stop → every container exited → delete → independent absence readback, then the record
+is removed. Every transition is a compare-and-set on the root setting `playground_warm`, written before the provider
+call; at most one holder is created per sweep; a lost create is recovered from exact inventory (dropped only if it never
+appears within 10 minutes); a holder whose source changed is never stopped or deleted; a holder of a removed pool is
+preserved and reported pending. Revocation and tenant removal have nothing to revoke in a holder (it holds no authority).
+
+**Seeing the decision.** `github_playground_read` operation `capabilities` or `availability` **without** a
+`workspace_id` returns `warm_runtimes {enabled, reason, pools[{pool, enabled, target_images, demand_per_hour}],
+warm_images[{pool, variant, phase}], never_bound}` in plain words. The sweep response carries `warm {enabled, running,
+pending}`.
+
+**Today (defaults, one small shared host, best effort without a capacity feed):** off: demand is a handful of runtimes a
+day and there is no fresh host measurement. No spend, no extra containers.
 
 ## Lifecycle
 
@@ -250,7 +290,7 @@ redirects, cookies or compressed bodies.
   out (it did once, owner checklist item 3). Spread load with `PLAYGROUND_POOLS`, use `runtime: none` and smaller classes,
   or let people run on their own machines.
 - **Startup is slow for small jobs:** per-allocation build (without `PLAYGROUND_IMAGE`), four services, new TLS
-  certificate, multi-sweep attachment. Fixes are FLEET-2 (slim image, warm pool, ephemeral runs).
+  certificate, multi-sweep attachment. FLEET-2 added the slim image and run-at-commit; FLEET-7 keeps runtime images warm only under measured demand.
 - **No resize:** change size by finishing work, disposing, and opening a new workspace with another class.
 - **No verified backup** of runtime volumes exists; under the 2026-10-30 owner decision it is optional future work.
 

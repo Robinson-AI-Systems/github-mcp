@@ -100,9 +100,8 @@ already specifies.
   so pull/start is seconds instead of minutes. `medium`/`large` keep the full image. Both pinned by digest.
 - **Collapsed shape for small jobs:** one container (executor) + the host agent's broker, instead of four services and a
   private network per workspace. On agent-mode hosts the per-allocation ingress gateway disappears (no inbound traffic).
-- **Warm pool:** each host keeps N pre-started, unbound slim containers (N from heartbeat headroom, default 1). Binding a
-  warm container to a workspace is a signed bind, then it is single-use and destroyed after — never reused across
-  workspaces or tenants.
+- **Warm pool:** built as FLEET-7 (2026-11-01) in a safer form: tenant-free image holders that keep the runtime image on
+  the host, never a pre-started bindable runtime; gated on measured demand and fresh headroom. See `docs/pr-cards/FLEET-7.md`.
 - **Ephemeral run mode** for "run this command at this commit": clone/reference-copy at an exact SHA (plus the small dirty
   diff when present), run, return receipts, destroy. No long-lived allocation. Uses the same execute/read/cancel tools.
 - **Upsize on pressure, honestly:** an out-of-memory or pressure refusal returns a suggestion to re-run with the next class;

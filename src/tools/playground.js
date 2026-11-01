@@ -2,6 +2,7 @@ import {createPreviewEntry} from '../playground/preview-entry.js';
 import {attachRepository} from '../playground/attachment.js';
 import {ensureAllocation,disposeAllocation,allocationRecord,inspectAllocation,resumeAllocation} from '../playground/allocations.js';
 import {playgroundAvailability,playgroundFallback,requirePlaygroundExecution} from '../playground/availability.js';
+import {warmRuntimeStatus} from '../playground/warm-runtimes.js';
 import {defineRead} from './define-read.js';
 import {passRefusal} from '../rtc/pass-scope.js';
 import {withUpsizeHint} from '../playground/sizing.js';
@@ -34,8 +35,8 @@ const execute=defineGithubWrite({name:'github_playground_execute',area:'playgrou
 const read=defineRead({name:'github_playground_read',area:'playground',audience:['B','O','Op'],description:'Inspect Playground availability, safe fallback, command status, protected logs and private development text previews.',guidance,byteWindow:true,
  properties:{...properties,operation:{type:'string',enum:['capabilities','availability','allocation','status','logs','preview']},port:{type:'integer',minimum:1024,maximum:65535},path:{type:'string',maxLength:4096},expectedBodyHash:{type:'string',pattern:'^[a-f0-9]{64}$'},execution_id:EXECUTION,requestKey:{type:'string',minLength:1,maxLength:128},byteOffset:{type:'integer',minimum:0},byteLength:{type:'integer',minimum:1,maximum:32768},expectedLogHash:{type:'string',pattern:'^[a-f0-9]{64}$'}},required:['operation'],
  handler:async(a,c)=>{
-  if(a.operation==='availability'&&!a.workspace_id)return playgroundFallback('workspace_required');
-  if(a.operation==='capabilities'&&!a.workspace_id)return{product:"Robinson's Playground",operations:['github_playground_run','github_playground_execute','github_playground_read','github_playground_cancel','github_playground_workspace'],runtime_attached:false,setup_required:true,next:'Use an attached workspace_id and repository to check its actual runtime. Installation alone does not attach a runtime.',setup:'https://github.com/Robinson-AI-Systems/github-mcp/blob/main/docs/CODING-WORKSPACES.md'};
+  if(a.operation==='availability'&&!a.workspace_id)return{...playgroundFallback('workspace_required'),warm_runtimes:await warmRuntimeStatus(c)};
+  if(a.operation==='capabilities'&&!a.workspace_id)return{product:"Robinson's Playground",operations:['github_playground_run','github_playground_execute','github_playground_read','github_playground_cancel','github_playground_workspace'],runtime_attached:false,setup_required:true,next:'Use an attached workspace_id and repository to check its actual runtime. Installation alone does not attach a runtime.',setup:'https://github.com/Robinson-AI-Systems/github-mcp/blob/main/docs/CODING-WORKSPACES.md',warm_runtimes:await warmRuntimeStatus(c)};
   const record=await playgroundRecord(c,a,{allowUnattached:['capabilities','availability','allocation'].includes(a.operation)});
   if(a.operation==='allocation')return await inspectAllocation(c,record);
   if(a.operation==='availability')return await availability(c,record);
