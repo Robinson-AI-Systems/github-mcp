@@ -95,3 +95,14 @@ instead of "Attachment window differs"; availability waits up to ~6 s for a just
 OOM protection above. Tests: `write-core.test.js` (replay refresh), `playground-attach-concurrency.test.js`,
 `playground-authority-startup.test.js`, `playground-sizing.test.js` (swap cap), coding-workspace `smoke.test.js`
 (command reads `oom_score_adj` 1000).
+
+## 2026-11-01 — Cleanup sweep kept abandoned workspaces alive
+
+Live, Dokploy project "Github MCP": five allocations from 2026-10-30/31 (phases `deploying`/`allocated`/`attaching`)
+never cleaned up; their native jobs were still `pending` with `expires_at` renewed to now + 4 h on every sweep. Cause:
+the sweep retries unfinished attaches, and attach's source `inspect` call renewed the workspace lease. Fixed:
+`renewLease:false` (test: `playground-attach-concurrency.test.js` "never renews…", fails without the fix). The
+manager's inherited runtime `HEALTHCHECK` (port 3000, which the manager never opens) is disabled for the manager, so
+"unhealthy" no longer shows falsely (applies when the manager is next recreated). After release the five rows expire
+normally (≤ 4 h idle) and the sweep disposes them — that is the live check for this fix. Expiry cleanup of a new
+workspace (`job_5369bc0a1bbe5b6f`, 3-minute lease) already passed live: closed and no containers left within ~8 min.

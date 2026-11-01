@@ -18,7 +18,7 @@ export async function ensureProjectManager(ctx,config,provider){
  // shape before byte-exact provider ownership comparison; never repin to the
  // current controller image merely because settings were read from Postgres.
  const source={image:pinnedSource.image,...(pinnedSource.build?{build:{context:pinnedSource.build.context,dockerfile:pinnedSource.build.dockerfile,target:pinnedSource.build.target}}:{})};
- const composeFile=JSON.stringify({name,services:{manager:{...source,user:'1000:1000',init:true,restart:'unless-stopped',read_only:true,cap_drop:['ALL'],security_opt:['no-new-privileges:true'],mem_limit:'128m',cpus:'0.1',command:['node','workers/coding-workspace/manager.js'],environment:{PLAYGROUND_SWEEP_URL:new URL('/api/playground/sweep',origin).href,PLAYGROUND_SWEEP_KEY:sweepKey(ctx.env)},tmpfs:['/tmp:rw,noexec,nosuid,nodev,size=16m,mode=1777']}}});
+ const composeFile=JSON.stringify({name,services:{manager:{...source,user:'1000:1000',init:true,restart:'unless-stopped',read_only:true,cap_drop:['ALL'],security_opt:['no-new-privileges:true'],mem_limit:'128m',cpus:'0.1',command:['node','workers/coding-workspace/manager.js'],healthcheck:{disable:true},environment:{PLAYGROUND_SWEEP_URL:new URL('/api/playground/sweep',origin).href,PLAYGROUND_SWEEP_KEY:sweepKey(ctx.env)},tmpfs:['/tmp:rw,noexec,nosuid,nodev,size=16m,mode=1777']}}});
  // Regenerated only in trusted memory: the manager's cleanup-only capability is
  // never stored in the ordinary allocation registry or returned by an MCP tool.
  let plan={name,description,composeFile,planHash:hash(composeFile),...(state?.providerAppName?{providerAppName:state.providerAppName}:{})};
