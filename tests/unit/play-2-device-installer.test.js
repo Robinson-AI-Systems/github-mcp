@@ -45,7 +45,7 @@ function simulator({collision=false,networkInternal=true}={}){
   if(kind==='volume'&&action==='rm'){objects.volume=null;return 'removed';}
   if(kind==='network'&&action==='rm'){objects.network=null;return 'removed';}
   if(kind==='exec'){
-   const v=argv.includes('pg_config')?'PostgreSQL 15.14':
+   const v=argv.some(x=>String(x).includes('pg_isready'))?'postgres15-started':
      argv.some(x=>String(x).includes('chromium.launch'))?'chromium-ok':'node24-uid1000';
    return v;
   }
