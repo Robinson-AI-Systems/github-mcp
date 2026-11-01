@@ -12,7 +12,7 @@ const plan=devicePlan({
  cpuCpus:2,memoryMiB:2048,allowLocalImage:true
 });
 const runtime=createLocalRuntime();
-let passed=false,cleanup;
+let passed=false,cleanup,originalError;
 try{
  const preview=runtime.plan(plan);
  if(preview.providerMutated!==false||preview.controllerAdmission!==false)throw new Error('Local plan unexpectedly admits or mutates a host.');
@@ -22,9 +22,12 @@ try{
    proof.postgres!=='15'||proof.node!=='24'||proof.chromium!==true)
    throw new Error('Actual container canary did not meet its declared local proof.');
  passed=true;
-}finally{
- cleanup=await runtime.remove(plan);
+}catch(error){originalError=error;}
+try{cleanup=await runtime.remove(plan);}catch(error){
+ if(originalError)throw new AggregateError([originalError,error],'Both device canary and cleanup failed.');
+ throw error;
 }
+if(originalError)throw originalError;
 if(cleanup.disposed!==true||!cleanup.volumeAbsent||!cleanup.networkAbsent||!cleanup.containerAbsent)
  throw new Error('Actual container process/volume/network cleanup was not confirmed.');
 if(passed)process.stdout.write('Local enrolled-device runtime canary and whole-owned-resource removal passed (not remote enrollment).\n');

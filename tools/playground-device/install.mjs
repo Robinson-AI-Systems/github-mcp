@@ -15,9 +15,9 @@ const fail=(reason)=>Object.assign(new Error(reason),{code:'local_device_refused
 const hash=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const observedLabels=(record)=>record?.Config?.Labels??record?.Labels??null;
 const hasLabels=(record,labels)=>Object.entries(labels).every(([k,v])=>observedLabels(record)?.[k]===v);
-const isMissing=error=>/No such (?:object|container|network|volume|image)/i.test(String(error?.stderr??error?.message??''));
+const isMissing=(error,type,name)=>{const message=String(error?.stderr??error?.message??'');return /No such (?:object|container|network|volume|image)/i.test(message)||message.includes(type+' '+name+' not found');};
 export const dockerRun=(args)=>execFileSync('docker',args,{encoding:'utf8',maxBuffer:2*1024*1024,timeout:60000,stdio:['ignore','pipe','pipe']}).trim();
-const inspect=async(docker,type,name)=>{try{const rows=JSON.parse(await docker([type,'inspect',name]));return Array.isArray(rows)?rows[0]??null:rows;}catch(error){if(isMissing(error))return null;throw error;}};
+const inspect=async(docker,type,name)=>{try{const rows=JSON.parse(await docker([type,'inspect',name]));return Array.isArray(rows)?rows[0]??null:rows;}catch(error){if(isMissing(error,type,name))return null;throw error;}};
 const exactOutput=(s,label)=>{if(typeof s!=='string'||s.length>2*1024*1024)throw fail('Unbounded Docker '+label+' response.');return s;};
 export function devicePlan({deviceId,binding,image,controlPublicKey,cpuCpus=2,memoryMiB=2048,allowLocalImage=false}={}){
  if(!HEX32.test(deviceId??'')||!HEX64.test(binding??''))throw fail('Use a verified device ID and exact workspace binding.');
