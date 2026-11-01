@@ -81,6 +81,41 @@ their exact original plan. `runtime: none` queues nothing. Since 2026-11-01 the 
 failure was the worktree-relink bug fixed in the same change) in 404 s. Set `PLAYGROUND_DEFAULT_SIZE=large` to restore
 the original 8 CPU / 8 GiB size.
 
+### Slim image for small jobs (FLEET-2, 2026-11-01)
+
+The publish workflow builds two tags per released commit: `<sha>` (full: Chromium for Playwright and PostgreSQL for the
+disposable test database) and `<sha>-slim` (the same supervisor/runtime code without them; Dockerfile target `slim`; the
+full `runtime` target is slim plus those two). Each tag is skipped when it already exists. A **new** allocation's image
+is chosen by a gate in code (`src/playground/runtime-variant.js`):
+
+- slim only when the size is `small` **and** the repository's own files show no browser/database signals:
+  `package.json` dependencies/devDependencies naming playwright, @playwright/test, puppeteer, cypress, pg, postgres,
+  prisma, @prisma/client, typeorm, sequelize or knex; a `docker-compose`/`compose` file mentioning postgres; or
+  `requirements.txt`/`pyproject.toml` mentioning psycopg, selenium or playwright. The files are read through the native
+  Git worker; an unreadable or oversized file counts as a signal (full image).
+- otherwise the full image. Missing slim tag → full image → source build (the original fallback).
+- an operator pin (`PLAYGROUND_IMAGE`, or a pool's own image) is always used as-is and disables the choice.
+
+The allocation stores `runtimeImage` `{variant: slim|full|source_build|operator_pinned, reason, signals}`, and
+`github_playground_read` operation `allocation` shows it as `runtime_image`. Existing allocations keep their plan.
+
+### Run-at-commit and the upsize hint (FLEET-2)
+
+`github_playground_run` opens a Git-only workspace at a branch, tag or 40-character SHA (a SHA is checked out with a hard
+reset and read back; unreachable commits end as `ref_unavailable`), sizes it (`auto`: small without signals, medium with
+a database or an unreadable file, large with browser tests), queues the allocation (own machines first, then the pool),
+provisions and attaches it, runs argv once, keeps the exit code and last 4 KB of log, then disposes the allocation and
+the workspace. Its state machine (`playground_run.<hash>` setting: opening → provisioning → starting → running →
+disposing → done) advances for about 40 s per call; a repeat call with the same arguments and requestKey continues (a
+write-layer replay; nothing starts twice). The workspace idle lease is the command timeout plus 30 minutes, so an
+abandoned run is removed by the existing expiry sweep.
+
+When a command ends by `SIGKILL` (or a shell's 137) that the supervisor did not send (not cancel, timeout, log limit or
+stop) and the container's cgroup `memory.events` `oom_kill` counter rose during it, the runtime records
+`reason: out_of_memory`. `github_playground_read` status, `github_playground_execute` and `github_playground_run` then add
+`upsize: {next_size, hint}` (small → medium → large; on large: split the job). Reading the counter is best effort; when it
+is unreadable the old reasons are kept.
+
 ## Lifecycle
 
 ```

@@ -44,3 +44,17 @@ export function describeSize(size) {
   const { cpuCpus, memoryBytes, fits } = SIZE_CLASSES[size];
   return { size_class: size, ceiling: { cpuCpus, memoryBytes }, fits };
 }
+
+// FLEET-2: a command the kernel killed for memory gets a plain hint naming the next size.
+const NEXT_SIZE = Object.freeze({ small: 'medium', medium: 'large' });
+export function upsizeHint(execution, size) {
+  if (execution?.reason !== 'out_of_memory') return null;
+  if (size === 'large') return { next_size: null, hint: 'The command ran out of memory on the largest size (large). Split the job into smaller commands (for example run test files in groups).' };
+  const next = NEXT_SIZE[size];
+  if (!next) return { next_size: 'large', hint: 'The command ran out of memory. Run it again on a larger runtime size (medium or large).' };
+  return { next_size: next, hint: `The command ran out of memory on size ${size}. Run it again on size ${next} (open a new workspace with runtime "${next}", or use github_playground_run with size "${next}").` };
+}
+export function withUpsizeHint(execution, size) {
+  const hint = upsizeHint(execution, size);
+  return hint ? { ...execution, upsize: hint } : execution;
+}

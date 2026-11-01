@@ -1,7 +1,7 @@
 name: Publish runtime image
 # Owner-approved 2026-11-01 (FLEET-2): build the Playground runtime image once per
 # release and publish it, so new runtimes pull a pinned digest instead of building
-# from source on every host. Uses only the built-in GITHUB_TOKEN (no repository
+# from source on every host (since FLEET-2 also a slim `<sha>-slim` variant). Uses only the built-in GITHUB_TOKEN (no repository
 # secrets) and only on the protected release branch or a manual run.
 on:
   push:
@@ -44,15 +44,19 @@ jobs:
         run: |
           sha=$(git rev-parse HEAD)
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
-          # Backup release runs repeat for the same commit; skip if its image exists.
-          if docker manifest inspect "ghcr.io/robinson-ai-systems/github-mcp-runtime:$sha" >/dev/null 2>&1; then
-            echo "exists=true" >> "$GITHUB_OUTPUT"
-            echo "### Runtime image for \`$sha\` already published; nothing to do." >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "exists=false" >> "$GITHUB_OUTPUT"
-          fi
+          # Backup release runs repeat for the same commit; skip each tag whose image exists.
+          # FLEET-2: `<sha>` is the full image, `<sha>-slim` the slim one (no Chromium/PostgreSQL).
+          for variant in full slim; do
+            tag="$sha"; [ "$variant" = slim ] && tag="$sha-slim"
+            if docker manifest inspect "ghcr.io/robinson-ai-systems/github-mcp-runtime:$tag" >/dev/null 2>&1; then
+              echo "${variant}_exists=true" >> "$GITHUB_OUTPUT"
+              echo "### Runtime image \`$tag\` already published; nothing to do." >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "${variant}_exists=false" >> "$GITHUB_OUTPUT"
+            fi
+          done
       - name: Build the production runtime image
-        if: steps.rev.outputs.exists != 'true'
+        if: steps.rev.outputs.full_exists != 'true'
         # The source label links the package to this repository; GitHub only lets the
         # workflow token create an organization package that is linked this way.
         run: >-
@@ -62,21 +66,41 @@ jobs:
           --label "org.opencontainers.image.description=Robinson Playground runtime (public source, no secrets)"
           -t "ghcr.io/robinson-ai-systems/github-mcp-runtime:${{ steps.rev.outputs.sha }}" .
       - name: Smoke-test the exact image before publishing
-        if: steps.rev.outputs.exists != 'true'
+        if: steps.rev.outputs.full_exists != 'true'
         run: docker run --rm --network none --read-only --cap-drop ALL --user 1000:1000 "ghcr.io/robinson-ai-systems/github-mcp-runtime:${{ steps.rev.outputs.sha }}" node --version
-      - name: Publish and record the digest
-        if: steps.rev.outputs.exists != 'true'
+      - name: Build the slim runtime image
+        if: steps.rev.outputs.slim_exists != 'true'
+        run: >-
+          docker build --target slim -f workers/coding-workspace/Dockerfile
+          --label "org.opencontainers.image.source=https://github.com/${GITHUB_REPOSITORY}"
+          --label "org.opencontainers.image.revision=${{ steps.rev.outputs.sha }}"
+          --label "org.opencontainers.image.description=Robinson Playground slim runtime, no browser or database (public source, no secrets)"
+          -t "ghcr.io/robinson-ai-systems/github-mcp-runtime:${{ steps.rev.outputs.sha }}-slim" .
+      - name: Smoke-test the exact slim image before publishing
+        if: steps.rev.outputs.slim_exists != 'true'
+        # Same supervisor code loads; no PostgreSQL and no Chromium are inside.
+        run: >-
+          docker run --rm --network none --read-only --cap-drop ALL --user 1000:1000
+          "ghcr.io/robinson-ai-systems/github-mcp-runtime:${{ steps.rev.outputs.sha }}-slim"
+          sh -c 'node --version && test ! -e /usr/lib/postgresql && test ! -e /opt/playwright && node -e "import(\"/app/workers/coding-workspace/server.js\").then(m=>{if(typeof m.codingServer!==\"function\")process.exit(1)})"'
+      - name: Publish and record the digests
+        if: steps.rev.outputs.full_exists != 'true' || steps.rev.outputs.slim_exists != 'true'
         env:
           TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SHA: ${{ steps.rev.outputs.sha }}
+          FULL_EXISTS: ${{ steps.rev.outputs.full_exists }}
+          SLIM_EXISTS: ${{ steps.rev.outputs.slim_exists }}
         run: |
           echo "$TOKEN" | docker login ghcr.io -u "${GITHUB_ACTOR}" --password-stdin
-          docker push "ghcr.io/robinson-ai-systems/github-mcp-runtime:${{ steps.rev.outputs.sha }}"
-          digest=$(docker inspect --format '{{index .RepoDigests 0}}' "ghcr.io/robinson-ai-systems/github-mcp-runtime:${{ steps.rev.outputs.sha }}")
-          docker logout ghcr.io
+          tags=""
+          [ "$FULL_EXISTS" != true ] && tags="$tags $SHA"
+          [ "$SLIM_EXISTS" != true ] && tags="$tags $SHA-slim"
+          for tag in $tags; do docker push "ghcr.io/robinson-ai-systems/github-mcp-runtime:$tag"; done
           {
-            echo "### Runtime image published"
+            echo "### Runtime images published"
             echo ""
-            echo "Pin this in the protected Vercel setting PLAYGROUND_IMAGE:"
+            echo "The full image digest can be pinned in the protected Vercel setting PLAYGROUND_IMAGE (that pin disables the slim choice):"
             echo ""
-            echo "\`${digest}\`"
+            for tag in $tags; do echo "- \`$(docker inspect --format '{{index .RepoDigests 0}}' "ghcr.io/robinson-ai-systems/github-mcp-runtime:$tag")\`"; done
           } >> "$GITHUB_STEP_SUMMARY"
+          docker logout ghcr.io
