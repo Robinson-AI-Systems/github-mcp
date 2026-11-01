@@ -10,7 +10,9 @@ describe('MCP complete bounded catalog pagination', () => {
   it('returns all full-profile catalog tools once, in registry order, without missing functionality', () => {
     const pages = [...toolListingPages(registry, 'full', 'catalog')];
     const flattened = pages.flatMap(p => p.tools.map(t => t.name));
-    expect(flattened).toEqual(registry.tools.map(t => t.name));
+    // Operator-only tools (PUB-8) are listed only to the operator's own connection.
+    expect(flattened).toEqual(registry.tools.filter(t => t.operatorOnly !== true).map(t => t.name));
+    expect(registry.tools.filter(t => t.operatorOnly === true).map(t => t.name)).toEqual(['github_tenant_remove']);
     expect(new Set(flattened).size).toBe(flattened.length);
     expect(pages.length).toBeGreaterThan(1);
     expect(pages.slice(0, -1).every(p => p.tools.length === TOOLS_PER_PAGE && typeof p.nextCursor === 'string')).toBe(true);
