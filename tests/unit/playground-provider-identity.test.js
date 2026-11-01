@@ -53,5 +53,5 @@ it('preserves byte-exact pinned manager source after Postgres JSONB reorders nes
 });
 it('selects best-effort policy and derives new execution builds from the immutable serving source without a stale manifest pin',async()=>{
  const manifest=JSON.parse(await readFile(new URL('../../vercel.json',import.meta.url),'utf8'));
- expect(manifest.env).toEqual({PLAYGROUND_RESOURCE_MODE:'best_effort'});expect(manifest.git.deploymentEnabled).toEqual({'**':false,live:true});
+ expect(manifest.env).toEqual({PLAYGROUND_RESOURCE_MODE:'best_effort',PLAYGROUND_IMAGE_REPOSITORY:'ghcr.io/robinson-ai-systems/github-mcp-runtime'});expect(manifest.env.PLAYGROUND_IMAGE).toBeUndefined();expect(manifest.git.deploymentEnabled).toEqual({'**':false,live:true});
 });

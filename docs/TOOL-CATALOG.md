@@ -1009,3 +1009,5 @@ Caches on own machines (2026-11-01, FLEET-5): runtimes on a person's own compute
 
 
 Issue #509 fixes (2026-11-01): `github_playground_workspace` attach reports a retryable "runtime not reachable yet" (nothing transferred) while a new runtime starts, and dispose/close no longer fail on Dokploy's forbidden volume reads in best-effort mode (volumes recorded unverified). See [Playground operations](PLAYGROUND-OPERATIONS.md).
+
+Runtime image (2026-11-01): with no protected `PLAYGROUND_IMAGE`, new Playground allocations (Dokploy pools and people's own machines) pin the public image published for the serving commit (`PLAYGROUND_IMAGE_REPOSITORY`, anonymous digest lookup) and fall back to a source build when it is missing. No tool arguments changed; see [Playground operations](PLAYGROUND-OPERATIONS.md).

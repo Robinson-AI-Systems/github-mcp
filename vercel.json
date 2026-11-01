@@ -1,6 +1,7 @@
 {
   "env": {
-    "PLAYGROUND_RESOURCE_MODE": "best_effort"
+    "PLAYGROUND_RESOURCE_MODE": "best_effort",
+    "PLAYGROUND_IMAGE_REPOSITORY": "ghcr.io/robinson-ai-systems/github-mcp-runtime"
   },
   "functions": {
     "api/**/*.js": {

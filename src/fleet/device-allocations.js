@@ -37,13 +37,14 @@ export async function chooseHost(ctx, size) {
   return fitting[0] ?? null;
 }
 
-export function devicePlan(ctx, record, binding, host, ceiling) {
+export function devicePlan(ctx, record, binding, host, ceiling, prebuilt = null) {
   const env = ctx.env ?? {};
   const sourceSha = env.PLAYGROUND_BUILD_SOURCE_SHA ?? env.VERCEL_GIT_COMMIT_SHA;
-  if (!/^[-a-zA-Z0-9./:]+@sha256:[a-f0-9]{64}$/.test(env.PLAYGROUND_IMAGE ?? '') && !/^[a-f0-9]{40}$/.test(sourceSha ?? ''))
+  const image = env.PLAYGROUND_IMAGE || (/^[-a-zA-Z0-9./:]+@sha256:[a-f0-9]{64}$/.test(prebuilt ?? '') ? prebuilt : undefined);
+  if (!/^[-a-zA-Z0-9./:]+@sha256:[a-f0-9]{64}$/.test(image ?? '') && !/^[a-f0-9]{40}$/.test(sourceSha ?? ''))
     throw fail('No pinned runtime image or source revision is configured for your computer.');
   const plan = allocationPlan({binding, verificationKey: nativeWorkerPublicKey(env), idleTimeoutMs: record.job.idleTimeoutMs}, {
-    image: env.PLAYGROUND_IMAGE, sourceSha, controlOrigin: env.PUBLIC_BASE_URL, ingress: '127.0.0.1',
+    image, sourceSha, controlOrigin: env.PUBLIC_BASE_URL, ingress: '127.0.0.1',
     cpuCpus: ceiling.cpuCpus, memoryBytes: ceiling.memoryBytes, scope: ctx.db.playgroundScope, worker: record.worker,
     nativeBinding: createHash('sha256').update(JSON.stringify(['authority', 'connection', 'owner', 'repo'].map(k => record.binding[k]))).digest('hex')
   });
