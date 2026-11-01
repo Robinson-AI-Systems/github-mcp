@@ -96,7 +96,7 @@ export function createLocalRuntime({docker=dockerRun}={}){
   ]), 'PostgreSQL');
   const chromium=exactOutput(await docker(['exec','--user','1000:1000','-w','/app',plan.container,
    'node','--input-type=module','-e',"import {chromium} from 'playwright';const b=await chromium.launch({headless:true});const p=await b.newPage();await p.goto('data:text/html,<title>Device Canary</title>');if(await p.title()!=='Device Canary')process.exit(4);await b.close();console.log('chromium-ok');"]), 'Chromium');
-  if(!node.includes('node24-uid1000')||!/PostgreSQL 15\./.test(postgres)||!chromium.includes('chromium-ok'))throw fail('The local image did not pass its runtime canary.');
+  if(!node.includes('node24-uid1000')||!postgres.includes('postgres15-started')||!chromium.includes('chromium-ok'))throw fail('The local image did not pass its runtime canary.');
   const after=await evidence(plan);
   if(after.container?.State?.Running!==true)throw fail('Runtime exited during canary.');
   return {canaryPassed:true,deviceId:plan.deviceId,binding:plan.binding,
