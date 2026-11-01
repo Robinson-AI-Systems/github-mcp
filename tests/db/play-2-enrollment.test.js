@@ -9,7 +9,7 @@ import {createEnrolledHostStore,pairingIndexKey,pairingMessage} from '../../src/
 const clients=[],schemas=[];
 async function dbFor(url){
  const client=new pg.Client({connectionString:url});await client.connect();clients.push(client);
- const schema='pg_play2_'+randomBytes(7).toString('hex');
+ const schema='play2_'+randomBytes(7).toString('hex');
  schemas.push(schema);
  await client.query('CREATE SCHEMA "'+schema+'"');
  await client.query('SET search_path TO "'+schema+'"');

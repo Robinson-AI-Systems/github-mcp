@@ -1,4 +1,4 @@
-import {createHash,generateKeyPairSync,sign} from 'node:crypto';
+import {generateKeyPairSync,sign} from 'node:crypto';
 import {describe,it,expect} from 'vitest';
 import {createEnrollmentClaimHandler} from '../../api/playground/enroll.js';
 import {createEnrolledHostStore,pairingMessage} from '../../src/playground/enrolled-hosts.js';

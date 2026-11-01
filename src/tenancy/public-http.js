@@ -192,11 +192,10 @@ function managePage(res, m) {
       : '<p class="muted">Extra places need your master token. Add it above first.</p>')) +
     (m.marketplaceAccountId ? '' : '<h2>Your Playground computers</h2>' +
       '<p>Use only a computer you own or administer. It runs your own repository code and may consume CPU, memory and disk. A device owner can inspect its own containers; this is not a multi-tenant virtual machine. A separate canary and isolation check are required before any command can run. Your GitHub and tunnel secrets stay on your computer.</p>' +
-      (m.pairing ? '<p id="playground-pair-code">On your own computer, enter this one-time code in the signed installer within ten minutes: <code>' + h(m.pairing.code) + '</code>. Device ID: <code>' + h(m.pairing.deviceId) + '</code>. You will confirm its displayed signing-key fingerprint here after it proves possession. Never paste a GitHub token into the pairing tool.</p>' : '') +
-      ((m.pairingGrants??[]).length ? '<form method="post" action="' + MANAGE_PATH + '">' + hidden('handle',m.handle) + hidden('action','begin_pair') +
-        '<label>Choose your connected app<select name="value" id="playground-pair-client">' +
-        m.pairingGrants.map(c=>'<option value="' + h(c.clientId) + '">' + h(c.name) + '</option>').join('') +
-        '</select></label><button type="submit" id="begin-playground-pair">Start pairing my computer</button></form>' :
+      (m.pairing ? '<p id="playground-pair-code">On your own computer, enter this one-time code in the reviewed local pairing helper within ten minutes: <code>' + h(m.pairing.code) + '</code>. Device ID: <code>' + h(m.pairing.deviceId) + '</code>. You will confirm its displayed signing-key fingerprint here after it proves possession. Never paste a GitHub token into the pairing tool.</p>' : '') +
+      ((m.pairingGrants??[]).length ? m.pairingGrants.map(c =>
+        act('begin_pair', 'Pair my computer for ' + h(c.name),
+          {value:c.clientId,id:'begin-playground-pair-' + c.clientId})).join('') :
         '<p class="muted">Connect an app with Full permissions before enrolling a computer.</p>') +
       ((m.devices??[]).length ? m.devices.map(d=>'<div class="row"><span><strong>' + h(d.clientName) + '</strong> <small>' + h(d.deviceId) + '</small><br><span class="tag">' + h(d.status) + '</span>' +
         (d.origin ? '<p><small>Tunnel: ' + h(d.origin) + '</small></p>' : '') +
