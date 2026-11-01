@@ -15,7 +15,7 @@ const services=plan=>JSON.parse(plan.composeFile).services;
 const total=s=>Math.round(['broker','coding','ingress'].reduce((n,k)=>n+Number(s[k].cpus),0)*10)/10;
 
 it('resolves classes, honours the protected default and never raises operator ceilings',()=>{
- expect(resolveSizeClass(undefined,{})).toBe('large');expect(resolveSizeClass('auto',{PLAYGROUND_DEFAULT_SIZE:'small'})).toBe('small');
+ expect(resolveSizeClass(undefined,{})).toBe('medium');expect(resolveSizeClass('auto',{PLAYGROUND_DEFAULT_SIZE:'small'})).toBe('small');
  expect(resolveSizeClass('none',{})).toBeNull();expect(resolveSizeClass('medium',{})).toBe('medium');
  expect(()=>resolveSizeClass('huge',{})).toThrow(/auto, none, small/);expect(()=>defaultSizeClass({PLAYGROUND_DEFAULT_SIZE:'xl'})).toThrow(/PLAYGROUND_DEFAULT_SIZE/);
  expect(sizedConfig({cpuCpus:8,memoryBytes:8*1024**3},'small')).toMatchObject({cpuCpus:2,memoryBytes:2*1024**3});
@@ -36,8 +36,13 @@ it('keeps an existing allocation at its recorded size even when a later call ask
  const again=await ensureAllocation(w.ctx,record,{provider:p,config,manager:async()=>{},size:'large'});
  expect(again.size).toBe('medium');expect(p.creates).toHaveLength(1);expect(services(again.plan).coding.mem_limit).toBe(String(4096-1024-128)+'m');
 });
-it('leaves the default (no size, no protected default) identical to the original full-size plan',async()=>{
+it('uses medium when no size and no protected default are given',async()=>{
  const {w,record}=await world(),p=provider();
+ const row=await ensureAllocation(w.ctx,record,{provider:p,config,manager:async()=>{}});
+ expect(row.size).toBe('medium');const s=services(row.plan);expect(Number(s.coding.cpus)).toBeLessThanOrEqual(4);expect(parseInt(s.coding.mem_limit)).toBeLessThan(4096);
+});
+it('keeps the original full-size plan when the protected default is large',async()=>{
+ const {w,record}=await world({PLAYGROUND_DEFAULT_SIZE:'large'}),p=provider();
  const row=await ensureAllocation(w.ctx,record,{provider:p,config,manager:async()=>{}});
  expect(row.size).toBe('large');const s=services(row.plan);expect(s.coding.cpus).toBe('7.4');expect(s.coding.mem_limit).toBe('6528m');
 });

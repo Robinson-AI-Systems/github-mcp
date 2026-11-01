@@ -8,6 +8,25 @@ const MAX_BYTES = 100 * 1024 * 1024;
 const ID = /^git_[a-f0-9]{32}$/;
 const keyBytes = key => { const b = Buffer.from(key ?? '', 'base64'); if (b.length !== 32) throw new TypeError('Use a protected 32-byte base64 snapshot encryption key.'); return b; };
 const validPath = p => typeof p === 'string' && p.length <= 4096 && !p.includes('\\') && !/[\x00-\x1f]/.test(p) && p.split('/').every(x => x && x !== '.' && x !== '..');
+// Linked worktrees record absolute paths both ways (repo/.git/worktrees/<id>/gitdir and
+// worktrees/<name>/.git). After a move to another root, older Git (<2.48) leaves both
+// pointing at the old location when that location still exists, so rewrite them here
+// and then let `git worktree repair` confirm the links.
+async function relinkWorktrees(dir, worker, trees) {
+ const admin = join(dir, 'repo', '.git', 'worktrees'); let ids = []; try { ids = await readdir(admin); } catch (e) { if (e.code !== 'ENOENT') throw e; }
+ for (const id of ids) {
+  if (!/^[A-Za-z0-9_-]{1,80}$/.test(id)) continue;
+  const linkFile = join(admin, id, 'gitdir'); let old; try { old = (await readFile(linkFile, 'utf8')).trim(); } catch (e) { if (e.code === 'ENOENT') continue; throw e; }
+  const name = old.split('/').slice(-2, -1)[0];
+  if (!/^[a-zA-Z0-9_-]{1,60}$/.test(name) || old.split('/').slice(-3, -2)[0] !== 'worktrees') continue;
+  const tree = join(dir, 'worktrees', name), dotGit = join(tree, '.git');
+  let st; try { st = await lstat(dotGit); } catch (e) { if (e.code === 'ENOENT') continue; throw e; }
+  if (!st.isFile()) throw new TypeError('Worktree metadata is not a regular file.');
+  await writeFile(linkFile, dotGit + '\n', { mode: 0o600 });
+  await writeFile(dotGit, 'gitdir: ' + join(admin, id) + '\n', { mode: 0o600 });
+ }
+ if (trees.length) await worker.git(join(dir, 'repo'), ['worktree', 'repair', '--', ...trees]);
+}
 export async function exportWorkspaceFile({root,id,key,path,expectedGeneration,lean=false,allowLocalFixtures=false}){
  if(!ID.test(id))throw new TypeError('Invalid workspace.');const dir=join(resolve(root),id);if((await lstat(dir)).isSymbolicLink())throw new TypeError('Invalid workspace root.');
  const lock=await open(join(dir,'mutation.lock'),'wx',0o600);let output;
@@ -73,7 +92,7 @@ export async function importMountedWorkspace({root,bytes,key,id,expectedBinding,
   else await write(f);
  }
  if(plan)await finishLeanImport(dir,lean,plan);
- const worker=new NativeGitWorker({root:resolve(root),authorize:async()=>true});const trees=payload.files.filter(f=>f.directory&&/^worktrees\/[^/]+$/.test(f.path)).map(f=>join(dir,f.path));if(trees.length)await worker.git(join(dir,'repo'),['worktree','repair','--',...trees]);
+ const worker=new NativeGitWorker({root:resolve(root),authorize:async()=>true});const trees=payload.files.filter(f=>f.directory&&/^worktrees\/[^/]+$/.test(f.path)).map(f=>join(dir,f.path));await relinkWorktrees(dir,worker,trees);
  await writeFile(join(dir,'workspace.json'),JSON.stringify(meta),{mode:0o600});const result={digest,complete:true,workspace_id:id,generation:meta.generation,files:names.size,bytes:size};await writeFile(marker,JSON.stringify(result),{mode:0o600});return result;
 }
 export async function importWorkspace({ root, bytes, key }) {
@@ -90,7 +109,7 @@ export async function importWorkspace({ root, bytes, key }) {
   for (const f of payload.files.filter(f => !f.directory)) { const path = join(dir, f.path); await mkdir(dirname(path), { recursive: true, mode: 0o700 }); await writeFile(path, Buffer.from(f.base64, 'base64'), { mode: (f.mode & 0o111) ? 0o700 : 0o600, flag: 'wx' }); }
   // Linked worktrees contain absolute Git metadata paths; repair them after moving hosts/roots.
   const treeRoot = join(dir, 'worktrees'); let trees = []; try { trees = await readdir(treeRoot); } catch (e) { if (e.code !== 'ENOENT') throw e; }
-  if (trees.length) { const worker = new NativeGitWorker({ root: resolve(root), authorize: async () => true }); await worker.git(join(dir, 'repo'), ['worktree', 'repair', '--', ...trees.map(t => join(treeRoot, t))]); }
+  if (trees.length) await relinkWorktrees(dir, new NativeGitWorker({ root: resolve(root), authorize: async () => true }), trees.map(t => join(treeRoot, t)));
   return { workspace_id: payload.id, files: payload.files.length, bytes: size, encrypted_sha256: createHash('sha256').update(bytes).digest('hex') };
  } catch (error) { await rm(dir, { recursive: true, force: true }); throw error; }
 }

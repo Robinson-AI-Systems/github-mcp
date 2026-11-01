@@ -224,10 +224,14 @@ export function defineWrite(spec) {
     let response; let sent = false; let failure = null;
     try { response = await apply({ args, ctx, target: tgt, before, requestKey: key, classification }); sent = true; } catch (error) { failure = error; }
     if (!sent) {
-      const rejected = classifyError(failure) === 'rejected';
+      // A failure that proves nothing started (the apply step refused before any
+      // provider call) is reported as not applied, and the request key is released.
+      const notStarted = failure?.noOperationStarted === true;
+      const rejected = notStarted || classifyError(failure) === 'rejected';
       let text;
       try { text = explain(failure, { args, ctx, target: tgt }); } catch { text = 'The change was not completed.'; }
       await ctx.db.finishChange(claim.id, { summary: `${rejected ? 'REJECTED' : 'UNCERTAIN'}: ${line}`, confirmed: false, releaseKey: rejected, actedAs: ctx.actor?.summary?.()?.as ?? null }).catch(() => {});
+      if (notStarted) return out({ done: false, status: 'not_applied', reason_code: 'no_operation_started', retryable: failure?.safeRetryable === true, no_change_sent: true, requestKey: key, error: text }, true);
       return out({ done: false, status: rejected ? 'rejected' : 'uncertain',reason_code:rejected?'provider_rejected':'write_outcome_uncertain',retryable:rejected&&failure?.safeRetryable===true, requestKey: key, error: text,
         ...(rejected ? {} : { warning: 'GitHub may or may not have applied this. Check the current state before trying again.' }) }, true);
     }

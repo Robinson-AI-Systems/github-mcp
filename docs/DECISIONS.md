@@ -44,7 +44,7 @@ Chris: the sign-in must not refuse Production mode, and Production should be the
 - **Placement order:** the person's own ready machines first, then the operator's shared pool (today one Dokploy server),
   then Git-only. Chris's PC, his Dokploy access and his tailnet are simply resources he has, not the design target: the
   product must work the same for every person who signs in.
-- **Default size:** switch `PLAYGROUND_DEFAULT_SIZE` to `medium` once a medium runtime has passed a real build on the host.
+- **Default size:** `medium` is the built-in default since 2026-11-01 (code default, so every deployment gets it), after a live medium runtime ran the full unit suite on the operator pool. `PLAYGROUND_DEFAULT_SIZE` still overrides it.
 - **Prebuilt runtime image:** approved to publish the runtime image and pin `PLAYGROUND_IMAGE` to its digest.
 - **The two audit problems** (heartbeat outages, large clones) approved and fixed (PR #503).
 

@@ -160,6 +160,21 @@ describe('failures and retries', () => {
     expect(writes(w.gh)).toHaveLength(1);
   });
 
+  it('a failure that proves nothing started is not_applied, never uncertain, and frees the key for a retry', async () => {
+    let calls = 0;
+    const def = defineWrite({ name: 'github_x_notstarted', description: 'd', declarations: { production: 'never' },
+      target: () => ({ owner: 'example-org', scope: 'org' }), read: async () => null, classify: () => ({}), summarize: () => 's',
+      apply: async () => { calls += 1; if (calls === 1) throw Object.assign(new Error('Runtime not reachable yet. Nothing was transferred.'), { safeRetryable: true, noOperationStarted: true }); return { ok: true }; },
+      readAfter: async () => ({ ok: true }), verify: () => true, requestKey: () => 'rmcp_notstarted' });
+    const w = await makeWorld({ gates: [] });
+    const first = parse(await def.handler({}, w.ctx));
+    expect(first).toMatchObject({ done: false, status: 'not_applied', reason_code: 'no_operation_started', retryable: true, no_change_sent: true });
+    expect(first.warning).toBeUndefined();
+    const second = parse(await def.handler({}, w.ctx));
+    expect(second).toMatchObject({ done: true, status: 'applied' });
+    expect(calls).toBe(2);
+  });
+
   it('a caller request key makes differently worded retries one change', async () => {
     const w = await makeWorld();
     ok(w.gh);
