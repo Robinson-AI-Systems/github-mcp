@@ -1,5 +1,9 @@
 import {generateKeyPairSync,sign,createHash} from 'node:crypto';
 import {EventEmitter} from 'node:events';
+import {mkdtemp,rm} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {createPersistentProbeNonceStore} from '../../tools/playground-device/probe-nonces.mjs';
 import {describe,it,expect} from 'vitest';
 import {createDeviceProbeServer} from '../../tools/playground-device/probe-server.mjs';
 import {deviceProbeClaim,deviceProbeResponse,verifyDeviceProbeClaim,verifyDeviceProbeResponse,
@@ -73,6 +77,25 @@ describe('PLAY-2 remote device probe does not issue execution authority',()=>{
    expect((await send(body,signature(body,device))).status).toBe(401);
    expect((await fetch('http://127.0.0.1:'+port+'/health')).status).toBe(404);
   }finally{await new Promise(resolve=>server.close(resolve));}
+ });
+ it('durably refuses a valid signed nonce after the device receiver restarts',async()=>{
+  const root=await mkdtemp(join(tmpdir(),'play2-replay-'));
+  const controller=keys(),device=keys(),c=claim(),body=JSON.stringify(c),sig=signature(body,controller);
+  const once=async()=>{
+   const consumeNonce=await createPersistentProbeNonceStore({root,now:()=>clock});
+   const server=createDeviceProbeServer({
+    deviceId:id,origin,generation,controlPublicKey:controller.publicKey,
+    devicePrivateKey:device.privateKey,now:()=>clock,consumeNonce
+   });
+   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
+   try{
+    return (await fetch('http://127.0.0.1:'+server.address().port+'/v1/enrollment/probe',{
+     method:'POST',headers:{'x-robinson-signature':sig,'Content-Type':'application/json'},body
+    })).status;
+   }finally{await new Promise(resolve=>server.close(resolve));}
+  };
+  try{expect(await once()).toBe(200);expect(await once()).toBe(401);}
+  finally{await rm(root,{recursive:true,force:true});}
  });
  it('transport validation retains the pending-canary state and returns no command authority',async()=>{
   const controller=keys(),device=keys();
