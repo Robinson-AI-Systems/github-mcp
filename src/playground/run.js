@@ -111,7 +111,8 @@ async function step(ctx, run, deps) {
       if (state.head !== s.ref) { await run.save({phase: 'disposing', outcome: 'ref_unavailable', outcomeReason: 'That commit is not reachable from any branch of the repository; nothing ran.'}); return true; }
     }
     let signals, size = s.sizeRequested, sizeReason;
-    try { signals = await deps.repositorySignals(ctx, record); } catch { signals = undefined; }
+    // Only auto sizing and the small-size slim gate need the repository's signals.
+    if (['auto', 'small'].includes(size)) { try { signals = await deps.repositorySignals(ctx, record); } catch { signals = undefined; } }
     if (size === 'auto') ({size, reason: sizeReason} = autoSizeFor(signals));
     else sizeReason = `Size ${size} was requested.`;
     const allocated = await deps.enqueueAllocation(ctx, record, {size, signals});

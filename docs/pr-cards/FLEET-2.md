@@ -14,7 +14,7 @@ Accepted when the gate is implemented as code with tests for both the on and off
 
 No gate raises spend, widens access or opens public sign-up by itself. Secrets never pass through a tool.
 
-## Delivered 2026-11-01 (PR #PRNUM)
+## Delivered 2026-11-01 (PR #518)
 
 All three pieces in one PR (one outcome: small jobs start faster and cheaper, and say when they need more).
 

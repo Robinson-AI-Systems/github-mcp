@@ -2738,7 +2738,7 @@
         "FLEET-1"
       ],
       "card": "docs/pr-cards/FLEET-2.md",
-      "status": "APPROVED",
+      "status": "MERGED",
       "migration": "none",
       "budget": 800,
       "units": [
@@ -2746,7 +2746,9 @@
       ],
       "readiness": "READY",
       "ownerInputs": [],
-      "pr": []
+      "pr": [
+        518
+      ]
     },
     {
       "id": "FLEET-7",

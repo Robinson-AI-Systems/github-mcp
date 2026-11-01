@@ -13,7 +13,7 @@ const SHA = 'c'.repeat(40), SLIM = 'sha256:' + 'e'.repeat(64), FULL = 'sha256:' 
 const env = {PLAYGROUND_IMAGE_REPOSITORY: REPO, PLAYGROUND_BUILD_SOURCE_SHA: SHA};
 function registry({slim = true, full = true} = {}) {
   const calls = [];
-  const fetch = async (url, init = {}) => {
+  const fetch = async url => {
     calls.push(url);
     if (url.startsWith('https://ghcr.io/token')) return {status: 200, json: async () => ({token: 'anon-pull-token'})};
     const tag = url.split('/manifests/')[1];
