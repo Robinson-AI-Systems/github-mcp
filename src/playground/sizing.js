@@ -13,7 +13,7 @@ const fail = message => Object.assign(new TypeError(message), { safeMessage: tru
 
 // The protected default for `auto`. Unset keeps the original full-size behaviour.
 export function defaultSizeClass(env = {}) {
-  const value = env.PLAYGROUND_DEFAULT_SIZE ?? 'large';
+  const value = env.PLAYGROUND_DEFAULT_SIZE ?? 'medium';
   if (!Object.hasOwn(SIZE_CLASSES, value)) throw fail('Protected PLAYGROUND_DEFAULT_SIZE must be small, medium or large.');
   return value;
 }

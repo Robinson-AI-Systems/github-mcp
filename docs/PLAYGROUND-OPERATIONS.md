@@ -20,7 +20,7 @@ hypervisor VMs.
 | `PUBLIC_BASE_URL` | `https://github.robinsonaisystems.com` | Control origin baked into plans (lifecycle callback, preview) |
 | `PLAYGROUND_RESOURCE_MODE` | `verified` (`vercel.json` sets `best_effort`) | See resource modes |
 | `PLAYGROUND_CPU_CPUS`, `PLAYGROUND_MEMORY_BYTES` | 8, 8 GiB | Whole-allocation ceilings (0.2–8 CPU, 512 MiB–8 GiB) |
-| `PLAYGROUND_DEFAULT_SIZE` | `large` | Size class used for `runtime: auto` (`small`, `medium`, `large`) |
+| `PLAYGROUND_DEFAULT_SIZE` | `medium` | Size class used for `runtime: auto` (`small`, `medium`, `large`) |
 | `PLAYGROUND_MIN_HOST_MEMORY_BYTES`, `PLAYGROUND_MIN_HOST_DISK_BYTES`, `PLAYGROUND_MAX_HOST_PRESSURE` | 512 MiB, 1 GiB, 0.9 | Host admission thresholds when a capacity feed exists |
 | `PLAYGROUND_TELEMETRY_URL`, `PLAYGROUND_TELEMETRY_PUBLIC_KEY` | — | Signed capacity/enforcement feed. **Setting the URL turns best-effort off**: every workspace then needs signed enforcement records |
 | `PLAYGROUND_ADMISSION`, `PLAYGROUND_ENFORCEMENT` | — | Static compatibility observations used only when no feed is configured; enforcement rows expire within 4 h |
@@ -75,8 +75,10 @@ The broker takes min(0.5 CPU, ¼) and min(1.5 GiB, ¼ memory), the gateway min(0
 executor's 1 GiB `/tmp` counts against its memory. A class is a **ceiling that only lowers** the protected
 `PLAYGROUND_CPU_CPUS`/`PLAYGROUND_MEMORY_BYTES` and fresh host headroom; it never raises them or reserves anything. The
 class is stored on the allocation and fixed for its life (plan-hash stability); rows created before classes existed keep
-their exact original plan. `runtime: none` queues nothing. Recommendation: set `PLAYGROUND_DEFAULT_SIZE=medium` once a
-medium runtime has passed a real build on the host, so small projects stop consuming 8 GiB plans.
+their exact original plan. `runtime: none` queues nothing. Since 2026-11-01 the default (`runtime: auto`, `PLAYGROUND_DEFAULT_SIZE` unset) is
+`medium`: a live medium runtime installed this repository and ran its full unit suite (10,632 of 10,633 passed; the one
+failure was the worktree-relink bug fixed in the same change) in 404 s. Set `PLAYGROUND_DEFAULT_SIZE=large` to restore
+the original 8 CPU / 8 GiB size.
 
 ## Lifecycle
 

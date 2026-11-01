@@ -40,7 +40,7 @@ Only things that need you (your sign-in, phone or desktop, money, or a decision)
 **Runtime fleet decisions (2026-11-01, none blocks work):**
 - [x] **Approved 2026-11-01:** the "dial-out" host agent ([design §2.1](designs/RUNTIME-FLEET-2026-11-01.md)). Yes means your PC and tailnet machines can run Playground work with no public tunnel; each machine makes one small check-in request about every 25 seconds while idle. Recommended: yes.
 - [x] **Approved 2026-11-01:** pool order = each person's own machines first, then the shared Dokploy pool.
-- [x] **Approved 2026-11-01 (agents switch it after a medium build passes):** smaller default runtime (after a real build passes on a medium runtime): set `PLAYGROUND_DEFAULT_SIZE=medium` in Vercel. Agents can already ask for small/medium/large per workspace.
+- [x] **Done 2026-11-01:** smaller default runtime. A medium runtime passed a real build, and medium is now the built-in default (no Vercel setting needed). Agents can still ask for small/medium/large per workspace.
 - [x] **Approved 2026-11-01:** let agents publish the runtime image once and set `PLAYGROUND_IMAGE` to its digest, instead of building it for every workspace. Needs a container registry choice (GitHub Packages is free for public images).
 
 
