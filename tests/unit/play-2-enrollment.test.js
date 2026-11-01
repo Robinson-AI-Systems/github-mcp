@@ -80,3 +80,29 @@ describe('PLAY-2 enrolled host pairing is a separate user-owned trust boundary',
   expect(results.filter(x=>x.status==='rejected')).toHaveLength(1);
  });
 });
+describe('PLAY-2 enrollment index stays bounded',()=>{
+ it('does not let abandoned or revoked pairings break My connection or the device cap',async()=>{
+  const db=memory(),root=memory();let t=1000000;const store=scope(db,root,'identity-1',()=>t);
+  for(let n=0;n<40;n++){await store.begin();t+=600001;}
+  const listed=await store.list();
+  expect(listed.length).toBeLessThanOrEqual(32);
+  expect((await db.getSetting('pg_enrolled_index')).ids.length).toBeLessThanOrEqual(32);
+  const fresh=await store.begin();expect(fresh.code).toBeTruthy();
+  const revoked=await store.begin();await store.revoke(revoked.deviceId);t+=1;
+  const after=await store.begin();expect((await db.getSetting('pg_enrolled_index')).ids).not.toContain(revoked.deviceId);expect(after.deviceId).not.toBe(revoked.deviceId);
+ });
+ it('does not count lapsed codes toward the eight-device cap but still counts live pending ones',async()=>{
+  const db=memory(),root=memory();let t=1000000;const store=scope(db,root,'identity-1',()=>t);
+  for(let n=0;n<8;n++)await store.begin();
+  await expect(store.begin()).rejects.toThrow(/eight/);
+  t+=600001;
+  await expect(store.begin()).resolves.toMatchObject({deviceId:expect.any(String)});
+ });
+ it('self-heals an index that already grew past 32 before pruning existed',async()=>{
+  const db=memory(),root=memory();let t=1000000;const store=scope(db,root,'identity-1',()=>t);
+  const ids=[];for(let n=0;n<40;n++){const s=await store.begin();ids.push(s.deviceId);await store.revoke(s.deviceId);}
+  await db.setSetting('pg_enrolled_index',{ids:[...ids].sort(),revision:99});
+  expect((await store.list()).length).toBe(40);
+  await store.begin();expect((await db.getSetting('pg_enrolled_index')).ids).toHaveLength(1);
+ });
+});

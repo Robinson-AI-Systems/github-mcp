@@ -46,23 +46,34 @@ export function createEnrolledHostStore({db,root,tenantId,identityId,clientId,no
   const current=()=>now();
   const list=async()=>{
     const idx=await db.getSetting(indexKey),ids=idx?.ids??[];
-    if(!Array.isArray(ids)||ids.length>32||!ids.every(validId))throw safe('Invalid enrolled host index.');
+    // 32 is the steady-state bound kept by begin(); older indexes that grew past it
+    // (before pruning existed) are still readable up to a hard read bound so they self-heal.
+    if(!Array.isArray(ids)||ids.length>256||!ids.every(validId))throw safe('Invalid enrolled host index.');
     const found=await Promise.all(ids.map(id=>db.getSetting(keyFor(id))));
     return found.filter(h=>h?.tenantId===tenantId&&h.identityId===identityId&&h.clientId===clientId).map(h=>({
       deviceId:h.deviceId,status:h.status,fingerprint:h.fingerprint??null,origin:h.origin??null,
       generation:h.generation,pairedAt:h.pairedAt??null,transportVerifiedAt:h.transportVerifiedAt??null,localCanaryAt:h.localCanaryAt??null,
       localCanaryImage:h.localCanaryImage??null,localCanaryBinding:h.localCanaryBinding??null,
-      revocationPending:h.status==='revocation_pending'
+      revocationPending:h.status==='revocation_pending',lapsed:lapsed(h)
     }));
   };
+  // An unclaimed or unconfirmed pairing whose window passed can never progress,
+  // so it neither counts toward the device cap nor stays in the bounded index.
+  const lapsed=h=>['pending_pair','pending_confirm'].includes(h?.status)&&Number.isSafeInteger(h.expiresAt)&&h.expiresAt<=current();
   async function begin(){
     const existing=await list();
-    if(existing.filter(x=>x.status!=='revoked').length>=8)throw safe('This connection already has eight enrolled or pending devices.');
+    if(existing.filter(x=>x.status!=='revoked'&&!x.lapsed).length>=8)throw safe('This connection already has eight enrolled or pending devices.');
     const deviceId=random(16).toString('hex'),code=random(32).toString('base64url'),hash=sha(code),expiresAt=current()+600000;
     const host={kind:'playground-enrolled-host',tenantId,identityId,clientId,deviceId,generation:1,
       status:'pending_pair',codeHash:hash,expiresAt,createdAt:current(),revision:1};
     if(!await db.compareAndSetSetting(keyFor(deviceId),0,host))throw safe('Device identity collision.');
-    await cas(db,indexKey,old=>({ids:[...new Set([...(old?.ids??[]),deviceId])].sort()}));
+    // Keep the tenant index bounded: drop finished (revoked or lapsed) records of
+    // ANY client before appending. Their records remain as durable tombstones.
+    const prior=(await db.getSetting(indexKey))?.ids??[];
+    const finished=new Set((await Promise.all(prior.filter(validId).map(async id=>{const h=await db.getSetting(keyFor(id));return h?.status==='revoked'||lapsed(h)?id:null;}))).filter(Boolean));
+    let full=false;
+    await cas(db,indexKey,old=>{const ids=[...new Set([...(old?.ids??[]).filter(id=>!finished.has(id)),deviceId])].sort();if(ids.length>32){full=true;return null;}return {ids};});
+    if(full){await db.compareAndSetSetting(keyFor(deviceId),1,{...host,status:'revoked',codeHash:null,revokedAt:current(),revision:2});throw safe('This account has too many devices still enrolled or pending. Revoke unused devices in My connection, then start again.');}
     await root.setSetting(rootKey(hash),{kind:'playground-pair-selector',tenantId,identityId,clientId,deviceId,expiresAt});
     return {deviceId,code,expiresAt};
   }

@@ -175,3 +175,14 @@ The next PLAY-2 unit adds a purpose-separated, 60-second Ed25519 reachability cl
 Added `tools/playground-device/canary-receipt.mjs` to sign a short-lived owner-local receipt **only after** the pre-existing fixed `install.mjs --action canary` succeeds on a matching immutable image, binding and UID-separated local container. The original device private key is read locally from pairing and never sent to the controller. The separately configured loopback receiver reads this evidence on `/v1/enrollment/canary` only in response to a new purpose-bound signed 60-second control claim; it signs a fresh nonce-bound response using the paired device key. The controller's authenticated `My connection` action verifies that public key, prior fresh signed transport proof, exact generation, receipt/image/binding and fresh dates, then CAS-stores a **non-executable local check**, with `pending_canary` unchanged. New filesystem/key/no-secret/unit/loopback tests, plus disposable PostgreSQL foreign-tenant and revoke-race tests, are authored. There is no remote Docker command endpoint.
 
 **Source-only checkpoint:** exact-head lint, real database, browser, image workflow, review and guarded merge still required. Full source tree attachment, generation/dirty-worktree, live device owner, current grant/idle lease, actual egress and whole-allocation revocation proof are *not* claimed; without those, an enrolled device is never placed into `github_playground_execute/read/cancel`. Real appliance-desk measurement and owner's WSL2 verification remain owner-operated and pending. PLAY-1 live Dokploy acceptance is separate.
+
+## 2026-11-01 — Enrollment index stays bounded (correctness fix)
+
+Found by the 2026-11-01 documentation audit: every pairing attempt appended a device ID to the tenant's index and nothing
+removed it, while `list()` refused any index over 32 IDs — so the 33rd lifetime attempt (abandoned codes included) would
+break My connection for that tenant. Lapsed `pending_pair`/`pending_confirm` codes also counted toward the eight-device
+cap forever. Now `begin()` drops revoked and lapsed IDs (their records stay as tombstones) before appending, refuses a new
+pairing only when 32 live records remain (and revokes the just-created record), lapsed codes no longer count toward the
+cap, and `list()` reads up to 256 IDs so tenants whose index already overflowed heal on their next pairing. Tests:
+`tests/unit/play-2-enrollment.test.js` ("PLAY-2 enrollment index stays bounded"), `tests/db/play-2-enrollment.test.js`
+unchanged and passing. No status, trust, signature or tenant-scope rule changed.
