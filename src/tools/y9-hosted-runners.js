@@ -89,7 +89,7 @@ const hostedCreate=defineGithubWrite({
     maximumRunners:{type:'integer',minimum:1,maximum:1000},
     enableStaticIp:{type:'boolean'}},
   required:['name','runnerGroupId','imageId','imageSource','size'],
-  declarations:{production:'always',confirm:'always',spend:true,profiles:['full']},
+  declarations:{production:'always',confirm:'always',spend:true,strictSpend:true,profiles:['full']},
   target,
   read:async(a,c,t)=>{
     const client=await gh(c,t);
@@ -133,7 +133,7 @@ const hostedScaleUp=defineGithubWrite({
   description:'Increase GitHub-hosted runner capacity after disclosure of unbounded metered usage and user-authorized confirmation.',
   properties:{owner:OWNER,runnerId:ID,maximumRunners:{type:'integer',minimum:1,maximum:1000}},
   required:['runnerId','maximumRunners'],
-  declarations:{production:'always',confirm:'always',spend:true,profiles:['full']},
+  declarations:{production:'always',confirm:'always',spend:true,strictSpend:true,profiles:['full']},
   target,
   read:async(a,c,t)=>{const row=await one(c,t,a.runnerId);if(!row)throw refusal('Runner not found.');
     if(!Number.isInteger(row.maximum_runners))throw refusal('Runner capacity unreadable.');

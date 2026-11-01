@@ -88,10 +88,11 @@ export function doorsFor(definition) {
  * @param {object} [o.quietArgs] arguments for the same tool that need no confirmation (for an `M` tool: only own people)
  * @param {boolean} [o.conveyor] allowed under a `pr-only` protected resource
  * @param {string} [o.profile] the connection profile to test with (default everyday; use 'full' for a full-profile tool)
+ * @param {boolean} [o.strictSpend] CAP-6 strict spend: even the full owner connection must confirm first
  * @param {(opts) => Function[]} [o.gatesFor] `({ protectedLevel, spendLimitCents })` -> gates; defaults to the fixture gates
  */
 export function runWriteContract({ label, definition, args, arrange, needsConfirm, production = false, notifies = [], accessWidening = false, spendCents = 0, quietArgs = null,
-  packageToken = false, conveyor = false, profile = 'everyday', scratchAccount = false, externalRoutes = [], previewOnly = false, expectedWrites = 1, advanceClockOnSleep = false, prepare = null, gatesFor = ({ protectedLevel, spendLimitCents }) => [...(protectedLevel ? [protectionGate(protectedLevel)] : []), spendGate({ limitCents: spendLimitCents ?? 0 })] }) {
+  packageToken = false, conveyor = false, profile = 'everyday', strictSpend = false, scratchAccount = false, externalRoutes = [], previewOnly = false, expectedWrites = 1, advanceClockOnSleep = false, prepare = null, gatesFor = ({ protectedLevel, spendLimitCents }) => [...(protectedLevel ? [protectionGate(protectedLevel)] : []), spendGate({ limitCents: spendLimitCents ?? 0 })] }) {
   for (const door of doorsFor(definition)) {
     describe(`write contract: ${label} through ${door.name}`, () => {
       const world = async (options = {}, replies = 'ok') => {
@@ -101,6 +102,8 @@ export function runWriteContract({ label, definition, args, arrange, needsConfir
         return w;
       };
       const mode = production ? 'production' : 'preview';
+      // A strict-spend tool never runs in one call, not even on the owner's own full connection.
+      const oneCall = profile === 'full' && !strictSpend;
 
       it('1. dryRun sends nothing and leaves a preview row', async () => {
         const w = await world({ mode });
@@ -113,13 +116,13 @@ export function runWriteContract({ label, definition, args, arrange, needsConfir
       });
 
       if (needsConfirm) {
-        it('2. full owners execute without confirm; restricted profiles ask first', async () => {
+        it(`2. ${strictSpend ? 'strict spend: everyone, the owner included, asks first' : 'full owners execute without confirm; restricted profiles ask first'}`, async () => {
           const w = await world({ mode });
           const out = parse(await door.call(w, { ...args }));
-          expect(out).toMatchObject(profile === 'full'
+          expect(out).toMatchObject(oneCall
             ? { done: true, status: 'applied' }
             : { done: false, status: 'needs_confirmation', needsConfirmation: true });
-          expect(writes(w.gh)).toHaveLength(profile === 'full' ? expectedWrites : 0);
+          expect(writes(w.gh)).toHaveLength(oneCall ? expectedWrites : 0);
         });
       }
 
@@ -162,9 +165,9 @@ export function runWriteContract({ label, definition, args, arrange, needsConfir
           }
           const live = await world({ mode: 'production' });
           const out = parse(await door.call(live, { ...args }));
-          expect(out).toMatchObject({ mode: 'PRODUCTION', status: profile === 'full' ? 'applied' : 'needs_confirmation' });
+          expect(out).toMatchObject({ mode: 'PRODUCTION', status: oneCall ? 'applied' : 'needs_confirmation' });
           expect(out.preview ?? out.summary).toContain('PRODUCTION');
-          expect(writes(live.gh)).toHaveLength(profile === 'full' ? expectedWrites : 0);
+          expect(writes(live.gh)).toHaveLength(oneCall ? expectedWrites : 0);
         });
       } else {
         it('6. a tool that is never production is not refused by the mode', async () => {
@@ -189,10 +192,10 @@ export function runWriteContract({ label, definition, args, arrange, needsConfir
         it('8. access and notification disclosure accompanies owner execution or delegated confirmation', async () => {
           const w = await world({ mode });
           const out = parse(await door.call(w, { ...args }));
-          expect(out).toMatchObject(profile === 'full' ? { status: 'applied' } : { status: 'needs_confirmation', needsConfirmation: true });
+          expect(out).toMatchObject(oneCall ? { status: 'applied' } : { status: 'needs_confirmation', needsConfirmation: true });
           for (const name of notifies) expect(out.preview ?? out.summary).toContain(name);
           if (accessWidening) expect(out.preview ?? out.summary).toContain('ACCESS CHANGE');
-          expect(writes(w.gh)).toHaveLength(profile === 'full' ? expectedWrites : 0);
+          expect(writes(w.gh)).toHaveLength(oneCall ? expectedWrites : 0);
           if (quietArgs) {
             const quiet = await world({ mode });
             const ran = parse(await door.call(quiet, { ...quietArgs }));
@@ -206,7 +209,7 @@ export function runWriteContract({ label, definition, args, arrange, needsConfir
           const w = await world({ mode, spendLimitCents: 100000 });
           const out = parse(await door.call(w, { ...args }));
           expect(out.preview ?? out.summary).toContain(`$${(spendCents / 100).toFixed(2)}`);
-          if (profile !== 'full') expect(out.needsConfirmation).toBe(true);
+          if (!oneCall) expect(out.needsConfirmation).toBe(true);
           const zero = await world({ mode, gates: gatesFor({ spendLimitCents: 0 }) });
           const refused = parse(await door.call(zero, { ...args, confirm: true }));
           expect(refused).toMatchObject({ status: 'refused_by_guard', refusedBy: 'spend limit' });

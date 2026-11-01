@@ -42,10 +42,10 @@ const cases=[
   {name:'github_hosted_runner_manage',module:hosted,
     args:{runnerId:42,action:'update',name:'linux-updated'},arrange:runner},
   {name:'github_hosted_runner_scale_up',module:hosted,
-    args:{runnerId:42,maximumRunners:4},arrange:scale}
+    args:{runnerId:42,maximumRunners:4},arrange:scale,strictSpend:true}
 ];
 for(const c of cases){
   runWriteContract({label:'Y-9d '+c.name,definition:d(c.module,c.name),
     args:c.args,arrange:c.arrange,profile:'full',production:true,needsConfirm:true,
-    accessWidening:c.accessWidening??false,expectedWrites:1});
+    accessWidening:c.accessWidening??false,strictSpend:c.strictSpend??false,expectedWrites:1});
 }

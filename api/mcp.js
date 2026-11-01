@@ -12,6 +12,7 @@ import { admitTenantMcp, TenantCapacityError, recordTenantMetric } from '../src/
 import { neon } from '@neondatabase/serverless';
 import { isPublicClientId } from '../src/tenancy/public-code.js';
 import { createPublicUsage, publicUsageLimits } from '../src/tenancy/public-usage.js';
+import { offeredRegistry } from '../src/github/feature-gates.js';
 
 const safeOrigin = () => { try { return publicOrigin(); } catch { return null; } };
 
@@ -81,7 +82,10 @@ export async function handleMcp(req, res, { marketplaceAccountId = null } = {}) 
     const answer = await withTimeZone(zone, () => createMcpHandler({
       ...(tenantRoute?{toolSecuritySchemes:tool=>[{type:'oauth2',
         scopes:tool.name==='github_notify_list'?['github.notifications.read']:[]}]}:{}),
-      db, registry, toConnection: policy.toConnection, dispatch: createDispatch({ credentials, gates: createGates({ db }), ...(usageHook ? { usage: usageHook } : {}) }), serverInfo: serverInfo(safeOrigin())
+      db, registry, toConnection: policy.toConnection,
+      // CAP-6: runner, merge-queue and Copilot families are listed only where GitHub shows the account has them.
+      offered: (reg, connection, listing) => (listing === 'compact' ? reg : offeredRegistry(reg, { connection, db, credentials })),
+      dispatch: createDispatch({ credentials, gates: createGates({ db }), featureGates: true, ...(usageHook ? { usage: usageHook } : {}) }), serverInfo: serverInfo(safeOrigin())
     })(req, res));
     eventOutcome = 'ok';
     return answer;

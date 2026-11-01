@@ -163,6 +163,27 @@ describe('MCP endpoint over HTTP', () => {
     expect(body.result.tools.every(t=>t.securitySchemes?.[0]?.scopes?.[0]==='fixture.read')).toBe(true);
   });
 
+  it('CAP-6: tools/list shows only what the injected gate offers, and a failing gate never breaks the listing', async () => {
+    const seen = [];
+    const url = await start(builtRegistry, { offered: async (reg, connection, listing) => { seen.push([connection.profile, listing]);
+      return { ...reg, tools: reg.tools.filter((t) => !t.name.startsWith('github_merge_queue_')) }; } });
+    const names = [];
+    let cursor;
+    do {
+      const { body } = await rpc(url, 'tools/list', cursor ? { cursor } : {});
+      names.push(...body.result.tools.map((t) => t.name));
+      cursor = body.result.nextCursor;
+    } while (cursor);
+    expect(names.some((n) => n.startsWith('github_merge_queue_'))).toBe(false);
+    expect(names).toContain('github_pr_merge');
+    expect(seen[0][1]).toBe('catalog');
+    await new Promise((resolve) => server.close(resolve)); server = null;
+    const broken = await start(builtRegistry, { offered: async () => { throw new Error('gate down'); } });
+    const { status, body } = await rpc(broken, 'tools/list', {});
+    expect(status).toBe(200);
+    expect(body.result.tools.length).toBeGreaterThan(0);
+  });
+
   it('follows standard nextCursor to retrieve every actual catalog tool over HTTP', async () => {
     const url = await start(builtRegistry);
     const names = [];
