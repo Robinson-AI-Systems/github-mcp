@@ -2,6 +2,7 @@ import {refreshAdmission} from './admission.js';
 import {indexKey,orphanAllocationContext} from './index.js';
 import {enforcementObservation} from './availability.js';
 import {managedResourceBaseline,managedNetworkVerified} from './resource-policy.js';
+import {deviceBaseline} from '../fleet/device-allocations.js';
 import {createPublicKey,verify} from 'node:crypto';
 import {createDb,productionSql} from '../db.js';
 import {createTenantDirectory,createTenantSql,assertTenantSearchPath,tenantSchemaName} from '../tenancy/directory.js';
@@ -40,7 +41,10 @@ export async function allocationAuthority(ctx){
  if(!rows.every(permits))return {allowed:false,cleanup:true,reason:'grant_restricted'};
 
  const connection={client_id:s.clientId,default_account:s.owner,accounts:[s.owner],profile:'full',mode:rows[0].mode,listing:'compact',...(s.delegated?{pass:true,allow_writes:true,areas:rows[0].pass.areas,repos:rows[0].pass.repos}:{})};
- if(s.phase==='attached'&&!enforcementObservation(ctx,{row:{id:s.workspace},allocation:{binding:s.binding}})){
+ if(s.phase==='attached'&&s.placement==='device'){
+  // A device that stops checking in pauses work; a revoked device is handled by its own terminate order.
+  if(!await deviceBaseline(ctx,s,{workspace:s.workspace,binding:s.binding,requireLive:false}))return {allowed:false,cleanup:false,reason:'device_unavailable'};
+ }else if(s.phase==='attached'&&!enforcementObservation(ctx,{row:{id:s.workspace},allocation:{binding:s.binding}})){
   if(!managedResourceBaseline(ctx.env,s,{workspace:s.workspace,binding:s.binding}))return {allowed:false,cleanup:false,reason:'enforcement_unverified'};
   if(!await managedNetworkVerified(ctx,s))return {allowed:false,cleanup:false,reason:'network_isolation_unverified'};
  }

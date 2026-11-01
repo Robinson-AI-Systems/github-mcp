@@ -45,3 +45,12 @@ export function signEnrolledLocalCanaryBody(body,env=process.env){
     Object.hasOwn(claim,'workspaceBinding'))throw new TypeError('Invalid local canary readback claim.');
  return 'ed25519:'+sign(null,Buffer.from(body),signingKey(env)).toString('base64url');
 }
+
+// FLEET-3: orders the control plane hands a dial-out host agent (relay a signed
+// claim, start/stop an allocation, run the readiness check, terminate). The
+// agent pins the public key; an order can never carry a credential or argv.
+export function signFleetOrderBody(body,env=process.env){
+ const order=JSON.parse(body);
+ if(!order||order.purpose!=='robinson-fleet-order/v1'||Object.hasOwn(order,'credential')||Object.hasOwn(order.payload??{},'credential')||Object.hasOwn(order.payload??{},'argv'))throw new TypeError('Invalid fleet order.');
+ return 'ed25519:'+sign(null,Buffer.from(body),signingKey(env)).toString('base64url');
+}

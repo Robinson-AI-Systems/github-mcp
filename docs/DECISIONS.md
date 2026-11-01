@@ -35,3 +35,16 @@ Where the archive disagrees with this table or [OWNER-DECISION-2026-10-27.md](OW
 ## 2026-10-30 — Production is the default sign-in mode
 
 Chris: the sign-in must not refuse Production mode, and Production should be the default. Implemented for normal sign-in connections on the production deployment: the page offers Production first and selected, and the old per-account `production_enabled` switch no longer vetoes them (`src/oauth/policy.js`, `src/tenancy/github-consent.js`, `mcp-route.js`, `optional-setup.js`, `src/tools/production-guard.js`). Preview deployments still offer Preview only. Delegated passes (`rtc` and scratch) keep the issuer's restriction. Home page: Claude can add a connector from the phone app; ChatGPT must be added in the phone's browser first, then used in the app.
+
+## 2026-11-01 — Runtime fleet (Chris: "Yes to all your recommendations")
+
+- **Dial-out host agent approved.** Any person can add computers or servers they own or administer (PC, laptop, VPS, home
+  server, a Dokploy or other Docker host, tailnet machines) as Playground hosts for **their own** connection. The agent only
+  makes outbound HTTPS check-ins; no tunnel, no inbound port. Each person's machines run only that person's work.
+- **Placement order:** the person's own ready machines first, then the operator's shared pool (today one Dokploy server),
+  then Git-only. Chris's PC, his Dokploy access and his tailnet are simply resources he has, not the design target: the
+  product must work the same for every person who signs in.
+- **Default size:** switch `PLAYGROUND_DEFAULT_SIZE` to `medium` once a medium runtime has passed a real build on the host.
+- **Prebuilt runtime image:** approved to publish the runtime image and pin `PLAYGROUND_IMAGE` to its digest.
+- **The two audit problems** (heartbeat outages, large clones) approved and fixed (PR #503).
+
