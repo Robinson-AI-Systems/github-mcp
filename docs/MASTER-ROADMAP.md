@@ -7,7 +7,7 @@ tool counts) is in `docs/archive/MASTER-ROADMAP-2026-10-30-before-streamlining.m
 
 **Status summary (checked 2026-10-30 against the work index):** batches A through Y, PUB and CAP are MERGED or complete;
 the FIN finish plan ([FINISH-PLAN](designs/FINISH-PLAN.md)) is MERGED except **PLAY-1** (Robinson Playground), which is
-IN_PROGRESS. The 2026-10-28 agent-feedback issues #427–#436 are closed (PRs #440–#443, C-16 `github_write_batch`); that
+IN_PROGRESS. **PLAY-2** (enrolled runtime hosts) was separately authorized on 2026-10-31; PR #494 added its card, and Phase 1 design proceeds alongside PLAY-1 live acceptance. The new card is in the work index. The original 2026-10-30 summary is historical. The 2026-10-28 agent-feedback issues #427–#436 are closed (PRs #440–#443, C-16 `github_write_batch`); that
 is source-merged, not a new live release or client acceptance. Real-account acceptance remains a separate queue in
 `docs/STATUS.md` and never blocks development.
 
