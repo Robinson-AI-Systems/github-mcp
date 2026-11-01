@@ -5,6 +5,7 @@
 // limit for ordinary workspaces; only uncommitted bytes still count toward it.
 import {readdir, readFile, writeFile, rm, mkdir, lstat, rename, copyFile} from 'node:fs/promises';
 import {join, resolve, dirname} from 'node:path';
+import {constants as fsConstants} from 'node:fs';
 import {NativeGitWorker} from './engine.js';
 
 const IN_PROGRESS = ['MERGE_HEAD', 'CHERRY_PICK_HEAD', 'REVERT_HEAD', 'rebase-merge', 'rebase-apply', 'BISECT_LOG'];
@@ -76,7 +77,8 @@ export async function completeLeanImport(dir, {plan, token, remote, timeoutMs = 
       // Copy borrowed objects into this repository's own pack, then share the new pack with the cache.
       await git.git(scratch, ['repack', '-a', '-d', '-q'], {timeoutMs});
       await rm(join(scratch, 'objects', 'info', 'alternates'), {force: true});
-      for (const f of await readdir(join(scratch, 'objects', 'pack'))) if (/^pack-[a-f0-9]+\.(pack|idx|rev)$/.test(f)) await copyFile(join(scratch, 'objects', 'pack', f), join(cache, 'pack', f)).catch(e => { if (e.code !== 'EEXIST') throw e; });
+      // Pack names are content hashes: an existing one is identical. Cache trouble never fails an attachment.
+      try { for (const f of await readdir(join(scratch, 'objects', 'pack'))) if (/^pack-[a-f0-9]+\.(pack|idx|rev)$/.test(f) && !await exists(join(cache, 'pack', f))) await copyFile(join(scratch, 'objects', 'pack', f), join(cache, 'pack', f), fsConstants.COPYFILE_EXCL).catch(e => { if (e.code !== 'EEXIST') throw e; }); } catch { /* best effort */ }
     }
     await moveObjects(join(scratch, 'objects'), join(gitDir, 'objects'));
   } finally { await rm(scratch, {recursive: true, force: true}); }
