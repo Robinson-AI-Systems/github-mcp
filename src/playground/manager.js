@@ -8,6 +8,7 @@ import {allocationScope,allocationAuthority} from './lifecycle.js';
 import {ensureAllocation,disposeAllocation} from './allocations.js';
 import {indexAllocation,rootAllocationDb} from './index.js';
 import {dokployConfig,dokployProvider,pinProviderIdentity} from './dokploy.js';
+import {reconcileWarmRuntimes} from './warm-runtimes.js';
 const hash=x=>createHash('sha256').update(x).digest('hex');
 export const sweepKey=env=>hash(signNativeWorkerBody(JSON.stringify({purpose:'robinson-playground-maintenance/v1',origin:publicOrigin(env)}),env));
 export async function ensureProjectManager(ctx,config,provider){
@@ -34,7 +35,7 @@ export async function ensureProjectManager(ctx,config,provider){
  if(state.phase==='created'){await save({phase:'deploying',dispatchVersion:1});await provider.deploy(state.composeId,plan);}
  if(state.phase==='deploying'&&(await provider.inspect(state.composeId,plan))?.composeStatus==='done')await save({phase:'running'});
 }
-export async function sweepAllocations({root,load=allocationScope,env=process.env,budgetMs=20000,now=Date.now,providerFactory=dokployProvider}={}){
+export async function sweepAllocations({root,load=allocationScope,env=process.env,budgetMs=20000,now=Date.now,providerFactory=dokployProvider,fetch=globalThis.fetch,warm=reconcileWarmRuntimes}={}){
  const start=now(),cursor=await root.getSetting('playground_sweep_cursor'),rows=await root.listPlaygroundIndexes({after:cursor?.after??'',limit:50});let inspected=0,disposed=0,pending=0,after=cursor?.after??'';
  for(const row of rows){if(now()-start>=budgetMs)break;const indexed=row.value.allocation;after=row.setting;inspected++;
   try{
@@ -66,7 +67,9 @@ export async function sweepAllocations({root,load=allocationScope,env=process.en
  }
  if(rows.length===0||inspected===rows.length&&rows.length<50)after='';
  await root.compareAndSetSetting('playground_sweep_cursor',cursor?.revision??0,{revision:(cursor?.revision??0)+1,after});
- return {inspected,disposed,pending,next_page:after!==''};
+ // FLEET-7: the same sweep runs the warm-runtime gate and drains tenant-free image holders it no longer wants.
+ let warmState={enabled:false,pending:true};if(now()-start<budgetMs)try{warmState=await warm({root,env,fetch,now,providerFactory});}catch{/* Retried next sweep; never blocks allocation cleanup. */}
+ return {inspected,disposed,pending,next_page:after!=='',warm:{enabled:warmState.enabled===true,running:warmState.running??0,pending:warmState.pending===true||warmState.pending>0}};
 }
 export async function sweep(req,res,{env=process.env,root,run=sweepAllocations}={}){
  res.setHeader('Cache-Control','no-store');if(req.method!=='POST')return res.status(405).json({error:'method_not_allowed'});

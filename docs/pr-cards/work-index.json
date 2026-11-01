@@ -2759,7 +2759,7 @@
         "FLEET-2"
       ],
       "card": "docs/pr-cards/FLEET-7.md",
-      "status": "APPROVED",
+      "status": "MERGED",
       "migration": "none",
       "budget": 800,
       "units": [
