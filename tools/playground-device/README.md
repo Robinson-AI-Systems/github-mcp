@@ -24,6 +24,14 @@ on Windows/WSL2 or macOS leave a terminal open or use your usual "run at login" 
 and resumes when it checks in again; a runtime that cannot reach the server stops new commands and, after five minutes,
 stops itself.
 
+**On a server you administer** (a VPS, a home server, a Dokploy or Coolify host, any Linux box with Docker): install
+Node.js 22+ next to Docker, then do the same steps over SSH and keep it running with
+`systemd-run --user --unit ras-playground node $PWD/agent.mjs run` (run `loginctl enable-linger $USER` once so it survives
+logout). The agent uses the server's Docker directly; it does not need to be deployed as an app inside Dokploy, and it does
+not touch anything else on the server — only containers, volumes and networks it creates, all labelled
+`com.robinson.playground.*`. Several machines can be added; each shows on My connection with its last check-in and free
+capacity, and work goes to the ready one with the most free memory.
+
 **Remove a machine:** press **Revoke** on My connection (its runtimes are stopped and deleted at its next check-in), then
 run `node agent.mjs leave` on it. `node agent.mjs status` shows what it is doing.
 
