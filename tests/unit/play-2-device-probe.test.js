@@ -28,7 +28,7 @@ describe('PLAY-2 remote device probe does not issue execution authority',()=>{
  });
  it('refuses private, metadata, benchmarking, localhost and non-public DNS before any outbound request',async()=>{
   for(const ip of ['0.0.0.0','10.0.0.1','127.0.0.1','169.254.169.254','172.16.0.4',
-    '192.168.1.8','100.64.0.1','198.18.0.1','224.0.0.1','255.255.255.255'])
+    '192.168.1.8','192.0.0.8','100.64.0.1','198.18.0.1','224.0.0.1','255.255.255.255'])
     expect(publicDeviceIPv4(ip)).toBe(false);
   for(const ip of ['1.1.1.1','8.8.8.8','104.21.1.2'])expect(publicDeviceIPv4(ip)).toBe(true);
   const body=JSON.stringify(claim()),controller=keys(),sig=signature(body,controller);
