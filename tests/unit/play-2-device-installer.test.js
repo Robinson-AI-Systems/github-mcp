@@ -6,10 +6,10 @@ const verifier=()=> 'ed25519:'+generateKeyPairSync('ed25519').publicKey.export({
 const args={deviceId:'a'.repeat(32),binding:'b'.repeat(64),image:'robinson-coding:test',
  controlPublicKey:verifier(),allowLocalImage:true};
 const setup=()=>devicePlan(args);
-function simulator({collision=false,networkInternal=true}={}){
+function simulator({collision=false,networkInternal=true,dockerMissing=false}={}){
  const objects={image:{},network:null,volume:null,container:null};
  const calls=[];
- const missing=type=>{const e=new Error('No such '+type);e.stderr='Error: No such '+type;throw e;};
+ const missing=type=>{const e=new Error('No such '+type);e.stderr=dockerMissing&&type==='network'?'Error response from daemon: network '+setup().network+' not found':'Error: No such '+type;throw e;};
  const docker=async argv=>{
   calls.push(argv);
   const [kind,action]=argv;
@@ -74,10 +74,17 @@ describe('owner-operated Docker runtime contract',()=>{
   expect(create).not.toContain('/var/run/docker.sock');
   expect((await local.install(plan)).alreadyInstalled).toBe(true);
   expect(await local.canary(plan)).toMatchObject({canaryPassed:true,controllerAdmission:false});
+  const browserExec=sim.calls.find(a=>a[0]==='exec'&&a.some(v=>String(v).includes('chromium.launch')));
+  expect(browserExec).toContain('PLAYWRIGHT_BROWSERS_PATH=/opt/playwright');
   expect((await local.remove(plan))).toEqual({
    disposed:true,containerAbsent:true,volumeAbsent:true,networkAbsent:true
   });
   expect(await local.evidence(plan)).toMatchObject({container:null,network:null,volume:null});
+ });
+ it('recognizes exact Docker network not-found responses but never foreign ownership',async()=>{
+  const sim=simulator({dockerMissing:true}),local=createLocalRuntime({docker:sim.docker}),plan=setup();
+  expect(await local.install(plan)).toMatchObject({canaryPassed:false});
+  expect(await local.remove(plan)).toMatchObject({disposed:true,networkAbsent:true});
  });
  it('refuses foreign ownership, unsupported networks and ambiguous resource state before mutation',async()=>{
   const plan=setup(),foreign=simulator({collision:true}),wrong=createLocalRuntime({docker:foreign.docker});
