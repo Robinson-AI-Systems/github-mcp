@@ -1,5 +1,6 @@
 // Copied from Robinson-AI-Systems/stripe-mcp src/core/registry.js @ e2f90e8.
 /** Contract-generic registry: no service-specific imports. */
+import { isOperatorConnection } from './authority.js';
 export function mergeNamespaces(modules) {
   const tools = [];
   const handlers = Object.create(null);
@@ -20,8 +21,10 @@ export function mergeNamespaces(modules) {
   return { tools, handlers };
 }
 
-/** Write tools are available only to the profiles they list; read-only tools to every profile. */
-export const isToolVisible = (tool, profile) => {
+/** Write tools are available only to the profiles they list; read-only tools to every profile. A tool marked `operatorOnly`
+ * exists only for the service operator's own connection: without that exact connection it is neither listed nor callable. */
+export const isToolVisible = (tool, profile, connection = null) => {
+  if (tool.operatorOnly === true && !isOperatorConnection(connection)) return false;
   // Composed registry runners with explicit profiles are changes, even though
   // their mutation is performed by an underlying audited writer.
   if (tool.writes === true || (tool.passthrough === true && tool.usesRegistry === true && Array.isArray(tool.profiles)))
@@ -30,7 +33,7 @@ export const isToolVisible = (tool, profile) => {
 };
 
 /** The tools a connection with this profile may see and call. */
-export const toolsForProfile = (registry, profile) => registry.tools.filter((tool) => isToolVisible(tool, profile));
+export const toolsForProfile = (registry, profile, connection = null) => registry.tools.filter((tool) => isToolVisible(tool, profile, connection));
 
 export const LISTINGS = Object.freeze(['catalog', 'compact']);
 
@@ -55,8 +58,8 @@ export const listedTool = (tool, { compact = false } = {}) => ({
  * The tools a connection is shown. `catalog`: every tool its profile may see. `compact`: only tools marked `compact` (the meta-tools,
  * whoami, the workflows) - everything else is still reachable through the meta-tools. Hiding a tool from the list never makes it callable.
  */
-export const toolsForListing = (registry, profile, listing) => {
-  const visible = toolsForProfile(registry, profile);
+export const toolsForListing = (registry, profile, listing, connection = null) => {
+  const visible = toolsForProfile(registry, profile, connection);
   return listing === 'compact' ? visible.filter((tool) => tool.compact === true) : visible;
 };
 

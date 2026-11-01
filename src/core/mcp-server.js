@@ -30,7 +30,7 @@ export function createMcpHandler({ db, registry, env = process.env, toConnection
       const listing = listingFor(req, connection);
       let shown = registry;
       if (typeof offered === 'function') { try { shown = (await offered(registry, connection, listing)) ?? registry; } catch { shown = registry; } }
-      const page=pageToolsForListing(shown, connection.profile, listing, request.params?.cursor);
+      const page=pageToolsForListing(shown, connection.profile, listing, request.params?.cursor, connection);
       if(toolSecuritySchemes)
         page.tools=page.tools.map(tool=>({...tool,securitySchemes:toolSecuritySchemes(tool,connection)}));
       return page;

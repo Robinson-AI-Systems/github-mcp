@@ -55,7 +55,7 @@ async function undoChange(args, ctx) {
   if (typeof inverse.tool !== 'string' || !/^github_[a-z0-9_]{2,70}$/.test(inverse.tool) || !inverse.args || typeof inverse.args !== 'object' || Array.isArray(inverse.args)) {
     return refuse('The recorded opposite is not usable, so it was not run.', about);
   }
-  const inner = toolsForProfile(ctx.registry, connection.profile).find((t) => t.name === inverse.tool);
+  const inner = toolsForProfile(ctx.registry, connection.profile, connection).find((t) => t.name === inverse.tool);
   if (!inner || inner.writes !== true || inner.writeContract !== 'defineWrite-v1') {
     return refuse(`The opposite needs ${inverse.tool}, which this connection's profile cannot use.`, about);
   }

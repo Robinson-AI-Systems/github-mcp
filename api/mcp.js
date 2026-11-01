@@ -6,6 +6,7 @@ import { createGates } from '../src/tools/gates.js';
 import { getSecretsRuntime } from '../src/runtime.js';
 import { isPrivateTenantBearer, resolvePrivateTenantMcpBearer, requestScopedVerifiedAccess } from '../src/tenancy/mcp-route.js';
 import { serverInfo } from '../src/brand/brand.js';
+import { operatorConnection } from '../src/core/authority.js';
 import { publicOrigin } from '../src/core/http.js';
 import { loadZone, withTimeZone } from '../src/core/time-zone.js';
 import { admitTenantMcp, TenantCapacityError, recordTenantMetric } from '../src/tenancy/runtime-limits.js';
@@ -78,11 +79,14 @@ export async function handleMcp(req, res, { marketplaceAccountId = null } = {}) 
       }
     }
     const policy = createGithubPolicy();
+    // PUB-8: only the operator's own database route marks its connections as the operator's (owner-only tools such as
+    // github_tenant_remove). A person's tenant route, the Marketplace route and service passes never get the mark.
+    const toConnection = !tenantRoute && marketplaceAccountId === null ? operatorConnection(policy.toConnection) : policy.toConnection;
     const zone = await loadZone(db);
     const answer = await withTimeZone(zone, () => createMcpHandler({
       ...(tenantRoute?{toolSecuritySchemes:tool=>[{type:'oauth2',
         scopes:tool.name==='github_notify_list'?['github.notifications.read']:[]}]}:{}),
-      db, registry, toConnection: policy.toConnection,
+      db, registry, toConnection,
       // CAP-6: runner, merge-queue and Copilot families are listed only where GitHub shows the account has them.
       offered: (reg, connection, listing) => (listing === 'compact' ? reg : offeredRegistry(reg, { connection, db, credentials })),
       dispatch: createDispatch({ credentials, gates: createGates({ db }), featureGates: true, ...(usageHook ? { usage: usageHook } : {}) }), serverInfo: serverInfo(safeOrigin())

@@ -22,7 +22,7 @@ export const NOW = Date.UTC(2026, 9, 10, 18, 0, 0);
 const ENV = { TOKEN_ENCRYPTION_KEY: crypto.randomBytes(32).toString('base64url') };
 
 /** A fresh world: fake database and GitHub, a fine-grained credential for example-org, and a connection of the given kind. */
-export async function makeWorld({ mode = 'preview', profile = 'everyday', accounts = ['example-org'], gates = [], scratchAccount = false, advanceClockOnSleep = false, packageToken = false, packageUser = false, delegated = false, externalRoutes = [] } = {}) {
+export async function makeWorld({ mode = 'preview', profile = 'everyday', accounts = ['example-org'], gates = [], scratchAccount = false, advanceClockOnSleep = false, packageToken = false, packageUser = false, delegated = false, externalRoutes = [], operator = false } = {}) {
   // Long multi-step fixtures must let reserved write slots expire in virtual time.
   // Production spacing remains real; this only advances the fake clock after a simulated sleep.
   let offsetMs = 0;
@@ -47,7 +47,7 @@ export async function makeWorld({ mode = 'preview', profile = 'everyday', accoun
   }
   // Mock-only App transport: obtain an existing fixture user token instead of minting a real App installation token.
   const fixtureCredentials = scratchAccount ? { ...credentials, token: ({ account }) => credentials.token({ account, cred: 'U' }) } : credentials;
-  const connection = Object.freeze({ client_id: 'client-1', default_account: accounts[0], accounts: Object.freeze([...accounts]), mode, profile, listing: 'catalog', ...(delegated ? { pass: true,
+  const connection = Object.freeze({ client_id: 'client-1', default_account: accounts[0], accounts: Object.freeze([...accounts]), mode, profile, listing: 'catalog', ...(operator ? { operator: true } : {}), ...(delegated ? { pass: true,
     allow_writes: true, allow_access_changes: true, spend_limit_cents: 100000, areas: null, repos: null } : {}) });
   const ctx = { connection, db, env: ENV, credentials: fixtureCredentials, fetch: gh.fetch,
     now: clock, sleep: async (ms) => { if (advanceClockOnSleep) offsetMs += ms; },
@@ -88,15 +88,16 @@ export function doorsFor(definition) {
  * @param {object} [o.quietArgs] arguments for the same tool that need no confirmation (for an `M` tool: only own people)
  * @param {boolean} [o.conveyor] allowed under a `pr-only` protected resource
  * @param {string} [o.profile] the connection profile to test with (default everyday; use 'full' for a full-profile tool)
+ * @param {boolean} [o.operator] the connection is the service operator's own (for an `operatorOnly` tool)
  * @param {boolean} [o.strictSpend] CAP-6 strict spend: even the full owner connection must confirm first
  * @param {(opts) => Function[]} [o.gatesFor] `({ protectedLevel, spendLimitCents })` -> gates; defaults to the fixture gates
  */
 export function runWriteContract({ label, definition, args, arrange, needsConfirm, production = false, notifies = [], accessWidening = false, spendCents = 0, quietArgs = null,
-  packageToken = false, conveyor = false, profile = 'everyday', strictSpend = false, scratchAccount = false, externalRoutes = [], previewOnly = false, expectedWrites = 1, advanceClockOnSleep = false, prepare = null, gatesFor = ({ protectedLevel, spendLimitCents }) => [...(protectedLevel ? [protectionGate(protectedLevel)] : []), spendGate({ limitCents: spendLimitCents ?? 0 })] }) {
+  packageToken = false, conveyor = false, profile = 'everyday', strictSpend = false, scratchAccount = false, externalRoutes = [], previewOnly = false, expectedWrites = 1, advanceClockOnSleep = false, prepare = null, operator = false, gatesFor = ({ protectedLevel, spendLimitCents }) => [...(protectedLevel ? [protectionGate(protectedLevel)] : []), spendGate({ limitCents: spendLimitCents ?? 0 })] }) {
   for (const door of doorsFor(definition)) {
     describe(`write contract: ${label} through ${door.name}`, () => {
       const world = async (options = {}, replies = 'ok') => {
-        const w = await makeWorld({ profile, scratchAccount, advanceClockOnSleep, packageToken, externalRoutes, ...options, ...(options.gates === undefined ? { gates: gatesFor({ spendLimitCents: options.spendLimitCents ?? 100000 }) } : {}) });
+        const w = await makeWorld({ profile, scratchAccount, advanceClockOnSleep, packageToken, externalRoutes, operator, ...options, ...(options.gates === undefined ? { gates: gatesFor({ spendLimitCents: options.spendLimitCents ?? 100000 }) } : {}) });
         arrange(w.gh, replies);
         if (prepare) await prepare(w);
         return w;
