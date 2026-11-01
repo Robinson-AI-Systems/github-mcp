@@ -9,6 +9,7 @@ import privateTenantAuthorize from '../../api/tenant/oauth/authorize.js';
 import { isPublicClientId } from '../tenancy/public-code.js';
 import { publicConnectEnabled } from '../tenancy/public-connect.js';
 import { publicApprove, publicAuthorize, publicForget, publicLimits, publicManage, publicTrust, publicMoved, publicRegister } from '../tenancy/public-http.js';
+import { TRUST_PAGES } from '../tenancy/trust-pages.js';
 
 /** Runs one OAuth handler. Any failure answers 503 with no detail (never SQL, tokens, passphrases or stack text). */
 export async function handleOAuth(which, req, res, { db, env = process.env, consentFactory } = {}) {
@@ -24,7 +25,7 @@ export async function handleOAuth(which, req, res, { db, env = process.env, cons
       // Invalid signed clients fail closed; never query the owner DB for them.
       if (publicConnectEnabled(env)) {
         if (params.page === 'limits') return await publicLimits(req, res, { env });
-        if (['privacy', 'terms', 'security', 'support'].includes(params.page)) return await publicTrust(req, res, { env });
+        if (TRUST_PAGES.includes(params.page)) return await publicTrust(req, res, { env });
         if (params.forget === '1') return await publicForget(req, res, { env });
         if (params.manage === '1' || req.query?.manage === '1') return await publicManage(req, res, { env });
         if (params.step === 'approve') return await publicApprove(req, res, { env });

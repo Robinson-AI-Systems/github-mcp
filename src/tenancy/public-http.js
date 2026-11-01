@@ -100,7 +100,7 @@ export async function publicLimits(req, res, { env = process.env } = {}) {
     '<p><small>GitHub has its own limits too; if GitHub asks us to slow down, your assistant is told when to try again. <a href="/connection">Back to My connection</a></small></p>');
 }
 
-/** /privacy /terms /security /support: public pages from the reviewed drafts (draft banner until the owner approves them). */
+/** /privacy /terms /security /support /status: public pages from docs/legal (draft banner until the owner approves them). */
 export async function publicTrust(req, res, { env = process.env } = {}) {
   res.setHeader('Cache-Control', 'no-store');
   if (!publicConnectEnabled(env)) return off(res);

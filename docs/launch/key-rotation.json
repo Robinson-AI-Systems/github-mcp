@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "note": "PUB-7 launch evidence: for each key or secret the public service depends on, where the replace-it-fast procedure is written down and where it was rehearsed. Names only, never values. A rehearsal is a test that changes the key in the local harness and proves people stay connected (or are signed out on purpose); it is never a production rotation. The readiness report checks that each procedure file exists and each rehearsal test name is really in its test file.",
+  "secrets": [
+    {
+      "id": "token_encryption_key",
+      "name": "Encryption key for saved GitHub credentials (TOKEN_ENCRYPTION_KEY, old key kept in TOKEN_ENCRYPTION_KEY_PREVIOUS)",
+      "procedure": "docs/GO-LIVE-CHECKLIST.md",
+      "rehearsal": { "test": "tests/browser/sign-in.test.js", "name": "a key change does not sign people out", "recorded": "2026-10-24" }
+    },
+    {
+      "id": "tenant_routing_key",
+      "name": "Routing key that signs every public connection (GITHUB_TENANT_ROUTING_KEY); changing it signs everyone out at once",
+      "procedure": "docs/GO-LIVE-CHECKLIST.md",
+      "rehearsal": null
+    },
+    {
+      "id": "app_private_key",
+      "name": "The public GitHub App's private key",
+      "procedure": null,
+      "rehearsal": null
+    },
+    {
+      "id": "app_client_secret",
+      "name": "The public GitHub App's client secret",
+      "procedure": null,
+      "rehearsal": null
+    },
+    {
+      "id": "app_webhook_secret",
+      "name": "The public GitHub App's webhook secret",
+      "procedure": null,
+      "rehearsal": null
+    }
+  ]
+}

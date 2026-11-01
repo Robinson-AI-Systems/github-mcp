@@ -23,7 +23,7 @@ Restricted preview RTC successful replies revalidate service pass and scratch ow
 
 Every tool this server will have, by area — the product scope. The implementing model builds exactly these; anything
 else goes in `docs/ROADMAP.md` and the PR report, and universal tools (last section) provide guarded access only where their actual credential, classification and request support permits. Endpoint-level completeness remains unproven; see [MAXIMUM-AUTHORITY](designs/MAXIMUM-AUTHORITY.md). Counts are checked by `python3 scripts/count-catalog.py` (run by `npm run check` and CI since A-1, #1). When a
-tool merges, its Card cell gains `built #<PR>`. Built so far: **498 cataloged tools** (every row below is in the registry, `src/tools/index.js`; `scripts/count-catalog.py` and `scripts/check-writes.mjs` fail the build if a tool and its row disagree)
+tool merges, its Card cell gains `built #<PR>`. Built so far: **499 cataloged tools** (every row below is in the registry, `src/tools/index.js`; `scripts/count-catalog.py` and `scripts/check-writes.mjs` fail the build if a tool and its row disagree)
 and holds the two A-5 tools, the B-3 protected-list reader the two B-2 production-switch tools and the B-4 spend-limit tool. Since B-5 every result of these tools is shaped (`src/tools/util.js`) and failures are explained by `src/tools/errors.js`. Since B-6 a connection sees only the tools its profile allows (`tools/list` and by-name calls). Every write tool below is built with `defineGithubWrite` (B-1, #16, `src/tools/define-github-write.js`) and pass the nine write-contract checks (`test/helpers/write-contract.js`); the two B-2 tools are the first (`src/tools/server.js`).
 
 **Safety metadata and scoped behavior:** `—` reads only; `P` supports optional dryRun; `D` describes destructive effects; `Prod`/`Prod*` describe production scope; `A`/`A*` describe access changes; `M` describes notifications; `$`/`$*` describe billing. `C` retains the restricted-profile confirmation declaration checked against source. On a full ordinary owner connection these marks are disclosure, not automatic confirmation or refusal. Explicitly restricted profiles/passes retain their chosen mode, access and spend limits. GitHub applies provider rules; journal/replay/readback and credential isolation apply to everyone.
@@ -41,9 +41,9 @@ copy code) · `F` the old toolkit had it **with a bug or a missing guard**, fixe
 never collides with the Vercel or Neon server's tools in the same chat; `scripts/count-catalog.py` enforces it.
 
 
-## Server about itself (`github_*`) — 25
+## Server about itself (`github_*`) — 26
 
-Card(s): A-5, B-2, B-3, B-8, C-1, C-2, R-1, O-1, X-1. Meta-tools, connection and safety settings. Compact listing (`docs/designs/BATCH-C.md`) starts here.
+Card(s): A-5, B-2, B-3, B-8, C-1, C-2, R-1, O-1, X-1, PUB-7. Meta-tools, connection and safety settings. Compact listing (`docs/designs/BATCH-C.md`) starts here.
 
 | Tool | What it does | Safety | Origin | Cred | Audience | Profile | Card |
 | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -72,6 +72,7 @@ Card(s): A-5, B-2, B-3, B-8, C-1, C-2, R-1, O-1, X-1. Meta-tools, connection and
 | `github_create_pass` | Make a short-lived preview pass for the HTTPS API and Robinson's Toolkit (read-only unless changes are allowed; $0; no access changes; shown once on the setup page) | C | N | — | O | F | R-1 built #225 |
 | `github_where_is_setting` | Structured steps (link, numbered actions, expected result, read-back check) for any GitHub setting with no API | — | N | — | O | R | B-8 built #24 |
 | `github_admin_overview` | Bounded owner/org security review, true optional user-selected MCP spend cap (legacy default $0 is uncapped), actual verified monthly GitHub billed usage or unreadable, enrolled U personal identity, explicit plan/permission gaps | — | N | I,U | O | R | O-1 built #197/#224; current provider-read correction |
+| `github_launch_readiness` | Owner only: the eight public-launch conditions checked against evidence (acceptance ledger, trust pages, load-test and key-rotation records, PUB-8 tool, owner boxes, switch names): met / not met / needs owner with next steps; never changes `GITHUB_PUBLIC_CONNECT` or any setting | — | N | — | O | R | PUB-7 |
 
 ## Repositories (`github_repo_*`) — 22
 
@@ -896,15 +897,15 @@ Card(s): PAR-1. Code Quality findings come from GitHub's own analysis (not marke
 
 ## Totals
 
-**Totals:** 498 tools: 492 hand-built + 6 universal (`github_api_*`, `github_graphql_*`), plus guided settings for every
-dashboard-only owner setting. By profile (lowest profile that has the tool): read_only 158, everyday adds 83
-(everyday lists 240), full adds 113 (full lists 396). In compact mode (`docs/designs/BATCH-C.md`) an agent
+**Totals:** 499 tools: 493 hand-built + 6 universal (`github_api_*`, `github_graphql_*`), plus guided settings for every
+dashboard-only owner setting. By profile (lowest profile that has the tool): read_only 159, everyday adds 83
+(everyday lists 241), full adds 113 (full lists 397). In compact mode (`docs/designs/BATCH-C.md`) an agent
 loads only about 25 tools up front (meta-tools, whoami, universal search, workflows) and reaches the rest through
 `github_search_tools` / `github_call`.
 
 | Section | Tools |
 | --- | --- |
-| Server about itself | 25 |
+| Server about itself | 26 |
 | Repositories | 22 |
 | Files, commits and git data | 23 |
 | Branches and tags | 9 |
@@ -948,7 +949,7 @@ loads only about 25 tools up front (meta-tools, whoami, universal search, workfl
 | Master-token families: Copilot Spaces, Classroom, Marketplace and more | 17 |
 | Code quality and GitHub help | 4 |
 | Robinson Playground commands | 4 |
-| **Total** | **498** |
+| **Total** | **499** |
 
 <!-- #108: experimental RTC HTTPS reader bridges only server/meta read tools using existing guarded dispatch; RTC 1 certification is not claimed. -->
 
