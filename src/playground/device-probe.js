@@ -70,15 +70,16 @@ export function verifyDeviceProbeResponse(body,signature,devicePublicKey,claim,{
     Object.keys(p).sort().join(',')!=='deviceId,expiresAt,generation,nonce,observedAt,origin,purpose')throw fail();
  return p;
 }
-export async function pinnedDeviceRequest({origin,body,signature,dnsResolve=resolve4,requestImpl=httpsRequest}={}){
+export async function pinnedDeviceRequest({origin,body,signature,path='/v1/enrollment/probe',dnsResolve=resolve4,requestImpl=httpsRequest}={}){
  const u=pinnedDeviceOrigin(origin);
+ if(!['/v1/enrollment/probe','/v1/enrollment/canary'].includes(path))throw fail();
  if(typeof body!=='string'||Buffer.byteLength(body)>4096||!sigPattern.test(signature??''))throw fail();
  const addresses=await dnsResolve(u.hostname).catch(()=>{throw fail();});
  if(!Array.isArray(addresses)||addresses.length<1||addresses.length>16||
     !addresses.every(publicDeviceIPv4))throw fail();
  const ip=addresses[0];
  return await new Promise((resolve,reject)=>{
-  const req=requestImpl({protocol:'https:',hostname:u.hostname,port:443,path:'/v1/enrollment/probe',
+  const req=requestImpl({protocol:'https:',hostname:u.hostname,port:443,path,
    method:'POST',rejectUnauthorized:true,servername:u.hostname,
    lookup:(host,options,cb)=>cb(null,ip,4),
    headers:{'Content-Type':'application/json','Content-Length':Buffer.byteLength(body),'x-robinson-signature':signature}},res=>{
