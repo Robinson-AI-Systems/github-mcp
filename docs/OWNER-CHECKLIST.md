@@ -35,6 +35,8 @@ Only things that need you (your sign-in, phone or desktop, money, or a decision)
 
 **One click for faster runtimes (2026-11-01):** after the first **Publish runtime image** run, open GitHub → Robinson-AI-Systems → Packages → `github-mcp-runtime` → Package settings → **Change visibility → Public** (it contains only this public repository's code, no secrets). Then agents pin its digest in `PLAYGROUND_IMAGE`. Until then runtimes keep building from source (slower, still works).
 
+**More shared capacity (optional, 2026-11-01):** to add another Dokploy instance or server to the shared pool, give agents its address and put its API key in a new protected Vercel setting (for example `PLAYGROUND_KEY_SECOND`) — never in chat. Agents then add it to `PLAYGROUND_POOLS`.
+
 **Runtime fleet decisions (2026-11-01, none blocks work):**
 - [x] **Approved 2026-11-01:** the "dial-out" host agent ([design §2.1](designs/RUNTIME-FLEET-2026-11-01.md)). Yes means your PC and tailnet machines can run Playground work with no public tunnel; each machine makes one small check-in request about every 25 seconds while idle. Recommended: yes.
 - [x] **Approved 2026-11-01:** pool order = each person's own machines first, then the shared Dokploy pool.

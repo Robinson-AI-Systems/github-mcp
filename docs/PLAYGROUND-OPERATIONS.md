@@ -13,7 +13,8 @@ hypervisor VMs.
 
 | Setting | Default | Meaning |
 |---|---|---|
-| `PLAYGROUND_DOKPLOY_ORIGIN`, `PLAYGROUND_DOKPLOY_API_KEY`, `PLAYGROUND_DOKPLOY_PROJECT_ID`, `PLAYGROUND_DOKPLOY_ENVIRONMENT_ID` | — | The single Dokploy target. Dokploy has no project-scoped key, so the code pins and re-checks project/environment/source/resource ownership before every mutation. Changing them later refuses existing allocations rather than moving them |
+| `PLAYGROUND_POOLS` | — | **Several shared pools (FLEET-4):** JSON list of `{id, origin, keyEnv, project, environment, ingress, serverId?, weight?}`. Each API key lives in its own protected setting named by `keyEnv` (never in the list). `serverId` places allocations on a specific server of a multi-server Dokploy. New allocations are spread by weight (rendezvous hashing; weight 0 = drain: no new work); every allocation keeps the pool it started on, and removing a pool that still has allocations refuses their operations instead of moving them. Without this setting the legacy variables below form one pool, `default` |
+| `PLAYGROUND_DOKPLOY_ORIGIN`, `PLAYGROUND_DOKPLOY_API_KEY`, `PLAYGROUND_DOKPLOY_PROJECT_ID`, `PLAYGROUND_DOKPLOY_ENVIRONMENT_ID` | — | The legacy single Dokploy target (pool `default`). Dokploy has no project-scoped key, so the code pins and re-checks project/environment/source/resource ownership before every mutation. Changing them later refuses existing allocations rather than moving them |
 | `PLAYGROUND_INGRESS_IPV4` | — | The host's **inbound** address (operator value; currently the friend's server). Allocation hosts become `ras-pg-<id>-<a-b-c-d>.sslip.io` |
 | `PLAYGROUND_IMAGE` *or* `PLAYGROUND_BUILD_SOURCE_SHA` | serving `VERCEL_GIT_COMMIT_SHA` | Immutable `…@sha256:` image, or a 40-hex commit to build from the public repository. A prebuilt image digest makes new runtimes start much faster than a per-allocation build. The **Publish runtime image** workflow builds and smoke-tests `ghcr.io/robinson-ai-systems/github-mcp-runtime` on every release to `live` (or on demand) and writes the digest to pin in its run summary |
 | `PUBLIC_BASE_URL` | `https://github.robinsonaisystems.com` | Control origin baked into plans (lifecycle callback, preview) |
@@ -44,7 +45,8 @@ already-signed `/v1/coding` or `/v1/workspace` request, forwarded unchanged), `t
 `https://d<device>-<binding>.fleet.invalid/` and can never be resolved, so they only ever travel by relay.
 
 - **Placement order:** the person's own `ready` machines that checked in within 90 s and have room (≥ 1 CPU, 1.5 GB free
-  memory, 10 GB free disk; the size class is capped to ¾ of the machine), then the operator pool, then Git-only.
+  memory, 10 GB free disk; the size class is capped to ¾ of the machine), then the operator pools (`PLAYGROUND_POOLS`,
+  spread by weight), then Git-only. People who only use their own machines need no shared pool at all.
 - **Liveness:** commands need a check-in within 90 s; the runtime's own heartbeat does not depend on the agent, so a slow
   check-in never stops running work. A revoked machine's runtimes stop on their next heartbeat.
 - **Revocation:** bumps the device generation; the next check-in gets a `terminate` order; the agent deletes every runtime
@@ -193,9 +195,9 @@ redirects, cookies or compressed bodies.
 
 ## Known limits
 
-- **One Dokploy target.** All allocations live on one origin/project/environment; there is no server selection. Each
-  allocation adds private networks, and the host's Docker address pool already ran out once (owner checklist item 3).
-  `runtime: none` and smaller classes reduce pressure; the fleet design removes the per-allocation ingress entirely.
+- **Network address pools.** Each shared-pool allocation adds private networks, and a Docker host's address pool can run
+  out (it did once, owner checklist item 3). Spread load with `PLAYGROUND_POOLS`, use `runtime: none` and smaller classes,
+  or let people run on their own machines.
 - **Startup is slow for small jobs:** per-allocation build (without `PLAYGROUND_IMAGE`), four services, new TLS
   certificate, multi-sweep attachment. Fixes are FLEET-2 (slim image, warm pool, ephemeral runs).
 - **No resize:** change size by finishing work, disposing, and opening a new workspace with another class.

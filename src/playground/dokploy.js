@@ -17,7 +17,41 @@ function operatorDriver(env,prefix){
  return {name,options};
 }
 const driverOptions=(driver,binding,volume)=>Object.fromEntries(Object.entries(driver.options).map(([k,v])=>[k,v.replaceAll('{binding}',binding).replaceAll('{volume}',volume)]));
-export function dokployConfig(env){
+// FLEET-4: several operator pools (Dokploy instances, projects or servers).
+// PLAYGROUND_POOLS is a protected JSON list; secrets stay in their own variables:
+//  [{"id":"east","origin":"https://…","keyEnv":"PLAYGROUND_DOKPLOY_API_KEY_EAST","project":"…","environment":"…",
+//    "ingress":"203.0.113.10","serverId":"optional Dokploy server id","weight":1}]
+// Without it, the legacy PLAYGROUND_DOKPLOY_* settings form one pool called "default".
+const POOL_ID=/^[a-z0-9][a-z0-9-]{0,31}$/;
+export function dokployPools(env){
+ if(!env?.PLAYGROUND_POOLS)return env?.PLAYGROUND_DOKPLOY_ORIGIN?[{...legacyConfig(env),pool:'default',weight:1}]:[];
+ let rows;try{rows=JSON.parse(env.PLAYGROUND_POOLS);}catch{throw fail('playground_provider_setup','PLAYGROUND_POOLS is not valid JSON.');}
+ if(!Array.isArray(rows)||!rows.length||rows.length>32)throw fail('playground_provider_setup','PLAYGROUND_POOLS must list 1–32 pools.');
+ const ids=new Set();
+ return rows.map(r=>{
+  if(!r||typeof r!=='object'||!POOL_ID.test(r.id??'')||ids.has(r.id)||!/^PLAYGROUND_[A-Z0-9_]{1,80}$/.test(r.keyEnv??'')||Object.keys(r).some(k=>!['id','origin','keyEnv','project','environment','ingress','serverId','weight'].includes(k)))throw fail('playground_provider_setup','Invalid PLAYGROUND_POOLS entry; secrets belong in their own setting named by keyEnv.');
+  ids.add(r.id);
+  if(r.serverId!==undefined&&!/^[A-Za-z0-9_-]{1,64}$/.test(r.serverId))throw fail('playground_provider_setup','Invalid pool serverId.');
+  const weight=r.weight===undefined?1:r.weight;if(!Number.isInteger(weight)||weight<0||weight>100)throw fail('playground_provider_setup','Pool weight must be 0–100.');
+  return {...legacyConfig({...env,PLAYGROUND_DOKPLOY_ORIGIN:r.origin,PLAYGROUND_DOKPLOY_API_KEY:env[r.keyEnv],PLAYGROUND_DOKPLOY_PROJECT_ID:r.project,PLAYGROUND_DOKPLOY_ENVIRONMENT_ID:r.environment,PLAYGROUND_INGRESS_IPV4:r.ingress}),pool:r.id,weight,...(r.serverId?{serverId:r.serverId}:{})};
+ });
+}
+// Rendezvous hashing: each new allocation picks a pool deterministically, spread by
+// weight, without counting allocations; a pool with weight 0 takes no new work.
+export function choosePool(env,binding){
+ const pools=dokployPools(env).filter(p=>p.weight>0);if(!pools.length)return null;
+ const score=p=>{const h=parseInt(createHash('sha256').update(binding+'|'+p.pool).digest('hex').slice(0,13),16)/2**52;return -Math.log(h||Number.MIN_VALUE)/p.weight;};
+ return pools.reduce((a,b)=>score(b)<score(a)?b:a);
+}
+export function dokployConfig(env,pool){
+ if(!env?.PLAYGROUND_POOLS)return legacyConfig(env);
+ const id=pool??'default',found=dokployPools(env).find(p=>p.pool===id);
+ // Rows created before pools existed keep using the legacy settings unless a "default" pool is listed.
+ if(!found&&id==='default'&&env.PLAYGROUND_DOKPLOY_ORIGIN)return legacyConfig(env);
+ if(!found)throw fail('playground_provider_setup','This allocation\'s pool "'+String(pool).slice(0,32)+'" is no longer configured; its resources are preserved.');
+ return found;
+}
+function legacyConfig(env){
  let origin;try{origin=new URL(env.PLAYGROUND_DOKPLOY_ORIGIN);}catch{throw fail('playground_provider_setup','Configure the project-scoped Playground Dokploy provider in protected settings.');}
  if(origin.protocol!=='https:'||origin.username||origin.password||origin.pathname!=='/'||origin.search||origin.hash||!env.PLAYGROUND_DOKPLOY_API_KEY||!env.PLAYGROUND_DOKPLOY_PROJECT_ID||!env.PLAYGROUND_DOKPLOY_ENVIRONMENT_ID||(!/^[-a-zA-Z0-9./:]+@sha256:[a-f0-9]{64}$/.test(env.PLAYGROUND_IMAGE??'')&&!/^[a-f0-9]{40}$/.test(env.PLAYGROUND_BUILD_SOURCE_SHA??env.VERCEL_GIT_COMMIT_SHA??''))||!/^\d{1,3}(?:\.\d{1,3}){3}$/.test(env.PLAYGROUND_INGRESS_IPV4??'')||env.PLAYGROUND_INGRESS_IPV4.split('.').some(x=>Number(x)>255))throw fail('playground_provider_setup','The protected Playground project, immutable image or ingress configuration is invalid.');
  return {cpuCpus:Number(env.PLAYGROUND_CPU_CPUS??8),memoryBytes:Number(env.PLAYGROUND_MEMORY_BYTES??8*1024**3),storageDriver:operatorDriver(env,'PLAYGROUND_STORAGE'),networkDriver:operatorDriver(env,'PLAYGROUND_NETWORK'),origin:origin.origin,key:env.PLAYGROUND_DOKPLOY_API_KEY,project:env.PLAYGROUND_DOKPLOY_PROJECT_ID,environment:env.PLAYGROUND_DOKPLOY_ENVIRONMENT_ID,image:env.PLAYGROUND_IMAGE,sourceSha:env.PLAYGROUND_BUILD_SOURCE_SHA??env.VERCEL_GIT_COMMIT_SHA,controlOrigin:env.PUBLIC_BASE_URL,ingress:env.PLAYGROUND_INGRESS_IPV4};
@@ -60,7 +94,7 @@ export function dokployProvider(config,{fetch:fetchImpl=globalThis.fetch}={}){
  return {project,inventory,inspect,
   async deployments(id,plan){if(!await inspect(id,plan))throw fail('playground_allocation_missing','The owned allocation is missing.');const rows=await call('deployment.allByCompose',{composeId:id});if(!Array.isArray(rows))throw fail('playground_provider_response','Deployment inventory is unavailable.');return rows;},
   async converted(id,plan){if(!await inspect(id,plan))return null;return call('compose.getConvertedCompose',{composeId:id});},
-  async create(plan){await project();const created=await call('compose.create',{name:plan.name,appName:plan.name,description:plan.description,environmentId:config.environment,composeType:'docker-compose',sourceType:'raw',composeFile:plan.composeFile});if(!created?.composeId)throw fail('playground_provider_uncertain','Provider create was not confirmed; inspect this original allocation intent.');return inspect(created.composeId,plan,{adoptAssignedName:true});},
+  async create(plan){await project();const created=await call('compose.create',{name:plan.name,appName:plan.name,description:plan.description,environmentId:config.environment,composeType:'docker-compose',sourceType:'raw',composeFile:plan.composeFile,...(config.serverId?{serverId:config.serverId}:{})});if(!created?.composeId)throw fail('playground_provider_uncertain','Provider create was not confirmed; inspect this original allocation intent.');return inspect(created.composeId,plan,{adoptAssignedName:true});},
   async expose(id,plan){if(!await inspect(id,plan))throw fail('playground_allocation_missing','The owned allocation is missing.');const domains=[];for(const path of ['/','/v1/workspace'])domains.push(await call('domain.create',{host:plan.host,https:true,port:3000,path,composeId:id,serviceName:plan.ingressService??(path==='/'?'coding':'broker'),domainType:'compose',certificateType:'letsencrypt',internalPath:'/',stripPath:false}));return domains;},
   async deploy(id,plan){if(!await inspect(id,plan))throw fail('playground_allocation_missing','The owned allocation is missing.');return call('compose.deploy',{composeId:id,title:'Bound Robinson Playground allocation',description:plan.description,freshVolumes:false});},
   async start(id,plan){if(!await inspect(id,plan))throw fail('playground_allocation_missing','The owned allocation is missing.');await call('compose.start',{composeId:id});},

@@ -43,7 +43,9 @@ export async function sweepAllocations({root,load=allocationScope,env=process.en
    if(authority.bootstrap&&authority.connection&&!s.cleanupRequested){ctx.connection=authority.connection;ctx.publicDb=root;const record={row:{id:s.workspace,owner:s.owner,repo:s.repo,expires_at:authority.job.expires_at},...s.native};const allocated=await ensureAllocation(ctx,record);if(['allocated','attaching'].includes(allocated.phase))await attachRepository(ctx,record,{budgetMs:Math.max(1000,budgetMs-(now()-start))});continue;}
    if(!authority.cleanup&&!s.cleanupRequested&&!['cleanup_requested','stopped','deleting'].includes(s.phase))continue;
    ctx.connection={client_id:s.clientId,pass_id:s.passId};ctx.publicDb=root;
-   const config=dokployConfig(env),provider=providerFactory(config,{fetch:ctx.fetch});
+   // Device allocations are cleaned up through their own machine; Dokploy rows use their own pool.
+   if(s.placement==='device'){const result=await disposeAllocation(ctx,{row:{id:s.workspace,owner:s.owner,repo:s.repo},...s.native});if(!result.disposed)pending++;continue;}
+   const config=dokployConfig(env,s.pool),provider=providerFactory(config,{fetch:ctx.fetch});
    if(!s.composeId&&!['requested','waiting_resources','disposed'].includes(s.phase)){const matches=(await provider.inventory()).filter(a=>a.name===s.plan.name||a.appName===s.plan.name);if(matches.length!==1){pending++;continue;}const observed=await provider.inspect(matches[0].composeId,s.plan,{adoptAssignedName:true});const next=await ctx.db.compareAndSetSetting('playground.'+s.binding.slice(0,40),s.revision,{...s,composeId:observed.composeId,plan:pinProviderIdentity(s.plan,observed.appName),revision:s.revision+1});if(!next){pending++;continue;}await indexAllocation(ctx,next);ctx.stored=next;}
    const record={row:{id:s.workspace,owner:s.owner,repo:s.repo},...s.native};
    const result=await disposeAllocation(ctx,record,{config,provider});
