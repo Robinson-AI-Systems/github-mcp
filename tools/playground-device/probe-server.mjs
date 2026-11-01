@@ -6,9 +6,10 @@ import {sign} from 'node:crypto';
 import {resolve} from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {loadOrCreateDeviceKey} from './pair.mjs';
+import {createPersistentProbeNonceStore} from './probe-nonces.mjs';
 import {verifyDeviceProbeClaim,deviceProbeResponse,pinnedDeviceOrigin} from '../../src/playground/device-probe.js';
 
-export function createDeviceProbeServer({deviceId,origin,generation,controlPublicKey,devicePrivateKey,now=Date.now}={}){
+export function createDeviceProbeServer({deviceId,origin,generation,controlPublicKey,devicePrivateKey,now=Date.now,consumeNonce=null}={}){
  pinnedDeviceOrigin(origin);
  if(!/^[a-f0-9]{32}$/.test(deviceId??'')||!Number.isSafeInteger(generation)||generation<1||
     !devicePrivateKey||devicePrivateKey.asymmetricKeyType!=='ed25519')throw new TypeError('Verified local device key, identity and generation required.');
@@ -27,6 +28,7 @@ export function createDeviceProbeServer({deviceId,origin,generation,controlPubli
      {deviceId,origin,generation,now});
    for(const [nonce,expiry] of recent)if(expiry<=now())recent.delete(nonce);
    if(recent.has(claim.nonce)||recent.size>=256)return send(409,'claim_replayed_or_busy');
+   if(consumeNonce)await consumeNonce(claim);
    recent.set(claim.nonce,claim.expiresAt);
    const proof=JSON.stringify(deviceProbeResponse(claim,{now}));
    res.setHeader('x-robinson-device-signature','ed25519:'+sign(null,Buffer.from(proof),devicePrivateKey).toString('base64url'));
@@ -48,8 +50,9 @@ if(process.argv[1]&&pathToFileURL(resolve(process.argv[1])).href===import.meta.u
  try{
   const o=parse(process.argv.slice(2));
   const {privateKey}=await loadOrCreateDeviceKey();
+  const consumeNonce=await createPersistentProbeNonceStore();
   const server=createDeviceProbeServer({deviceId:o['--device'],origin:o['--origin'],
-    generation:Number(o['--generation']),controlPublicKey:o['--control-key'],devicePrivateKey:privateKey});
+    generation:Number(o['--generation']),controlPublicKey:o['--control-key'],devicePrivateKey:privateKey,consumeNonce});
   server.listen(Number(o['--port']),'127.0.0.1',()=>{
    process.stdout.write('The signed Playground device probe listens on local loopback only. Configure your own outbound HTTPS tunnel to this port; it cannot execute code.\n');
   });
