@@ -110,3 +110,7 @@ workspace (`job_5369bc0a1bbe5b6f`, 3-minute lease) already passed live: closed a
 ## 2026-11-01 — Attach regression from #516 fixed
 
 See the status note `docs/status/2026-11-01-play1-acceptance.md` (last section).
+
+## 2026-11-01 — Attach recovers from a stale partial import
+
+See `docs/status/2026-11-01-play1-acceptance.md` (follow-up).

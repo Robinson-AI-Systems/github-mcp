@@ -1052,3 +1052,5 @@ Fine-grained token tenants (2026-11-01, PUB-9): a signed-in person can add a Git
 Runtime image (2026-11-01 fix): an allocation queued with a published image keeps it when provisioned (previously provisioning rebuilt the plan and fell back to a source build). No tool changes.
 
 Attach fix (2026-11-01): attaching reads the full source state without renewing the lease, and heals transfers saved without a source head. No tool changes.
+
+Attach recovery (2026-11-01): a re-prepared transfer uses a new ID; a stale partial copy on the runtime triggers a fresh attempt. No tool changes.
