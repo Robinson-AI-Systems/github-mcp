@@ -5,6 +5,7 @@ import {execFileSync} from 'node:child_process';
 import {createHash,createPublicKey} from 'node:crypto';
 import {pathToFileURL} from 'node:url';
 import {resolve} from 'node:path';
+import {writeLocalCanaryReceipt} from './canary-receipt.mjs';
 
 const HEX64=/^[a-f0-9]{64}$/;
 const HEX32=/^[a-f0-9]{32}$/;
@@ -129,10 +130,14 @@ export function createLocalRuntime({docker=dockerRun}={}){
 function options(argv){
  const data={};
  for(let i=0;i<argv.length;i+=2){const key=argv[i],value=argv[i+1];
-  if(!['--device','--binding','--image','--control-key','--action'].includes(key)||typeof value!=='string'||data[key])throw fail('Unknown or repeated installer argument.');
+  if(!['--device','--binding','--image','--control-key','--action','--origin','--generation'].includes(key)||typeof value!=='string'||data[key])throw fail('Unknown or repeated installer argument.');
   data[key]=value;
  }
  if(!['plan','install','canary','remove'].includes(data['--action']))throw fail('Choose --action plan, install, canary, or remove.');
+ if((data['--origin']||data['--generation'])&&
+    (data['--action']!=='canary'||!data['--origin']||!data['--generation']||
+     !/^[1-9][0-9]*$/.test(data['--generation'])||!Number.isSafeInteger(Number(data['--generation']))))
+    throw fail('Both enrolled origin and generation are required for a signed canary receipt.');
  return data;
 }
 if(process.argv[1]&&pathToFileURL(resolve(process.argv[1])).href===import.meta.url){
@@ -141,6 +146,9 @@ if(process.argv[1]&&pathToFileURL(resolve(process.argv[1])).href===import.meta.u
    image:args['--image'],controlPublicKey:args['--control-key']});
   const local=createLocalRuntime();
   const result=await local[args['--action']](plan);
-  process.stdout.write(JSON.stringify(result,null,2)+'\n');
+  const receipt=args['--action']==='canary'&&args['--origin']
+    ?await writeLocalCanaryReceipt({plan,origin:args['--origin'],generation:Number(args['--generation']),proof:result})
+    :null;
+  process.stdout.write(JSON.stringify(receipt?{...result,localReceipt:receipt}:result,null,2)+'\n');
  }catch(error){process.stderr.write('Local device operation refused: '+error.message+'\n');process.exitCode=1;}
 }
