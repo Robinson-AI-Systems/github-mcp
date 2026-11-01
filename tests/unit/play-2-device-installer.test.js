@@ -45,7 +45,7 @@ function simulator({collision=false,networkInternal=true}={}){
   if(kind==='volume'&&action==='rm'){objects.volume=null;return 'removed';}
   if(kind==='network'&&action==='rm'){objects.network=null;return 'removed';}
   if(kind==='exec'){
-   const v=argv.some(x=>String(x).includes('pg_isready'))?'postgres15-started':
+   const v=argv.some(x=>String(x).includes('pg_isready'))?'postgres15-started-stopped':
      argv.some(x=>String(x).includes('chromium.launch'))?'chromium-ok':'node24-uid1000';
    return v;
   }
@@ -64,6 +64,8 @@ describe('owner-operated Docker runtime contract',()=>{
  });
  it('installs only its own labeled network, volume and container with no published port or socket',async()=>{
   const sim=simulator(),local=createLocalRuntime({docker:sim.docker}),plan=setup();
+  expect(local.plan(plan)).toMatchObject({providerMutated:false,controllerAdmission:false,image:args.image});
+  expect(sim.calls).toHaveLength(0);
   expect(await local.install(plan)).toMatchObject({alreadyInstalled:false,canaryPassed:false});
   expect(sim.calls.some(a=>a.includes('--internal'))).toBe(true);
   const create=sim.calls.find(a=>a[0]==='container'&&a[1]==='create');
