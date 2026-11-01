@@ -91,7 +91,7 @@ const contracts=[
       preventFurtherUsage:true},arrange:budgetArrange,
     spendCents:3000,production:true},
   {name:'github_copilot_add_seats',args:{usernames:['alice']},
-    arrange:addSeats,spendCents:1900,production:true,
+    arrange:addSeats,spendCents:1900,production:true,strictSpend:true,
     accessWidening:true,notifies:['alice']},
   {name:'github_copilot_remove_seats',args:{usernames:['alice']},
     arrange:removeSeats,production:true},
@@ -126,7 +126,7 @@ for(const c of contracts)
   runWriteContract({label:c.name,definition:writeDef(c.name),args:c.args,
     arrange:c.arrange,profile:'full',needsConfirm:true,
     spendCents:c.spendCents??0,production:c.production??false,
-    accessWidening:c.accessWidening??false,notifies:c.notifies??[]});
+    accessWidening:c.accessWidening??false,notifies:c.notifies??[],strictSpend:c.strictSpend??false});
 async function invoke(w,name,args={}){
   const dispatch=createDispatch({env:w.ctx.env,credentials:w.credentials,
     fetch:w.gh.fetch,now:w.ctx.now,sleep:w.ctx.sleep,gates:w.ctx.gates});
