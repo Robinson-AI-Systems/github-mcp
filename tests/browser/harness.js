@@ -85,7 +85,10 @@ export function createFakeGithub() {
     codes: new Map(),
     tokens: new Map(),
     nextInstall: 50001,
-    log: []
+    log: [],
+    // PUB-8: user tokens the App revoked, and a switch that makes GitHub refuse revocation (the retry case).
+    revoked: new Set(),
+    refuseRevocation: false
   };
   const addPerson = ({ login, id, orgs = {}, authorized = false }) => {
     const person = { login, id, orgs, authorized, installs: [], token: 'ghu_FAKE' + randomBytes(12).toString('hex') };
@@ -162,10 +165,25 @@ export function createFakeGithub() {
       const person = state.codes.get(params.get('code'));
       state.codes.delete(params.get('code'));
       if (!person) return json(200, { error: 'bad_verification_code' });
+      state.revoked.delete(person.token); // a fresh sign-in gives working access again
       return json(200, { access_token: person.token, refresh_token: person.token + '_refresh', expires_in: 28800, refresh_token_expires_in: 15897600, token_type: 'bearer' });
     }
     const auth = String(new Headers(init.headers ?? {}).get('authorization') ?? '');
+    // The App's own token endpoints (Basic auth with the App's client): revoke, then "check a token" (404 once revoked).
+    const appToken = /^https:\/\/api\.github\.com\/applications\/([^/]+)\/token$/.exec(url);
+    if (appToken) {
+      if (!auth.startsWith('Basic ')) return json(401, { message: 'Requires authentication' });
+      const method = String(init.method ?? (typeof input === 'string' ? 'GET' : input.method)).toUpperCase();
+      const token = JSON.parse(String(init.body ?? '{}')).access_token;
+      state.log.push(method + ' API /applications/token');
+      if (method === 'DELETE') {
+        if (state.refuseRevocation) return json(500, { message: 'Server Error' });
+        state.revoked.add(token); return new Response(null, { status: 204 });
+      }
+      return state.revoked.has(token) || ![...state.people.values()].some((p) => p.token === token) ? json(404, { message: 'Not Found' }) : json(200, { id: 1, token: null });
+    }
     const person = state.tokens.get(auth.replace(/^(Bearer|token) /i, ''));
+    if (person && state.revoked.has(person.token)) return json(401, { message: 'Bad credentials' });
     if (!url.startsWith('https://api.github.com/')) throw new Error('fake GitHub: unexpected address ' + url);
     if (!person) return json(401, { message: 'Bad credentials' });
     const path = url.slice('https://api.github.com'.length);

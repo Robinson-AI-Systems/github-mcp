@@ -350,6 +350,33 @@ describe('My connection', () => {
     expect(gone.status).toBe(401);
     await b.context.close();
   });
+
+  it('PUB-8 delete my data: GitHub refuses to cancel the sign-in, nothing is deleted, a plain page says retry; the retry deletes', async () => {
+    const b = await open(PROFILES[0], { cookies: false });
+    if (!b) return;
+    const p = person({ authorized: true });
+    const { tokens } = await connect(b.page);
+    const mcpList = () => world.call({ method: 'POST', path: '/api/mcp', headers: { authorization: 'Bearer ' + tokens.access_token,
+      accept: 'application/json, text/event-stream', 'content-type': 'application/json' }, body: { jsonrpc: '2.0', id: 1, method: 'tools/list' } });
+    world.github.state.refuseRevocation = true;
+    try {
+      await b.page.goto(ORIGIN + '/api/oauth/authorize?forget=1');
+      await b.page.click('#forget-start');
+      await b.page.click('#delete');
+      await b.page.waitForFunction(() => document.title === 'Nothing was deleted yet');
+      expect(await b.page.textContent('#forget-retry')).toContain('Please try again');
+      await fitsScreen(b.page);
+    } finally { world.github.state.refuseRevocation = false; }
+    expect(world.github.state.revoked.has(p.token)).toBe(false);
+    expect((await mcpList()).status).toBe(200); // still connected: nothing was deleted
+    await b.page.click('a[href*="forget=1"]');
+    await b.page.click('#forget-start');
+    await b.page.click('#delete');
+    await b.page.waitForFunction(() => document.title === 'Your data is deleted');
+    expect(world.github.state.revoked.has(p.token)).toBe(true);
+    expect((await mcpList()).status).toBe(401);
+    await b.context.close();
+  });
   it('shows the limits page in plain words and it fits a phone; My connection links to it', async () => {
     for (const profile of PROFILES) {
       const b = await open(profile, { cookies: false });
