@@ -14,7 +14,7 @@ tailnet devices, several Dokploy servers, warm small runtimes) is designed in
 | Native Git workspaces | merged | accepted on Dokploy (2026-10-29) |
 | Automatic provisioning on clone, project manager sweep, repository attachment, execute/read/cancel, private text preview, interactive browser preview, heartbeat revocation, four-volume cleanup | merged (PLAY-1) | **end-to-end acceptance not yet passed** |
 | Size classes and Git-only workspaces (`runtime`/`size`) | this change (FLEET-1) | not yet released |
-| Your own PC/server as a host (PLAY-2) | pairing, signed probe, local installer/canary merged | no device can run work yet; see [PLAY-2](pr-cards/PLAY-2.md) |
+| Your own computers and servers as hosts (FLEET-3 dial-out agent) | built: pair from My connection, outbound-only agent, readiness check, placed first, relay, revoke | not yet released or tried on a real machine; [setup guide](../tools/playground-device/README.md) |
 
 Production runs in `best_effort` resource mode: CPU/memory ceilings are configured, storage quota and reserved capacity are
 **not** guaranteed, and resource pressure can refuse work. Never run shell commands in the shared native Git worker.
@@ -31,8 +31,9 @@ Production runs in `best_effort` resource mode: CPU/memory ceilings are configur
    Sizes are totals for the whole runtime and never exceed the operator's ceilings or the host's free capacity. A runtime
    keeps its size for its whole life; there is no in-place resize yet. A Git-only workspace can get a runtime later with
    `github_playground_workspace` operation `provision` and `size`.
-2. **Wait for attachment.** The response's `playground.phase` starts at `requested`. The project manager provisions the
-   runtime on the Dokploy host and attaches the workspace's files (≤ 100 MiB, no symlinks — larger repositories stay
+2. **Wait for attachment.** The response's `playground.phase` starts at `requested` and `playground.placement` says
+   where it runs: `device` (one of your own ready computers or servers — always tried first) or `operator_pool` (the
+   shared Dokploy pool). With neither, the workspace is Git-only (`reason: no_runtime_host`). The runtime is provisioned and attaches the workspace's files (≤ 100 MiB, no symlinks — larger repositories stay
    Git-only and report attachment unavailable). Follow progress with `github_playground_read` operation `allocation`, or
    push it along yourself with `github_playground_workspace` operations `provision`/`attach`. Then read `availability`.
 3. **Run** with `github_playground_execute`: `argv` (e.g. `["npm","test"]`), a stable `requestKey`, optional

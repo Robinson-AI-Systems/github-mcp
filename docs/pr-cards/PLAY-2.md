@@ -186,3 +186,7 @@ pairing only when 32 live records remain (and revokes the just-created record), 
 cap, and `list()` reads up to 256 IDs so tenants whose index already overflowed heal on their next pairing. Tests:
 `tests/unit/play-2-enrollment.test.js` ("PLAY-2 enrollment index stays bounded"), `tests/db/play-2-enrollment.test.js`
 unchanged and passing. No status, trust, signature or tenant-scope rule changed.
+
+## 2026-11-01 — Dial-out transport (FLEET-3)
+
+Chris approved the dial-out host agent. New pairings may omit the tunnel origin (`transport: dial-out`); such machines are checked by an automatic readiness order over their own check-ins and become `ready` — the first path to `ready` in PLAY-2. Tunnel pairings keep the probe/canary buttons. See [FLEET-3](FLEET-3.md).

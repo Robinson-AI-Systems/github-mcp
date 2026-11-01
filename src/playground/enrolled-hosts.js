@@ -20,6 +20,8 @@ const publicKeyOf = key => {
 };
 export const deviceFingerprint = value => sha(Buffer.from(value.slice(8),'base64url'));
 export const pairingIndexKey = code => rootKey(sha(code));
+// FLEET-3: opaque routing from a device ID to its tenant scope (no authority in it).
+export const deviceRouteKey = deviceId => 'fleet_route.' + deviceId;
 export const pairingMessage = ({deviceId,code,origin}) =>
   JSON.stringify({purpose:'robinson-playground-device-pair/v1',deviceId,code,origin});
 const originOf = text => {
@@ -54,6 +56,7 @@ export function createEnrolledHostStore({db,root,tenantId,identityId,clientId,no
       deviceId:h.deviceId,status:h.status,fingerprint:h.fingerprint??null,origin:h.origin??null,
       generation:h.generation,pairedAt:h.pairedAt??null,transportVerifiedAt:h.transportVerifiedAt??null,localCanaryAt:h.localCanaryAt??null,
       localCanaryImage:h.localCanaryImage??null,localCanaryBinding:h.localCanaryBinding??null,
+      transport:h.transport??'tunnel',lastCheckInAt:h.lastLeaseAt??null,capacity:h.capacity??null,
       revocationPending:h.status==='revocation_pending',lapsed:lapsed(h)
     }));
   };
@@ -84,21 +87,23 @@ export function createEnrolledHostStore({db,root,tenantId,identityId,clientId,no
       h.status!=='pending_pair'||h.codeHash!==hash||h.expiresAt<=current()||
       pointer?.tenantId!==tenantId||pointer.identityId!==identityId||pointer.clientId!==clientId||pointer.deviceId!==deviceId||
       pointer.expiresAt!==h.expiresAt)throw safe('Pairing was already used, expired, or belongs to another person.');
-    const url=originOf(origin),pk=publicKeyOf(publicKey),msg=pairingMessage({deviceId,code,origin:url});
+    // No origin = a dial-out host agent (FLEET-3): it reaches us, we never reach it.
+    const url=origin===undefined||origin===null?null:originOf(origin),pk=publicKeyOf(publicKey),msg=pairingMessage({deviceId,code,origin:url});
     if(!verify(null,Buffer.from(msg),pk,Buffer.from(signature,'base64url')))throw safe('Device did not prove its signing key.');
     const fp=deviceFingerprint(publicKey);
     const saved=await db.compareAndSetSetting(keyFor(deviceId),h.revision,{
-      ...h,revision:h.revision+1,status:'pending_confirm',codeHash:null,publicKey,fingerprint:fp,origin:url,
+      ...h,revision:h.revision+1,status:'pending_confirm',codeHash:null,publicKey,fingerprint:fp,origin:url,transport:url?'tunnel':'dial-out',
       claimedAt:current(),expiresAt:Math.min(h.expiresAt,current()+300000)
     });
     if(!saved)throw safe('Pairing was consumed concurrently.');
-    return {deviceId,status:'pending_confirm',fingerprint:fp,origin:url};
+    if(!url)await root.setSetting(deviceRouteKey(deviceId),{kind:'fleet-device-route',tenantId,identityId,clientId,deviceId});
+    return {deviceId,status:'pending_confirm',fingerprint:fp,origin:url,transport:url?'tunnel':'dial-out'};
   }
   async function approve(deviceId){
     if(!validId(deviceId))throw safe('Unknown device.');
     const saved=await cas(db,keyFor(deviceId),h=>{
       if(h?.tenantId!==tenantId||h.identityId!==identityId||h.clientId!==clientId||h.status!=='pending_confirm'||h.expiresAt<=current()||
-         !h.publicKey||!h.fingerprint||!h.origin)return null;
+         !h.publicKey||!h.fingerprint||!h.origin&&h.transport!=='dial-out')return null;
       return {...h,status:'pending_canary',pairedAt:current(),codeHash:null,expiresAt:null};
     });
     if(!saved)throw safe('The device must first prove its key; reconnect and verify its fingerprint.');

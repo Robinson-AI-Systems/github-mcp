@@ -5,6 +5,8 @@ import {enforcementObservation} from './availability.js';
 import {managedResourceBaseline,managedNetworkVerified} from './resource-policy.js';
 import {createHash} from 'node:crypto';
 import {resolveSizeClass,sizedConfig,describeSize} from './sizing.js';
+import {chooseHost,devicePlan,ensureDeviceAllocation,disposeDeviceAllocation,deviceBaseline,inspectDevice} from '../fleet/device-allocations.js';
+import {enqueue as enqueueOrder} from '../fleet/mailbox.js';
 import {playgroundBinding} from './client.js';
 import {nativeWorkerPublicKey} from '../native-git/signing.js';
 import {nativeConnection} from '../native-git/client.js';
@@ -16,9 +18,24 @@ export async function allocationRecord(ctx,record){
  const binding=playgroundBinding(record),key=allocationKey(binding),value=await ctx.db.getSetting(key);
  if(value&&(value.binding!==binding||value.connection!==nativeConnection(ctx)||value.workspace!==record.row.id))throw fail('Stored allocation does not belong to this exact workspace/connection.');return value;
 }
+// Device rows reuse the same key, index and compare-and-set discipline.
+function deviceSaver(ctx,key,stored){let current=stored;return async patch=>{const next=await ctx.db.compareAndSetSetting(key,current.revision,{...current,...patch,revision:current.revision+1});if(!next)throw fail('Another allocation transition is in progress; inspect the existing state.');current=next;await indexAllocation(ctx,next);return next;};}
+function deviceRow(ctx,record,binding,chosen,sizeClass){
+ const plan=devicePlan(ctx,record,binding,chosen.h,chosen.ceiling);
+ return {revision:1,kind:'playground-allocation',size:sizeClass,placement:'device',device:{deviceId:chosen.h.deviceId,generation:chosen.h.generation},scope:ctx.db.playgroundScope??{legacy:true},delegated:ctx.connection.pass===true,providerOrigin:null,providerProject:null,providerEnvironment:null,binding,connection:nativeConnection(ctx),clientId:ctx.connection.client_id??null,passId:ctx.connection.pass_id??null,workspace:record.row.id,owner:record.row.owner,repo:record.row.repo,phase:'requested',planHash:plan.planHash,plan,native:{binding:record.binding,worker:record.worker,job:record.job},createdAt:(ctx.now??Date.now)(),expiresAt:new Date(record.row.expires_at).getTime()};
+}
+async function placeOnDevice(ctx,record,sizeClass){
+ const chosen=await chooseHost(ctx,sizeClass);if(!chosen)return null;
+ const binding=playgroundBinding(record),saved=await ctx.db.compareAndSetSetting(allocationKey(binding),0,deviceRow(ctx,record,binding,chosen,sizeClass));
+ if(!saved)return await allocationRecord(ctx,record);await indexAllocation(ctx,saved);return saved;
+}
 // Every state transition is a DB compare-and-set. A lost provider create response
 // is recovered by exact owned source/plan, never by blindly creating another stack.
-export async function ensureAllocation(ctx,record,{provider,config,manager=ensureProjectManager,size}={}){
+export async function ensureAllocation(ctx,record,{provider,config,manager=ensureProjectManager,size,deviceWaitMs}={}){
+ // Owner decision 2026-11-01: the person's own computers first, then the operator pool.
+ {let prior=await allocationRecord(ctx,record);
+  if(!prior){const sizeClass=resolveSizeClass(size,ctx.env);if(sizeClass!==null)prior=await placeOnDevice(ctx,record,sizeClass);}
+  if(prior?.placement==='device')return ensureDeviceAllocation(ctx,prior,deviceSaver(ctx,allocationKey(prior.binding),prior),{waitMs:deviceWaitMs});}
  config??=dokployConfig(ctx.env);
  // A stored class is immutable for that allocation; a new row takes the caller's
  // class (or the protected default). Classes only lower protected ceilings.
@@ -52,8 +69,9 @@ export async function ensureAllocation(ctx,record,{provider,config,manager=ensur
  if(stored.phase==='deploying'){const a=await provider.inspect(stored.composeId,plan);if(a?.composeStatus==='done')await save({phase:'allocated',origin:plan.origin,repositoryAttached:false,enforcementVerified:false});}
  return stored;
 }
-export async function disposeAllocation(ctx,record,{provider,config}={}){
+export async function disposeAllocation(ctx,record,{provider,config,deviceWaitMs}={}){
  let stored=await allocationRecord(ctx,record);if(!stored)return {disposed:true,allocationExisted:false};
+ if(stored.placement==='device')return disposeDeviceAllocation(ctx,stored,deviceSaver(ctx,allocationKey(stored.binding),stored),{waitMs:deviceWaitMs});
  config??=dokployConfig(ctx.env);providerScope(stored,config);provider??=dokployProvider(config,{fetch:ctx.fetch});
  const key=allocationKey(stored.binding),plan=stored.plan;
  const save=async patch=>{const next=await ctx.db.compareAndSetSetting(key,stored.revision,{...stored,...patch,revision:stored.revision+1});if(!next)throw fail('Another allocation cleanup transition is in progress.');stored=next;await indexAllocation(ctx,stored);};
@@ -74,6 +92,7 @@ export async function disposeAllocation(ctx,record,{provider,config}={}){
 export async function inspectAllocation(ctx,record,{provider,config}={}){
  let stored=await allocationRecord(ctx,record);if(!stored)return {workspace_id:record.row.id,phase:'absent',allocation_ready:false};
  if(stored.phase==='disposed')return {workspace_id:record.row.id,phase:'disposed',disposed:true};
+ if(stored.placement==='device')return {workspace_id:record.row.id,phase:stored.phase,runtime_size:describeSize(stored.size),...await inspectDevice(ctx,stored),allocation_ready:['allocated','attaching','attached'].includes(stored.phase),repository_attached:stored.repositoryAttached===true,execution_available:false,next:stored.phase==='waiting_resources'?'Your computer is offline or not ready; provisioning continues when it checks in again.':'Repository attachment is required before commands.'};
  config??=dokployConfig(ctx.env);providerScope(stored,config);provider??=dokployProvider(config,{fetch:ctx.fetch});
  if(!stored.composeId)return {workspace_id:record.row.id,phase:stored.phase,allocation_ready:false,next:'Recover the original provisioning intent; no replacement was created.'};
  const observed=await provider.inspect(stored.composeId,stored.plan);
@@ -83,10 +102,13 @@ export async function inspectAllocation(ctx,record,{provider,config}={}){
  return {workspace_id:record.row.id,phase:stored.phase,runtime_size:describeSize(stored.size),allocation_ready:['allocated','attaching','attached'].includes(stored.phase),repository_attached:stored.repositoryAttached===true,enforcement_verified:stored.enforcementVerified===true,execution_available:false,provider_observed:observed!==null,next:'Repository attachment and verified enforcement are required before commands.'};
 }
 
-export async function resumeAllocation(ctx,record,{provider,config}={}){ctx=await refreshAdmission(ctx,{project:ctx.env?.PLAYGROUND_DOKPLOY_PROJECT_ID});const stored=await allocationRecord(ctx,record);if(stored?.phase!=='attached'||!enforcementObservation(ctx,{row:record.row,allocation:{binding:stored.binding}})&&(!managedResourceBaseline(ctx.env,stored,{workspace:record.row.id,binding:playgroundBinding(record)})||!await managedNetworkVerified(ctx,stored)))throw fail('An attached managed allocation with verified private networking or fresh verified controls is required before resume.');config??=dokployConfig(ctx.env);providerScope(stored,config);provider??=dokployProvider(config,{fetch:ctx.fetch});await provider.start(stored.composeId,stored.plan);return stored;}
+export async function resumeAllocation(ctx,record,{provider,config}={}){ctx=await refreshAdmission(ctx,{project:ctx.env?.PLAYGROUND_DOKPLOY_PROJECT_ID});const stored=await allocationRecord(ctx,record);if(stored?.placement==='device'){if(stored.phase!=='attached'||!await deviceBaseline(ctx,stored,{workspace:record.row.id,binding:playgroundBinding(record)}))throw fail('An attached allocation on a live, ready computer is required before resume.');await enqueueOrder(ctx.db,{deviceId:stored.device.deviceId,generation:stored.device.generation,kind:'allocation_up',payload:{binding:stored.binding,project:stored.plan.name,composeFile:stored.plan.composeFile,planHash:stored.plan.planHash},ttlMs:120000,now:ctx.now??Date.now});return stored;}if(stored?.phase!=='attached'||!enforcementObservation(ctx,{row:record.row,allocation:{binding:stored.binding}})&&(!managedResourceBaseline(ctx.env,stored,{workspace:record.row.id,binding:playgroundBinding(record)})||!await managedNetworkVerified(ctx,stored)))throw fail('An attached managed allocation with verified private networking or fresh verified controls is required before resume.');config??=dokployConfig(ctx.env);providerScope(stored,config);provider??=dokployProvider(config,{fetch:ctx.fetch});await provider.start(stored.composeId,stored.plan);return stored;}
 
 export async function enqueueAllocation(ctx,record,{size}={}){
  const sizeClass=resolveSizeClass(size,ctx.env);if(sizeClass===null)return null;
+ {const old=await allocationRecord(ctx,record);if(old)return old;
+  const placed=await placeOnDevice(ctx,record,sizeClass);if(placed)return placed;
+  if(!ctx.env?.PLAYGROUND_DOKPLOY_ORIGIN)return null;}
  const config=sizedConfig(dokployConfig(ctx.env),sizeClass),binding=playgroundBinding(record),key=allocationKey(binding);
  const old=await allocationRecord(ctx,record);if(old)return old;
  const plan=allocationPlan({binding,verificationKey:nativeWorkerPublicKey(ctx.env),idleTimeoutMs:record.job.idleTimeoutMs},{...config,scope:ctx.db.playgroundScope,worker:record.worker,nativeBinding:createHash('sha256').update(JSON.stringify(['authority','connection','owner','repo'].map(k=>record.binding[k]))).digest('hex')});
