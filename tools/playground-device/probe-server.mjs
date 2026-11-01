@@ -11,7 +11,7 @@ import {readLocalCanaryReceipt} from './canary-receipt.mjs';
 import {verifyLocalRuntimeCanaryClaim,localRuntimeCanaryReply} from '../../src/playground/device-canary.js';
 import {verifyDeviceProbeClaim,deviceProbeResponse,pinnedDeviceOrigin} from '../../src/playground/device-probe.js';
 
-export function createDeviceProbeServer({deviceId,origin,generation,controlPublicKey,devicePrivateKey,now=Date.now,consumeNonce=null,canarySource=null}={}){
+export function createDeviceProbeServer({deviceId,origin,generation,controlPublicKey,devicePrivateKey,now=Date.now,consumeNonce=null,canarySource=null,canaryReceiptReader=readLocalCanaryReceipt}={}){
  pinnedDeviceOrigin(origin);
  if(!/^[a-f0-9]{32}$/.test(deviceId??'')||!Number.isSafeInteger(generation)||generation<1||
     !devicePrivateKey||devicePrivateKey.asymmetricKeyType!=='ed25519')throw new TypeError('Verified local device key, identity and generation required.');
@@ -38,7 +38,7 @@ export function createDeviceProbeServer({deviceId,origin,generation,controlPubli
    if(req.url==='/v1/enrollment/probe')proof=JSON.stringify(deviceProbeResponse(claim,{now}));
    else{
     const publicKey='ed25519:'+createPublicKey(devicePrivateKey).export({format:'der',type:'spki'}).toString('base64');
-    const receipt=await readLocalCanaryReceipt({deviceId,generation,origin,
+    const receipt=await canaryReceiptReader({deviceId,generation,origin,
       binding:canarySource.binding,image:canarySource.image,now,publicKey});
     proof=JSON.stringify(localRuntimeCanaryReply(claim,receipt,{now}));
    }
