@@ -457,7 +457,7 @@ export function createSetupHandlers({ db, credentials, oneTimeStore, env = proce
       return page(200, { result: `New webhook secret made. Open ${one.setupPath} in this browser to see it once (for 10 minutes), then paste it into "Webhook secret" on the App's settings page on GitHub and press "Save changes". Until you do, GitHub keeps signing with the old one, which this server still accepts until ${acceptedUntil.toUTCString()}. If the old one was exposed, press "Finish now" right after saving it on GitHub.` });
     }
     let value;
-    try { value = kind === 'private_key' ? checkPrivateKeyPem(p.value) : checkClientSecret(p.value); } catch (error) {
+    try { value = kind === 'private_key' ? checkPrivateKeyPem(p.newSecret) : checkClientSecret(p.newSecret); } catch (error) {
       return page(400, { result: (error instanceof TypeError ? error.message : 'That value could not be read.') + ' Nothing was changed.' });
     }
     let works;

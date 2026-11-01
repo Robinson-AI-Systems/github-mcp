@@ -55,7 +55,7 @@ export async function storePilotUserGrant({ directory, tenantId, identityId,
  * gh_accounts row. PostgreSQL permits at most one process to spend the stored
  * refresh token. GitHub validates the *new* bearer and App installation before
  * the replacement is committed. No secret is ever included in an error. */
-async function renewPilotUser({ directory, tenant, db, account, row, env, now, fetchImpl }) {
+async function renewPilotUser({ directory, tenant, db, account, row, env, now, fetchImpl, appCredentials = null }) {
   if (!row.refresh_enc || !row.refresh_expires_at ||
       new Date(row.refresh_expires_at).getTime()<=now() ||
       typeof directory.claimPilotUserRefresh!=='function' || !db)
@@ -74,7 +74,8 @@ async function renewPilotUser({ directory, tenant, db, account, row, env, now, f
     const refreshToken=decryptSecret(got.refresh_enc,{
       aad:aad(tenant.tenantId,tenant.identityId,account,'refresh'),key
     });
-    const appClient=await pilotAppClient({env,db});
+    // KEY-ROTATION: the shared (root) App row first, so a client secret replaced on the setup page reaches renewals at once.
+    const appClient=await pilotAppClient({env,db,credentials:appCredentials});
     const result=await fetchImpl('https://github.com/login/oauth/access_token',{
       method:'POST',signal:AbortSignal.timeout(15000),
       headers:{accept:'application/json','content-type':'application/x-www-form-urlencoded'},
@@ -466,7 +467,7 @@ export function createTenantScopedCredentials({ base, directory, tenant, db,
       }
       if (new Date(row.access_expires_at).getTime()<=now()+60_000)
         return renewPilotUser({directory,tenant,db,account:args.account,
-          row,env,now,fetchImpl});
+          row,env,now,fetchImpl,appCredentials:base});
       try {
         return decryptSecret(row.access_enc,{
           aad:aad(tenant.tenantId,tenant.identityId,args.account,'access'),key:key()

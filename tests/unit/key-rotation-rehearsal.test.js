@@ -103,7 +103,7 @@ describe('KEY-ROTATION rehearsal: the GitHub App private key', () => {
     expect(w.gh.seen.jwtKeys.at(-1)).toBe(KEY_A.pub);
 
     // A key GitHub does not know is refused, and nothing changes.
-    const wrong = await w.post({ action: 'replace-app-secret', login: 'example-org', kind: 'private_key', value: KEY_C.pem, confirmReplace: 'yes' });
+    const wrong = await w.post({ action: 'replace-app-secret', login: 'example-org', kind: 'private_key', newSecret: KEY_C.pem, confirmReplace: 'yes' });
     expect(wrong.statusCode).toBe(400);
     expect(wrong.body).toContain('GitHub did not accept that private key');
     noValues(wrong);
@@ -114,7 +114,7 @@ describe('KEY-ROTATION rehearsal: the GitHub App private key', () => {
     w.gh.keys.add(KEY_B.pub);
     expect(await w.installationToken()).toMatch(/^ghs_FAKE/);
     // He pastes the new key on the setup page: GitHub proves it (GET /app signed with it), then it is saved.
-    const saved = await w.post({ action: 'replace-app-secret', login: 'example-org', kind: 'private_key', value: KEY_B.pem, confirmReplace: 'yes' });
+    const saved = await w.post({ action: 'replace-app-secret', login: 'example-org', kind: 'private_key', newSecret: KEY_B.pem, confirmReplace: 'yes' });
     expect(saved.statusCode).toBe(200);
     expect(saved.body).toContain('GitHub accepted the new private key');
     noValues(saved);
@@ -129,7 +129,7 @@ describe('KEY-ROTATION rehearsal: the GitHub App private key', () => {
     expect(await w.installationToken()).toMatch(/^ghs_FAKE/);
     expect(w.gh.seen.jwtKeys.at(-1)).toBe(KEY_B.pub);
     // The same key again is refused (nothing to replace).
-    expect((await w.post({ action: 'replace-app-secret', login: 'example-org', kind: 'private_key', value: KEY_B.pem, confirmReplace: 'yes' })).statusCode).toBe(400);
+    expect((await w.post({ action: 'replace-app-secret', login: 'example-org', kind: 'private_key', newSecret: KEY_B.pem, confirmReplace: 'yes' })).statusCode).toBe(400);
     // Finish now forgets the old one; Undo then has nothing to put back.
     expect((await w.post({ action: 'finish-app-secret', login: 'example-org', kind: 'private_key' })).statusCode).toBe(200);
     expect((await w.post({ action: 'undo-app-secret', login: 'example-org', kind: 'private_key' })).statusCode).toBe(404);
@@ -139,12 +139,12 @@ describe('KEY-ROTATION rehearsal: the GitHub App private key', () => {
   it('Undo puts the previous private key back within the window, and not after it', async () => {
     const w = await world();
     w.gh.keys.add(KEY_B.pub);
-    expect((await w.post({ action: 'replace-app-secret', login: 'example-org', kind: 'private_key', value: KEY_B.pem, confirmReplace: 'yes' })).statusCode).toBe(200);
+    expect((await w.post({ action: 'replace-app-secret', login: 'example-org', kind: 'private_key', newSecret: KEY_B.pem, confirmReplace: 'yes' })).statusCode).toBe(200);
     expect((await w.post({ action: 'undo-app-secret', login: 'example-org', kind: 'private_key' })).statusCode).toBe(200);
     await w.installationToken();
     expect(w.gh.seen.jwtKeys.at(-1)).toBe(KEY_A.pub);
     // Replace again, then let the window pass: Undo is no longer possible and the new key stays.
-    expect((await w.post({ action: 'replace-app-secret', login: 'example-org', kind: 'private_key', value: KEY_B.pem, confirmReplace: 'yes' })).statusCode).toBe(200);
+    expect((await w.post({ action: 'replace-app-secret', login: 'example-org', kind: 'private_key', newSecret: KEY_B.pem, confirmReplace: 'yes' })).statusCode).toBe(200);
     w.advance(ROTATION_WINDOW_MS + 1000);
     expect((await w.post({ action: 'undo-app-secret', login: 'example-org', kind: 'private_key' })).statusCode).toBe(404);
     await w.installationToken();
@@ -154,14 +154,14 @@ describe('KEY-ROTATION rehearsal: the GitHub App private key', () => {
   it('refuses without confirmation, a pasted non-key, an unknown account and outside production, changing nothing', async () => {
     const w = await world();
     w.gh.keys.add(KEY_B.pub);
-    expect((await w.post({ action: 'replace-app-secret', login: 'example-org', kind: 'private_key', value: KEY_B.pem })).statusCode).toBe(400);
-    expect((await w.post({ action: 'replace-app-secret', login: 'example-org', kind: 'private_key', value: 'not a key', confirmReplace: 'yes' })).statusCode).toBe(400);
-    expect((await w.post({ action: 'replace-app-secret', login: 'example-org', kind: 'everything', value: KEY_B.pem, confirmReplace: 'yes' })).statusCode).toBe(400);
-    expect((await w.post({ action: 'replace-app-secret', login: 'nobody-here', kind: 'private_key', value: KEY_B.pem, confirmReplace: 'yes' })).statusCode).toBe(404);
+    expect((await w.post({ action: 'replace-app-secret', login: 'example-org', kind: 'private_key', newSecret: KEY_B.pem })).statusCode).toBe(400);
+    expect((await w.post({ action: 'replace-app-secret', login: 'example-org', kind: 'private_key', newSecret: 'not a key', confirmReplace: 'yes' })).statusCode).toBe(400);
+    expect((await w.post({ action: 'replace-app-secret', login: 'example-org', kind: 'everything', newSecret: KEY_B.pem, confirmReplace: 'yes' })).statusCode).toBe(400);
+    expect((await w.post({ action: 'replace-app-secret', login: 'nobody-here', kind: 'private_key', newSecret: KEY_B.pem, confirmReplace: 'yes' })).statusCode).toBe(404);
     const preview = createSetupHandlers({ db: w.db, credentials: w.credentials, env: { ...ENV, VERCEL_ENV: 'preview' }, fetch: w.gh.fetch });
     const opened = await call(preview.setup, request('GET', {}));
     const cookie = /github_setup_csrf=([A-Za-z0-9_-]{43})/.exec(opened.headers['Set-Cookie'])[1];
-    const res = await call(preview.setup, request('POST', { csrf: cookie, passphrase: PASS, action: 'replace-app-secret', login: 'example-org', kind: 'private_key', value: KEY_B.pem, confirmReplace: 'yes' },
+    const res = await call(preview.setup, request('POST', { csrf: cookie, passphrase: PASS, action: 'replace-app-secret', login: 'example-org', kind: 'private_key', newSecret: KEY_B.pem, confirmReplace: 'yes' },
       { origin: ORIGIN, cookie: `github_setup_csrf=${cookie}` }));
     expect(res.statusCode).toBe(403);
     await w.installationToken();
@@ -181,12 +181,12 @@ describe('KEY-ROTATION rehearsal: the GitHub App client secret', () => {
     expect(await renew()).toMatch(/^ghu_FAKEuserToken/);
     expect(w.gh.seen.oauthSecrets.at(-1)).toBe(OLD_CLIENT_SECRET);
     // A secret GitHub does not know is refused, nothing changes.
-    const wrong = await w.post({ action: 'replace-app-secret', login: 'example-org', kind: 'client_secret', value: WRONG_CLIENT_SECRET, confirmReplace: 'yes' });
+    const wrong = await w.post({ action: 'replace-app-secret', login: 'example-org', kind: 'client_secret', newSecret: WRONG_CLIENT_SECRET, confirmReplace: 'yes' });
     expect(wrong.statusCode).toBe(400);
     noValues(wrong, WRONG_CLIENT_SECRET);
     // 2. Chris generates a new client secret on GitHub (both active there) and pastes it here; GitHub proves it first.
     w.gh.secrets.add(NEW_CLIENT_SECRET);
-    const saved = await w.post({ action: 'replace-app-secret', login: 'example-org', kind: 'client_secret', value: NEW_CLIENT_SECRET, confirmReplace: 'yes' });
+    const saved = await w.post({ action: 'replace-app-secret', login: 'example-org', kind: 'client_secret', newSecret: NEW_CLIENT_SECRET, confirmReplace: 'yes' });
     expect(saved.statusCode).toBe(200);
     noValues(saved, NEW_CLIENT_SECRET, OLD_CLIENT_SECRET);
     expect(await renew()).toMatch(/^ghu_FAKEuserToken/);

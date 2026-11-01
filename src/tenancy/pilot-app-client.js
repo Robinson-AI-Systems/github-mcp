@@ -2,7 +2,9 @@ import {createCredentials} from '../github/credentials.js';
 
 // This is the service App's OAuth configuration, never a member's provider
 // bearer. Resolve ONLY the configured numeric App, using its existing AAD.
-export async function pilotAppClient({env,db}){
+// `credentials` (optional): a store built with the shared root App copy (`rootApps`), so a replaced client secret
+// (docs/KEY-ROTATION.md) is used at once even where `db` is a person's own store holding an older copy.
+export async function pilotAppClient({env,db,credentials=null}){
   const hasId=!!env.GITHUB_PILOT_APP_CLIENT_ID;
   const hasSecret=!!env.GITHUB_PILOT_APP_CLIENT_SECRET;
   // Preserve explicit configuration, but never repair a partial/mismatched
@@ -16,7 +18,7 @@ export async function pilotAppClient({env,db}){
   const app=await db.getApp(id);
   if(!app||app.id!==id||!app.client_id||!app.client_secret_enc)
     throw Error('Private App configuration unavailable.');
-  const client=await createCredentials({db,env}).clientCredentials(id);
+  const client=await (credentials??createCredentials({db,env})).clientCredentials(id);
   if(!client?.clientId||!client.clientSecret)throw Error('Private App configuration unavailable.');
   return client;
 }

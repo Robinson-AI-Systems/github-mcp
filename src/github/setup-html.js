@@ -155,7 +155,7 @@ export function renderSetup({ csrf, result = '', revealed = null, show = '', acc
     '<strong>Private key</strong> or <strong>client secret</strong>: first make a new one on the App\'s settings page on GitHub, paste it here, and GitHub checks it before anything changes; then delete the old one on GitHub. ' +
     '<strong>Webhook secret</strong>: leave the box empty; this page makes a new one and shows it once for you to paste on GitHub. The old one keeps working for 24 hours so no event is lost.</p>' +
     form('replace-app-secret', login.replace('GitHub account name (for example your organization or user name)', 'Account whose App this is') + secretKind +
-      '<label>New private key or client secret (empty for the webhook secret)<textarea name="value" rows="4" maxlength="16384" autocomplete="off" spellcheck="false"></textarea></label>' +
+      '<label>New private key or client secret (empty for the webhook secret)<textarea name="newSecret" rows="4" maxlength="16384" autocomplete="off" spellcheck="false"></textarea></label>' +
       '<label><input type="checkbox" name="confirmReplace" value="yes"> Yes, replace this secret</label>', 'Replace the secret') +
     '<p>Changed your mind within 24 hours? <strong>Undo</strong> puts the previous one back. If the old one was exposed, press <strong>Finish now</strong> as soon as the new one works, so the old one stops being accepted at once.</p>' +
     form('undo-app-secret', login.replace('GitHub account name (for example your organization or user name)', 'Account whose App this is') + secretKind, 'Undo: put the previous one back') +
