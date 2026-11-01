@@ -4,7 +4,7 @@ These sections were moved verbatim out of `docs/NATIVE-GIT-OPERATIONS.md` during
 
 ## External route verification and historical Dokploy blocker
 
-The earlier Dokploy-specific blocker led to a historical Render fallback; the corrected Dokploy route is now active for new workspaces. No host-wide changes were needed. See [historical Render evidence](status/2026-10-28-render-native-git-acceptance.md) and [Render setup](../workers/native-git/RENDER.md). Before sending repository credentials to any replacement host, verify its public route from outside the host:
+The earlier Dokploy-specific blocker led to a historical Render fallback; the corrected Dokploy route is now active for new workspaces. No host-wide changes were needed. See [historical Render evidence](2026-10-28-render-native-git-acceptance.md) and [Render setup](../../workers/native-git/RENDER.md). Before sending repository credentials to any replacement host, verify its public route from outside the host:
 
 ```sh
 curl --fail --show-error "$WORKER_ORIGIN/health"
@@ -24,7 +24,7 @@ The host operator identified the prior timeout cause: generated hostnames used t
 
 For each project, point its real domain's DNS at the operator-confirmed public **ingress** address, or correct the address embedded in an auto-generated hostname. Route that hostname to the service's actual internal port (3000 for this worker), enable TLS, and verify both health and unsigned rejection. A different application port alone does not fix incorrect destination DNS. No host-wide routing change is required by this finding.
 
-The Dokploy cutover and eight-lane acceptance are now complete for new workspaces; see [current proof and cleanup](status/2026-10-29-dokploy-native-cutover.md). Keep Render and its original disk for older workspaces during the drain. Retain the pinned public verifier and protected snapshot key. Do not put private credentials in compose files or chat. Existing work must either finish naturally or be drained, exported/restored and independently checked against its exact workspace/ref/file/intent state using the existing encrypted snapshot/whole-volume procedure. Protected per-workspace host routing below preserves continuity while both hosts exist. Do not cancel Render or claim cost savings before all old-host jobs are gone or migration is verified. Independent off-host backup configuration remains a separate requirement.
+The Dokploy cutover and eight-lane acceptance are now complete for new workspaces; see [current proof and cleanup](2026-10-29-dokploy-native-cutover.md). Keep Render and its original disk for older workspaces during the drain. Retain the pinned public verifier and protected snapshot key. Do not put private credentials in compose files or chat. Existing work must either finish naturally or be drained, exported/restored and independently checked against its exact workspace/ref/file/intent state using the existing encrypted snapshot/whole-volume procedure. Protected per-workspace host routing below preserves continuity while both hosts exist. Do not cancel Render or claim cost savings before all old-host jobs are gone or migration is verified. Independent off-host backup configuration remains a separate requirement.
 
 ## Activity lease rollout (protocol 3)
 
