@@ -15,7 +15,7 @@ hypervisor VMs.
 |---|---|---|
 | `PLAYGROUND_DOKPLOY_ORIGIN`, `PLAYGROUND_DOKPLOY_API_KEY`, `PLAYGROUND_DOKPLOY_PROJECT_ID`, `PLAYGROUND_DOKPLOY_ENVIRONMENT_ID` | — | The single Dokploy target. Dokploy has no project-scoped key, so the code pins and re-checks project/environment/source/resource ownership before every mutation. Changing them later refuses existing allocations rather than moving them |
 | `PLAYGROUND_INGRESS_IPV4` | — | The host's **inbound** address (operator value; currently the friend's server). Allocation hosts become `ras-pg-<id>-<a-b-c-d>.sslip.io` |
-| `PLAYGROUND_IMAGE` *or* `PLAYGROUND_BUILD_SOURCE_SHA` | serving `VERCEL_GIT_COMMIT_SHA` | Immutable `…@sha256:` image, or a 40-hex commit to build from the public repository. A prebuilt image digest makes new runtimes start much faster than a per-allocation build |
+| `PLAYGROUND_IMAGE` *or* `PLAYGROUND_BUILD_SOURCE_SHA` | serving `VERCEL_GIT_COMMIT_SHA` | Immutable `…@sha256:` image, or a 40-hex commit to build from the public repository. A prebuilt image digest makes new runtimes start much faster than a per-allocation build. The **Publish runtime image** workflow builds and smoke-tests `ghcr.io/robinson-ai-systems/github-mcp-runtime` on every release to `live` (or on demand) and writes the digest to pin in its run summary |
 | `PUBLIC_BASE_URL` | `https://github.robinsonaisystems.com` | Control origin baked into plans (lifecycle callback, preview) |
 | `PLAYGROUND_RESOURCE_MODE` | `verified` (`vercel.json` sets `best_effort`) | See resource modes |
 | `PLAYGROUND_CPU_CPUS`, `PLAYGROUND_MEMORY_BYTES` | 8, 8 GiB | Whole-allocation ceilings (0.2–8 CPU, 512 MiB–8 GiB) |

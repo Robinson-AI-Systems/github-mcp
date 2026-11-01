@@ -1,0 +1,50 @@
+name: Publish runtime image
+# Owner-approved 2026-11-01 (FLEET-2): build the Playground runtime image once per
+# release and publish it, so new runtimes pull a pinned digest instead of building
+# from source on every host. Uses only the built-in GITHUB_TOKEN (no repository
+# secrets) and only on the protected release branch or a manual run.
+on:
+  push:
+    branches: [live]
+    paths:
+      - 'workers/**'
+      - 'src/github/**'
+      - 'src/native-git/**'
+      - 'vendor/gitleaks/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/publish-runtime-image.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  packages: write
+concurrency:
+  group: publish-runtime-image
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a
+        with:
+          persist-credentials: false
+      - name: Build the production runtime image
+        run: docker build --pull --target production -f workers/coding-workspace/Dockerfile -t "ghcr.io/robinson-ai-systems/github-mcp-runtime:${GITHUB_SHA}" .
+      - name: Smoke-test the exact image before publishing
+        run: docker run --rm --network none --read-only --cap-drop ALL --user 1000:1000 "ghcr.io/robinson-ai-systems/github-mcp-runtime:${GITHUB_SHA}" node --version
+      - name: Publish and record the digest
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "$TOKEN" | docker login ghcr.io -u "${GITHUB_ACTOR}" --password-stdin
+          docker push "ghcr.io/robinson-ai-systems/github-mcp-runtime:${GITHUB_SHA}"
+          digest=$(docker inspect --format '{{index .RepoDigests 0}}' "ghcr.io/robinson-ai-systems/github-mcp-runtime:${GITHUB_SHA}")
+          docker logout ghcr.io
+          {
+            echo "### Runtime image published"
+            echo ""
+            echo "Pin this in the protected Vercel setting PLAYGROUND_IMAGE:"
+            echo ""
+            echo "\`${digest}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
