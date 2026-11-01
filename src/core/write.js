@@ -48,7 +48,9 @@ export function marksOf(c) {
  * @param {string} spec.description at most 160 characters (the catalog budget)
  * @param {object} [spec.properties] extra input properties (the layer adds dryRun, confirm, requestKey)
  * @param {string[]} [spec.required]
- * @param {{ production: 'always'|'when-target'|'never', accessWidening?: boolean, notifies?: boolean, spend?: boolean, confirm?: 'always'|'when-needed', cred?: string, profiles?: string[] }} spec.declarations
+ * @param {{ production: 'always'|'when-target'|'never', accessWidening?: boolean, notifies?: boolean, spend?: boolean, strictSpend?: boolean, confirm?: 'always'|'when-needed', cred?: string, profiles?: string[] }} spec.declarations
+ *   `strictSpend` (spend tools only): every connection, the owner's own included, must confirm, and a cost that cannot be
+ *   worked out refuses for everyone (an owner decision for the tool, never inferred from a classification).
  * @param {(args, ctx) => { owner: string, repo?: string, ref?: string, environment?: string, scope: string }} spec.target
  * @param {(args, ctx, target) => Promise<any>} spec.read current state; may throw (a failed read counts as production)
  * @param {(input) => number|null|Promise<number|null>} [spec.price] cents from provider pricing, or explicit null when metered cost cannot be bounded (required when declarations.spend)
@@ -73,6 +75,7 @@ export function defineWrite(spec) {
     if (typeof fn !== 'function') throw new TypeError(`${name}: ${label} must be a function.`);
   }
   if (!declarations || !PRODUCTION.includes(declarations.production)) throw new TypeError(`${name}: declarations.production must be one of ${PRODUCTION.join(', ')}.`);
+  if (declarations.strictSpend && !declarations.spend) throw new TypeError(`${name}: strictSpend applies only to a spend tool.`);
   if (declarations.spend && typeof price !== 'function') throw new TypeError(`${name}: a spend tool must give a price function (the cost is never taken from the arguments).`);
   if (price !== undefined && typeof price !== 'function') throw new TypeError(`${name}: price must be a function.`);
   if (declarations.confirm !== undefined && !CONFIRM.includes(declarations.confirm)) throw new TypeError(`${name}: declarations.confirm must be one of ${CONFIRM.join(', ')}.`);
@@ -80,7 +83,7 @@ export function defineWrite(spec) {
   if (!profiles.length || profiles.some((p) => !WRITE_PROFILES.includes(p))) throw new TypeError(`${name}: a write tool is available only in the everyday and full profiles.`);
   for (const key of ['dryRun', 'confirm', 'requestKey']) if (key in properties) throw new TypeError(`${name}: "${key}" is added by the write layer.`);
   const decl = Object.freeze({ production: declarations.production, accessWidening: !!declarations.accessWidening, notifies: !!declarations.notifies,
-    spend: !!declarations.spend, confirm: declarations.confirm ?? 'when-needed', cred: declarations.cred ?? 'I', profiles: Object.freeze([...profiles]) });
+    spend: !!declarations.spend, strictSpend: !!declarations.strictSpend, confirm: declarations.confirm ?? 'when-needed', cred: declarations.cred ?? 'I', profiles: Object.freeze([...profiles]) });
 
   const tool = Object.freeze({
     name, description, ...(area ? { area } : {}), ...(audience ? { audience: Object.freeze([...audience]) } : {}), ...(compact ? { compact: true } : {}), ...(guidance ? { guidance } : {}),
@@ -146,8 +149,10 @@ export function defineWrite(spec) {
         retryable:by==='read'&&readError?.safeRetryable===true,no_change_sent:true,error: reason, ...(classification.production ? { production: classification.production } : {}) }, true);
     };
 
+    // A strict-spend tool asks everyone, the owner included, and never runs with a cost that could not be worked out.
+    const asksFirst = !ownerDirected || decl.strictSpend;
     if (priceFailed) {
-      if (!ownerDirected) return refuse('spend', 'The cost of this change could not be worked out, so it was refused.');
+      if (asksFirst) return refuse('spend', 'The cost of this change could not be worked out, so it was refused.');
       classification = { ...classification, spendCents: 0, spendUnknown: true };
     }
 
@@ -172,7 +177,7 @@ export function defineWrite(spec) {
     if (typeof summary !== 'string' || summary.length > 1024) return refuseOutright('A safe preview could not be produced, so this change was refused.');
     const marks = marksOf(classification);
     const line = marks.length ? `${summary} ${marks.map((m) => `${m}.`).join(' ')}` : summary;
-    const needsConfirm = !ownerDirected && (decl.confirm === 'always' || decl.spend || classification.spendUnknown || !!classification.production || !!classification.accessWidening
+    const needsConfirm = asksFirst && (decl.confirm === 'always' || decl.spend || classification.spendUnknown || !!classification.production || !!classification.accessWidening
       || classification.notifies.length > 0 || classification.spendCents > 0 || forcedConfirm !== null);
     const preflightWarning = readError?.safeMessage === true && typeof readError.message === 'string' && readError.message.length <= 300
       ? readError.message : 'Required current-state preflight failed. This preview is incomplete; no operation was sent.';

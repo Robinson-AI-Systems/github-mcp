@@ -1,16 +1,18 @@
 # Dedicated single-workspace execution image; never replaces the shared native-git image.
-FROM node:24.22.1-bookworm-slim@sha256:be8204d4bd327363357f532187b752ff62759c31bedf98e9e18fc08c9cbd605c AS runtime
+# FLEET-2: `slim` is the same supervisor/runtime code without Chromium/Playwright browsers or
+# PostgreSQL (small jobs whose repository shows no browser/database signals); `runtime` is
+# slim plus those, and is what the default `production` target and every CI stage use.
+FROM node:24.22.1-bookworm-slim@sha256:be8204d4bd327363357f532187b752ff62759c31bedf98e9e18fc08c9cbd605c AS slim
 RUN rm -f /etc/apt/sources.list.d/debian.sources \
  && printf 'deb [check-valid-until=no] http://snapshot.debian.org/archive/debian/20261028T000000Z/ bookworm main\ndeb [check-valid-until=no] http://snapshot.debian.org/archive/debian-security/20261028T000000Z/ bookworm-security main\n' > /etc/apt/sources.list \
  && apt-get update \
- && apt-get install -y --no-install-recommends git ca-certificates python3 build-essential postgresql-15 postgresql-client-15 \
- && mkdir -p /app /workspace /opt/playwright
+ && apt-get install -y --no-install-recommends git ca-certificates python3 build-essential \
+ && mkdir -p /app /workspace \
+ && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY workers/coding-workspace/package*.json ./
 RUN npm ci --ignore-scripts \
- && PLAYWRIGHT_BROWSERS_PATH=/opt/playwright npx playwright install --with-deps chromium \
- && chmod -R a+rX /opt/playwright \
- && rm -rf /var/lib/apt/lists/* /root/.npm
+ && rm -rf /root/.npm
 COPY src/github/content-protection.js src/github/open-secret-rules.js src/github/secret-literals.js src/github/custom-secret-rules.js src/github/scanner-policy.js src/github/file-protection.js ./src/github/
 COPY vendor/gitleaks/ ./vendor/gitleaks/
 COPY workers/native-git/ ./workers/native-git/
@@ -22,6 +24,15 @@ ENV PORT=3000 CODING_STORAGE_ROOT=/workspace
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=3s CMD node -e "fetch('http://127.0.0.1:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 CMD ["node","workers/coding-workspace/server.js"]
+
+# Full image: slim plus the disposable test database and the Chromium browser for Playwright.
+FROM slim AS runtime
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends postgresql-15 postgresql-client-15 \
+ && mkdir -p /opt/playwright \
+ && PLAYWRIGHT_BROWSERS_PATH=/opt/playwright npx playwright install --with-deps chromium \
+ && chmod -R a+rX /opt/playwright \
+ && rm -rf /var/lib/apt/lists/* /root/.npm
 
 FROM runtime AS runtime-smoke
 COPY workers/coding-workspace/smoke.test.js ./workers/coding-workspace/

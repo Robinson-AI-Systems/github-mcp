@@ -160,7 +160,7 @@ function copilotWrite(action){
       ' with exact readback and approval.',
     properties:seatsParams,required:['usernames'],
     declarations:{production:'always',confirm:'always',
-      accessWidening:add,notifies:add,spend:add,profiles:['full']},target:origin,
+      accessWidening:add,notifies:add,spend:add,...(add?{strictSpend:true}:{}),profiles:['full']},target:origin,
     read:(a,c,t)=>seats(c,t),
     price:add?({args:a,before:b})=>{
       if(!b?.bill||!Array.isArray(b.seats))return NaN;

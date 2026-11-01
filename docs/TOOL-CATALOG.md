@@ -23,7 +23,7 @@ Restricted preview RTC successful replies revalidate service pass and scratch ow
 
 Every tool this server will have, by area — the product scope. The implementing model builds exactly these; anything
 else goes in `docs/ROADMAP.md` and the PR report, and universal tools (last section) provide guarded access only where their actual credential, classification and request support permits. Endpoint-level completeness remains unproven; see [MAXIMUM-AUTHORITY](designs/MAXIMUM-AUTHORITY.md). Counts are checked by `python3 scripts/count-catalog.py` (run by `npm run check` and CI since A-1, #1). When a
-tool merges, its Card cell gains `built #<PR>`. Built so far: **499 cataloged tools** (every row below is in the registry, `src/tools/index.js`; `scripts/count-catalog.py` and `scripts/check-writes.mjs` fail the build if a tool and its row disagree)
+tool merges, its Card cell gains `built #<PR>`. Built so far: **505 cataloged tools** (every row below is in the registry, `src/tools/index.js`; `scripts/count-catalog.py` and `scripts/check-writes.mjs` fail the build if a tool and its row disagree)
 and holds the two A-5 tools, the B-3 protected-list reader the two B-2 production-switch tools and the B-4 spend-limit tool. Since B-5 every result of these tools is shaped (`src/tools/util.js`) and failures are explained by `src/tools/errors.js`. Since B-6 a connection sees only the tools its profile allows (`tools/list` and by-name calls). Every write tool below is built with `defineGithubWrite` (B-1, #16, `src/tools/define-github-write.js`) and pass the nine write-contract checks (`test/helpers/write-contract.js`); the two B-2 tools are the first (`src/tools/server.js`).
 
 **Safety metadata and scoped behavior:** `—` reads only; `P` supports optional dryRun; `D` describes destructive effects; `Prod`/`Prod*` describe production scope; `A`/`A*` describe access changes; `M` describes notifications; `$`/`$*` describe billing. `C` retains the restricted-profile confirmation declaration checked against source. On a full ordinary owner connection these marks are disclosure, not automatic confirmation or refusal. Explicitly restricted profiles/passes retain their chosen mode, access and spend limits. GitHub applies provider rules; journal/replay/readback and credential isolation apply to everyone.
@@ -103,7 +103,7 @@ Card(s): D-1.
 | `github_repo_set_custom_properties` | Set custom property values on a repository | P | N | I | O | F | D-1 built #29 |
 | `github_repo_star` | Star or unstar a repository as Chris (uses your master token when added) | P | C | U | Op | E | D-1 built #29 |
 
-## Robinson Playground commands (`github_playground_*`) — 4
+## Robinson Playground commands (`github_playground_*`) — 5
 
 Agent-facing runtime operations through the existing search/describe/call contract. Clone queues an allocation automatically (unless `runtime: none`); `github_playground_workspace` provisions, attaches, resumes, previews or disposes it. Commands need an attached allocation; absence is reported as a Git-only fallback, never a shell in the shared Git worker. Guide: [CODING-WORKSPACES](CODING-WORKSPACES.md).
 
@@ -113,6 +113,7 @@ Agent-facing runtime operations through the existing search/describe/call contra
 | `github_playground_read` | Read capabilities, availability, allocation phase, actual exit/status, complete hash-pinned protected log windows and private text previews | — | N | I | B,O,Op | R | PLAY-1 |
 | `github_playground_cancel` | Stop an execution process group and verify terminal state; does not claim allocation disposal | P | N | I | B,O,Op | F | PLAY-1 |
 | `github_playground_workspace` | Provision (optional `size` small/medium/large), attach, resume, privately preview or dispose the exact owned allocation with independent readback | P | N | I | B,O,Op | F | PLAY-1 |
+| `github_playground_run` | One command at a branch/tag/SHA in a fresh right-sized runtime: open, provision, run, return exit code and log tail, dispose; resumable by requestKey | P·Prod* | N | I | B,O,Op | F | FLEET-2 |
 
 ## Files, commits and git data (`github_content_*, github_commit_*, github_git_*`) — 23
 
@@ -197,7 +198,7 @@ Card(s): E-3.
 | `github_review_reply` | Reply in a review thread | P·M | C | I | B | E | E-3 built #38 |
 | `github_review_resolve_thread` | Resolve or unresolve a review thread (GraphQL) | P | N | I | B | E | E-3 built #38 |
 | `github_review_request_reviewers` | Request or remove reviewers (users or teams) | P·M | C | I | B | E | E-3 built #38 |
-| `github_review_request_copilot` | Ask GitHub Copilot to review an open pull request (needs a Copilot plan with code review; the review arrives in minutes; cannot be taken back, so no undo) | P | N | I | B | E | PAR-1 built |
+| `github_review_request_copilot` | Ask GitHub Copilot to review an open pull request (needs a Copilot plan with code review; the review arrives in minutes; cannot be taken back, so no undo). CAP-6: billed by use (AI credits, Actions minutes), so it is spend with unknown price and always asks, the owner included | C·$ | N | I | B | E | PAR-1 built; CAP-6 |
 
 ## Issues (`github_issue_*`) — 15
 
@@ -662,7 +663,7 @@ Card(s): P-2, P-3, W-1 … W-7. P-2 built in PR #207 as a non-read-only composed
 
 ## Batch Y-9d financial and Copilot operations (`github_y9_*`) — 17
 
-Y-9d is approved by IN-16. Every mutating call uses the existing production, pass, permission, protection, confirmation, cost and journal gates. Hosted-runner creation and agent task starting use supported GitHub APIs under delegated user authority, a truthful unbounded future metered cost warning and ordinary protected writes; no developer TEST acceptance spends money. Genuine live acceptance is tracked separately.
+Y-9d is approved by IN-16. Since CAP-6 (2026-11-01) these runner and Copilot tools are listed only where the account has the feature, and the spending ones are `strictSpend` (always ask, owner included). Every mutating call uses the existing production, pass, permission, protection, confirmation, cost and journal gates. Hosted-runner creation and agent task starting use supported GitHub APIs under delegated user authority, a truthful unbounded future metered cost warning and ordinary protected writes; no developer TEST acceptance spends money. Genuine live acceptance is tracked separately.
 
 | Tool | What it does | Safety | Origin | Cred | Audience | Profile | Card |
 | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -895,11 +896,34 @@ Card(s): PAR-1. Code Quality findings come from GitHub's own analysis (not marke
 | `github_code_quality_setup` | Turn Code Quality on or off for a repository, or change languages, runner or AI findings; read back; undo restores the previous setup | C·$*·Prod | N | I | O | F | PAR-1 built |
 | `github_docs_search` | Search GitHub's own help pages (docs.github.com): titles, links, short snippets; no credential | — | N | — | B,O,Op | R | PAR-1 built |
 
+## CAP-6 gated families: merge queue, Copilot coding agent, feature check (`github_merge_queue_*, github_copilot_assign_issue, github_feature_families`) — 5
+
+Card: CAP-6 (owner-approved 2026-11-01, [GATED-EXPANSION](designs/GATED-EXPANSION-2026-11-01.md) item 9). **Gate:** the
+runner (`github_runner_*`), larger-runner (`github_hosted_runner_*`), merge-queue (`github_merge_queue_*`) and Copilot
+(`github_copilot_*`, `github_review_request_copilot`) families are listed in `tools/list`, RTC discovery,
+`github_search_tools` and `github_describe_tool` only for accounts where GitHub shows the feature
+(`src/github/feature-gates.js`): organization runner list answered; organization larger-runner list answered; a merge
+queue on one of the 25 most recently pushed organization repositories; organization Copilot billing answered, or for a
+personal account Copilot's coding agent offered on the newest repository. Answers are kept 10 minutes per connection and
+account. `off` (GitHub showed it absent) hides the family and refuses a call by name with the reason; `unknown` (403,
+outage, timeout) hides it from lists but a call by name still runs and GitHub decides. Personal accounts never have larger
+runners or merge queues. **Spend:** every money-capable tool in these families declares `strictSpend`: it always asks
+first, the owner's own connection included, and a cost that cannot be worked out refuses (enforced at registry load).
+Metered actions with no published per-use price (larger runners, Copilot agent and code review) show COST UNKNOWN.
+
+| Tool | What it does | Safety | Origin | Cred | Audience | Profile | Card |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `github_feature_families` | Which runner, larger-runner, merge-queue and Copilot families each account is offered and why one is hidden; `refresh` asks GitHub again | — | N | I | B,O,Op | R | CAP-6 built |
+| `github_merge_queue_get` | A branch's merge queue: on or off, settings, queued pull requests with position, state and head (GraphQL; titles untrusted) | — | N | I | B,O,Op | R | CAP-6 built |
+| `github_merge_queue_enqueue` | Add an open, non-draft pull request to its merge queue at the exact expected head; optional jump to the front; undo dequeues | P·Prod | N | I | B,O | E | CAP-6 built |
+| `github_merge_queue_dequeue` | Take a pull request out of its merge queue; it stays open; undo enqueues again at the same head | P | N | I | B,O | E | CAP-6 built |
+| `github_copilot_assign_issue` | Assign Copilot's coding agent to an open issue (it opens a pull request); billed by use with no fixed price, so it always asks first | C·$ | N | U | B,O | F | CAP-6 built |
+
 ## Totals
 
-**Totals:** 499 tools: 493 hand-built + 6 universal (`github_api_*`, `github_graphql_*`), plus guided settings for every
-dashboard-only owner setting. By profile (lowest profile that has the tool): read_only 158, everyday adds 83
-(everyday lists 240), full adds 114 (full lists 397; `github_tenant_remove` only on the owner's own direct connection, so everyone else sees 396). In compact mode (`docs/designs/BATCH-C.md`) an agent
+**Totals:** 505 tools: 499 hand-built + 6 universal (`github_api_*`, `github_graphql_*`), plus guided settings for every
+dashboard-only owner setting. By profile (lowest profile that has the tool): read_only 160, everyday adds 85
+(everyday lists 245), full adds 116 (full lists 403; `github_tenant_remove` only on the owner's own direct connection, so everyone else sees 402). In compact mode (`docs/designs/BATCH-C.md`) an agent
 loads only about 25 tools up front (meta-tools, whoami, universal search, workflows) and reaches the rest through
 `github_search_tools` / `github_call`.
 
@@ -948,8 +972,9 @@ loads only about 25 tools up front (meta-tools, whoami, universal search, workfl
 | GitHub Enterprise | 16 |
 | Master-token families: Copilot Spaces, Classroom, Marketplace and more | 17 |
 | Code quality and GitHub help | 4 |
-| Robinson Playground commands | 4 |
-| **Total** | **499** |
+| Robinson Playground commands | 5 |
+| CAP-6 gated families: merge queue, Copilot coding agent, feature check | 5 |
+| **Total** | **505** |
 
 <!-- #108: experimental RTC HTTPS reader bridges only server/meta read tools using existing guarded dispatch; RTC 1 certification is not claimed. -->
 
@@ -1016,3 +1041,5 @@ Runtime image (2026-11-01): with no protected `PLAYGROUND_IMAGE`, new Playground
 Playground reliability (2026-11-01, PLAY-1 acceptance): a replayed `github_playground_execute` re-reads the same execution and reports its current state (`replay_state: current`, else `as_recorded`); a concurrent `github_playground_workspace` attach answers "already in progress" (retryable); availability waits up to ~6 s for a just-attached runtime's first authority lease; a command that exhausts memory is killed instead of the whole runtime. Arguments unchanged.
 
 Cleanup sweep (2026-11-01): retrying an unfinished attach no longer renews the workspace lease, so abandoned Playground workspaces expire and are cleaned up. No tool changes.
+
+Faster small runtimes (2026-11-01, FLEET-2): new `github_playground_run` (owner, repo, ref = branch/tag/40-hex SHA, argv, optional cwd, size `auto|small|medium|large`, timeoutMs, requestKey) opens a Git-only workspace at that commit, provisions the smallest fitting runtime (`auto`: small without browser/database signals, medium with a database, large with browser tests), runs the command once, returns `exit_code`, `command_succeeded`, `outcome` and the last 4 KB of log (`log_tail`, untrusted), then disposes the runtime and workspace. Each call works for about 40 s; `finished: false` means call again with the same arguments and requestKey (a replay that continues; nothing runs twice). New allocations use the slim image (`<sha>-slim`, no Chromium/PostgreSQL) only when the size is small and the repository shows no browser/database signals; `github_playground_read` allocation shows the choice as `runtime_image` `{variant, reason, signals}`. A command killed by the kernel out-of-memory killer reports `reason: out_of_memory`, and `github_playground_read` status / `github_playground_execute` / `github_playground_run` add `upsize: {next_size, hint}` (small → medium → large → split the job). See [Playground operations](PLAYGROUND-OPERATIONS.md#slim-image-for-small-jobs-fleet-2-2026-11-01).
