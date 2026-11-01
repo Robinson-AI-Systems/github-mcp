@@ -96,14 +96,15 @@ async function logTail(ctx, record, id, deps) {
   } catch { return {log_tail: null, log_unavailable: true}; }
 }
 
-/** One step. Returns true when the phase moved (or the run finished), false when it waits. */
-async function step(ctx, run, deps) {
+/** One step. Returns true when the phase moved (or the run finished), false when it waits
+ *  (`note.waitingOn` then says what it waits for; `note.allocationPhase` is what it observed). */
+async function step(ctx, run, deps, note = {}) {
   const s = run.get(), conn = nativeConnection(ctx);
   if (s.phase === 'opening') {
     const record = await deps.nativeRecord(ctx, s.workspace_id);
     const invoke = o => deps.callNativeWorker(ctx, {binding: record.binding, job: record.job, workspace_id: record.worker, ...o});
     let state = await invoke({action: 'inspect'});
-    if (state.state === 'opening') return false;
+    if (state.state === 'opening') { note.waitingOn = 'The repository is still being cloned.'; return false; }
     if (state.state !== 'ready') { await run.save({phase: 'disposing', outcome: 'clone_failed', outcomeReason: 'The repository could not be cloned at that ref; nothing ran.'}); return true; }
     if (SHA.test(s.ref) && state.head !== s.ref) {
       try { await invoke({action: 'run', operation: 'reset', options: {ref: s.ref, hard: true}, requestKey: 'pg_run_checkout_' + s.intent.slice(0, 40), expectedGeneration: state.generation, allowWrite: true}); } catch { /* read back below */ }
@@ -124,6 +125,7 @@ async function step(ctx, run, deps) {
     const record = await deps.nativeRecord(ctx, s.workspace_id);
     let a = await deps.allocationRecord(ctx, record);
     if (!a) a = await deps.enqueueAllocation(ctx, record, {size: s.size, signals: s.signals ?? undefined});
+    note.allocationPhase = a?.phase ?? null;
     if (a?.phase === 'attached') { await run.save({phase: 'starting', lastError: null}); return true; }
     if (!a || ['cleanup_requested', 'stopped', 'deleting', 'disposed'].includes(a.phase)) { await run.save({phase: 'disposing', outcome: 'runtime_unavailable', outcomeReason: 'The runtime was cleaned up before the command could start; nothing ran.'}); return true; }
     // The maintenance sweep may be advancing the same allocation; its "in progress" answer means wait.
@@ -131,27 +133,28 @@ async function step(ctx, run, deps) {
     try {
       a = await deps.ensureAllocation(ctx, record, {size: s.size, signals: s.signals ?? undefined});
       if (['allocated', 'attaching'].includes(a?.phase)) a = await deps.attachRepository(ctx, await deps.nativeRecord(ctx, s.workspace_id), {budgetMs: 15000});
-    } catch (error) { if (busy(error) || error?.safeRetryable) return false; throw error; }
-    if (a?.phase === 'attached') { await run.save({phase: 'starting', lastError: null}); return true; }
-    if (a?.phase !== s.allocationPhase) await run.save({allocationPhase: a?.phase ?? null});
+    } catch (error) { if (busy(error) || error?.safeRetryable) { note.waitingOn = 'The runtime is being prepared by another step: ' + errorText(error); return false; } throw error; }
+    note.allocationPhase = a?.phase ?? note.allocationPhase;
+    if (a?.phase === 'attached') { await run.save({phase: 'starting', allocationPhase: 'attached', lastError: null}); return true; }
+    note.waitingOn = `The runtime is ${a?.phase ?? 'not created yet'}; provisioning continues on the next call.`;
     return false;
   }
   if (s.phase === 'starting') {
     const record = await deps.playgroundRecord(ctx, {owner: s.owner, repo: s.repo, workspace_id: s.workspace_id}, {allowUnattached: true});
-    if (!record.allocation) return false;
+    if (!record.allocation) { note.waitingOn = 'The runtime record is not readable yet.'; return false; }
     const readiness = await deps.availability(ctx, record);
-    if (!readiness.execution_available) { if (readiness.retryable === true || ['enforcement_unverified', 'repository_unattached', 'runtime_unattached'].includes(readiness.reason)) return false; requirePlaygroundExecution(readiness); }
+    if (!readiness.execution_available) { if (readiness.retryable === true || ['enforcement_unverified', 'repository_unattached', 'runtime_unattached'].includes(readiness.reason)) { note.waitingOn = `The runtime is not ready for commands yet (${readiness.reason ?? 'starting'}).`; return false; } requirePlaygroundExecution(readiness); }
     const runtimeKey = 'pg_run_' + s.intent.slice(0, 56), id = playgroundExecutionId(record.allocation.binding, runtimeKey);
     let started;
     try { started = await deps.callPlayground(ctx, record, 'start', {requestKey: runtimeKey, argv: s.argv, cwd: s.cwd, timeoutMs: s.timeoutMs}); }
-    catch (error) { if (error?.safeRetryable) return false; throw Object.assign(error, {executionId: id}); }
+    catch (error) { if (error?.safeRetryable) { note.waitingOn = 'The runtime asked to retry the start: ' + errorText(error); return false; } throw Object.assign(error, {executionId: id}); }
     await run.save({phase: 'running', execution_id: id, execution: started?.id === id ? {state: started.state} : null});
     return true;
   }
   if (s.phase === 'running') {
     const record = await deps.playgroundRecord(ctx, {owner: s.owner, repo: s.repo, workspace_id: s.workspace_id});
     const e = await deps.callPlayground(ctx, record, 'status', {id: s.execution_id});
-    if (!settledExecution(e)) { if (e?.state !== s.execution?.state) await run.save({execution: {state: e?.state ?? null}}); return false; }
+    if (!settledExecution(e)) { if (e?.state !== s.execution?.state) await run.save({execution: {state: e?.state ?? null}}); note.waitingOn = `The command is ${e?.state ?? 'running'}.`; return false; }
     const execution = {state: e.state, exitCode: e.exitCode ?? null, signal: e.signal ?? null, reason: e.reason ?? null, startedAt: e.startedAt ?? null, finishedAt: e.finishedAt ?? null};
     await run.save({phase: 'disposing', execution, ...await logTail(ctx, record, s.execution_id, deps), outcome: e.state === 'completed' && e.exitCode === 0 ? 'succeeded' : e.state === 'uncertain' ? 'uncertain' : 'failed', upsize: upsizeHint(execution, s.size)});
     return true;
@@ -162,11 +165,11 @@ async function step(ctx, run, deps) {
     catch { await run.save({phase: 'done', workspaceDisposed: true}); return true; }
     if (record.row.state === 'ready') { await run.save({phase: 'done', workspaceDisposed: true}); return true; }
     const cleaned = await deps.disposeAllocation(ctx, record);
-    if (cleaned?.disposed !== true) return false;
+    if (cleaned?.disposed !== true) { note.waitingOn = 'The runtime is being deleted.'; return false; }
     const job = {...record.job, brokerOrigin: undefined, allocationBinding: undefined};
     try { await deps.callNativeWorker(ctx, {binding: record.binding, job, workspace_id: record.worker, action: 'close', allowWrite: true}); }
     catch (error) { if (error?.status !== 404) throw error; }
-    try { await deps.callNativeWorker(ctx, {binding: record.binding, job, workspace_id: record.worker, action: 'inspect', renewLease: false}); return false; }
+    try { await deps.callNativeWorker(ctx, {binding: record.binding, job, workspace_id: record.worker, action: 'inspect', renewLease: false}); note.waitingOn = 'The workspace is being deleted.'; return false; }
     catch (error) { if (error?.status !== 404) throw error; }
     await ctx.db.finishJob(s.workspace_id, conn, {state: 'ready', detail: 'Native workspace disposed.'});
     await run.save({phase: 'done', workspaceDisposed: true});
@@ -175,22 +178,49 @@ async function step(ctx, run, deps) {
   return true; // done
 }
 
-/** Advance a run within `budgetMs`. Never blocks past the budget; returns the stored state. */
-export async function advanceRun(ctx, intent, {deps = defaultRunDeps, budgetMs = 40000, pollMs = 2000, maxSteps = 40} = {}) {
+/** Advance a run within `budgetMs`. Never blocks past the budget; returns the stored state.
+ *
+ * Exactly once: only the holder of the run's advance lease takes steps. The lease is taken with
+ * a compare-and-set on the run row and outlives the longest possible call (budget + reserve +
+ * margin, above the 60 s function limit), so a second or concurrent call with the same
+ * requestKey only reads the state; a call cut off mid-step leaves a lease that simply expires.
+ * Every step is itself idempotent (deterministic worker/runtime request keys, allocation CAS), so
+ * a step repeated after an expired lease repeats nothing. A new step is begun only when at least
+ * `reserveMs` of the budget remains, so a long step cannot run past the function limit.
+ * Each call ends with one checkpoint (lastAdvancedAt, what it waits for, the observed runtime
+ * phase), so a waiting run is visibly alive instead of looking frozen. */
+export async function advanceRun(ctx, intent, {deps = defaultRunDeps, budgetMs = 40000, pollMs = 2000, maxSteps = 40, reserveMs = 15000} = {}) {
   const key = runSettingKey(intent), stored = await ctx.db.getSetting(key);
   if (!stored) return null;
-  const run = await saver(ctx, key, stored), started = Date.now();
+  if (stored.phase === 'done') return stored;
+  const now = () => (ctx.now ?? Date.now)(), leaseMs = budgetMs + reserveMs + 30000;
+  if (stored.advance && stored.advance.until > now()) return stored; // another call is advancing it
+  const run = await saver(ctx, key, stored), lease = randomBytes(8).toString('hex');
+  try { await run.save({advance: {lease, until: now() + leaseMs}}); }
+  catch (error) { if (error?.safeCode === 'playground_run_busy') return error.fresh ?? stored; throw error; }
+  const started = Date.now(), note = {};
+  let failure = null, progressed = false;
   for (let i = 0; i < maxSteps && run.get().phase !== 'done'; i++) {
+    if (i > 0 && Date.now() - started + reserveMs > budgetMs) break;
     let moved;
-    try { moved = await step(ctx, run, deps); }
+    note.waitingOn = null;
+    try { moved = await step(ctx, run, deps, note); }
     catch (error) {
       if (error?.safeCode === 'playground_run_busy') return error.fresh ?? run.get();
-      if (error?.safeRetryable === true) moved = false;
-      else { try { await run.save({lastError: errorText(error)}); } catch { /* another call holds it */ } return run.get(); }
+      if (error?.safeRetryable === true) { moved = false; note.waitingOn = errorText(error); }
+      else { failure = errorText(error); break; }
     }
-    if (!moved) { if (Date.now() - started + pollMs > budgetMs) break; await deps.sleep(ctx, pollMs); }
-    else if (Date.now() - started > budgetMs) break;
+    if (moved) { progressed = true; failure = null; continue; }
+    if (Date.now() - started + pollMs > budgetMs) break;
+    await deps.sleep(ctx, pollMs);
   }
+  // One checkpoint per call; it also releases the lease. A failed step keeps its plain reason
+  // (retried by the next call); a step that moved or waited cleanly clears a stale one.
+  const s = run.get(), finished = s.phase === 'done';
+  const checkpoint = {advance: null, lastAdvancedAt: now(), waitingOn: finished ? null : note.waitingOn ?? null,
+    ...(note.allocationPhase !== undefined && !finished ? {allocationPhase: note.allocationPhase} : {}),
+    ...(failure ? {lastError: failure} : progressed || note.waitingOn ? {lastError: null} : {})};
+  try { await run.save(checkpoint); } catch { /* the lease expires by itself */ }
   return run.get();
 }
 
@@ -210,6 +240,24 @@ export function presentRun(s) {
     command_succeeded: s.outcome === 'succeeded', exit_code: s.execution?.exitCode ?? null, signal: s.execution?.signal ?? null, reason: s.execution?.reason ?? null,
     ...(s.upsize ? {upsize: s.upsize} : {}), outcome: s.outcome ?? null, outcome_reason: s.outcomeReason ?? null,
     ...(s.log_tail !== undefined ? {log_tail: s.log_tail, log_total_bytes: s.log_total_bytes ?? null, log_hash: s.log_hash ?? null, untrusted: true} : {}),
-    cleaned_up: s.workspaceDisposed === true, ...(s.lastError ? {last_error: s.lastError} : {}), next
+    cleaned_up: s.workspaceDisposed === true, ...(s.lastError ? {last_error: s.lastError} : {}),
+    ...(s.waitingOn ? {waiting_on: s.waitingOn} : {}), ...(Number.isFinite(s.lastAdvancedAt) ? {last_advanced_at: new Date(s.lastAdvancedAt).toISOString()} : {}), next
   };
+}
+
+/** The always-visible digest of a presented run (the write layer's bounded `progress`). */
+export function runEssentials(r) {
+  if (!r || typeof r !== 'object') return null;
+  const clip = (v, n) => typeof v === 'string' ? (v.length > n ? v.slice(-n) : v) : null;
+  const out = {
+    phase: r.phase, finished: r.finished === true, execution_state: r.command_finished ? 'finished' : r.command_started ? 'started' : 'not_started',
+    exit_code: r.exit_code ?? null, reason: r.reason ?? null, outcome: r.outcome ?? null, runtime_size: r.runtime_size ?? null,
+    ...(r.upsize?.next_size ? {upsize_to: r.upsize.next_size} : {}), ...(r.waiting_on ? {waiting_on: clip(r.waiting_on, 160)} : {}),
+    ...(r.last_error ? {last_error: clip(r.last_error, 160)} : {}),
+    ...(typeof r.log_tail === 'string' ? {log_end: clip(r.log_tail, 300), log_hash: r.log_hash ?? null, full_log_tail: 'result.log_tail (last 4 KB) in content[0].text'} : {}),
+    next: clip(r.next, 200)
+  };
+  // Multibyte log text could push the digest past the write layer's bound; the log end goes first.
+  if (Buffer.byteLength(JSON.stringify(out)) > 1100) delete out.log_end;
+  return out;
 }
