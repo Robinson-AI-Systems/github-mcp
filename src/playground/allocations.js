@@ -77,7 +77,14 @@ export async function disposeAllocation(ctx,record,{provider,config,deviceWaitMs
  const key=allocationKey(stored.binding),plan=stored.plan;
  const save=async patch=>{const next=await ctx.db.compareAndSetSetting(key,stored.revision,{...stored,...patch,revision:stored.revision+1});if(!next)throw fail('Another allocation cleanup transition is in progress.');stored=next;await indexAllocation(ctx,stored);};
  if(stored.phase==='disposed')return stored;
- const absent=async()=>{try{return await provider.absent(stored.composeId,plan);}catch(error){if(error.safeCode!=='playground_provider_refused'||![401,403].includes(error.status)||!await cleanupEvidence(ctx,stored))throw error;return await provider.inspect(stored.composeId,plan)===null&&(await provider.containers(plan)).length===0;}};
+ // Issue #509: Dokploy refuses volume reads (401/403) to project keys. The compose and every
+ // container must still be independently gone; then the volumes, which Dokploy deletes with the
+ // compose, are either confirmed by a signed operator observation or recorded as unverified.
+ // Disposal no longer strands the person's workspace on a read the key is not allowed to make.
+ let evidence=null;
+ const absent=async()=>{try{if(await provider.absent(stored.composeId,plan)){evidence='provider_readback';return true;}return false;}catch(error){if(error.safeCode!=='playground_provider_refused'||![401,403].includes(error.status))throw error;if(await provider.inspect(stored.composeId,plan)!==null||(await provider.containers(plan)).length!==0)return false;if(await cleanupEvidence(ctx,stored)){evidence='operator_attested';return true;}
+  // With an operator feed configured its signed observation is required; without one (best effort) record the gap.
+  if(ctx.env?.PLAYGROUND_TELEMETRY_URL)throw error;evidence='compose_and_containers_absent_volume_read_forbidden';return true;}};
  if(!stored.composeId&&['requested','waiting_resources'].includes(stored.phase)){await save({phase:'disposed',disposed:true,disposedAt:(ctx.now??Date.now)(),neverAllocated:true});return stored;}
  if(!stored.composeId)throw fail('Uncertain allocation creation requires exact provider recovery before disposal.');
  if(stored.phase!=='deleting'){
@@ -87,7 +94,7 @@ export async function disposeAllocation(ctx,record,{provider,config,deviceWaitMs
  }
  if(stored.phase==='deleting'&&!await absent()){const owned=await provider.inspect(stored.composeId,plan);if(owned&&allocationProcessesStopped(await provider.containers(plan)))await provider.remove(stored.composeId,plan);}
  if(!await absent())return {...stored,disposed:false,next:'Exact process/volume removal has not been independently confirmed.'};
- await save({phase:'disposed',disposed:true,disposedAt:(ctx.now??Date.now)()});return stored;
+ await save({phase:'disposed',disposed:true,disposedAt:(ctx.now??Date.now)(),cleanupEvidence:evidence,volumesVerified:evidence!=='compose_and_containers_absent_volume_read_forbidden'});return stored;
 }
 
 export async function inspectAllocation(ctx,record,{provider,config}={}){
