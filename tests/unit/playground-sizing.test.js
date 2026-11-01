@@ -47,6 +47,11 @@ it('pins the published runtime image of the serving commit instead of building f
  const row=await ensureAllocation(w.ctx,record,{provider:p,config:{...config,image:undefined,sourceSha:'e'.repeat(40)},manager:async()=>{}});
  const s=services(row.plan);expect(s.coding.image).toBe('ghcr.io/example-org/runtime@sha256:'+'f'.repeat(64));expect(s.coding.build).toBeUndefined();
 });
+it('caps swap at the memory limit for every service so an out-of-memory command is stopped, not swapped',async()=>{
+ const {w,record}=await world(),p=provider();
+ const row=await ensureAllocation(w.ctx,record,{provider:p,config,manager:async()=>{}});
+ for(const [name,svc] of Object.entries(services(row.plan)))if(svc.mem_limit)expect([name,svc.memswap_limit]).toEqual([name,svc.mem_limit]);
+});
 it('keeps the original full-size plan when the protected default is large',async()=>{
  const {w,record}=await world({PLAYGROUND_DEFAULT_SIZE:'large'}),p=provider();
  const row=await ensureAllocation(w.ctx,record,{provider:p,config,manager:async()=>{}});

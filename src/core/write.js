@@ -65,8 +65,9 @@ export function marksOf(c) {
  */
 export function defineWrite(spec) {
   const { name, description, area, audience, compact, guidance, properties = {}, required = [], declarations, target, read, classify, price, summarize, apply, readAfter, verify,
-    inverse = () => null, present = ({ after }) => after, explain = () => 'The change was not completed.', classifyError = () => 'uncertain', requestKey } = spec;
+    inverse = () => null, present = ({ after }) => after, explain = () => 'The change was not completed.', classifyError = () => 'uncertain', requestKey, refreshReplay = null } = spec;
   if (!NAME.test(name ?? '')) throw new TypeError('A valid tool name is required.');
+  if (refreshReplay !== null && typeof refreshReplay !== 'function') throw new TypeError(`${name}: refreshReplay must be a function.`);
   if (typeof description !== 'string' || !description) throw new TypeError(`${name}: a description is required.`);
   for (const [label, fn] of Object.entries({ target, read, classify, summarize, apply, readAfter, verify, inverse, present, explain, classifyError, requestKey })) {
     if (typeof fn !== 'function') throw new TypeError(`${name}: ${label} must be a function.`);
@@ -214,6 +215,15 @@ export function defineWrite(spec) {
     } catch { return refuseOutright('The change could not be recorded, so nothing was sent.'); }
     if (!claim.claimed) {
       const prior = claim.existing;
+      // A tool whose result changes after the write (a running command) may re-read the
+      // current state of the SAME target on replay. Nothing is sent again; on any read
+      // failure the recorded result is returned, labelled as such.
+      if (prior?.confirmed === true && refreshReplay) {
+        let current = null;
+        try { const after = await refreshReplay({ args, ctx, target: tgt, prior: prior.after }); current = after == null ? null : present({ args, ctx, target: tgt, before, after, response: null }); } catch { current = null; }
+        return out({ done: true, status: 'replayed', replayed: true, requestKey: key, summary: prior.summary ?? line, confirmed: true,
+          replay_state: current ? 'current' : 'as_recorded', result: current ?? prior.after });
+      }
       return out({ done: prior?.confirmed === true, status: 'replayed', replayed: true, requestKey: key, summary: prior?.summary ?? line,
         ...(prior?.confirmed === true ? { confirmed: true, result: prior.after } : {
           warning: prior?.confirmed === false ? 'The same request was already tried and could not be confirmed. Check the current state before sending it again in a new request.'

@@ -17,6 +17,8 @@ test('real command UID, protected control, clean environment and nonzero exit',a
  const r=await fixture();process.env.CODING_TEST_PRIVATE='not-inherited';
  try{
   const uid=await r.start({requestKey:'uid',argv:['/usr/bin/id','-u']});assert.equal((await settled(r,uid.id)).exitCode,0);assert.equal(Buffer.from((await r.logs(uid.id)).base64,'base64').toString().trim(),'1000');
+  // A command that exhausts memory is the kernel's first choice to kill, never the supervisor.
+  const oom=await r.start({requestKey:'oom-score',argv:['/bin/cat','/proc/self/oom_score_adj']});assert.equal((await settled(r,oom.id)).exitCode,0);assert.equal(Buffer.from((await r.logs(oom.id)).base64,'base64').toString().trim(),'1000');
   const x=await r.start({requestKey:'node',argv:[node,'-e',"require('fs').writeFileSync('build.txt','built');console.log(process.env.CODING_TEST_PRIVATE===undefined);process.exit(7)"]});assert.equal((await settled(r,x.id)).exitCode,7);assert.equal(await readFile(join(r.root,'repo/build.txt'),'utf8'),'built');assert.match(Buffer.from((await r.logs(x.id)).base64,'base64').toString(),/true/);
   const denied=await r.start({requestKey:'denied',argv:[node,'-e',"require('fs').readdirSync('../control')"]});assert.notEqual((await settled(r,denied.id)).exitCode,0);assert.equal((await stat(join(r.root,'control'))).mode&0o077,0);
  }finally{delete process.env.CODING_TEST_PRIVATE;await cleanup(r);}
