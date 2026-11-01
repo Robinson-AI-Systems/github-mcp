@@ -8,7 +8,7 @@ import { listedDescription, toolsForProfile, toolsForListing } from '../core/reg
 import {OptionalConsentRequired} from '../tenancy/optional-challenge.js';
 
 const readOnly = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false };
-const visible = (ctx) => toolsForProfile(ctx.registry, ctx.connection.profile);
+const visible = (ctx) => toolsForProfile(ctx.registry, ctx.connection.profile, ctx.connection);
 const find = (ctx, name) => visible(ctx).find((t) => t.name === name);
 
 async function searchHandler(args, ctx) {
@@ -29,7 +29,7 @@ const MANIFEST_CHANGELOG = Object.freeze([
 ]);
 const digest = (data) => createHash('sha256').update(JSON.stringify(data)).digest('hex');
 function manifestHandler(_args, ctx) {
-  const direct = toolsForListing(ctx.registry, ctx.connection.profile, 'compact');
+  const direct = toolsForListing(ctx.registry, ctx.connection.profile, 'compact', ctx.connection);
   const tools = direct.map((tool) => ({
     name: tool.name, kind: kindOf(tool),
     version: '1-' + digest({ schema: tool.inputSchema, annotations: tool.annotations,

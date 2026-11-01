@@ -134,7 +134,7 @@ export function createDispatch({ env = process.env, now = Date.now, fetch = glob
     const {registry,name,args,connection,db}=input,tool=registry.tools.find(t=>t.name===name);
     if(['github_security_scanner_configure','github_security_scanner_get_settings'].includes(name))return withRepositoryProtection([],()=>runScoped(input,box),{isolateFiles:true});
     const owner=args?.owner??connection?.default_account,repo=args?.repo;
-    if(tool&&isToolVisible(tool,connection?.profile)&&!validateArgs(tool.inputSchema,args)&&!passRefusal({tool,args:args??{},connection})&&typeof repo==='string'&&/^[A-Za-z0-9_.-]{1,100}$/.test(repo)&&connection?.accounts?.some(a=>a.toLowerCase()===String(owner).toLowerCase())&&typeof db?.getSetting==='function'){
+    if(tool&&isToolVisible(tool,connection?.profile,connection)&&!validateArgs(tool.inputSchema,args)&&!passRefusal({tool,args:args??{},connection})&&typeof repo==='string'&&/^[A-Za-z0-9_.-]{1,100}$/.test(repo)&&connection?.accounts?.some(a=>a.toLowerCase()===String(owner).toLowerCase())&&typeof db?.getSetting==='function'){
       try{const policy=await loadScannerPolicy(db,owner,repo);return withRepositoryProtection(policy.settings.additionalRules.filter(r=>!policy.settings.disabledRules.includes(r.id)),()=>runScoped(input,box),{repository:JSON.stringify([owner.toLowerCase(),repo.toLowerCase()])});}
       catch{return fail('Repository scanner policy could not be loaded; no unprotected result was returned. Inspect scanner settings and retry.');}
     }
@@ -151,7 +151,7 @@ export function createDispatch({ env = process.env, now = Date.now, fetch = glob
     const isRead = tool?.annotations?.readOnlyHint === true && tool.writes !== true && tool.passthrough !== true;
     // A runner (github_call) hands another tool's call back to this same function, so that tool's own checks run; it is neither read nor write itself.
     const isRunner = tool?.passthrough === true && tool.usesRegistry === true && tool.writes !== true;
-    if (!handler || (!isWrite && !isRead && !isRunner) || !isToolVisible(tool, connection?.profile)) return fail(`Unknown or unavailable tool: ${redact(String(name)).slice(0, 80)}`);
+    if (!handler || (!isWrite && !isRead && !isRunner) || !isToolVisible(tool, connection?.profile, connection)) return fail(`Unknown or unavailable tool: ${redact(String(name)).slice(0, 80)}`);
     const problem = validateArgs(tool.inputSchema, args);
     if (problem) return fail(problem);
     // A service pass is narrower than its profile. This is the one place every call passes, so a workflow's nested calls are held to it too.

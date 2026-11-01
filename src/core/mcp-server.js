@@ -25,7 +25,7 @@ export function createMcpHandler({ db, registry, env = process.env, toConnection
     if (!connection) return;
     const server = new Server(serverInfo, { capabilities: { tools: {} } });
     server.setRequestHandler(ListToolsRequestSchema, async (request) => {
-      const page=pageToolsForListing(registry, connection.profile, listingFor(req, connection), request.params?.cursor);
+      const page=pageToolsForListing(registry, connection.profile, listingFor(req, connection), request.params?.cursor, connection);
       if(toolSecuritySchemes)
         page.tools=page.tools.map(tool=>({...tool,securitySchemes:toolSecuritySchemes(tool,connection)}));
       return page;

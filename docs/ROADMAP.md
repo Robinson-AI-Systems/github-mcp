@@ -117,7 +117,7 @@ Approach: one public GitHub App, opened gradually. Every item below is part of "
 - Make the GitHub App publicly installable and turn on `GITHUB_PUBLIC_CONNECT` (needs Chris's go-ahead; see the rollout plan above).
 - (Done 2026-10-23) The old "make changes" tick-box became an optional **Read-only** choice: changes are on by default, and a read-only connection refuses changes with wording that says how to reconnect.
 - Fine-grained-token tenants (God mode currently offers the notifications and package keys).
-- Revoke or delete a stranger's tenant and data by identity (today's revoke tools are keyed by account for the private pilot).
+- (Done 2026-11-01, PUB-8) Revoke or delete a stranger's tenant and data by identity: owner-only `github_tenant_remove` (preview, confirm, revoke at GitHub first, one removal core shared with "Delete my data", readback).
 - Self-host the brand fonts (pages currently use system fonts) and a favicon `.ico`.
 - Move the connector to `github.robinsonaisystems.com` (OAuth callbacks, App settings, existing clients; DNS row on the owner checklist).
 - Real-device acceptance of the new flow (owner checklist, optional).

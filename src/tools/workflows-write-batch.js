@@ -100,7 +100,7 @@ function prepare(args,ctx){
   if(!Array.isArray(args.steps)||args.steps.length<1||args.steps.length>20)
     throw new TypeError('Provide between 1 and 20 sequential operations.');
   const account=topScope(args,ctx);
-  const allowed=new Map(toolsForProfile(ctx.registry,ctx.connection.profile).map(t=>[t.name,t]));
+  const allowed=new Map(toolsForProfile(ctx.registry,ctx.connection.profile,ctx.connection).map(t=>[t.name,t]));
   const checked=args.steps.map((s,i)=>{
     const t=allowed.get(s.name);
     if(!canDelegate(t))throw new TypeError('Step '+(i+1)+': not a visible guarded write tool ('+redact(String(s.name)).slice(0,80)+').');
