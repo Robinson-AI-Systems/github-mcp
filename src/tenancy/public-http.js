@@ -36,6 +36,9 @@ function failure(res, error, where = '') {
     res.setHeader('Retry-After', String(error.retryAfterSeconds));
     return page(res, 429, 'Busy right now', '<p>This connection is temporarily busy. Please try again in a minute.</p>');
   }
+  // PUB-8: GitHub would not confirm a saved sign-in was cancelled, so "Delete my data" deleted nothing; the person may retry.
+  if (error instanceof PublicConnectError && error.code === 'revoke')
+    return page(res, 503, 'Nothing was deleted yet', `<p id="forget-retry">${h(error.message)}</p><p><a class="button" href="${STEP}?forget=1">Try again</a></p>`);
   if (error instanceof PublicConnectError && error.code !== 'refused') {
     const unavailable = error.code === 'capacity' || error.code === 'paused';
     return page(res, unavailable ? 503 : 403, unavailable ? 'Not available right now' : 'Could not connect', `<p>${h(error.message)}</p>`);
