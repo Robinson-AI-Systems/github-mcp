@@ -219,6 +219,9 @@ export function createDb(sql = productionSql()) {
       // master token where the App is not installed. Changes start OFF; allowed_repos NULL means the whole owner.
       await sql`ALTER TABLE gh_accounts ADD COLUMN IF NOT EXISTS allow_changes BOOLEAN NOT NULL DEFAULT FALSE,
         ADD COLUMN IF NOT EXISTS allowed_repos TEXT[]`;
+      // PUB-9: which of the person's own tokens reaches an extra place. NULL = the master token (GOD-5); 'F' = a fine-grained
+      // token, kept encrypted in the private tenant vault. Additive; existing places keep NULL.
+      await sql`ALTER TABLE gh_accounts ADD COLUMN IF NOT EXISTS place_cred TEXT`;
       await sql`CREATE TABLE IF NOT EXISTS gh_installation_tokens (
         installation_id BIGINT NOT NULL,
         scope_key TEXT NOT NULL,
@@ -1054,9 +1057,28 @@ export function createDb(sql = productionSql()) {
           allowed_repos = CASE WHEN ${repo === null} THEN NULL
             WHEN gh_accounts.allowed_repos IS NULL THEN NULL
             ELSE (SELECT array_agg(DISTINCT r) FROM unnest(gh_accounts.allowed_repos || ARRAY[${repo ?? ''}]::text[]) AS r) END
-        WHERE gh_accounts.credential_kind = 'master'
+        WHERE gh_accounts.credential_kind = 'master' AND gh_accounts.place_cred IS NULL
         RETURNING login, allowed_repos, allow_changes`;
       return rows[0] ?? null;
+    },
+    /**
+     * PUB-9: the place a fine-grained token reaches (its one owner), limited to the repositories GitHub listed for it
+     * (`repos` null = every repository of the owner). Never touches an App account or a master-token place. Changes start
+     * off and keep the person's earlier choice when the same token is re-checked. Returns the row or null.
+     */
+    async upsertFinePlace({ login, accountId, accountType, repos = null }) {
+      const list = repos === null ? null : [...new Set(repos)].sort();
+      const rows = await sql`INSERT INTO gh_accounts (login, account_id, account_type, label, credential_kind, is_default, allow_changes, allowed_repos, place_cred)
+        VALUES (${login}, ${accountId}, ${accountType}, ${login}, 'master', FALSE, FALSE, ${list}::text[], 'F')
+        ON CONFLICT (login) DO UPDATE SET allowed_repos = EXCLUDED.allowed_repos
+        WHERE gh_accounts.credential_kind = 'master' AND gh_accounts.place_cred = 'F' AND gh_accounts.account_id = EXCLUDED.account_id
+        RETURNING login, allowed_repos, allow_changes`;
+      return rows[0] ?? null;
+    },
+    /** PUB-9: remove the place of a fine-grained token (nothing else). Returns whether one was removed. */
+    async removeFinePlace(login) {
+      const rows = await sql`DELETE FROM gh_accounts WHERE lower(login) = lower(${login}) AND credential_kind = 'master' AND place_cred = 'F' RETURNING login`;
+      return rows.length === 1;
     },
     /** GOD-5: switch changes on or off for one extra place. Returns whether a place was changed. */
     async setPlaceChanges(login, on) {
@@ -1065,17 +1087,17 @@ export function createDb(sql = productionSql()) {
     },
     /** GOD-5: remove one extra place, or only `repo` from its list (the place goes when its list becomes empty). */
     async removeExtraPlace(login, repo = null) {
-      const row = (await sql`SELECT allowed_repos FROM gh_accounts WHERE lower(login) = lower(${login}) AND credential_kind = 'master'`)[0];
+      const row = (await sql`SELECT allowed_repos FROM gh_accounts WHERE lower(login) = lower(${login}) AND credential_kind = 'master' AND place_cred IS NULL`)[0];
       if (!row) return { removed: false, whole: false };
       if (repo && row.allowed_repos?.length) {
         const left = row.allowed_repos.filter((r) => r.toLowerCase() !== String(repo).toLowerCase());
         if (left.length === row.allowed_repos.length) return { removed: false, whole: false };
         if (left.length) {
-          await sql`UPDATE gh_accounts SET allowed_repos = ${left}::text[] WHERE lower(login) = lower(${login}) AND credential_kind = 'master'`;
+          await sql`UPDATE gh_accounts SET allowed_repos = ${left}::text[] WHERE lower(login) = lower(${login}) AND credential_kind = 'master' AND place_cred IS NULL`;
           return { removed: true, whole: false };
         }
       }
-      await sql`DELETE FROM gh_accounts WHERE lower(login) = lower(${login}) AND credential_kind = 'master'`;
+      await sql`DELETE FROM gh_accounts WHERE lower(login) = lower(${login}) AND credential_kind = 'master' AND place_cred IS NULL`;
       return { removed: true, whole: true };
     },
     /** GOD-5: take a login out of every live connector login (the default falls back to the first account left). */
@@ -1099,7 +1121,7 @@ export function createDb(sql = productionSql()) {
       const rows = await sql`SELECT login, account_type, label, credential_kind, app_id, installation_id, repository_selection,
           installation_status, installation_permissions, user_login, (user_token_enc IS NOT NULL) AS has_user_token, user_token_expires_at,
           (fine_grained_enc IS NOT NULL) AS has_fine_grained, fine_grained_last4, (classic_enc IS NOT NULL) AS has_classic, classic_scopes,
-          classic_last4, (package_enc IS NOT NULL) AS has_package, package_scopes, package_actor, package_expires_at, plan_name, production_enabled, spend_limit_cents, spend_limit_explicit, is_default, is_scratch, checked_at, allow_changes, allowed_repos
+          classic_last4, (package_enc IS NOT NULL) AS has_package, package_scopes, package_actor, package_expires_at, plan_name, production_enabled, spend_limit_cents, spend_limit_explicit, is_default, is_scratch, checked_at, allow_changes, allowed_repos, place_cred
         FROM gh_accounts ORDER BY is_default DESC, login`;
       return rows.map((r) => ({ ...r, app_id: r.app_id == null ? null : Number(r.app_id), installation_id: r.installation_id == null ? null : Number(r.installation_id) }));
     },

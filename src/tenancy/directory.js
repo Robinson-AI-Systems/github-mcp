@@ -107,7 +107,7 @@ export function createTenantDirectory(sql) {
         identity_id UUID NOT NULL REFERENCES gh_tenant_identities(id),
         client_id TEXT NOT NULL,
         account_login TEXT NOT NULL,
-        kind TEXT NOT NULL CHECK (kind IN ('K','P','M')),
+        kind TEXT NOT NULL CHECK (kind IN ('K','P','M','F')),
         redirect_uri TEXT NOT NULL,
         membership_revision BIGINT NOT NULL,
         pilot_revision BIGINT NOT NULL,
@@ -120,19 +120,20 @@ export function createTenantDirectory(sql) {
         ADD COLUMN IF NOT EXISTS oauth_context JSONB`;
       await widenOptionalKinds();
   }
-  // GOD-1: kind 'M' (the master token). Additive: older tables are re-checked once, new ones are created with it.
+  // GOD-1: kind 'M' (the master token); PUB-9: kind 'F' (a fine-grained token). Additive: older tables are re-checked once,
+  // new ones are created with it.
   async function widenOptionalKinds(){
     for(const table of ['gh_tenant_optional_credentials','gh_tenant_optional_setup_states']){
       const name=table+'_kind_check';
       const found=await sql`SELECT pg_get_constraintdef(c.oid) AS def FROM pg_constraint c
         WHERE c.conname=${name} AND c.conrelid=to_regclass(${table})`;
-      if(found.length===1 && !String(found[0].def).includes("'M'")){
+      if(found.length===1 && !String(found[0].def).includes("'F'")){
         if(table==='gh_tenant_optional_credentials'){
           await sql`ALTER TABLE gh_tenant_optional_credentials DROP CONSTRAINT IF EXISTS gh_tenant_optional_credentials_kind_check`;
-          await sql`ALTER TABLE gh_tenant_optional_credentials ADD CONSTRAINT gh_tenant_optional_credentials_kind_check CHECK (kind IN ('K','P','M'))`;
+          await sql`ALTER TABLE gh_tenant_optional_credentials ADD CONSTRAINT gh_tenant_optional_credentials_kind_check CHECK (kind IN ('K','P','M','F'))`;
         }else{
           await sql`ALTER TABLE gh_tenant_optional_setup_states DROP CONSTRAINT IF EXISTS gh_tenant_optional_setup_states_kind_check`;
-          await sql`ALTER TABLE gh_tenant_optional_setup_states ADD CONSTRAINT gh_tenant_optional_setup_states_kind_check CHECK (kind IN ('K','P','M'))`;
+          await sql`ALTER TABLE gh_tenant_optional_setup_states ADD CONSTRAINT gh_tenant_optional_setup_states_kind_check CHECK (kind IN ('K','P','M','F'))`;
         }
       }
     }
@@ -235,7 +236,7 @@ export function createTenantDirectory(sql) {
         tenant_id UUID NOT NULL REFERENCES gh_tenants(id),
         identity_id UUID NOT NULL REFERENCES gh_tenant_identities(id),
         account_login TEXT NOT NULL,
-        kind TEXT NOT NULL CHECK (kind IN ('K','P','M')),
+        kind TEXT NOT NULL CHECK (kind IN ('K','P','M','F')),
         provider_host TEXT NOT NULL DEFAULT 'github.com',
         actor_id BIGINT NOT NULL,
         account_id BIGINT NOT NULL,
@@ -563,7 +564,11 @@ export function createTenantDirectory(sql) {
         (kind==='P'&&operation==='GET /orgs/{org}/packages'&&
           resource==='org/'+accountId&&Array.isArray(scopes)&&
           scopes.includes('read:packages')&&scopes.length<=4&&
-          scopes.every(x=>['read:packages','write:packages','delete:packages','repo'].includes(x)));
+          scopes.every(x=>['read:packages','write:packages','delete:packages','repo'].includes(x)))||
+        // PUB-9: one fine-grained token per owner it belongs to. `scopes` is the permission set GitHub showed at enrollment.
+        (kind==='F'&&operation==='GET /user/repos'&&resource==='owner/'+accountId&&
+          Array.isArray(scopes)&&scopes.length>=1&&scopes.length<=80&&scopes.includes('metadata:read')&&
+          scopes.every(x=>typeof x==='string'&&/^[a-z_]+:(read|none)$/.test(x)));
       if(!permitted||typeof accountLogin!=='string'||!/^[a-z0-9][a-z0-9-]{0,38}$/.test(accountLogin)||
         !Number.isSafeInteger(actorId)||actorId<1||!Number.isSafeInteger(accountId)||accountId<1||
         !Number.isSafeInteger(membershipRevision)||membershipRevision<1||
@@ -607,7 +612,7 @@ export function createTenantDirectory(sql) {
     /** Encrypted grant retrieval for trusted runtime only; never MCP output. */
     async getPilotOptionalCredential({tenantId,identityId,accountLogin,kind}) {
       const t=validUuid(tenantId),i=validUuid(identityId);
-      if(!/^[a-z0-9][a-z0-9-]{0,38}$/.test(accountLogin)||!['K','P','M'].includes(kind))return null;
+      if(!/^[a-z0-9][a-z0-9-]{0,38}$/.test(accountLogin)||!['K','P','M','F'].includes(kind))return null;
       const rows=await sql`SELECT g.access_enc,g.cipher_fingerprint,g.kind,g.actor_id,
         g.account_id,g.verified_operation,g.verified_resource,g.scopes,
         g.expires_at,g.revision,g.provider_host
@@ -626,9 +631,26 @@ export function createTenantDirectory(sql) {
           (g.expires_at IS NULL OR g.expires_at>now())`;
       return rows.length===1?rows[0]:null;
     },
+    /** PUB-9: this person's stored grants of one kind, for status pages only: no ciphertext, expired ones included. */
+    async listPilotOptionalCredentials({tenantId,identityId,kind}) {
+      const t=validUuid(tenantId),i=validUuid(identityId);
+      if(!['K','P','M','F'].includes(kind))return [];
+      return await sql`SELECT g.account_login,g.kind,g.actor_id,g.account_id,g.verified_operation,
+        g.verified_resource,g.scopes,g.expires_at,g.revision,g.provider_host
+        FROM gh_tenant_optional_credentials g
+        JOIN gh_tenants ten ON ten.id=g.tenant_id
+        JOIN gh_tenant_memberships m ON m.tenant_id=g.tenant_id AND m.identity_id=g.identity_id
+        JOIN gh_tenant_pilot_allowlist p ON p.tenant_id=g.tenant_id AND p.identity_id=g.identity_id
+        JOIN gh_tenant_identities ident ON ident.id=g.identity_id
+        WHERE g.tenant_id=${t}::uuid AND g.identity_id=${i}::uuid AND g.kind=${kind}
+          AND g.revoked_at IS NULL AND ten.status='active' AND m.active=TRUE AND p.active=TRUE
+          AND g.membership_revision=m.revision AND g.pilot_revision=p.revision
+          AND ident.provider='github' AND ident.provider_subject=g.actor_id::text
+        ORDER BY g.account_login LIMIT 50`;
+    },
     async revokePilotOptionalCredential({tenantId,identityId,accountLogin,kind,expectedFingerprint=null}) {
       const t=validUuid(tenantId),i=validUuid(identityId);
-      if(!/^[a-z0-9][a-z0-9-]{0,38}$/.test(accountLogin)||!['K','P','M'].includes(kind)||
+      if(!/^[a-z0-9][a-z0-9-]{0,38}$/.test(accountLogin)||!['K','P','M','F'].includes(kind)||
         (expectedFingerprint!==null&&!/^[a-f0-9]{64}$/.test(expectedFingerprint)))return false;
       const rows=await sql`UPDATE gh_tenant_optional_credentials g
         SET revoked_at=now(),revision=g.revision+1,
@@ -827,7 +849,7 @@ export function createTenantDirectory(sql) {
       if(!/^[a-f0-9]{64}$/.test(stateHash)||typeof clientId!=='string'||
         !(clientId.startsWith('tcl_')||clientId.startsWith('pcl_'))||
         !/^[a-z0-9][a-z0-9-]{0,38}$/.test(accountLogin)||
-        !['K','P','M'].includes(kind)||typeof redirectUri!=='string'||
+        !['K','P','M','F'].includes(kind)||typeof redirectUri!=='string'||
         redirectUri.length>2048||
         !Number.isSafeInteger(membershipRevision)||membershipRevision<1||
         !Number.isSafeInteger(pilotRevision)||pilotRevision<1||
@@ -871,7 +893,7 @@ export function createTenantDirectory(sql) {
     async pilotOptionalFingerprint({tenantId,identityId,accountLogin,kind}) {
       const t=validUuid(tenantId),i=validUuid(identityId);
       if(!/^[a-z0-9][a-z0-9-]{0,38}$/.test(accountLogin)||
-        !['K','P','M'].includes(kind))return null;
+        !['K','P','M','F'].includes(kind))return null;
       const rows=await sql`SELECT g.cipher_fingerprint FROM gh_tenant_optional_credentials g
         JOIN gh_tenants ten ON ten.id=g.tenant_id
         JOIN gh_tenant_memberships m ON m.tenant_id=g.tenant_id AND m.identity_id=g.identity_id
@@ -986,7 +1008,7 @@ export function createTenantDirectory(sql) {
           (clientState !== null && (typeof clientState !== 'string' || clientState.length > 256)) ||
           (accountLogin !== null && !/^[a-z0-9][a-z0-9-]{0,38}(,[a-z0-9][a-z0-9-]{0,38}){0,9}$/.test(String(accountLogin))) ||
           (timeZone !== null && !validZone(timeZone)) ||
-          (purpose !== null && !['forget', 'master', 'approve', 'manage', 'revoke', 'revoke_form'].includes(purpose)) ||
+          (purpose !== null && !['forget', 'master', 'fine', 'approve', 'manage', 'revoke', 'revoke_form'].includes(purpose)) ||
           (offers !== null && !(Array.isArray(offers) && offers.length >= 1 && offers.length <= 8 && offers.every((o) =>
             /^[A-Za-z0-9][A-Za-z0-9-]{0,38}$/.test(String(o?.login)) && Number.isSafeInteger(o?.id) && o.id > 0 && ['User', 'Organization'].includes(o?.type)))) ||
           !Number.isSafeInteger(ttlSeconds) || ttlSeconds < 60 || ttlSeconds > 1800 ||

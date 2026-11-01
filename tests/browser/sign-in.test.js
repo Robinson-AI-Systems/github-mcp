@@ -262,6 +262,56 @@ describe('My connection', () => {
     await b.context.close();
   });
 
+  it('PUB-9: adds a fine-grained token on the protected page; only then whoami reports it, its place works, a missing permission is refused before GitHub, and it can be removed', async () => {
+    const b = await open(PROFILES[0], { cookies: false });
+    if (!b) return;
+    const p = person({ authorized: true });
+    world.github.state.people.get(p.login).orgs['fine-co'] = { id: 9922, role: 'member' };
+    const { tokens } = await connect(b.page, { appName: 'Claude' });
+    let who = (await mcpTool(world, tokens.access_token, 'github_whoami')).content;
+    expect(JSON.stringify(who)).not.toMatch(/fine/i);
+    await b.page.goto(ORIGIN + '/connection');
+    await b.page.click('#manage-sign-in');
+    await b.page.waitForSelector('#add-fine');
+    await fitsScreen(b.page);
+    await b.page.click('#add-fine');
+    await b.page.waitForSelector('input[name=value]');
+    expect(await b.page.title()).toBe('Fine-grained token');
+    await fitsScreen(b.page);
+    const fine = world.github.fineToken(p, { owner: { login: 'fine-co', id: 9922, type: 'Organization' }, repos: ['site'], grants: ['contents'] });
+    await b.page.fill('input[name=value]', fine);
+    await b.page.click('button[type=submit]');
+    await b.page.waitForSelector('#optional-done');
+    expect(await b.page.textContent('main')).toContain('fine-co');
+    await fitsScreen(b.page);
+    await b.page.click('text=Back to My connection');
+    await b.page.click('#manage-sign-in');
+    await b.page.waitForSelector('#fine-tokens');
+    expect(await b.page.textContent('#fine-tokens')).toContain('fine-co');
+    expect(await b.page.textContent('#fine-tokens')).toContain('read-only');
+    expect(await b.page.content()).not.toContain(fine);
+    await fitsScreen(b.page);
+    who = (await mcpTool(world, tokens.access_token, 'github_whoami', { detail: 'full' })).content;
+    expect(who.fine_grained_tokens[0]).toMatchObject({ owner: 'fine-co', status: 'active', repositories: ['site'] });
+    expect(who.fine_grained_tokens[0].permissions.not_granted).toContain('issues');
+    expect(who.accounts.find((a) => a.login === 'fine-co')).toMatchObject({ setup: 'extra place (your fine-grained token)' });
+    expect(JSON.stringify(who)).not.toContain(fine);
+    // a read it has works through the place; one it lacks is refused here, before GitHub sees it
+    const repo = await mcpTool(world, tokens.access_token, 'github_repo_get', { owner: 'fine-co', repo: 'site' });
+    expect(repo.isError).toBe(false);
+    const before = world.github.state.log.length;
+    const issues = await mcpTool(world, tokens.access_token, 'github_issue_list', { owner: 'fine-co', repo: 'site' });
+    expect(issues.isError).toBe(true);
+    expect(JSON.stringify(issues.content)).toMatch(/does not have issues/);
+    expect(world.github.state.log.slice(before).some((l) => l.includes('/repos/fine-co/site/issues'))).toBe(false);
+    await b.page.click('#fine-remove-fine-co');
+    await b.page.waitForSelector('.notice');
+    expect(await b.page.textContent('.notice')).toContain('Removed your fine-grained token for fine-co');
+    who = (await mcpTool(world, tokens.access_token, 'github_whoami')).content;
+    expect(JSON.stringify(who)).not.toMatch(/fine/i);
+    await b.context.close();
+  });
+
   it('read-only switch, time zone, master token and disconnect all work from the page (no cookies)', async () => {
     const b = await open(PROFILES[0], { cookies: false });
     if (!b) return;

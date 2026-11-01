@@ -32,7 +32,9 @@ import { verifyGithubBearerIdentity, listUserAppInstallations, verifyAccountAuth
 import { storePilotUserGrant, createTenantScopedCredentials } from './user-authorization.js';
 import { pilotAppClient } from './pilot-app-client.js';
 import { MASTER_HANDLE } from './master-credential.js';
+import { enrollFineGrainedCredential } from './fine-grained-credential.js';
 import { masterUnlocks } from '../github/master-areas.js';
+import { fineUnlocks, validLearned, fineSettingKey } from '../github/fine-grained.js';
 import { createDb } from '../db.js';
 import { bareOctokit } from '../github/client.js';
 import { hashToken, randomToken, validRedirectUri } from '../core/oauth.js';
@@ -486,8 +488,10 @@ export function createPublicConnect({ env = process.env, fetchImpl = fetch, root
       githubUrl: Number.isSafeInteger(Number(a.installation_id)) && Number(a.installation_id) > 0 && LOGIN.test(String(a.login))
         ? (a.account_type === 'Organization' ? `https://github.com/organizations/${a.login}/settings/installations/${Number(a.installation_id)}` : `https://github.com/settings/installations/${Number(a.installation_id)}`)
         : null }));
-    const places = all.filter((a) => a.credential_kind === 'master').map((a) => ({ login: a.login, organization: a.account_type === 'Organization',
+    const places = all.filter((a) => a.credential_kind === 'master' && a.place_cred !== 'F').map((a) => ({ login: a.login, organization: a.account_type === 'Organization',
       changes: a.allow_changes === true, repos: a.allowed_repos ?? null }));
+    // PUB-9: each fine-grained token and the one place it opens (status, permissions GitHub showed, never the token).
+    const fine = await fineFor({ tenantId, identityId, db }).catch(() => []);
     // Refresh-aware: an app whose one-hour access lapsed but can still renew it is listed (and can be disconnected).
     const seen = new Set();
     const connections = (await db.listUpgradeableConnections()).filter((c) => c.client_id !== MANAGE_CLIENT && !seen.has(c.client_id) && seen.add(c.client_id))
@@ -515,14 +519,14 @@ export function createPublicConnect({ env = process.env, fetchImpl = fetch, root
     // PUB-5 B: "used today: 312 of 5,000" (numbers only; a counting problem just hides the line).
     const usage = await createPublicUsage(rootSql(), usageLimits).usedToday(tenantId).catch(() => null);
     return { handle, signedInAs, accounts, places, connections, usage, marketplaceAccountId:marketplace?.accountId ?? null, offers: offers ?? [], timeZone: (await db.getSetting(ZONE_SETTING)) ?? 'UTC',
-      master: master ? { added: true, expiresAt: master.expires_at ?? null, unlocks: masterUnlocks(master.scopes ?? []), actAs } : { added: false, unlocks: [] }, notice,
+      master: master ? { added: true, expiresAt: master.expires_at ?? null, unlocks: masterUnlocks(master.scopes ?? []), actAs } : { added: false, unlocks: [] }, fine, notice,
       pairing, pairingGrants: pairingGrants.map(c=>({clientId:c.client_id,name:c.client_name??'An app'})),devices };
   }
   /** One action on My connection. Every action uses up the page's handle and returns a fresh page (or somewhere to go). */
   async function manageAction({ handle, action, value }) {
     active();
     if (!STATE.test(String(handle ?? '')) ||
-        !['refresh', 'read_only', 'allow_changes', 'time_zone', 'disconnect', 'add', 'master', 'add_place', 'place_changes', 'remove_place', 'act_as_me', 'rule_override', 'begin_pair', 'approve_pair', 'revoke_pair','probe_pair','canary_pair'].includes(action)) throw refused('r33');
+        !['refresh', 'read_only', 'allow_changes', 'time_zone', 'disconnect', 'add', 'master', 'fine', 'fine_recheck', 'fine_remove', 'add_place', 'place_changes', 'remove_place', 'act_as_me', 'rule_override', 'begin_pair', 'approve_pair', 'revoke_pair','probe_pair','canary_pair'].includes(action)) throw refused('r33');
     const flow = await directory().consumePublicFlow(sha(handle), 'god');
     if (!flow || flow.purpose !== 'manage' || !flow.tenantId || !flow.identityId || !flow.accountLogin) throw refused('r34');
     const { db, dir, tenant } = await scopeOf(flow);
@@ -594,6 +598,19 @@ export function createPublicConnect({ env = process.env, fetchImpl = fetch, root
         ttlSeconds: 600, maxOpen: limits.maxOpenFlows, maxOpenPerClient: limits.maxOpenPerBuiltIn })) throw busy();
       return { go: active() + '/api/tenant/optional?master_link=' + link };
     }
+    if (action === 'fine') {
+      // PUB-9: the one-use fine-grained token page; the token is pasted there, never here.
+      const link = random(32);
+      if (!await dir.createPublicFlow({ stateHash: sha(link), stage: 'god', clientId: MANAGE_CLIENT, redirectUri: manageUrl(),
+        codeChallenge: random(32), tier: 'standard', purpose: 'fine', tenantId: flow.tenantId, identityId: flow.identityId,
+        ttlSeconds: 600, maxOpen: limits.maxOpenFlows, maxOpenPerClient: limits.maxOpenPerBuiltIn })) throw busy();
+      return { go: active() + '/api/tenant/optional?fine_link=' + link };
+    }
+    if (action === 'fine_recheck' || action === 'fine_remove') {
+      const owner = String(value ?? '').toLowerCase();
+      if (!LOGIN.test(owner)) throw refused('r43');
+      return { manage: await view(action === 'fine_recheck' ? await fineRecheck({ db, dir, tenant, owner }) : await fineRemove({ db, dir, flow, owner })) };
+    }
     if (action === 'act_as_me' || action === 'rule_override') {
       if (!['on', 'off'].includes(String(value))) throw refused('r41');
       const subject = await dir.getPilotVerifiedSubject(flow.tenantId, flow.identityId);
@@ -619,6 +636,52 @@ export function createPublicConnect({ env = process.env, fetchImpl = fetch, root
       return { manage: await view(done.removed ? `Removed ${value}.` : 'That place is not in your list.') };
     }
     return { manage: await view(null) };
+  }
+
+  // ---------------------------------------------------------------- PUB-9 fine-grained tokens
+  async function fineFor({ tenantId, identityId, db }) {
+    const dir = directory();
+    const rows = await dir.listPilotOptionalCredentials({ tenantId, identityId, kind: 'F' });
+    if (!rows.length) return [];
+    const subject = await dir.getPilotVerifiedSubject(tenantId, identityId).catch(() => null);
+    if (!/^[1-9][0-9]{0,18}$/.test(String(subject))) return [];
+    const out = [];
+    for (const row of rows) {
+      if (String(row.actor_id) !== String(subject) || !LOGIN.test(String(row.account_login))) continue;
+      const place = await db.getAccount(row.account_login);
+      const at = row.expires_at ? new Date(row.expires_at) : null;
+      const rejected = !!(await db.getSetting(fineSettingKey('fine_rejected_at', subject, row.account_login)).catch(() => null));
+      let refusedList = [];
+      try { const parsed = JSON.parse((await db.getSetting(fineSettingKey('fine_refused', subject, row.account_login)).catch(() => null)) || '[]'); if (validLearned(parsed)) refusedList = parsed; } catch { refusedList = []; }
+      out.push({ owner: place?.login ?? row.account_login, organization: place?.account_type === 'Organization',
+        expired: !!(at && at.getTime() <= Date.now()), rejected, expiresAt: at ? at.toISOString() : null,
+        repos: place?.allowed_repos ?? null, changes: place?.allow_changes === true,
+        unlocks: fineUnlocks(Array.isArray(row.scopes) ? row.scopes : [], refusedList).map((u) => ({ area: u.area, reads: u.reads, changes: u.changes })) });
+    }
+    return out;
+  }
+  /** Re-read what the stored token can do (after the person changed it on GitHub). The token never leaves the server. */
+  async function fineRecheck({ db, dir, tenant, owner }) {
+    let token;
+    try {
+      token = await createTenantScopedCredentials({ base: { token: async () => { throw refused('r44'); } }, directory: dir, tenant, db, env, fetchImpl })
+        .token({ cred: 'F', account: owner });
+    } catch { return `There is no usable fine-grained token for ${owner}. Add a new one.`; }
+    try {
+      const saved = await enrollFineGrainedCredential({ directory: dir, db, tenant, bearer: token, env, fetchImpl });
+      return `Re-checked ${saved.owner}: GitHub shows ${saved.repositories === 'all' ? 'all its' : saved.repositories} repositor${saved.repositories === 1 ? 'y' : 'ies'} and the permissions listed below.`;
+    } catch (error) {
+      return typeof error?.plain === 'string' ? error.plain : 'The token could not be re-checked. Add a new one.';
+    }
+  }
+  /** Forget one fine-grained token and the place it opened. Nothing at GitHub is changed. */
+  async function fineRemove({ db, dir, flow, owner }) {
+    const prior = await dir.pilotOptionalFingerprint({ tenantId: flow.tenantId, identityId: flow.identityId, accountLogin: owner, kind: 'F' });
+    const gone = prior?.cipher_fingerprint ? await dir.revokePilotOptionalCredential({ tenantId: flow.tenantId, identityId: flow.identityId,
+      accountLogin: owner, kind: 'F', expectedFingerprint: prior.cipher_fingerprint }) : false;
+    const placeGone = await db.removeFinePlace(owner);
+    if (placeGone) await db.removeAccountFromConnections(owner);
+    return gone || placeGone ? `Removed your fine-grained token for ${owner}. Also delete it in your GitHub settings if you will not use it again.` : 'That token is not in your list.';
   }
 
   // GOD-5: "extra places". The master token is read here only to ask GitHub whether the person can really see the place; it

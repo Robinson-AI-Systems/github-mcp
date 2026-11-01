@@ -23,6 +23,7 @@ Only things that need you (your sign-in, phone or desktop, money, or a decision)
 - **Meta Muse / Muse Code.** Test only if you want those clients.
 - **Hub checks.** Optional; the Hub team owns them.
 - **Pricing and spend alerts.** Choose only if you want to charge or cap spend. Nothing is assumed.
+- **Fine-grained token, live check (PUB-9).** Only if you want to see it on your real account once it is released: on GitHub create a fine-grained token for an organization or account where the App is *not* installed (pick one or two repositories and give Contents read), then open My connection, tap "Add a fine-grained token" and paste it there (never into a chat). Agents then check `github_whoami` and a read on that place. Never blocks anything.
 
 ## Public launch inputs
 

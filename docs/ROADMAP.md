@@ -116,7 +116,7 @@ Approach: one public GitHub App, opened gradually. Every item below is part of "
 ## Remaining after PUB-6 (named, not built)
 - Make the GitHub App publicly installable and turn on `GITHUB_PUBLIC_CONNECT` (needs Chris's go-ahead; see the rollout plan above).
 - (Done 2026-10-23) The old "make changes" tick-box became an optional **Read-only** choice: changes are on by default, and a read-only connection refuses changes with wording that says how to reconnect.
-- Fine-grained-token tenants (God mode currently offers the notifications and package keys).
+- (Done 2026-11-01, PUB-9) Fine-grained-token tenants: a person adds a fine-grained token on the protected page; it opens its one owner as a read-only extra place with the permissions GitHub shows for it.
 - Revoke or delete a stranger's tenant and data by identity (today's revoke tools are keyed by account for the private pilot).
 - Self-host the brand fonts (pages currently use system fonts) and a favicon `.ico`.
 - Move the connector to `github.robinsonaisystems.com` (OAuth callbacks, App settings, existing clients; DNS row on the owner checklist).

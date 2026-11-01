@@ -339,14 +339,14 @@ export function createFakeDb({ clock = Date.now } = {}) {
         repository_selection: null, installation_permissions: null, installation_status: 'none', user_login: null, user_token_enc: null,
         user_token_expires_at: null, user_refresh_enc: null, user_refresh_expires_at: null, user_refresh_claim: null, user_refresh_claim_expires_at: null, fine_grained_enc: null, fine_grained_last4: null,
         fine_grained_expires_at: null, classic_enc: null, classic_scopes: null, classic_last4: null, package_enc: null, package_scopes: null, package_actor: null, package_expires_at: null, plan_name: null, production_enabled: false,
-        spend_limit_cents: 0, spend_limit_explicit: false, allow_changes: false, allowed_repos: null, is_default: ![...accountRows.values()].some((r) => r.is_default), is_scratch: isScratch, added_at: new Date(clock()), checked_at: null
+        spend_limit_cents: 0, spend_limit_explicit: false, allow_changes: false, allowed_repos: null, place_cred: null, is_default: ![...accountRows.values()].some((r) => r.is_default), is_scratch: isScratch, added_at: new Date(clock()), checked_at: null
       });
     },
     // GOD-5 mirrors of src/db.js: extra places (master token).
     async upsertExtraPlace({ login, accountId, accountType, repo = null }) {
       const key = login.toLowerCase();
       const existing = accountRows.get(key);
-      if (existing && existing.credential_kind !== 'master') return null;
+      if (existing && (existing.credential_kind !== 'master' || existing.place_cred)) return null;
       if (existing) {
         existing.allowed_repos = repo === null || existing.allowed_repos == null ? null : [...new Set([...existing.allowed_repos, repo])];
         return { login: existing.login, allowed_repos: existing.allowed_repos, allow_changes: existing.allow_changes };
@@ -355,6 +355,24 @@ export function createFakeDb({ clock = Date.now } = {}) {
       const row = accountRows.get(key);
       row.is_default = false; row.allowed_repos = repo ? [repo] : null;
       return { login, allowed_repos: row.allowed_repos, allow_changes: false };
+    },
+    async upsertFinePlace({ login, accountId, accountType, repos = null }) {
+      const key = login.toLowerCase();
+      const existing = accountRows.get(key);
+      const list = repos === null ? null : [...new Set(repos)].sort();
+      if (existing && (existing.credential_kind !== 'master' || existing.place_cred !== 'F' || existing.account_id !== accountId)) return null;
+      if (!existing) {
+        await this.upsertAccount({ login, accountId, accountType, label: login, credentialKind: 'master' });
+        Object.assign(accountRows.get(key), { is_default: false, place_cred: 'F' });
+      }
+      const row = accountRows.get(key);
+      row.allowed_repos = list;
+      return { login: row.login, allowed_repos: row.allowed_repos, allow_changes: row.allow_changes };
+    },
+    async removeFinePlace(login) {
+      const key = String(login).toLowerCase(); const r = accountRows.get(key);
+      if (r?.credential_kind !== 'master' || r.place_cred !== 'F') return false;
+      accountRows.delete(key); return true;
     },
     async setPlaceChanges(login, on) { const r = accountRows.get(String(login).toLowerCase()); if (r?.credential_kind !== 'master') return false; r.allow_changes = on === true; return true; },
     async setScratchAccount(login, enabled) {
@@ -374,7 +392,7 @@ export function createFakeDb({ clock = Date.now } = {}) {
         user_login: r.user_login, has_user_token: r.user_token_enc != null, user_token_expires_at: r.user_token_expires_at, has_fine_grained: r.fine_grained_enc != null,
         fine_grained_last4: r.fine_grained_last4, has_classic: r.classic_enc != null, classic_scopes: r.classic_scopes && [...r.classic_scopes], classic_last4: r.classic_last4,
         has_package: r.package_enc != null, package_scopes: structuredClone(r.package_scopes), package_actor: r.package_actor,
-        package_expires_at: r.package_expires_at, plan_name: r.plan_name, production_enabled: r.production_enabled, spend_limit_cents: r.spend_limit_cents ?? 0, spend_limit_explicit: r.spend_limit_explicit === true, is_default: r.is_default, is_scratch: r.is_scratch, checked_at: r.checked_at, allow_changes: r.allow_changes === true, allowed_repos: r.allowed_repos ? [...r.allowed_repos] : null
+        package_expires_at: r.package_expires_at, plan_name: r.plan_name, production_enabled: r.production_enabled, spend_limit_cents: r.spend_limit_cents ?? 0, spend_limit_explicit: r.spend_limit_explicit === true, is_default: r.is_default, is_scratch: r.is_scratch, checked_at: r.checked_at, allow_changes: r.allow_changes === true, allowed_repos: r.allowed_repos ? [...r.allowed_repos] : null, place_cred: r.place_cred ?? null
       })).sort((a, b) => Number(b.is_default) - Number(a.is_default) || a.login.localeCompare(b.login));
     },
     async setInstallation(login, { installationId, repositorySelection, permissions, status }) {

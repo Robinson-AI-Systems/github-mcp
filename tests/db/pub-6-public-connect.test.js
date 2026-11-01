@@ -1354,3 +1354,162 @@ describe('Marketplace isolated free customer lifecycle', () => {
     expect((await admin.query('SELECT 1 FROM gh_marketplace_grants WHERE tenant_id=$1',[tenantId])).rowCount).toBe(0);
   });
 });
+
+// PUB-9: a fine-grained token, added on the protected page, opens the one owner it belongs to as an extra place. Its
+// permission set comes from GitHub; a request it cannot do is refused before GitHub; nothing is offered until one is added.
+describe('PUB-9 fine-grained token tenants in REAL PostgreSQL', () => {
+  const FINE = { alice: 'github_pat_FAKEalice000000000000001', bob: 'github_pat_FAKEbob00000000000000002', aliceApp: 'github_pat_FAKEaliceclientco000003',
+    old: 'github_pat_FAKEaliceexpired00000004' };
+  const reply = (body, status = 200, headers = {}) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json', ...headers } });
+  const NOPE = { message: 'Resource not accessible by personal access token' };
+  // Only requests made through the shared client (its user agent) are answered here; sign-in keeps the shared fixtures.
+  const fineFetch = async (url, opts = {}) => {
+    const ua = String(opts.headers?.['user-agent'] ?? '');
+    if (!ua.includes('robinson-github-mcp') || !String(url).startsWith('https://api.github.com/')) return fetchImpl(url, opts);
+    const token = String(opts.headers?.authorization ?? '').replace(/^(token|Bearer) /, '');
+    const who = [FINE.alice, FINE.aliceApp, FINE.old].includes(token) ? { id: 31001, login: 'alice-dev', type: 'User' } : token === FINE.bob ? { id: 31002, login: 'bob-test', type: 'User' } : null;
+    if (!who) return reply({ message: 'Bad credentials' }, 401);
+    const path = new URL(url).pathname;
+    if (path === '/user') return reply(who, 200, { 'github-authentication-token-expiration': token === FINE.old ? '2020-01-01 00:00:00 UTC' : '2031-05-06 07:08:09 UTC' });
+    const owner = token === FINE.aliceApp ? { login: 'client-co', id: 51001, type: 'Organization' } : { login: 'side-co', id: 51050, type: 'Organization' };
+    if (path === '/user/repos') return reply(['web', 'api'].map((name) => ({ name, full_name: owner.login + '/' + name, owner, default_branch: 'main' })));
+    const m = /^\/repos\/[^/]+\/[^/]+\/(.*)$/.exec(path);
+    if (m) return m[1].startsWith('issues') ? reply(NOPE, 403) : /^(commits|pulls)/.test(m[1]) ? reply([]) : reply({ message: 'Not Found' }, 404);
+    if (path.startsWith('/orgs/')) return reply(NOPE, 403);
+    return reply({ message: 'Not Found' }, 404);
+  };
+  const withFetch = () => createPublicConnect({ env, fetchImpl: fineFetch, rootSqlFactory, tenantSqlFactory });
+  const enrollment = async () => {
+    const { createPrivateOptionalEnrollment } = await import('../../src/tenancy/optional-setup.js');
+    const { openAuthorizedTenantDb } = await import('../../src/tenancy/directory.js');
+    return createPrivateOptionalEnrollment({ env, fetchImpl: fineFetch, directoryFactory: () => createTenantDirectory(rootSqlFactory()),
+      tenantAccess: (dir, claim) => openAuthorizedTenantDb({ directory: dir, tenantId: claim.tenantId, verifiedIdentityId: claim.identityId, connectionString: env.DATABASE_URL, sqlFactory: tenantSqlFactory }) });
+  };
+  const session = async (c, who) => {
+    let page = (await c.finish({ state: (await c.startManage()).state, code: who + '-fixture-code-1' })).manage;
+    return { get page() { return page; },
+      act: async (action, value = '') => { const out = await c.manageAction({ handle: page.handle, action, value }); if (out.manage) page = out.manage; return out; } };
+  };
+  /** My connection -> "Add a fine-grained token" -> the one-use page -> paste. */
+  const addFine = async (c, who, value) => {
+    const e = await enrollment();
+    const { go } = await (await session(c, who)).act('fine');
+    expect(go.startsWith(ORIGIN + '/api/tenant/optional?fine_link=')).toBe(true);
+    const form = await e.startFineLink(new URL(go).searchParams.get('fine_link'));
+    expect(form.kind).toBe('F');
+    return e.finish({ state: form.state, action: 'save', value });
+  };
+
+  it('enrolls on the protected page only, stores it encrypted with its real permissions and expiry, and opens one read-only place', async () => {
+    const c = withFetch();
+    const client = await c.registerClient({ redirect_uris: [CB] });
+    const token = await tokenFor(c, client, 'alice');
+    const routed = await gateFor(token);
+    // the gate is closed: nothing about fine-grained tokens until one is added
+    expect(await routed.credentials.fineStatus()).toEqual([]);
+    const { handlers } = await import('../../src/tools/server.js');
+    const liveRow = await routed.db.getAccessToken(token.access_token);
+    const before = await handlers.github_whoami({}, { db: routed.db, connection: liveRow, credentials: routed.credentials });
+    expect(JSON.stringify(before)).not.toMatch(/fine/i);
+    expect((await session(c, 'alice')).page.fine).toEqual([]);
+
+    const saved = await addFine(c, 'alice', FINE.alice);
+    expect(saved).toMatchObject({ status: 'read-observed-at-enrollment', kind: 'F', owner: 'side-co', repositories: 2, expiresAt: '2031-05-06T07:08:09.000Z' });
+    expect(saved.permissions).toEqual(expect.arrayContaining(['metadata:read', 'contents:read', 'pull_requests:read', 'issues:none']));
+    expect(new URL(saved.destination).searchParams.get('github_mcp_owner')).toBe('side-co');
+    expect(JSON.stringify(saved)).not.toContain(FINE.alice);
+
+    // the vault holds ciphertext only, bound to this tenant, person, owner and kind
+    const stored = (await admin.query("SELECT account_login, access_enc, scopes, expires_at FROM gh_tenant_optional_credentials WHERE kind = 'F'")).rows;
+    expect(stored).toHaveLength(1);
+    expect(stored[0].account_login).toBe('side-co');
+    expect(stored[0].access_enc.startsWith('v1.')).toBe(true);
+    expect(stored[0].access_enc).not.toContain(FINE.alice);
+    expect(stored[0].scopes).toContain('issues:none');
+    expect(new Date(stored[0].expires_at).toISOString()).toBe('2031-05-06T07:08:09.000Z');
+
+    // the place: limited to the token's repositories, read-only, on the live connection without reconnecting
+    const db = routed.db;
+    expect(await db.getAccount('side-co')).toMatchObject({ credential_kind: 'master', place_cred: 'F', allowed_repos: ['api', 'web'], allow_changes: false });
+    expect((await db.getAccessToken(token.access_token)).accounts).toContain('side-co');
+
+    // runtime: the right token comes back only for its own place; requests are checked before GitHub
+    const creds = (await gateFor(token)).credentials;
+    expect(await creds.token({ account: 'side-co', cred: 'F' })).toBe(FINE.alice);
+    await expect(creds.token({ account: 'side-co', cred: 'F', scope: { repositories: ['web'] } })).rejects.toThrow();
+    await expect(creds.token({ account: 'client-co', cred: 'F' })).rejects.toThrow();
+    expect(await creds.authorizeOptionalRequest({ account: 'side-co', kind: 'F', method: 'GET', url: 'https://api.github.com/repos/side-co/web/commits' })).toBe(true);
+    await expect(creds.authorizeOptionalRequest({ account: 'side-co', kind: 'F', method: 'GET', url: 'https://api.github.com/repos/side-co/web/issues' })).rejects.toThrow(/does not have issues \(read\)/);
+    await expect(creds.authorizeOptionalRequest({ account: 'side-co', kind: 'F', method: 'GET', url: 'https://api.github.com/notifications' })).rejects.toThrow(/does not let fine-grained tokens/);
+    await expect(creds.authorizeOptionalRequest({ account: 'side-co', kind: 'F', method: 'GET', url: 'https://evil.example/repos/side-co/web' })).rejects.toThrow();
+
+    // whoami reports it once added (never the token); another person sees nothing
+    const status = await creds.fineStatus();
+    expect(status).toHaveLength(1);
+    expect(status[0]).toMatchObject({ owner: 'side-co', status: 'active', repositories: ['api', 'web'], permissions: { not_granted: ['issues', 'organization_actions_variables', 'organization_hooks', 'organization_secrets'] } });
+    const after = await handlers.github_whoami({ detail: 'full' }, { db, connection: await db.getAccessToken(token.access_token), credentials: creds });
+    expect(after.fine_grained_tokens[0].owner).toBe('side-co');
+    expect(after.credential_types.F).toMatch(/fine-grained/);
+    expect(after.accounts.find((a) => a.login === 'side-co')).toMatchObject({ setup: 'extra place (your fine-grained token)', credentials: { F: true } });
+    expect(JSON.stringify(after)).not.toContain(FINE.alice);
+    const bob = await gateFor(await tokenFor(c, client, 'bob'));
+    expect(await bob.credentials.fineStatus()).toEqual([]);
+    await expect(bob.credentials.token({ account: 'side-co', cred: 'F' })).rejects.toThrow();
+
+    // GitHub's own refusal of a change is remembered; Re-check reads the token again and forgets it
+    await creds.noteFineOutcome({ account: 'side-co', method: 'POST', url: 'https://api.github.com/repos/side-co/web/pulls', status: 403, message: NOPE.message });
+    await expect(creds.authorizeOptionalRequest({ account: 'side-co', kind: 'F', method: 'POST', url: 'https://api.github.com/repos/side-co/web/pulls' })).rejects.toThrow(/pull requests \(write\)/);
+    const s = await session(c, 'alice');
+    expect(s.page.fine[0]).toMatchObject({ owner: 'side-co', expired: false, rejected: false, changes: false, repos: ['api', 'web'] });
+    await s.act('fine_recheck', 'side-co');
+    expect(s.page.notice).toMatch(/Re-checked side-co/);
+    expect(await creds.authorizeOptionalRequest({ account: 'side-co', kind: 'F', method: 'POST', url: 'https://api.github.com/repos/side-co/web/pulls' })).toBe(true);
+    // changes switch: the GOD-5 rule applies to this place too
+    await s.act('place_changes', 'side-co:on');
+    expect((await db.getAccount('side-co')).allow_changes).toBe(true);
+
+    // revoked at GitHub: a 401 is remembered and shown
+    await creds.noteFineOutcome({ account: 'side-co', method: 'GET', url: 'https://api.github.com/repos/side-co/web/commits', status: 401, message: 'Bad credentials' });
+    expect((await creds.fineStatus())[0].status).toMatch(/rejected by GitHub/);
+    await expect(creds.token({ account: 'side-co', cred: 'F' })).rejects.toThrow(/no longer accepts/);
+    expect((await session(c, 'alice')).page.fine[0].rejected).toBe(true);
+
+    // the page shows it on a phone-sized layout, with its buttons, and no token
+    const shown = await session(c, 'alice');
+    const html = await call((req, res) => publicManage(req, res, { env, connect: { manageAction: async () => ({ manage: shown.page }) } }), request('POST', { handle: 'x', action: 'refresh', value: '' }, { origin: ORIGIN }));
+    expect(html.statusCode).toBe(200);
+    for (const text of ['Fine-grained tokens (optional)', 'id="add-fine"', 'side-co', 'GitHub rejected it', 'id="fine-remove-side-co"', 'width=device-width']) expect(html.body).toContain(text);
+    expect(html.body).not.toContain(FINE.alice);
+
+    // removal: the vault row, the place and its connection entry go; whoami says nothing again
+    await shown.act('fine_remove', 'side-co');
+    expect(shown.page.notice).toMatch(/Removed your fine-grained token for side-co/);
+    expect(await creds.fineStatus()).toEqual([]);
+    expect(await db.getAccount('side-co')).toBeNull();
+    expect((await db.getAccessToken(token.access_token)).accounts).not.toContain('side-co');
+    expect(JSON.stringify(await handlers.github_whoami({}, { db, connection: await db.getAccessToken(token.access_token), credentials: creds }))).not.toMatch(/fine/i);
+  });
+
+  it('refuses a classic token, someone else\'s token, an expired one and an owner the App already serves, in plain words, storing nothing', async () => {
+    const c = withFetch();
+    await tokenFor(c, await c.registerClient({ redirect_uris: [CB] }), 'alice');
+    const { FineSetupRefusal } = await import('../../src/tenancy/fine-grained-credential.js');
+    const live = async () => (await admin.query("SELECT 1 FROM gh_tenant_optional_credentials WHERE kind = 'F' AND revoked_at IS NULL")).rowCount;
+    const before = await live();
+    for (const [value, words] of [['ghp_FAKEclassic000000000000000001', /not a fine-grained token/], [FINE.bob, /different GitHub login/],
+      [FINE.old, /already expired/], [FINE.aliceApp, /client-co is already connected with the GitHub App/]]) {
+      const err = await addFine(c, 'alice', value).then(() => null, (e) => e);
+      expect(err, value).toBeInstanceOf(FineSetupRefusal);
+      expect(err.plain).toMatch(words);
+      expect(err.plain).not.toContain(value);
+    }
+    expect(await live()).toBe(before);
+    // the refusal page shows the sentence, never the token
+    const { makePrivateOptionalPage } = await import('../../api/tenant/optional.js');
+    const page = makePrivateOptionalPage({ env, enrollment: { finish: async () => { throw new FineSetupRefusal('That is a classic token, not a fine-grained one.'); } } });
+    const res = await call(page, request('POST', { csrf: 'c'.repeat(43), action: 'save', value: FINE.alice }, { origin: ORIGIN }));
+    expect(res.statusCode).toBe(403);
+    expect(res.body).toContain('That is a classic token, not a fine-grained one.');
+    expect(res.body).not.toContain(FINE.alice);
+  });
+});
