@@ -21,6 +21,8 @@ export async function allocationRecord(ctx,record){
 }
 // Device rows reuse the same key, index and compare-and-set discipline.
 function deviceSaver(ctx,key,stored){let current=stored;return async patch=>{const next=await ctx.db.compareAndSetSetting(key,current.revision,{...current,...patch,revision:current.revision+1});if(!next)throw fail('Another allocation transition is in progress; inspect the existing state.');current=next;await indexAllocation(ctx,next);return next;};}
+// The digest-pinned image a queued (not yet created) allocation chose, if any.
+function queuedImage(row){if(!row||row.composeId||!['requested','waiting_resources'].includes(row.phase))return null;try{const image=JSON.parse(row.plan?.composeFile??'{}').services?.coding?.image;return typeof image==='string'&&/^[-a-zA-Z0-9./:]+@sha256:[a-f0-9]{64}$/.test(image)?image:null;}catch{return null;}}
 function deviceRow(ctx,record,binding,chosen,sizeClass,choice){
  const plan=devicePlan(ctx,record,binding,chosen.h,chosen.ceiling,choice?.image??null);
  return {revision:1,kind:'playground-allocation',size:sizeClass,placement:'device',...(choice?.record?{runtimeImage:choice.record}:{}),device:{deviceId:chosen.h.deviceId,generation:chosen.h.generation},scope:ctx.db.playgroundScope??{legacy:true},delegated:ctx.connection.pass===true,providerOrigin:null,providerProject:null,providerEnvironment:null,binding,connection:nativeConnection(ctx),clientId:ctx.connection.client_id??null,passId:ctx.connection.pass_id??null,workspace:record.row.id,owner:record.row.owner,repo:record.row.repo,phase:'requested',planHash:plan.planHash,plan,native:{binding:record.binding,worker:record.worker,job:record.job},createdAt:(ctx.now??Date.now)(),expiresAt:new Date(record.row.expires_at).getTime()};
@@ -48,6 +50,8 @@ export async function ensureAllocation(ctx,record,{provider,config,manager=ensur
  config=sizedConfig(config,sizeClass);
  // A new allocation uses the published image of this server's commit when one exists (slim when the gate allows).
  let runtimeImage=null;if(!prior){const choice=await choose(sizeClass,!!config.image);runtimeImage=choice.record;if(choice.image&&!config.image)config={...config,image:choice.image};}
+ // A row queued earlier already chose its image (published digest); keep it, or the rebuilt plan would silently fall back to a source build.
+ else if(!config.image){const queued=queuedImage(prior);if(queued)config={...config,image:queued};}
  const refreshed=await refreshAdmission(ctx,config),admission=allocationAdmission(refreshed.env,config,(ctx.now??Date.now)());
  if(admission.allowed&&admission.observedAt!==null){const observed=JSON.parse(refreshed.env.PLAYGROUND_ADMISSION);config={...config,cpuCpus:Math.min(config.cpuCpus??8,observed.availableCpuCpus??config.cpuCpus??8),memoryBytes:Math.min(config.memoryBytes??8*1024**3,observed.availableMemoryBytes)};}
  provider??=dokployProvider(config,{fetch:ctx.fetch});

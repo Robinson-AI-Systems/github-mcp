@@ -2,7 +2,8 @@ import {it,expect,afterEach} from 'vitest';
 import {makeWorld} from '../../test/helpers/write-contract.js';
 import {preparePlaygroundWorld} from '../../test/helpers/playground-world.js';
 import {playgroundRecord} from '../../src/playground/client.js';
-import {ensureAllocation,inspectAllocation} from '../../src/playground/allocations.js';
+import {ensureAllocation,inspectAllocation,enqueueAllocation} from '../../src/playground/allocations.js';
+import {_resetPrebuiltImageCache} from '../../src/playground/prebuilt-image.js';
 import {SIZE_CLASSES,resolveSizeClass,sizedConfig,defaultSizeClass} from '../../src/playground/sizing.js';
 import * as nativeTools from '../../src/tools/native-git.js';
 import * as playgroundTools from '../../src/tools/playground.js';
@@ -46,6 +47,17 @@ it('pins the published runtime image of the serving commit instead of building f
  const inner=w.ctx.fetch;w.ctx.fetch=async(url,init)=>String(url).startsWith('https://ghcr.io/token')?{status:200,json:async()=>({token:'anon'})}:String(url).startsWith('https://ghcr.io/v2/')?{status:200,headers:{get:k=>k==='docker-content-digest'?'sha256:'+'f'.repeat(64):null}}:inner(url,init);
  const row=await ensureAllocation(w.ctx,record,{provider:p,config:{...config,image:undefined,sourceSha:'e'.repeat(40)},manager:async()=>{}});
  const s=services(row.plan);expect(s.coding.image).toBe('ghcr.io/example-org/runtime@sha256:'+'f'.repeat(64));expect(s.coding.build).toBeUndefined();
+});
+it('keeps the image a queued allocation chose when it is provisioned later, even if the registry is then unreachable',async()=>{
+ _resetPrebuiltImageCache();
+ const {w,record}=await world({PLAYGROUND_IMAGE:undefined,PLAYGROUND_IMAGE_REPOSITORY:'ghcr.io/example-org/runtime',PLAYGROUND_BUILD_SOURCE_SHA:'e'.repeat(40),PLAYGROUND_DOKPLOY_ORIGIN:config.origin,PLAYGROUND_DOKPLOY_API_KEY:'FAKE_PROVIDER_KEY',PLAYGROUND_DOKPLOY_PROJECT_ID:config.project,PLAYGROUND_DOKPLOY_ENVIRONMENT_ID:config.environment,PLAYGROUND_INGRESS_IPV4:config.ingress}),p=provider();
+ const inner=w.ctx.fetch;let registryUp=true;
+ w.ctx.fetch=async(url,init)=>String(url).startsWith('https://ghcr.io/')?(registryUp?(String(url).includes('/token')?{status:200,json:async()=>({token:'anon'})}:{status:200,headers:{get:k=>k==='docker-content-digest'?'sha256:'+'a'.repeat(64):null}}):(()=>{throw new Error('registry down');})()):inner(url,init);
+ const queued=await enqueueAllocation(w.ctx,record,{size:'medium'});
+ expect(JSON.parse(queued.plan.composeFile).services.coding.image).toBe('ghcr.io/example-org/runtime@sha256:'+'a'.repeat(64));
+ registryUp=false;_resetPrebuiltImageCache();
+ const row=await ensureAllocation(w.ctx,record,{provider:p,config:{...config,image:undefined,sourceSha:'e'.repeat(40)},manager:async()=>{}});
+ const s=services(row.plan);expect(s.coding.image).toBe('ghcr.io/example-org/runtime@sha256:'+'a'.repeat(64));expect(s.coding.build).toBeUndefined();
 });
 it('caps swap at the memory limit for every service so an out-of-memory command is stopped, not swapped',async()=>{
  const {w,record}=await world(),p=provider();

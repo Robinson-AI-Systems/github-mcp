@@ -37,3 +37,7 @@ All three pieces in one PR (one outcome: small jobs start faster and cheaper, an
 
 Not proven here: a live run on the deployed server and the first published slim tag (needs the next release; the
 package must be public, see the owner checklist row from the image-publish note).
+
+## 2026-11-01 — Queued image kept at provisioning
+
+Live run on release cbefa0be showed a queued allocation's published image replaced by a source build at provisioning; fixed and tested (see `docs/status/2026-11-01-fleet-2.md`).
