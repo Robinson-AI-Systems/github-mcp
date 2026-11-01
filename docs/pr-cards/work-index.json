@@ -2611,7 +2611,7 @@
       ],
       "card": "docs/pr-cards/PLAY-2.md",
       "status": "IN_PROGRESS",
-      "migration": "additive tenant-scoped host enrollment and placement records (Phase 2; not yet implemented)",
+      "migration": "enrollment uses tenant settings rows (no schema migration); placement records not yet implemented",
       "budget": 800,
       "units": [
         "PLAY-2"
@@ -2621,6 +2621,25 @@
       "pr": [
         494
       ]
+    },
+    {
+      "id": "FLEET-1",
+      "title": "Right-sized Playground runtimes and Git-only workspaces",
+      "batch": "FIN",
+      "design": "docs/designs/RUNTIME-FLEET-2026-11-01.md",
+      "dependencies": [
+        "PLAY-1"
+      ],
+      "card": "docs/pr-cards/FLEET-1.md",
+      "status": "IN_PROGRESS",
+      "migration": "none (size stored on new allocation settings rows; legacy rows unchanged)",
+      "budget": 800,
+      "units": [
+        "FLEET-1"
+      ],
+      "readiness": "READY",
+      "ownerInputs": [],
+      "pr": []
     }
   ],
   "gatewayBoundary": {

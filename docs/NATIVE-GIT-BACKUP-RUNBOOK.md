@@ -1,8 +1,8 @@
 # Native Git backup activation and recovery
 
-## Current owner decision2026-10-30: optional future activation
+## Current owner decision 2026-10-30: optional future activation
 
-Backups and restore acceptance are optional future operations and do not block production GitHub MCP/Playground implementation or activation. The owner has selected an existing interim off-server S3-compatible destination with100GB capacity and Chris as encryption-key custodian; production restores require his approval of the exact target. Private endpoint/credentials are intentionally absent from this public document. The latest destination.all read still returns401 unauthorized for destination; no backup was started and no restore was attempted. Do not bypass that refusal, purchase storage or present an unverified backup as recovery proof. Resume this runbook only when backup activation is requested and destination access is available. The historical prerequisites below apply to that optional activation, not the production service.
+Backups and restore acceptance are optional future operations and do not block production GitHub MCP/Playground implementation or activation. The owner has selected an existing interim off-server S3-compatible destination with 100GB capacity and Chris as encryption-key custodian; production restores require his approval of the exact target. Private endpoint/credentials are intentionally absent from this public document. The latest destination.all read still returns401 unauthorized for destination; no backup was started and no restore was attempted. Do not bypass that refusal, purchase storage or present an unverified backup as recovery proof. Resume this runbook only when backup activation is requested and destination access is available. The historical prerequisites below apply to that optional activation, not the production service.
 
 This is the prepared operational procedure, not a claim that off-host backup is active. On 2026-10-29 the project-scoped Dokploy `volumeBackups.list` call returned no backup jobs for the GitHub worker. The pinned API can schedule volume backups with a destination ID, volume name, cron expression, retention count and optional service stop. Its create contract has no explicit client-side encryption/key-custody field; that alone cannot establish encrypted independent recovery. No existing destination credential was retrieved, and no raw backup was silently enabled.
 
@@ -23,7 +23,7 @@ Choose a maintenance window if the chosen export requires stopping the worker. D
 
 ## Encrypted workspace route already implemented
 
-For each stable workspace up to the documented100 MiB snapshot limit, the existing `workers/native-git/snapshot-cli.js export WORKSPACE_ID ENCRYPTED_FILE` locks that exact workspace and writes an authenticated AES-GCM encrypted archive. The separate key is read from protected operator environment `NATIVE_GIT_SNAPSHOT_KEY`; it must never be put on the command line or echoed. The storage root is the exact project-mounted volume. Transfer only the encrypted output to the selected off-host destination, verify its checksum and record completion without contents or keys.
+For each stable workspace up to the documented 100 MiB snapshot limit, the existing `workers/native-git/snapshot-cli.js export WORKSPACE_ID ENCRYPTED_FILE` locks that exact workspace and writes an authenticated AES-GCM encrypted archive. The separate key is read from protected operator environment `NATIVE_GIT_SNAPSHOT_KEY`; it must never be put on the command line or echoed. The storage root is the exact project-mounted volume. Transfer only the encrypted output to the selected off-host destination, verify its checksum and record completion without contents or keys.
 
 The exporter refuses busy, uninitialized, symlink-containing and oversized workspaces rather than omitting files. Such cases require a project-scoped stopped-volume archive that preserves links/modes, encrypted outside chat with authenticated backup tooling. Use the documented whole-volume migration route in [native operations](NATIVE-GIT-OPERATIONS.md). An operator capable of controlled project-volume export/restore is required; this cloud agent currently has no such remote execution surface. Do not bypass denied host administration to obtain it.
 
@@ -42,7 +42,7 @@ The destination, independent key custodian and project-scoped remote export/rest
 
 ## Verified access limitation and ready request for the server owner
 
-A subsequent actual `destination.all` call returned upstream401, code UPSTREAM_UNAUTHORIZED: unauthorized to access resource destination. Project-scoped backup-job inventory is readable, but this connection cannot inspect/assign backup destinations. No destination credentials or configuration were returned. Do not bypass this by requesting host-wide Docker access or another person's API key.
+A subsequent actual `destination.all` call returned upstream 401, code UPSTREAM_UNAUTHORIZED: unauthorized to access resource destination. Project-scoped backup-job inventory is readable, but this connection cannot inspect/assign backup destinations. No destination credentials or configuration were returned. Do not bypass this by requesting host-wide Docker access or another person's API key.
 
 Request to send to the Dokploy owner:
 

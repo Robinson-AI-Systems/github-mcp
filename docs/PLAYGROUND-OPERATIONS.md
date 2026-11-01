@@ -1,40 +1,107 @@
-# Playground project-scoped operation
+# Playground operations (operator reference)
 
-Keep Vercel for MCP, Neon for metadata and Dokploy for execution. The control plane accepts no caller runtime URL/provider credential. Never give the executor a Docker socket, host PID/filesystem mount or orchestration credential. Containers are not hypervisor VMs.
+How the Playground runtime is hosted, configured, provisioned and cleaned up. Agent-facing use is in
+[CODING-WORKSPACES](CODING-WORKSPACES.md); future multi-host design in [RUNTIME-FLEET](designs/RUNTIME-FLEET-2026-11-01.md).
+Values below were checked against code on 2026-11-01.
 
-## Protected deployment configuration
+Split of responsibilities: **Vercel** runs the MCP (the only caller of the Dokploy API), **Neon** holds all allocation
+state, **Dokploy** runs the containers. The control plane never accepts a runtime URL or provider credential from a
+caller. Executors never get a Docker socket, host PID/filesystem mount or orchestration credential. Containers are not
+hypervisor VMs.
 
-Configure PLAYGROUND_DOKPLOY_ORIGIN (HTTPS root), PLAYGROUND_DOKPLOY_API_KEY (the account credential), PLAYGROUND_DOKPLOY_PROJECT_ID, PLAYGROUND_DOKPLOY_ENVIRONMENT_ID, PUBLIC_BASE_URL and PLAYGROUND_INGRESS_IPV4. Dokploy does not issue a separate project-scoped key: the application pins and verifies project/environment/source/resource ownership before mutations. Generated domains must target107.90.116.157. Use an immutable PLAYGROUND_IMAGE digest or full40-character PLAYGROUND_BUILD_SOURCE_SHA; otherwise the deployed Vercel source SHA pins the public Git build context. Do not publish project IDs/keys or enter credentials into tool arguments/chat.
+## Settings (protected, Vercel project)
 
-Automatic clone enqueue records a bound intent. A trusted project manager advances provisioning/attachment and sweeps revoked/expired allocations. It holds only a cleanup-recheck capability; it cannot bypass current authorization or access command volumes. Provisioning and cleanup use exact Compose source/project/binding ownership and durable CAS state. An ambiguous create is recovered by exact inventory, never duplicate allocation. A lost delete response is recovered by absence readback. Unknown/denied inventory is not proof of cleanup.
+| Setting | Default | Meaning |
+|---|---|---|
+| `PLAYGROUND_DOKPLOY_ORIGIN`, `PLAYGROUND_DOKPLOY_API_KEY`, `PLAYGROUND_DOKPLOY_PROJECT_ID`, `PLAYGROUND_DOKPLOY_ENVIRONMENT_ID` | — | The single Dokploy target. Dokploy has no project-scoped key, so the code pins and re-checks project/environment/source/resource ownership before every mutation. Changing them later refuses existing allocations rather than moving them |
+| `PLAYGROUND_INGRESS_IPV4` | — | The host's **inbound** address (operator value; currently the friend's server). Allocation hosts become `ras-pg-<id>-<a-b-c-d>.sslip.io` |
+| `PLAYGROUND_IMAGE` *or* `PLAYGROUND_BUILD_SOURCE_SHA` | serving `VERCEL_GIT_COMMIT_SHA` | Immutable `…@sha256:` image, or a 40-hex commit to build from the public repository. A prebuilt image digest makes new runtimes start much faster than a per-allocation build |
+| `PUBLIC_BASE_URL` | `https://github.robinsonaisystems.com` | Control origin baked into plans (lifecycle callback, preview) |
+| `PLAYGROUND_RESOURCE_MODE` | `verified` (`vercel.json` sets `best_effort`) | See resource modes |
+| `PLAYGROUND_CPU_CPUS`, `PLAYGROUND_MEMORY_BYTES` | 8, 8 GiB | Whole-allocation ceilings (0.2–8 CPU, 512 MiB–8 GiB) |
+| `PLAYGROUND_DEFAULT_SIZE` | `large` | Size class used for `runtime: auto` (`small`, `medium`, `large`) |
+| `PLAYGROUND_MIN_HOST_MEMORY_BYTES`, `PLAYGROUND_MIN_HOST_DISK_BYTES`, `PLAYGROUND_MAX_HOST_PRESSURE` | 512 MiB, 1 GiB, 0.9 | Host admission thresholds when a capacity feed exists |
+| `PLAYGROUND_TELEMETRY_URL`, `PLAYGROUND_TELEMETRY_PUBLIC_KEY` | — | Signed capacity/enforcement feed. **Setting the URL turns best-effort off**: every workspace then needs signed enforcement records |
+| `PLAYGROUND_ADMISSION`, `PLAYGROUND_ENFORCEMENT` | — | Static compatibility observations used only when no feed is configured; enforcement rows expire within 4 h |
+| `PLAYGROUND_STORAGE_DRIVER`/`_OPTIONS`, `PLAYGROUND_NETWORK_DRIVER`/`_OPTIONS` | — | Optional operator quota/egress drivers (verified mode) |
+| `PLAYGROUND_ALLOCATIONS` | — | Legacy manual `{workspace_id,binding,origin}` list; managed allocations use stored records |
 
-The new native attachment protocol must be deployed to the primary worker without replacing its persistent volume, verifier, credentials or unrelated workspaces. Preserve legacy host pins and all tenant schemas. Do not retire Render as part of this deployment.
+Set inside each allocation by the plan (never by hand): `CODING_WORKSPACE_BINDING`, `CODING_CONTROL_PUBLIC_KEY`,
+`CODING_IDLE_TIMEOUT_MS` (= the Git workspace's idle window, default 14,400,000 ms), `CODING_LIFECYCLE_URL`,
+`CODING_EGRESS_PROXY` (must be `http://ingress:3128`), `CODING_PUBLIC_ORIGIN`, `CODING_CONTROL_ORIGIN`,
+`CODING_STORAGE_ROOT`, `CODING_PREVIEW_PORTS` (default 3001, 4173, 5173, 8000, 8080; 3000 and 5432 always excluded), the
+broker's `NATIVE_GIT_SINGLE_*` values, and the gateway's `EGRESS_BLOCKED_HOSTS`/`EGRESS_BLOCKED_ADDRESSES`. The manager
+container gets `PLAYGROUND_SWEEP_URL` and a derived `PLAYGROUND_SWEEP_KEY`.
 
-## Operator-supported storage and networking contract
+## Right-sized runtimes
 
-### Optional best-effort resource mode
+Every allocation has a **size class**, chosen when it is first queued (`github_git_workspace_open.runtime`) or provisioned
+(`github_playground_workspace` `size`):
 
-Owner decision2026-10-30 permits implementation before specific resource controls/monitoring become available. Set protected PLAYGROUND_RESOURCE_MODE=best_effort to provision without a capacity feed and enable the managed private allocation baseline. The default remains verified for existing deployments. Without fresh measurements, the provider may refuse the configured allocation; do not invent headroom, reservations or an automatic paid upgrade. Valid measured pressure still queues work. A configured telemetry feed still fails closed; remove/reconfigure it deliberately through protected setup rather than silently substituting stale data.
+| Class | Whole allocation | Executor gets roughly |
+|---|---|---|
+| `small` | 2 CPU / 2 GiB | 1.4 CPU / 1.4 GiB |
+| `medium` | 4 CPU / 4 GiB | 3.4 CPU / 2.9 GiB |
+| `large` | 8 CPU / 8 GiB | 7.4 CPU / 6.4 GiB |
 
-Best effort is accepted only for an exact automatically managed attached allocation using the generated dedicated internal-network profile. It requires persisted immutable plan hash, matching provider project/environment/origin, runtime identity, verified shared repository/read-only Git mounts and a current signed grant heartbeat. URL-only attachments and custom network drivers require the existing verified path. No caller can select resource mode or supply enforcement assertions.
+The broker takes min(0.5 CPU, ¼) and min(1.5 GiB, ¼ memory), the gateway min(0.1 CPU, ⅛) and min(128 MiB, ⅛), and the
+executor's 1 GiB `/tmp` counts against its memory. A class is a **ceiling that only lowers** the protected
+`PLAYGROUND_CPU_CPUS`/`PLAYGROUND_MEMORY_BYTES` and fresh host headroom; it never raises them or reserves anything. The
+class is stored on the allocation and fixed for its life (plan-hash stability); rows created before classes existed keep
+their exact original plan. `runtime: none` queues nothing. Recommendation: set `PLAYGROUND_DEFAULT_SIZE=medium` once a
+medium runtime has passed a real build on the host, so small projects stop consuming 8 GiB plans.
 
-Availability reports mode best_effort, unknown storageQuotaBytes:null, configured CPU/memory separately from any measured runtime cgroup limits, resourceGuarantees:false and no reserved capacity. Unknown runtime resource measurements are not invented. Normal runtime pressure admission, replay, log scanning, grant revocation, inactivity, process termination and strict cleanup readback remain active. Missing host-volume readback leaves cleanup unconfirmed and recoverable; delete acknowledgement is never proof of disposal.
+## Lifecycle
 
-New dedicated-ingress-v2 plans keep the executor internal and route HTTP80/HTTPS443 downloads through a separate peer-restricted gateway proxy. It resolves/pins public IPv4 and refuses private/metadata/admin addresses; IPv6 and arbitrary outbound ports are unsupported. Commands receive fixed HTTP_PROXY/HTTPS_PROXY settings, not credentials. Programs that ignore proxy settings cannot download directly. Earlier dedicated-internal-v1 allocations remain pinned to their original offline network. The existing100MiB/no-symlink source transfer bound remains. No broad host access, Docker socket or paid resource is introduced.
+```
+requested → (waiting_resources) → creating → created → exposing → exposed → deploying → allocated
+          → attaching → attached → [execute/read/cancel] → cleanup_requested → stopped → deleting → disposed
+```
 
-### Verified resource mode
+- **Who advances it:** an agent call (`github_playground_workspace` `provision`/`attach`/`resume`/`dispose`) or the
+  **project manager** — a tiny compose (`ras-pg-manager-…`, 0.1 CPU / 128 MiB) created automatically by the first
+  provision, which POSTs `/api/playground/sweep` every 30 s with its derived sweep key. Each sweep handles up to 50 rows
+  in a ~20 s budget. The manager holds only a cleanup/re-check capability; it cannot bypass authorization or read volumes.
+- **Create:** raw Dokploy compose with four services (`initialize`, `broker`, `coding`, `ingress`), four volumes
+  (broker, files, git, execution) and private networks; the provider-assigned `appName` is read back and pinned; two
+  HTTPS domains (`/` and `/v1/workspace`, `internalPath=/`, `stripPath=false`) go only to the gateway. Every transition is a
+  Neon compare-and-set; a lost create is recovered from exact inventory, never by creating another stack.
+- **Attach:** the controller seals the Git workspace's exact state and relays encrypted 256 KiB pages from the native worker
+  to the allocation's broker over several sweeps (≤ 100 MiB raw, ≤ 100,000 files, no symlinks; larger repositories stay
+  Git-only and report attachment unavailable). Routing switches only after generation, ancestry, uncommitted state and
+  mount evidence match.
+- **Run:** the controller signs a 60 s claim and calls the gateway; the executor checks binding/purpose/expiry.
+- **Heartbeat:** every 30 s the runtime sends a signed heartbeat (executor → broker → `/api/playground/lifecycle`); the
+  controller re-checks grant, pass, job and network and answers with a 60 s lease. **Any heartbeat failure — including a
+  transient Vercel/Neon error — stops the runtime** (`restart: no`); files are preserved and `resume` brings it back.
+- **Cleanup:** revoked/expired authority, idle expiry or `dispose` → stop, verify every container exited, delete the
+  compose with its four volumes, read back absence, then close the exact source Git workspace. A delete acknowledgement
+  alone is never proof.
 
-Default ordinary named volumes and internal bridge network do not establish a quota or dependency egress. Arbitrary commands remain unavailable until independently protected enforcement evidence exists. Safe Git/GitHub operations remain available.
+## Resource modes
 
-An operator can supply a project-supported quota volume driver using PLAYGROUND_STORAGE_DRIVER and nonsecret JSON PLAYGROUND_STORAGE_OPTIONS, and an isolated egress network driver using PLAYGROUND_NETWORK_DRIVER and nonsecret JSON PLAYGROUND_NETWORK_OPTIONS. Driver option values can use {binding} and {volume}. All four volumes must share the binding's aggregate quota group; separate150GB quotas on each volume would violate the workspace total. Network policy must prevent access to other tenants, host/admin endpoints, metadata addresses and control networks while permitting development dependency downloads. Driver credentials belong in the operator's driver configuration, never these options or command containers. Do not install host plugins or request broad administration from the agent.
+**best_effort** (production): allocations are created without a capacity feed. Admission still refuses on measured
+pressure. Execution requires: the exact managed, attached allocation; matching provider project/environment/origin;
+the pinned runtime identity; read-only Git mount; a current signed heartbeat; and an **independent converted-compose
+readback** proving the executor is only on its private internal network with no published ports or host networking
+(Dokploy adds shared networks to services that have domains, so the raw plan alone is not proof). The gateway alone gets
+domains and is checked field by field (UID 1000, read-only, no volumes, no ports, dropped capabilities). Availability
+reports configured limits, unknown storage quota and `resourceGuarantees:false`.
 
-A custom driver name/configuration is not enforcement proof. The operator must provide supported driver semantics and independently observed quota/network/termination readback. Built-in local/bridge/host/overlay drivers are not accepted as substitutes for this contract. Missing support keeps safe fallback active; do not pretend150GB has been reserved or purchased. Protected PLAYGROUND_CPU_CPUS and PLAYGROUND_MEMORY_BYTES can select a smaller aggregate allocation (defaults8CPU/8GiB, never above those targets). CPU8 and memory8GiB are aggregate ceilings; actual smaller enforced allocations may operate in constrained mode. Workload builds, browser, PostgreSQL and commands share that allowance.
+**verified**: commands need fresh signed enforcement evidence (feed or static `PLAYGROUND_ENFORCEMENT`) plus runtime
+cgroup readback within those maxima; anything smaller than 8 CPU / 8 GiB / 150 GB reports `constrained`. Built-in
+local/bridge drivers are not accepted as quota/egress enforcement; an operator driver name is not proof either. All four
+volumes must share the binding's one aggregate quota — four separate 150 GB quotas would break the workspace total.
 
-## Continuous signed telemetry
+**Network:** new plans (`dedicated-ingress-v2`) route downloads through the gateway proxy (public IPv4, ports 80/443,
+DNS pinned per connection, private/metadata/admin/control addresses denied, no IPv6). Older `dedicated-internal-v1`
+allocations stay offline.
 
-PLAYGROUND_TELEMETRY_URL is a fixed protected HTTPS URL without query/credentials; PLAYGROUND_TELEMETRY_PUBLIC_KEY is the Ed25519 public verifier. The operator's sensor retains its private signing key outside this service and all execution containers. A GET returns bounded16KiB JSON, signed byte-for-byte in x-robinson-telemetry-signature as ed25519: plus base64url signature. No redirect or stale fallback is accepted after a configured feed fails.
+## Signed telemetry feed (optional)
 
-Envelope:
+`PLAYGROUND_TELEMETRY_URL` is a fixed HTTPS URL without query or credentials. A GET returns ≤ 16 KiB JSON signed
+byte-for-byte in `x-robinson-telemetry-signature` (`ed25519:` + base64url) by the operator's sensor, whose private key
+never enters this service or any container. 5 s fetch timeout; no redirects; no stale fallback after a failure.
 
 ```json
 {
@@ -62,27 +129,14 @@ Envelope:
 }
 ```
 
-Examples are shapes, not real observations. Capacity observations expire after60seconds. Before provider creation, fresh availableCpuCpus (when supplied) and availableMemoryBytes select smaller ceilings below the protected targets; queued never-created plans can adapt without touching an existing allocation or lease. Workspace evidence is exact-bound and expiry-checked, with independent runtime cgroup readback before admission; use short evidence leases. The sensor must measure the actual per-workspace aggregate resource/quota/network/termination controls, not infer them from YAML. No daily job quota or arbitrary request-count admission is added. Protected static PLAYGROUND_ADMISSION / PLAYGROUND_ENFORCEMENT remain compatibility inputs when no continuous feed is configured; they are not perpetual observations.
+Shapes only, not real observations. Capacity observations expire after 60 s. Fresh `availableCpuCpus`/`availableMemoryBytes`
+shrink queued, never-created plans; existing allocations are never touched. The sensor must measure real per-workspace
+controls, not infer them from YAML.
 
-## Repository, preview and expiry
+### Scoped cleanup proof when volume reads are forbidden
 
-Attachment seals the exact original workspace state and copies bounded encrypted pages between trusted Git brokers. Final routing switches only after generation, ancestry, uncommitted state and actual shared mount/read-only Git metadata checks. The original mutation lease spans finalization and can only be released by its exact transfer. The command container never receives broker credentials. Source file scans/advanced Git limitations remain applicable. The current sealed snapshot transfer is bounded100MiB of raw files and rejects symlinks; larger/symlink-bearing repositories retain their original Git workspace and report attachment unavailable rather than losing data. This remains a product limitation to remove before claiming arbitrary repository support.
-
-Interactive previews use short-lived one-use private entry pages and signed, port-bound browser sessions. No public application ports or provider credentials are returned. HttpOnly Secure Strict cookies and HTTP/WebSocket expiry enforce the session. App assets and HMR do not renew inactivity; actual authorized Git/command activity does, through signed current-grant heartbeats. Preview entry URLs are private capabilities and must not be published.
-
-Revoked/expired authority stops the runtime container namespace; process-group cancellation alone is not whole-allocation cleanup. The manager verifies stopped state, deletes only the exact allocation and all four owned volumes, reads back absence, then closes the exact preserved source workspace. Transient telemetry/authorization transport failure stops execution while preserving recoverable data. Under the2026-10-30 owner decision, independent encrypted off-host backup/restore is optional future operational work, not a prerequisite for production. No verified backup currently exists; retain source/volume preservation safeguards.
-
-The nonsecret deployment manifest selects best_effort. New allocations derive their immutable worker build from the serving commit unless protected settings select an explicit immutable source/image. Persisted allocations and the existing manager keep their original source; a controller release must not mutate their plan. Dokploy appName may add its own suffix: bootstrap verifies exact requested name, source, description and project/environment, then records the independently read-back assigned appName. All later operations and container inventory require that exact pinned name. Never adopt a different suffix after pinning or use a wildcard for deletion.
-
-Live converted-Compose inspection found Dokploy adds shared dokploy-network/default networks to services with ingress domains, including the command container. Raw private Compose alone therefore does not establish actual isolation. Best-effort admission, resume and current-grant heartbeats now require independent converted-network readback: coding must use only the exact internal workspace network with no host network or published ports. Missing/unsupported formats fail closed. The bounded data-only reader accepts JSON and Compose block YAML; tags, aliases, merges, duplicate keys and unsupported scalar forms refuse authority. Only the separate credential-free, volume-free UID1000 gateway receives domains; its exact environment, command/image, dropped capabilities, mounts and network membership are checked independently. Actual converted-network/container acceptance remains required before claiming this host's runtime works. This is distinct from optional resource monitoring/backup work; no caller or static assertion can waive it.
-
-## Verification boundaries
-
-Unit/transport tests, exact-head images/CI, merged source, deployed matching worker/MCP revisions and authenticated disposable client/provider acceptance are separate evidence. The multi-container image scenario includes actual Chromium private entry, secure HttpOnly cookies, application/API/WebSocket traffic and anonymous denial, alongside shared edits, read-only Git metadata, UID1000 execution, a deliberately daemonized child, container termination and exact volume absence. Its heartbeat-free fixture isolates mount/namespace proof and does not count as live revocation proof. Full current-grant/browser/lifecycle and real quota/network acceptance remain required before declaring PLAY-1 complete.
-
-### Scoped cleanup proof when host volume reads are forbidden
-
-Project-scoped keys may read their Compose/container inventory while Docker volume/health endpoints return401. Do not widen the agent to unrestricted Docker/server administration. An operator sensor can instead include one replacement record for the exact workspace in the signed envelope's allocations array:
+Dokploy returns 401 for volume/server inspection with this project's key. Instead of widening access, the sensor can
+send one replacement record for the workspace:
 
 ```json
 {
@@ -99,4 +153,32 @@ Project-scoped keys may read their Compose/container inventory while Docker volu
 }
 ```
 
-This shape is not a real observation. The operator must independently inspect actual absence before signing it. Do not send both active and cleanup records for the same workspace. The service verifies the signature/project, exact binding/Compose, all four distinct expected volume names and a maximum60second evidence lease. It also independently requires its project-visible Compose to be absent and container inventory empty. A delete acknowledgement, static environment assertion, missing volume, foreign name, stale proof or failed telemetry cannot confirm cleanup. This fallback applies only to401/403 inspection denial; ownership/other errors are not bypassed.
+The service checks signature, project, exact binding/compose, all four expected volume names and a ≤ 60 s lease, and still
+requires its own view of compose absence and an empty container inventory. Applies only to 401/403 inspection denial.
+
+## Preview
+
+Interactive previews use a one-use private entry page (valid 60 s) and a signed, port-bound browser session (300 s)
+with HttpOnly, Secure, Strict cookies over HTTP and WebSocket. App assets and hot reload do not renew inactivity; real Git
+or command activity does. Entry URLs are private capabilities — never publish them. The text preview read (`preview`
+operation) is loopback GET only: ≤ 2 MiB textual body, 5 s deadline, 32 KiB windows pinned by `expectedBodyHash`, no
+redirects, cookies or compressed bodies.
+
+## Known limits
+
+- **One Dokploy target.** All allocations live on one origin/project/environment; there is no server selection. Each
+  allocation adds private networks, and the host's Docker address pool already ran out once (owner checklist item 3).
+  `runtime: none` and smaller classes reduce pressure; the fleet design removes the per-allocation ingress entirely.
+- **Startup is slow for small jobs:** per-allocation build (without `PLAYGROUND_IMAGE`), four services, new TLS
+  certificate, multi-sweep attachment. Fixes are FLEET-2 (slim image, warm pool, ephemeral runs).
+- **No resize:** change size by finishing work, disposing, and opening a new workspace with another class.
+- **No verified backup** of runtime volumes exists; under the 2026-10-30 owner decision it is optional future work.
+
+## Verification boundaries
+
+Unit/transport tests, exact-head image CI, merged source, deployed matching worker/MCP revisions and authenticated
+disposable acceptance are separate evidence. The multi-container image scenario covers Chromium private entry, secure
+cookies, app/API/WebSocket traffic, anonymous denial, shared edits, read-only Git metadata, UID 1000, a daemonized child,
+container termination and exact volume absence; its heartbeat-free fixture is not live revocation proof. Full
+current-grant/browser/lifecycle acceptance on the real host is still required before PLAY-1 is complete. Earlier wording
+of this page is in git history; incident notes are in `docs/status/2026-10-30-playground-*.md`.

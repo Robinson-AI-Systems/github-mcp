@@ -1,104 +1,191 @@
 # Native Git worker: operations, deployment and migration
 
-This is actual native Git execution, separate from GitHub's git-data API. **Dokploy is now the default worker for new workspaces**, with signed protocol3/idle-v1 and eight-request capacity. Vercel hosts the MCP; Neon holds isolated metadata. Previous Render workspaces keep their original host during a safe drain; Render and its disk have not been cancelled. Matching source, eight parallel client clone/write/exact-read lanes, native push/provider readback, cross-host continuity, persistent uncommitted bytes and exact cleanup are in [the cutover proof](status/2026-10-29-dokploy-native-cutover.md). Older [Render proof](status/2026-10-28-render-native-git-acceptance.md) remains historical evidence. Check actual signed capabilities rather than inferring readiness from a configured URL.
+Real Git execution (clone, commit, merge, rebase, push…) in a private workspace, separate from GitHub's git-data API.
+Vercel hosts the MCP, Neon holds workspace metadata, and a **native Git worker** container holds the files. **Dokploy is the
+primary worker for new workspaces**; older workspaces pinned to the legacy Render host keep working there until they drain
+(Render and its disk are not cancelled). Proof: [Dokploy cutover](status/2026-10-29-dokploy-native-cutover.md);
+older [Render proof](status/2026-10-28-render-native-git-acceptance.md). Rollout history moved out of this page is in
+[native Git history](status/2026-11-01-native-git-history.md). Always check signed capabilities rather than inferring
+readiness from a configured URL. Future scale-out (several workers, device-hosted Git) is designed in
+[RUNTIME-FLEET](designs/RUNTIME-FLEET-2026-11-01.md) §2.5 and is **not built**.
 
 ## User workflow
 
-1. `github_git_workspace_open` with owner/repo, optional branch/shallow depth, author name/email and an idle timeout of 1–1440 minutes (default four hours). It returns a connection-bound workspace_id, current generation, HEAD and expiry. Reuse the same requestKey only to recover the original intent without another clone. A replay includes the historical receipt and current_workspace availability; done=false when disposed or unavailable. A genuinely new workspace needs a fresh requestKey. Clone keys remain stable across ten-minute buckets. Older bucketed receipts are recovered only after checking their original client/pass workspace binding; expired or missing ownership metadata produces a no-clone refusal and guidance to inspect the original receipt. Other write tools retain their documented retry window.
-2. `github_git_workspace_read`: status, log/show/diff/blame, refs/remote_refs, conflict stages, stash/worktree/bisect inspection and exact file reads. `read_file` requires options.path and explicit byteLength up to 32768; byteOffset defaults to zero. Reuse its file_hash as options.expectedFileHash for later windows; changed content refuses continuation. Credential-shaped files cannot be reconstructed through windows. Use protection_check with options.path for matching rules/locations and the exact file hash without matched values; this also covers uncommitted files absent from GitHub.
-3. `github_git_workspace_run` with the current expectedGeneration, one typed operation and its options. Supported operations include binary write/remove, staging/restoration, commit/amend, branch create/delete/rename/switch, tags, fetch/pull/push, merge/rebase/cherry-pick/revert with continue/abort, reset/clean, stash, detached worktrees and manual bisect. Set options.worktree to operate inside a named linked worktree. Commit messages can have multiple paragraphs. Conflicts are returned with the real unresolved paths and in-progress state; supply resolutions, add them, then continue or commit.
-4. For push, select options.branch and optional expectedHead (empty means absent). An expected head is an accuracy check, not implicit permission to force: rewriting requires force=true and an explicit expectedHead lease. Success requires independent remote-ref readback. GitHub's actual permissions and branch rules decide the remote operation.
-5. Keep requestKey stable for the same intent. Replays do not resend. `operation_result` reads the historical worker receipt using options.intentKey from the original requestKey. After a lost response or uncertain push, inspect local and remote refs before any new intent. A historical success is not a claim that the current workspace has never changed since then.
-6. `github_git_workspace_list` pages active workspaces with max/after and next_cursor. Every returned repository is freshly authorized; omitted inaccessible entries and further pages never establish absence. `github_git_workspace_close` deletes only the local workspace, not the GitHub repository, and verifies absence independently. Authorized workspace reads and Git requests refresh the selected idle window; the response supplies last_activity_at, idle_timeout_ms and the current expires_at. Workspace listing and capabilities/health checks do not refresh it. Only requests reaching this workspace count: chat activity, local-only work or separate PR/CI tool calls do not renew its deadline. This never extends the service OAuth/pass grant or revives an expired/disposed workspace. Existing workspaces keep their original selected duration when first adopted; new workspaces default to four idle hours. Push wanted work before closing or prolonged inactivity: background cleanup runs every minute and removes expired unlocked workspaces, skipping active requests and operator-locked workspaces.
+1. **Open** — `github_git_workspace_open` with owner/repo, optional branch, shallow `depth` (1–100,000), author name/email,
+   `leaseMinutes` idle timeout (1–1440, default 240 = four hours) and optional `runtime` (`auto`, `none`, `small`,
+   `medium`, `large`; see [right-sized runtimes](PLAYGROUND-OPERATIONS.md#right-sized-runtimes)). Before cloning, the MCP
+   asks the primary worker for capabilities and refuses unless it reports resource-aware admission with room. It returns a
+   connection-bound `workspace_id`, generation, HEAD and expiry.
+   - Reuse the same `requestKey` only to recover the original intent; a replay returns the historical receipt plus
+     `current_workspace` availability (`done=false` when disposed). A genuinely new workspace needs a fresh `requestKey`.
+     Clone keys stay stable across the ten-minute key buckets. Legacy bucketed receipts are recovered only after checking
+     the original client/pass workspace binding; missing ownership metadata refuses without cloning.
+2. **Read** — `github_git_workspace_read`: status, log/show/diff/blame (log `max` 1–100, default 20), refs/remote_refs,
+   conflict stages, stash/worktree/bisect inspection and exact file reads. `read_file` needs `options.path` and an explicit
+   `byteLength` ≤ 32,768 (`byteOffset` defaults to 0); pass the returned `file_hash` as `options.expectedFileHash` for later
+   windows — changed content refuses continuation. Credential-shaped files cannot be rebuilt through windows.
+   `protection_check` with `options.path` reports matching scanner rules and the file hash without the matched values,
+   including uncommitted files that GitHub has never seen.
+3. **Run** — `github_git_workspace_run` with the current `expectedGeneration`, one typed operation and its options:
+   binary write/remove (`write_file` ≤ ~1 MiB per call), staging/restore (`paths` 1–100), commit/amend (message ≤ 10,000
+   characters, multiple paragraphs allowed), branch create/delete/rename/switch, tags, fetch/pull/push,
+   merge/rebase/cherry-pick/revert with continue/abort, reset/clean, stash, detached worktrees (`options.worktree`) and manual
+   bisect. Conflicts return the real unresolved paths; resolve, add, then continue or commit.
+4. **Push** — choose `options.branch` and optional `expectedHead` (empty string = branch must not exist). `expectedHead` is
+   an accuracy check, not permission to force: rewriting history needs `force=true` **and** an explicit `expectedHead`.
+   Success requires an independent remote-ref readback. GitHub's own permissions and branch rules decide the outcome.
+5. **Recover** — keep `requestKey` stable for the same intent; replays never resend. `operation_result` reads the historical
+   receipt via `options.intentKey`. After a lost response or uncertain push, inspect local and remote refs before any new
+   intent. A historical success does not mean the workspace has not changed since.
+6. **List and close** — `github_git_workspace_list` pages active workspaces (`max` 1–20, default 10, `after`/`next_cursor`);
+   each repository is freshly authorized, so omitted entries never prove absence. `github_git_workspace_close` deletes only
+   the local workspace (never the GitHub repository) and verifies absence.
 
-Opening and mutating a workspace currently require a full write-capable connection. Read-only profiles can inspect a workspace already belonging to that same connection while its current repository access remains valid; they cannot open or mutate one. For a separate read-only grant, use a local authorized `git clone` until read-only cache creation is explicitly supported. No pass gains another connection's workspace, credentials or grants.
+**Idle lease.** Authorized workspace reads and Git requests renew the idle window; responses carry `last_activity_at`,
+`idle_timeout_ms` and `expires_at`. Listing, capabilities/health and close do not renew it, and neither do chat activity
+or other tools (PR/CI). Renewal never extends the service sign-in grant or revives a disposed workspace. Workspaces created
+before the idle lease keep their original duration. A background sweep every 60 seconds removes expired, unlocked
+workspaces (up to 100 per sweep), skipping busy and operator-locked ones — push wanted work before going idle.
+
+**Profiles.** Open, run and close require the **Full** profile (Everyday cannot clone). Read-only and Everyday connections
+can read a workspace that already belongs to that same connection while repository access stays valid. For a separate
+read-only grant, use your own local `git clone`. No pass ever gains another connection's workspace, credentials or grants.
 
 ## Branch switching and parallel agents
 
-Current capacity evidence: [eight-lane Dokploy verification](status/2026-10-29-dokploy-native-cutover.md). The [four-request Render verification](status/2026-10-29-native-git-capacity.md) records the retained legacy host.
+Switch with `operation:"switch", options:{branch:"topic"}` after creating the branch (`name`/`ref` are accepted aliases;
+disagreeing values are refused before any change). Switching never guesses a remote tracking branch. Afterwards inspect
+`branch`, `head` and `generation`. **Generation is a concurrency revision, not a success counter:** an executed command may
+advance it even when Git refuses, conflicts or changes nothing. Detached worktrees report `branch=null`.
 
-Use `operation:"switch", options:{branch:"topic"}` after creating the local branch. `name` and `ref` are supported aliases; disagreeing values refuse before sending a mutation. Switching never guesses a remote tracking branch. Inspect `branch`, `head` and `generation` afterward. Generation is a concurrency revision, not a success counter: an executed command may advance it even when Git rejects the command, leaves a conflict, or makes no tree change. Check the operation status, stdout/stderr and independent workspace/ref readback before proceeding. Detached worktrees report branch=null; switching is independently verified against the requested branch. Invalid options produce explicit guidance rather than a generic transient read failure.
+`branch_create`, `branch_rename` and `branch_delete` accept `options.branch` or `options.name`. For create, `options.ref` is
+the start point (default HEAD) and creation does not switch; for rename it is the old name. Read `capabilities` with
+`options:{name:"<operation>"}` for allowed options, required fields and an example. Unsupported options refuse before any
+change; a failed dry run carries `preflight_failed:true` and is not a valid confirmation preview.
 
-`branch_create`, `branch_rename` and `branch_delete` accept `options.branch` or `options.name`; conflicting values are refused. For creation, `options.ref` is the starting reference (default HEAD); for rename, it is the old branch. Creation does not switch. Read `capabilities` with `options:{name:"branch_create"}` (or another operation) for its allowed options, required fields and example. Unsupported options refuse before any mutation; a failed dry run carries `preflight_failed:true` and cannot be treated as a valid confirmation preview.
+To update a topic branch after `main` moves: switch to it, `fetch`, `merge` with `options:{ref:"origin/main"}`, resolve
+and commit any conflicts, then push with the observed remote `expectedHead`. A true merge keeps both parents (the API
+content tools cannot import a local merge's parents).
 
-To synchronize a topic after main moves, switch to the topic, `fetch`, `merge` with `options:{ref:"origin/main"}`, resolve/add/commit conflicts if needed, then push the same native history with the observed remote expectedHead. Inspect the current generation after every operation, including failed/conflicted operations: generation counts attempts that can change Git state, not successful commits. A true merge retains both parents. API content/Git-data writes instead create a new commit atop the observed remote head; copying a locally merged tree does not import that local merge's parents. No fake parent or automatic workflow dispatch is used.
+**Concurrency.** Many workspaces can be open at once and the worker has **no fixed request count**: capabilities report
+`max_concurrent:null` and `capacity_mode:"resource-aware"`. Each request is admitted only if the container has at least
+32 MiB available memory, 64 MiB writable disk and ≤ 250 ms event-loop delay (defaults; see the settings table).
+Refusals say which resource and that **no operation started**; retry the same intent after recovery (`Retry-After: 2`).
+**Each workspace admits one request at a time, reads included** — a second request gets `workspace_busy` (409). There is
+no durable queue and no automatic resend; keep the same `requestKey` for the same intent. Native workspaces are not
+counted against any per-connection active-job or daily quota. (The "eight lanes" in the cutover proof were a tested load,
+not a setting.)
 
-Worker network, incomplete-body and invalid-response failures require inspecting workspace state and the same intent receipt before another intent. Busy responses specifically advise waiting and retrying the same intent; neither contention nor a lost response authorizes a fresh mutation key. Error messages are bounded and redacted, including worker host paths. Access is rechecked before a historical clone is returned.
+Network, incomplete-body and invalid-response failures mean: inspect workspace state and the same intent receipt before a
+new intent. Error messages are bounded and redacted, including worker paths.
 
-Multiple workspaces may remain open. The active Dokploy configuration allows eight simultaneous requests in different workspaces, including preflight/read requests. Retained Render workspaces keep that host’s four-request setting during drain. A workspace admits only one request at a time; its generation and mutation lock remain authoritative. Busy/over-capacity responses disclose retry guidance; there is no durable queue and no automatic mutation resend. Keep the same requestKey for the same intent and inspect after a current operation completes. Do not create new intents to work around contention.
+## Limits (checked against code 2026-11-01)
 
-Independent workspace requests have no fixed count ceiling. The worker samples available process/container memory, writable disk headroom and event-loop responsiveness before work. Pressure refusals identify the resource and say that no operation started; retry after recovery. Default headroom floors are 32 MiB available memory, 64 MiB writable disk and 250 ms event-loop delay. These are admission signals, not a guarantee that an arbitrary-size clone fits. One operation per workspace remains mandatory. Legacy Render workspaces retain their original routing while they drain; new workspaces use Dokploy. Native metadata has no separate 8/64 active-workspace cap for any user.
+| Limit | Value | Where |
+|---|---|---|
+| Git command watchdog | 45 s (includes clone; a very large clone can come back `uncertain`) | `workers/native-git/engine.js` |
+| Command output kept | 2 MiB | engine |
+| File read window | 32 KiB per window; whole file ≤ 20 MiB | engine, `safe-files.js` |
+| Signed request validity | MCP signs for 60 s; worker accepts ≤ 90 s | `src/native-git/client.js`, `protocol.js` |
+| MCP → worker | 50 s fetch timeout; 3 MiB response cap | `src/native-git/client.js` |
+| Worker request body | 2 MiB (413 above); 15 s request timeout | `workers/native-git/server.js` |
+| Snapshot export | ≤ 100 MiB raw, ≤ 100,000 files, no symlinks/special files; encrypted import ≤ 150 MiB | `snapshot.js` |
 
 ## API content-commit alternative
 
-`github_content_commit_git_data` accepts 1–50 UTF-8/base64/deletion operations, up to 1.5 MB per file and 2 MB total. Set `expectedFileCount` from your intended upload manifest; a mismatch refuses the whole request before any provider call. A caller that sends only 12 files without its independent expected count cannot be detected as intending 29. This tool never silently chunks a batch. For more than 50 files, use native Git or an explicitly planned series of individually verified commits; a helper must verify every batch and fail its overall command if any file is unconfirmed.
+`github_content_commit_git_data` takes 1–50 UTF-8/base64/deletion operations, ≤ 1.5 MB per file and 2 MB total. Set
+`expectedFileCount` from your manifest — a mismatch refuses the whole request before any provider call; it never silently
+chunks. For more than 50 files use native Git or an explicitly planned series of individually verified commits.
 
-For a missing branch, supply `createFrom` with the exact source commit and `expectedHead:""`. The tool creates blobs/tree/commit first, then creates the destination ref only if it is still absent. An existing branch keeps its own observed parent; use its exact `expectedHead`. Creation racing another writer refuses rather than overwriting it. Returned `commit` is the new commit, `branch_head` is independently observed, and `submitted_files`/`confirmed_files` distinguish requested versus verified delivery. Confirmation requires the exact commit, one exact parent, tree and every requested path/mode/blob or deletion; truncated or failed readback remains unconfirmed. A tree snapshot does not import your local merge commit or trigger a guaranteed workflow run. Use native fetch/merge/push for history, and inspect actual workflow events/rules before choosing an explicit dispatch.
+For a missing branch supply `createFrom` (exact source commit) and `expectedHead:""`; blobs/tree/commit are created
+first, then the ref only if still absent. An existing branch uses its exact `expectedHead`. `commit` is the new commit,
+`branch_head` is independently observed, and `submitted_files`/`confirmed_files` separate requested from verified
+delivery (exact commit, one parent, tree and every path/mode/blob). A tree snapshot does not import a local merge or
+guarantee a workflow run.
 
-## Dokploy deployment
+## Deployment (Dokploy)
 
-The owner permits the friend's Dokploy/server for initial use, with an easy move to owned infrastructure. The runtime is an ordinary non-root OCI container; no Docker socket, host credential mount, privileged container or repository hook execution. One worker process/replica owns each persistent volume. The initial adapter is NOT a distributed queue or autoscaling pool.
+The owner permits the friend's Dokploy server for initial use, with an easy move to owned infrastructure. The worker is an
+ordinary non-root container: no Docker socket, host credential mount, privileged mode or repository hook execution. **One
+worker process owns each volume** (the per-workspace busy lock lives in memory), so this is not a distributed queue or an
+autoscaling pool.
 
-- Build `workers/native-git/Dockerfile` from the repository root. Its Node multi-platform manifest is pinned by digest; Git/dependencies come from signed Debian snapshots dated 2026-10-28. The dependency-free smoke test executes in the built image as its unprivileged user. Image verification workflow does not deploy or use provider credentials.
-- Import `workers/native-git/compose.yaml` into the GitHub MCP Dokploy project. Use a persistent named volume, UID/GID 1000, read-only root, dropped capabilities, no-new-privileges, memory/CPU/PID limits and an internal port 3000. Configure storage quota/free-space monitoring on the backing volume before active use. Do not mount unrelated host paths. Keep one replica on that volume.
-- Pin the public_key from the serving MCP’s HTTPS /api/native-git-key endpoint as NATIVE_GIT_CONTROL_PUBLIC_KEY on the worker; set NATIVE_GIT_WORKER_URL on the MCP to the worker’s fixed HTTPS origin. No private key is copied to the worker or passed through tools. Ed25519 signing material is purpose-separated from the MCP’s existing encryption root using HKDF and remains on the MCP host. Root-key rotation requires updating the pinned public verifier; workspace identity/grants do not change. Configure TLS, request-size limits and network access; only signed short-lived internal requests are accepted. /health is nonsensitive liveness, not a provider grant. An explicit legacy shared-key mode remains available for existing internal fixtures/adapters, but this deployment uses public-key verification.
-- The worker has no standing GitHub token. The MCP revalidates the current service grant and exact repository, then obtains the actual authorized provider credential for network operations. It travels only inside the signed HTTPS request, is passed in Git's process environment, and is never written into remote URLs/config, receipts or snapshots. No redirects, system/global Git config, credential helpers, fsmonitor, executable hooks, submodule recursion, textconv/external diff or supplied shell commands.
-- Compose retains 2 GiB shared container RAM and an adjustable two-CPU ceiling; these are not per-workspace allocations. Override `NATIVE_GIT_MEMORY_LIMIT` or `NATIVE_GIT_CPUS` in protected project configuration. Optional admission settings are `NATIVE_GIT_MIN_AVAILABLE_MEMORY_MB`, `NATIVE_GIT_MIN_AVAILABLE_DISK_MB` and `NATIVE_GIT_MAX_LOOP_DELAY_MS`; `NATIVE_GIT_MAX_CONCURRENT` is retired and ignored. The 45-second Git watchdog, bounded output (2 MiB), exact file windows (32 KiB) and file read ceiling (20 MiB) remain. A killed/interrupted mutation is uncertain; inspect its same-intent receipt before retrying. New deployments gracefully drain active HTTP work with a 75-second Compose stop grace. A temporary protected `NATIVE_GIT_WORKER_DRAINING=true` pauses only the current primary origin during the initial old-worker upgrade; pinned previous origins keep working. Do not delete or recreate persistent volumes. Node's [availableMemory](https://nodejs.org/docs/latest-v24.x/api/process.html#processavailablememory) and [event-loop delay](https://nodejs.org/docs/latest-v24.x/api/perf_hooks.html#perf_hooksmonitoreventloopdelayoptions) supply admission measurements.
+- Build `workers/native-git/Dockerfile` from the repository root (Node manifest pinned by digest; Git from signed Debian
+  snapshots dated 2026-10-28). The image smoke test runs as the unprivileged user in CI; image CI never deploys.
+- Import `workers/native-git/compose.yaml` into the GitHub MCP Dokploy project: persistent named volume, UID/GID 1000,
+  read-only root, `cap_drop: ALL`, no-new-privileges, memory/CPU/PID (128) limits, internal port 3000, 64 MB noexec
+  `/tmp`, 75-second stop grace. Monitor free space on the backing volume. One replica per volume.
+- Pin the `public_key` from the MCP's `GET /api/native-git-key` as `NATIVE_GIT_CONTROL_PUBLIC_KEY` on the worker, and set
+  `NATIVE_GIT_WORKER_URL` on the MCP to the worker's fixed HTTPS origin. The private signing key is derived on the MCP
+  (HKDF, purpose-separated from the encryption root) and never leaves it. A legacy shared-key mode
+  (`NATIVE_GIT_WORKER_KEY`) remains for internal fixtures only.
+- The worker has **no standing GitHub token**. For network operations the MCP re-checks the grant and repository, then
+  sends the real authorized credential only inside the signed request; Git receives it via its process environment, never
+  remote URLs, config, receipts or snapshots. No redirects, system/global config, credential helpers, fsmonitor, executable
+  hooks, submodule recursion, textconv/external diff or shell commands.
+- `/health` returns `{service:"robinson-native-git", protocol:3}`: liveness only, never proof of a grant.
 
-Friend-hosted compute has whatever standing resource cost/availability that host imposes; an idle running container is not stopped compute. Persistent storage/backup/transfer also remain. No unconditional $0 idle cost or measured production capacity is claimed. For long-term service use an account owned by Robinson AI Systems, the same image/protocol, and separately owned encrypted durable backups. Provider selection, resource measurements and autoscaling activation remain separate infrastructure work; no paid service is created implicitly.
+### Settings
+
+| Setting | Side | Meaning |
+|---|---|---|
+| `NATIVE_GIT_WORKER_URL` | MCP | Primary worker HTTPS origin (new workspaces, capabilities) |
+| `NATIVE_GIT_PREVIOUS_WORKER_URL` | MCP | Older origin kept during a drain |
+| `NATIVE_GIT_WORKER_CUTOVER_AT` | MCP | Exact `YYYY-MM-DDTHH:MM:SS(.mmm)Z`; unpinned rows created before it use the previous origin. Required when a previous origin is set |
+| `NATIVE_GIT_WORKER_DRAINING=true` | MCP | Temporarily pauses the **primary** origin only (also blocks new opens and capabilities there) |
+| `NATIVE_GIT_WORKER_KEY` | both | Legacy shared-key fixtures only |
+| `NATIVE_GIT_CONTROL_PUBLIC_KEY` | worker | Pinned MCP verification key |
+| `NATIVE_GIT_STORAGE_ROOT`, `PORT` (3000) | worker | Data root and port |
+| `NATIVE_GIT_MEMORY_LIMIT` (2g), `NATIVE_GIT_CPUS` (2.0) | worker compose | Whole-container ceilings shared by every workspace |
+| `NATIVE_GIT_MIN_AVAILABLE_MEMORY_MB` (32), `NATIVE_GIT_MIN_AVAILABLE_DISK_MB` (64), `NATIVE_GIT_MAX_LOOP_DELAY_MS` (250) | worker | Admission floors |
+| `NATIVE_GIT_SNAPSHOT_KEY` | operator CLI | 32-byte base64 snapshot key (environment only) |
+| `NATIVE_GIT_SINGLE_WORKSPACE_ID`, `NATIVE_GIT_SINGLE_BINDING`, `NATIVE_GIT_AUTHORITY_URL` | Playground broker | Dedicated single-workspace broker mode inside a Playground allocation (adds `/v1/authority` and attachment export/import; disables the sweep). Set only by the Playground plan |
+| `NATIVE_GIT_MAX_CONCURRENT` | — | **Retired and ignored** |
+
+Friend-hosted compute has whatever cost/availability that host imposes; no $0 idle cost or measured production capacity is
+claimed. Long term, use a Robinson-owned account with the same image/protocol and owned encrypted backups. No paid service
+is created implicitly.
+
+## Routing across hosts
+
+Each new workspace stores a compact hash of the worker origin it was created on; the full origin never appears in tool
+arguments. Routing, in order: a Playground-attached workspace goes to its dedicated broker; a pinned workspace goes to
+whichever of `NATIVE_GIT_WORKER_URL` / `NATIVE_GIT_PREVIOUS_WORKER_URL` matches its pin; an unpinned legacy row uses the
+cutover time. Unknown or removed pins refuse **before** any credential or request — no silent cross-host retry or
+re-clone. **At most two shared worker origins are routable today** (current + previous). Retire an old host only after its
+workspaces finished or were migrated, with independent proof, counting jobs across every tenant schema.
+
+Before sending credentials to a new host, verify from outside it: `curl --fail --show-error "$WORKER_ORIGIN/health"`
+(expect 200, protocol 3), then `github_git_workspace_read` operation `capabilities` and require `worker.ready=true`. A
+timeout means the host operator must route public TLS to the service's port 3000 (or an owned outbound tunnel); point the
+domain's DNS at the operator's **inbound** ingress address. Do not open more clones to troubleshoot.
 
 ## Moving the worker and recovering state
 
-Workspace IDs and permissions live in the MCP's tenant-isolated database; provider URL is not embedded in those IDs. Move storage and change the protected worker origin/public-key configuration, preserving the database mapping and the exact workspace directories. Do not move provider credentials: none belong in worker storage.
+Workspace IDs and permissions live in the tenant-isolated database, not in the worker URL. To move: move the storage,
+change the protected origin and public-key settings, keep the database mapping and exact workspace directories.
 
-For bounded workspaces, `snapshot-cli.js export WORKSPACE_ID ENCRYPTED_FILE` and `snapshot-cli.js import ENCRYPTED_FILE` use NATIVE_GIT_STORAGE_ROOT and a separate protected 32-byte base64 NATIVE_GIT_SNAPSHOT_KEY. Export holds the mutation lock and includes Git objects, refs, index, stash, uncommitted files, conflict/rebase/bisect state, linked worktrees and intent receipts. Import authenticates the full AES-GCM snapshot before creating files, refuses path traversal/overwrite and repairs linked worktree metadata after a root change. Keys are read from the operator environment, not argv or output. Keep the service stopped while importing.
+- **Bounded workspaces:** `snapshot-cli.js export WORKSPACE_ID ENCRYPTED_FILE` / `import ENCRYPTED_FILE` (keys from the
+  environment, never argv). Export holds the mutation lock and includes objects, refs, index, stash, uncommitted files,
+  conflict/rebase/bisect state, linked worktrees and intent receipts. Import authenticates the whole AES-GCM snapshot
+  before writing, refuses traversal/overwrite and repairs worktree paths. Stop the service while importing. Import does
+  not check bindings — import only into the matching deployment.
+- **Larger or symlink-bearing workspaces:** stop the worker, archive the whole volume with the pinned image's `tar`
+  (no link dereferencing), encrypt with authenticated tooling outside chat, verify before extracting, preserve UID/GID,
+  run `git worktree repair`. Full runbook: [NATIVE-GIT-BACKUP-RUNBOOK](NATIVE-GIT-BACKUP-RUNBOOK.md).
+- **Stuck lock:** stop the service, set `NATIVE_GIT_WORKER_STOPPED=yes`, run `snapshot-cli.js recover-lease WORKSPACE_ID`
+  on the exact volume (uncertain receipts are kept), restart, re-authorize and inspect refs. Never repeat the old mutation
+  blindly. Corrupt initialization is disposed and reopened with a new intent.
 
-The bounded exporter refuses symlinks, special files or more than 100 MiB rather than silently omitting them. For those workspaces, stop the worker, export the entire named volume without dereferencing links using the same pinned image's `tar`, and encrypt that archive outside chat with authenticated backup tooling (for example GPG symmetric encryption with its integrity verification enabled). Decrypt/authenticate fully before extracting on the new host; preserve UID/GID and filesystem metadata. Use `git worktree repair` after a changed mount path. This is an operator volume migration, not an MCP byte-read bypass. Keep encrypted backups in Robinson-controlled storage and test restoration before deleting the old volume.
+## Not supported (use your own trusted local Git)
 
-If a process dies holding mutation.lock: stop the service, set NATIVE_GIT_WORKER_STOPPED=yes, then run `snapshot-cli.js recover-lease WORKSPACE_ID` on the exact owned volume. This preserves uncertain receipts. Restart, freshly authorize and inspect workspace/remote refs; do not repeat the old mutation blindly. Corrupt initialization is disposed and opened with a new intent rather than replayed as a successful clone.
-
-## Advanced capability alternatives
-
-LFS, submodules, executable hooks/filters, signing, custom remotes, arbitrary shell/bisect run and arbitrary Git flags are not implemented in this isolated adapter. Use your own trusted local Git configuration and credentials: install git-lfs for LFS; review .gitmodules and separately authorize each submodule repository; configure your signing key in your local key agent; and review code before enabling hooks/filters or executable bisect commands. The capability response names these alternatives. API git-data tools remain available without a worker. Do not describe this finite typed surface as every Git feature or proprietary scanner parity.
+LFS, submodules, executable hooks/filters, commit signing, custom remotes, arbitrary flags and `bisect run` are not
+implemented in this isolated adapter. Capabilities name these alternatives. Do not describe the typed surface as every Git
+feature or as proprietary scanner parity.
 
 ## Acceptance before production claims
 
-Unit tests use real local Git/bare repositories, signed HTTP and fake GitHub identity/permissions. Job-store contract also runs against disposable PostgreSQL. Full exact-head ci/release-policy and Native Git worker image must pass. The final approved combined release then needs a real service-issued connection, deployed worker Git/image/MCP source, exact disposable owned repository, clone/edit/commit/push plus independent GitHub readback, denial/replay/conflict/recovery and cleanup. Source and image tests do not replace that live proof.
-
-## External route verification and historical Dokploy blocker
-
-The earlier Dokploy-specific blocker led to a historical Render fallback; the corrected Dokploy route is now active for new workspaces. No host-wide changes were needed. See [historical Render evidence](status/2026-10-28-render-native-git-acceptance.md) and [Render setup](../workers/native-git/RENDER.md). Before sending repository credentials to any replacement host, verify its public route from outside the host:
-
-```sh
-curl --fail --show-error "$WORKER_ORIGIN/health"
-```
-
-Expect HTTP 200 with service=robinson-native-git and protocol=3 for the current activity-lease worker. Then call github_git_workspace_read with operation=capabilities and require worker.ready=true plus the actual native Git version. Do not open another clone to troubleshoot an unavailable route. Healthy Docker status alone proves only internal health.
-
-If it times out, the authorized host/network operator must provide publicly reachable TLS routing to this project's native-git service on port 3000, or an owned outbound tunnel. Verify DNS, the TLS proxy/tunnel and the service route; a generated sslip.io hostname does not open the host's firewall/NAT or tunnel ingress. Keep Docker/host administration private. When the origin changes, set NATIVE_GIT_WORKER_URL and deploy that configuration through the checked release process; retain the public key pin and persistent data. Existing project-level connection permissions cannot grant missing server-wide/network authority. Backing-volume capacity monitoring remains an operator prerequisite for ongoing active use.
-
-## Scanner policy transport upgrade
-
-The scanner-tuning release uses worker protocol 2, so an older worker cannot silently ignore project protection settings. Rebuild the worker from the same checked release before enabling native operations; retain the data volume and pinned public verifier. Protocol 1 requests are refused by the updated worker and the old worker refuses protocol 2 before running an operation. Workspace storage/snapshot format is unchanged. The MCP sends the current repository policy inside each signed lease; native file reads, diagnostics and command-output redaction use that policy. The historical Dokploy ingress problem was resolved operationally by moving the active origin to Render; the signed protocol remains portable.
-
-## Dokploy routing correction and activated migration, 2026-10-29
-
-The host operator identified the prior timeout cause: generated hostnames used the server's outbound address, while inbound web forwarding reaches a different address. Per-project routing and the healthy container already existed. The corrected project hostname now passes HTTPS health (200, protocol 2) and rejects unsigned workspace calls (401); the provider deployment record identifies worker source 454f6d4d6168c6608e1a3ddcbbd1ea3f19bb93c3. This supports Dokploy viability; it does not prove a signed production cutover.
-
-For each project, point its real domain's DNS at the operator-confirmed public **ingress** address, or correct the address embedded in an auto-generated hostname. Route that hostname to the service's actual internal port (3000 for this worker), enable TLS, and verify both health and unsigned rejection. A different application port alone does not fix incorrect destination DNS. No host-wide routing change is required by this finding.
-
-The Dokploy cutover and eight-lane acceptance are now complete for new workspaces; see [current proof and cleanup](status/2026-10-29-dokploy-native-cutover.md). Keep Render and its original disk for older workspaces during the drain. Retain the pinned public verifier and protected snapshot key. Do not put private credentials in compose files or chat. Existing work must either finish naturally or be drained, exported/restored and independently checked against its exact workspace/ref/file/intent state using the existing encrypted snapshot/whole-volume procedure. Protected per-workspace host routing below preserves continuity while both hosts exist. Do not cancel Render or claim cost savings before all old-host jobs are gone or migration is verified. Independent off-host backup configuration remains a separate requirement.
-
-## Activity lease rollout (protocol 3)
-
-Prefer deploying the checked worker first, preserving its disk, verifier and configured request capacity, then release the matching MCP. If the connected deployment tool cannot pin a commit and the service follows live, coordinate the checked live promotion with one worker deploy; protocol 3 refuses an older worker before running operations during any brief version mismatch. Verify both serving sources and signed idle-v1/four-request capabilities before claiming readiness. Persistent-disk worker deployments can briefly interrupt native requests; do not claim zero downtime or discard uncertain receipts. Protocol 3 requires a signed idle duration and independently returned activity/deadline metadata; a protocol-2-only worker rejects it before operations. The new worker temporarily accepts authenticated protocol-2 requests with their original fixed-expiry behavior, allowing the old control plane to continue through rollout. Project scanner policy remains mandatory for both. Each admitted protocol-3 workspace request renews its original window at entry and completion without advancing the Git generation; database metadata is admitted before the bounded worker request and synchronized to its confirmed returned deadline afterward. Failure to verify/synchronize the lease stays an error or uncertain mutation, never a false success. Close preflight/readback does not prolong or revive a disposed workspace.
-
-
-## Preserving active workspaces across a provider change
-
-New workspace metadata pins a compact hash of the configured worker origin; the full origin never enters user arguments. Retain NATIVE_GIT_PREVIOUS_WORKER_URL during a drain. For older rows without pins, set NATIVE_GIT_WORKER_CUTOVER_AT to the exact initial cutover time: rows created before it stay on the previous host, later rows use the current host. Only these protected configured origins are eligible. Unknown/removed pins and invalid historical routing refuse before a credential/request; no silent cross-host retry or re-clone. Capabilities/new clones use the current origin. After active jobs are finished or storage is actually migrated, retire the old host/configuration with independent proof. Count native jobs across every isolated tenant schema; a default-schema zero or one connection's inventory never proves fleet-wide absence. See [the correction](status/2026-10-29-native-worker-host-routing.md).
-
-
-## No daily workspace creation quota
-
-There is no daily job-creation allowance, either per connection or across a tenant. Old32/128/200 stored daily job settings do not govern new requests. Eight simultaneous native requests on the current worker and existing active metadata reservations remain separate capacity controls; closing/idle expiry frees active resources. A capacity refusal identifies an active-workspace constraint and never invents a daily reset. Real provider rate limits and chosen delegated grants remain in force.
+Unit tests use real local Git/bare repositories, signed HTTP and fake GitHub identity; the job store also runs on
+disposable PostgreSQL. Exact-head `ci`/`release-policy` and the native Git image workflow must pass. A production claim
+additionally needs a real service-issued connection, the deployed worker/MCP source, a disposable owned repository,
+clone/edit/commit/push with independent GitHub readback, denial/replay/conflict/recovery and cleanup.
