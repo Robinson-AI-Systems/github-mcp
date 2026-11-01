@@ -41,3 +41,11 @@ package must be public, see the owner checklist row from the image-publish note)
 ## 2026-11-01 — Queued image kept at provisioning
 
 Live run on release cbefa0be showed a queued allocation's published image replaced by a source build at provisioning; fixed and tested (see `docs/status/2026-11-01-fleet-2.md`).
+
+## 2026-11-01 — Run resume through repeated calls
+
+Live on release 9e9946d0 a run sat at `provisioning`/`deploying` with a frozen `updated_at` across repeat calls, and
+compact clients saw only `omitted_fields: ["summary","result"]`. Fixed in branch `ai/claude/run-tool-resume`: the write
+layer's opt-in `resumeReplay` lets a repeat call continue the same run (also after a cut-off first call), an advance lease
+keeps the command start exactly-once under concurrent calls, each call checkpoints `last_advanced_at`/`waiting_on`, a new
+step needs 15 s of budget left, and results carry a bounded `progress` digest. See `docs/status/2026-11-01-run-tool-resume.md`.

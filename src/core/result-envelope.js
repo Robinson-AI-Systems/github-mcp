@@ -7,7 +7,9 @@ const bytes = (value) => Buffer.byteLength(JSON.stringify(value));
 // fields and continuation/navigation metadata remain available structurally.
 // Consumers follow full_payload_location; nested calls and declared output
 // schemas retain their full structured contract at the dispatcher boundary.
-const NAVIGATION = new Set(['kept_result', 'continuation', 'page_info', 'meta']);
+// `progress` is the write layer's bounded (<= 1200 bytes) digest of a resumable
+// write's result, so a compact client still sees phase, outcome and next step.
+const NAVIGATION = new Set(['kept_result', 'continuation', 'page_info', 'meta', 'progress']);
 
 export function deduplicateLargeEnvelope(reply, { threshold = 1600 } = {}) {
   if (!reply || reply.isError || !reply.structuredContent ||

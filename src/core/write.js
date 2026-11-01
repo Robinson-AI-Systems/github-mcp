@@ -14,6 +14,16 @@ const CONFIRM = ['always', 'when-needed'];
 const WRITE_PROFILES = ['everyday', 'full'];
 
 const reply = (value, isError = false) => ({ ...(isError ? { isError: true } : {}), content: [{ type: 'text', text: JSON.stringify(value) }], structuredContent: value });
+// A small, always-visible digest of a long-running write's result (compact clients drop large
+// `result` objects; see result-envelope.js). Bounded so it can never become the large field.
+const PROGRESS_LIMIT = 1200;
+function progressOf(essentials, shaped) {
+  if (!essentials || shaped == null) return {};
+  let value;
+  try { value = essentials(shaped); } catch { return {}; }
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  return Buffer.byteLength(JSON.stringify(value)) <= PROGRESS_LIMIT ? { progress: value } : {};
+}
 const dollars = (cents) => `$${(cents / 100).toFixed(2)}`;
 const sameLogin = (a, b) => String(a).toLowerCase() === String(b).toLowerCase();
 
@@ -67,9 +77,11 @@ export function marksOf(c) {
  */
 export function defineWrite(spec) {
   const { name, description, area, audience, compact, guidance, properties = {}, required = [], declarations, target, read, classify, price, summarize, apply, readAfter, verify,
-    inverse = () => null, present = ({ after }) => after, explain = () => 'The change was not completed.', classifyError = () => 'uncertain', requestKey, refreshReplay = null } = spec;
+    inverse = () => null, present = ({ after }) => after, explain = () => 'The change was not completed.', classifyError = () => 'uncertain', requestKey, refreshReplay = null, resumeReplay = false, essentials = null } = spec;
   if (!NAME.test(name ?? '')) throw new TypeError('A valid tool name is required.');
   if (refreshReplay !== null && typeof refreshReplay !== 'function') throw new TypeError(`${name}: refreshReplay must be a function.`);
+  if (resumeReplay !== false && (resumeReplay !== true || typeof refreshReplay !== 'function')) throw new TypeError(`${name}: resumeReplay needs a refreshReplay function.`);
+  if (essentials !== null && typeof essentials !== 'function') throw new TypeError(`${name}: essentials must be a function.`);
   if (typeof description !== 'string' || !description) throw new TypeError(`${name}: a description is required.`);
   for (const [label, fn] of Object.entries({ target, read, classify, summarize, apply, readAfter, verify, inverse, present, explain, classifyError, requestKey })) {
     if (typeof fn !== 'function') throw new TypeError(`${name}: ${label} must be a function.`);
@@ -223,11 +235,28 @@ export function defineWrite(spec) {
       // A tool whose result changes after the write (a running command) may re-read the
       // current state of the SAME target on replay. Nothing is sent again; on any read
       // failure the recorded result is returned, labelled as such.
-      if (prior?.confirmed === true && refreshReplay) {
-        let current = null;
-        try { const after = await refreshReplay({ args, ctx, target: tgt, prior: prior.after }); current = after == null ? null : present({ args, ctx, target: tgt, before, after, response: null }); } catch { current = null; }
-        return out({ done: true, status: 'replayed', replayed: true, requestKey: key, summary: prior.summary ?? line, confirmed: true,
-          replay_state: current ? 'current' : 'as_recorded', result: current ?? prior.after });
+      //
+      // A resumable tool (`resumeReplay`) owns an exactly-once state machine keyed by this same
+      // request key: its refresh may take the next bounded, idempotent step of THAT intent, also when
+      // the first call was cut off before its outcome was recorded (a serverless time limit). It
+      // never re-runs `apply`; a refresh that finds no recorded intent returns null and the
+      // ordinary replay answer is given. A verified refresh completes the journal row.
+      if (refreshReplay && (prior?.confirmed === true || (resumeReplay && prior))) {
+        const recordedView = (value) => { try { return value == null ? null : present({ args, ctx, target: tgt, before, after: value, response: null }); } catch { return null; } };
+        let current = null; let after = null; let verified = prior.confirmed === true;
+        try {
+          after = await refreshReplay({ args, ctx, target: tgt, prior: prior.after ?? null, recorded: prior.confirmed === true });
+          if (after != null && !verified) {
+            verified = (await verify({ args, ctx, target: tgt, before, after, response: null })) === true;
+            if (verified && Number.isSafeInteger(prior.id)) await ctx.db.finishChange(prior.id, { summary: line, after, confirmed: true, actedAs: ctx.actor?.summary?.()?.as ?? null }).catch(() => {});
+          }
+          current = after == null || !verified ? null : present({ args, ctx, target: tgt, before, after, response: null });
+        } catch { current = null; }
+        if (current || prior.confirmed === true) {
+          const shaped = current ?? prior.after;
+          return out({ done: true, status: 'replayed', replayed: true, requestKey: key, summary: prior.summary ?? line, confirmed: true,
+            replay_state: current ? 'current' : 'as_recorded', ...progressOf(essentials, current ?? recordedView(prior.after)), result: shaped });
+        }
       }
       return out({ done: prior?.confirmed === true, status: 'replayed', replayed: true, requestKey: key, summary: prior?.summary ?? line,
         ...(prior?.confirmed === true ? { confirmed: true, result: prior.after } : {
@@ -262,7 +291,7 @@ export function defineWrite(spec) {
     await ctx.db.finishChange(claim.id, { summary: confirmed ? line : `UNCONFIRMED: ${line}`, after, confirmed, githubRequestId, inverse: inv, actedAs: ctx.actor?.summary?.()?.as ?? null }).catch(() => {});
     let shaped;
     try { shaped = present({ args, ctx, target: tgt, before, after, response }); } catch { shaped = null; }
-    return out({ done: confirmed, status: confirmed ? 'applied' : 'unconfirmed', confirmed, requestKey: key, logged: { id: claim.id }, summary: line, ...(shaped !== null && shaped !== undefined ? { result: shaped } : {}),
+    return out({ done: confirmed, status: confirmed ? 'applied' : 'unconfirmed', confirmed, requestKey: key, logged: { id: claim.id }, summary: line, ...progressOf(essentials, shaped), ...(shaped !== null && shaped !== undefined ? { result: shaped } : {}),
       ...(note ? { warning: note } : {}) });
   }
 

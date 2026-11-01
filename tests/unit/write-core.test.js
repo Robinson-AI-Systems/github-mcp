@@ -6,6 +6,7 @@ import { createDispatch } from '../../src/tools/dispatch.js';
 import { mergeNamespaces } from '../../src/core/registry.js';
 import { makeWorld, parse, doorsFor } from '../../test/helpers/write-contract.js';
 import { sampleLabel, sampleSetting } from '../../test/helpers/sample-writes.js';
+import { deduplicateLargeEnvelope } from '../../src/core/result-envelope.js';
 
 const R = { owner: 'example-org', repo: 'hello', issue_number: 7, label: 'bug' };
 const LABELS = 'GET /repos/{owner}/{repo}/issues/{issue_number}/labels';
@@ -193,6 +194,43 @@ describe('failures and retries', () => {
     expect(applies).toBe(1);
     expect(() => defineWrite({ name: 'github_x_bad', description: 'd', declarations: { production: 'never' }, target: () => ({}), read: async () => null, classify: () => ({}),
       summarize: () => 's', apply: async () => null, readAfter: async () => null, verify: () => true, requestKey: () => 'rmcp_x', refreshReplay: 'yes' })).toThrow(/refreshReplay/);
+  });
+
+  it('a resumable replay continues an intent whose first call was cut off, never re-applies, and completes the journal', async () => {
+    let applies = 0, verifyOk = true; const seen = [];
+    const def = defineWrite({ name: 'github_x_resumable', description: 'd', declarations: { production: 'never' },
+      target: () => ({ owner: 'example-org', scope: 'org' }), read: async () => null, classify: () => ({}), summarize: () => 's',
+      apply: async () => { applies += 1; return { id: 'r1' }; }, readAfter: async () => ({ id: 'r1', phase: 'one' }), verify: ({ after }) => verifyOk && after?.id === 'r1',
+      present: ({ after }) => ({ run: after, filler: 'f'.repeat(2000) }), essentials: (shaped) => ({ phase: shaped.run.phase }),
+      requestKey: () => 'rmcp_resumable', resumeReplay: true,
+      refreshReplay: async ({ prior, recorded }) => { seen.push(recorded); return { id: 'r1', phase: prior ? 'three' : 'two' }; } });
+    const w = await makeWorld({ gates: [] });
+    const cut = { ...w.ctx, db: { ...w.db, finishChange: async () => true } };
+    const first = parse(await def.handler({}, cut));
+    expect(first).toMatchObject({ status: 'applied', progress: { phase: 'one' } });
+    // The journal row has no outcome yet; the resumable replay still continues the same intent.
+    const second = parse(await def.handler({}, w.ctx));
+    expect(second).toMatchObject({ status: 'replayed', replay_state: 'current', confirmed: true, progress: { phase: 'two' }, result: { run: { phase: 'two' } } });
+    const third = parse(await def.handler({}, w.ctx));
+    expect(third).toMatchObject({ status: 'replayed', progress: { phase: 'three' } });
+    expect(seen).toEqual([false, true]);
+    expect(applies).toBe(1);
+    // A refresh that cannot be verified keeps the ordinary uncertain replay answer.
+    verifyOk = false;
+    const other = defineWrite({ name: 'github_x_resumable2', description: 'd', declarations: { production: 'never' },
+      target: () => ({ owner: 'example-org', scope: 'org' }), read: async () => null, classify: () => ({}), summarize: () => 's',
+      apply: async () => ({ id: 'r1' }), readAfter: async () => ({ id: 'r1' }), verify: () => verifyOk, requestKey: () => 'rmcp_resumable2', resumeReplay: true,
+      refreshReplay: async () => ({ id: 'r1' }) });
+    await other.handler({}, cut);
+    const unverified = parse(await other.handler({}, w.ctx));
+    expect(unverified).toMatchObject({ status: 'replayed', done: false }); expect(unverified.warning).toMatch(/already sent/);
+    // The compact envelope keeps the bounded progress digest.
+    const big = await def.handler({}, w.ctx);
+    const compact = deduplicateLargeEnvelope(big);
+    expect(compact.structuredContent.omitted_fields).toContain('result');
+    expect(compact.structuredContent.progress).toEqual({ phase: 'three' });
+    expect(() => defineWrite({ name: 'github_x_bad2', description: 'd', declarations: { production: 'never' }, target: () => ({}), read: async () => null, classify: () => ({}),
+      summarize: () => 's', apply: async () => null, readAfter: async () => null, verify: () => true, requestKey: () => 'rmcp_x', resumeReplay: true })).toThrow(/resumeReplay/);
   });
 
   it('a caller request key makes differently worded retries one change', async () => {

@@ -6,7 +6,7 @@ import {warmRuntimeStatus} from '../playground/warm-runtimes.js';
 import {defineRead} from './define-read.js';
 import {passRefusal} from '../rtc/pass-scope.js';
 import {withUpsizeHint} from '../playground/sizing.js';
-import {RUN_PHASES,runIntent,runRequestKey,startRun,advanceRun,readRun,presentRun,defaultRunDeps} from '../playground/run.js';
+import {RUN_PHASES,runIntent,runRequestKey,startRun,advanceRun,readRun,presentRun,runEssentials,defaultRunDeps} from '../playground/run.js';
 import {authorizeNativeRepo,callNativeWorker,nativeConnection,nativeRecord} from '../native-git/client.js';
 import {workerUrl} from '../native-git/protocol.js';
 import {ref as exactRef} from '../native-git/commands.js';
@@ -68,9 +68,9 @@ const workspace=defineGithubWrite({name:'github_playground_workspace',area:'play
 // runtime, one command and full cleanup. Resumable: each call advances within the function
 // budget and a repeat call with the same requestKey continues (a write-layer replay).
 const GIT_TOOL={name:'github_git_workspace_open',area:'git',writes:true,inputSchema:{properties:{repo:{}}}};
-const runGuidance='Prefer this for one-off checks (tests, lint, a build) at a branch, tag or 40-character commit SHA: it opens a Git-only workspace at that commit, picks the smallest fitting runtime (size auto: small without browser/database, medium with a database, large with browser tests), runs argv once, returns status, exit code and the last 4 KB of log, then deletes the runtime and workspace. A call returns within about 40 seconds; if finished is false, call again with the same arguments and requestKey to continue (nothing runs twice). Applied means the run intent was accepted; read command_succeeded and exit_code. Never put credentials in argv. For interactive multi-step work use github_git_workspace_open plus github_playground_execute.';
-export function runToolDefinition(deps=defaultRunDeps,{budgetMs=40000,pollMs=2000}={}){
- const advance=(c,intent)=>advanceRun(c,intent,{deps,budgetMs,pollMs});
+const runGuidance='Prefer this for one-off checks (tests, lint, a build) at a branch, tag or 40-character commit SHA: it opens a Git-only workspace at that commit, picks the smallest fitting runtime (size auto: small without browser/database, medium with a database, large with browser tests), runs argv once, returns status, exit code and the last 4 KB of log, then deletes the runtime and workspace. A call returns within about 40 seconds; if finished is false, call again with the same arguments and requestKey to continue (nothing runs twice); progress always shows phase, exit_code and next. Applied means the run intent was accepted; read command_succeeded and exit_code. Never put credentials in argv. For interactive multi-step work use github_git_workspace_open plus github_playground_execute.';
+export function runToolDefinition(deps=defaultRunDeps,{budgetMs=40000,pollMs=2000,reserveMs=15000}={}){
+ const advance=(c,intent)=>advanceRun(c,intent,{deps,budgetMs,pollMs,reserveMs});
  return defineGithubWrite({name:'github_playground_run',area:'playground',audience:['B','O','Op'],description:'Run one command at a branch, tag or commit in a fresh right-sized Playground runtime, return exit code and log tail, then clean everything up.',guidance:runGuidance,
   properties:{owner:OWNER,repo:REPO,ref:{type:'string',minLength:1,maxLength:256,description:'Branch, tag or 40-character commit SHA to run at.'},argv:{type:'array',minItems:1,maxItems:128,items:{type:'string',maxLength:16384}},cwd:{type:'string',maxLength:4096},size:{type:'string',enum:['auto','small','medium','large'],description:'Runtime size; auto (default) picks from the repository: small without browser/database, medium with a database, large with browser tests.'},timeoutMs:{type:'integer',minimum:1,maximum:14400000}},
   required:['repo','ref','argv','requestKey'],declarations:{production:'when-target',confirm:'when-needed',profiles:['full']},explain,
@@ -89,7 +89,11 @@ export function runToolDefinition(deps=defaultRunDeps,{budgetMs=40000,pollMs=200
   summarize:({args:a,target:t})=>`Run ${JSON.stringify(a.argv.slice(0,3)).slice(0,120)} once in a fresh Robinson Playground runtime for ${t.owner}/${t.repo} at ${a.ref}; the runtime and workspace are deleted when it finishes. Uses configured host compute, no paid plan.`,
   apply:async({args:a,ctx:c,requestKey})=>{const s=await startRun(c,a,{deps,requestKey});await advance(c,s.intent);return{intent:s.intent};},
   readAfter:async({ctx:c,response})=>observeRun(c,response.intent),
-  refreshReplay:async({ctx:c,prior})=>{if(!/^[a-f0-9]{64}$/.test(prior?.intent??''))return null;await advance(c,prior.intent);return observeRun(c,prior.intent);},
+  // A repeat call continues the SAME intent (derived from the arguments, so it also works when the
+  // first call was cut off before its outcome was journalled): one leased, bounded, idempotent
+  // advance of the run state machine. The command start is keyed by the intent, never re-sent.
+  resumeReplay:true,essentials:runEssentials,
+  refreshReplay:async({args:a,ctx:c,prior})=>{const intent=runIntent(c,a);if(prior?.intent!=null&&prior.intent!==intent)return null;if(!await readRun(c,intent))return null;await advance(c,intent);return observeRun(c,intent);},
   verify:({after})=>!!after.run&&RUN_PHASES.includes(after.run.phase)&&after.workspace_consistent===true,
   present:({after})=>presentRun(after.run)
  });

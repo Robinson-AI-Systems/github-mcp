@@ -5,7 +5,8 @@ import {afterEach, expect, it} from 'vitest';
 import {runWriteContract, makeWorld, parse, doorsFor} from '../../test/helpers/write-contract.js';
 import {prepareNativeWorld} from '../../test/helpers/native-git-world.js';
 import * as playground from '../../src/tools/playground.js';
-import {defaultRunDeps, runLeaseMs, presentRun} from '../../src/playground/run.js';
+import {defaultRunDeps, runLeaseMs, presentRun, runEssentials, runIntent, runSettingKey} from '../../src/playground/run.js';
+import {deduplicateLargeEnvelope} from '../../src/core/result-envelope.js';
 import {nativeConnection} from '../../src/native-git/client.js';
 
 const cleanups = []; afterEach(async () => { for (const close of cleanups.splice(0)) await close(); });
@@ -24,8 +25,8 @@ async function world() {
   cleanups.push(await prepareNativeWorld(w)); await w.nativeReady(); return w;
 }
 // Runtime-side fakes: an allocation that attaches on the first ensure and a command engine.
-function runtimeFakes({status = {state: 'completed', exitCode: 0, signal: null, reason: null}, attachAfter = 1, log = 'all 12 tests passed\n'} = {}) {
-  const calls = {enqueue: [], start: [], dispose: 0, ensure: 0}; let alloc = null;
+function runtimeFakes({status = {state: 'completed', exitCode: 0, signal: null, reason: null}, attachAfter = 1, runningPolls = 0, log = 'all 12 tests passed\n'} = {}) {
+  const calls = {enqueue: [], start: [], dispose: 0, ensure: 0, status: 0}; let alloc = null;
   const deps = {...defaultRunDeps, sleep: async () => {},
     enqueueAllocation: async (_c, _r, o) => { calls.enqueue.push(o); alloc ??= {phase: 'requested', size: o.size, runtimeImage: {variant: 'slim', reason: 'fixture'}}; return alloc; },
     allocationRecord: async () => alloc,
@@ -35,7 +36,7 @@ function runtimeFakes({status = {state: 'completed', exitCode: 0, signal: null, 
     availability: async () => ({execution_available: true}),
     callPlayground: async (_c, _r, action, o) => {
       if (action === 'start') { calls.start.push(o); return {id: o.id, state: 'running'}; }
-      if (action === 'status') return {id: o.id, ...status};
+      if (action === 'status') { calls.status++; return calls.status <= runningPolls ? {id: o.id, state: 'running'} : {id: o.id, ...status}; }
       if (action === 'logs') return {id: o.id, base64: Buffer.from(log).toString('base64'), totalBytes: log.length, logHash: 'c'.repeat(64)};
       throw new Error('unexpected ' + action);
     },
@@ -110,4 +111,107 @@ it('refuses an invalid ref and a pass without Git access before anything is clon
 it('presents a waiting run plainly', () => {
   expect(presentRun({phase: 'starting', workspace_id: 'job_0123456789abcdef', owner: 'o', repo: 'r', ref: 'main', size: 'small'})).toMatchObject({finished: false, command_started: false, runtime_size: 'small'});
   expect(presentRun(null)).toBeNull();
+});
+
+// Live bug 2026-11-01 (release 9e9946d0): repeat calls must visibly advance the run, never start
+// the command twice, and show the essentials even when a compact client drops `result`.
+it('drives a run to completion through repeated calls with the same requestKey on every door, starting the command once per intent', async () => {
+  const w = await world(), {deps, calls} = runtimeFakes({attachAfter: 3, runningPolls: 2});
+  const tool = playground.runToolDefinition(deps, {budgetMs: 0, pollMs: 1});
+  for (const door of doorsFor(tool)) {
+    const a = {...args, requestKey: 'resume-' + door.name};
+    let raw = await door.call(w, a), out = parse(raw);
+    expect(out).toMatchObject({status: 'applied', result: {finished: false}});
+    const phases = [out.result.phase];
+    for (let i = 0; i < 20 && !out.result.finished; i++) { raw = await door.call(w, a); out = parse(raw); phases.push(out.result.phase); }
+    expect(out).toMatchObject({status: 'replayed', replay_state: 'current', confirmed: true,
+      result: {phase: 'done', finished: true, command_succeeded: true, exit_code: 0, cleaned_up: true},
+      progress: {phase: 'done', finished: true, execution_state: 'finished', exit_code: 0, outcome: 'succeeded'}});
+    // Every phase of the machine was passed through, in order, across separate calls.
+    expect([...new Set(phases)]).toEqual(['provisioning', 'starting', 'running', 'disposing', 'done']);
+    expect(out.progress.log_end).toBe('all 12 tests passed\n');
+    // A waiting call records that it is alive and what it waits for.
+    const stored = await w.db.getSetting(runSettingKey(runIntent(w.ctx, a)));
+    expect(stored).toMatchObject({phase: 'done', advance: null}); expect(Number.isFinite(stored.lastAdvancedAt)).toBe(true);
+  }
+  expect(calls.start).toHaveLength(3); // one per door (each its own intent), never twice
+  expect(calls.dispose).toBe(3);
+});
+
+it('never starts the command twice when the same requestKey is called concurrently', async () => {
+  const w = await world(), {deps, calls} = runtimeFakes({attachAfter: 2, runningPolls: 3});
+  const tool = playground.runToolDefinition(deps, {budgetMs: 0, pollMs: 1});
+  const a = {...args, requestKey: 'concurrent'};
+  const first = parse(await tool.handler(a, w.ctx));
+  expect(first.result.finished).toBe(false);
+  let outs = [];
+  for (let round = 0; round < 12 && !outs.some(o => o.result?.finished); round++)
+    outs = (await Promise.all(Array.from({length: 5}, () => tool.handler(a, w.ctx)))).map(parse);
+  expect(outs.some(o => o.result?.phase === 'done')).toBe(true);
+  expect(outs.every(o => o.status === 'replayed')).toBe(true);
+  expect(calls.start).toHaveLength(1);
+  expect(calls.dispose).toBe(1);
+});
+
+it('a call holding the advance lease makes every other call only read', async () => {
+  const w = await world(), {deps, calls} = runtimeFakes({attachAfter: 1});
+  const tool = playground.runToolDefinition(deps, {budgetMs: 0, pollMs: 1});
+  const a = {...args, requestKey: 'leased'};
+  parse(await tool.handler(a, w.ctx));
+  const key = runSettingKey(runIntent(w.ctx, a)), held = await w.db.getSetting(key);
+  await w.db.compareAndSetSetting(key, held.revision, {...held, advance: {lease: 'other', until: (w.ctx.now ?? Date.now)() + 60000}, revision: held.revision + 1});
+  const read = parse(await tool.handler(a, w.ctx));
+  expect(read).toMatchObject({status: 'replayed', result: {phase: held.phase}});
+  expect(calls.start).toHaveLength(0);
+  // An expired lease (a call cut off by the function time limit) is taken over by the next call.
+  const now = await w.db.getSetting(key);
+  await w.db.compareAndSetSetting(key, now.revision, {...now, advance: {lease: 'other', until: (w.ctx.now ?? Date.now)() - 1}, revision: now.revision + 1});
+  let out = read; for (let i = 0; i < 10 && !out.result.finished; i++) out = parse(await tool.handler(a, w.ctx));
+  expect(out.result).toMatchObject({phase: 'done', command_succeeded: true}); expect(calls.start).toHaveLength(1);
+});
+
+it('continues a run whose first call was cut off before its outcome was journalled, and completes the journal row', async () => {
+  const w = await world(), {deps, calls} = runtimeFakes({attachAfter: 2});
+  const tool = playground.runToolDefinition(deps, {budgetMs: 0, pollMs: 1});
+  const a = {...args, requestKey: 'cut-off'};
+  // The serverless call is stopped after apply: finishChange never runs, the row stays unrecorded.
+  const cut = {...w.ctx, db: {...w.db, finishChange: async () => true}};
+  await tool.handler(a, cut);
+  const pending = await w.db.claimChange({tool: name, summary: 'x', requestKey: 'rmcp_playground_run_' + runIntent(w.ctx, a) + '_0'});
+  expect(pending).toMatchObject({claimed: false, existing: {confirmed: null}});
+  let out = parse(await tool.handler(a, w.ctx));
+  expect(out).toMatchObject({status: 'replayed', replay_state: 'current', confirmed: true});
+  for (let i = 0; i < 10 && !out.result.finished; i++) out = parse(await tool.handler(a, w.ctx));
+  expect(out.result).toMatchObject({phase: 'done', command_succeeded: true}); expect(calls.start).toHaveLength(1);
+  const healed = await w.db.claimChange({tool: name, summary: 'x', requestKey: 'rmcp_playground_run_' + runIntent(w.ctx, a) + '_0'});
+  expect(healed.existing.confirmed).toBe(true);
+});
+
+it('a waiting run records what it waits for and when it last advanced, instead of looking frozen', async () => {
+  const w = await world(), {deps} = runtimeFakes({attachAfter: 99});
+  const base = w.ctx.now ?? Date.now; let skew = 0; const ctx = {...w.ctx, now: () => base() + skew};
+  const tool = playground.runToolDefinition(deps, {budgetMs: 0, pollMs: 1});
+  const a = {...args, requestKey: 'waiting'};
+  await tool.handler(a, ctx);
+  const one = parse(await tool.handler(a, ctx));
+  skew += 5000; const two = parse(await tool.handler(a, ctx));
+  expect(one.result).toMatchObject({phase: 'provisioning', allocation_phase: 'requested'}); expect(one.result.waiting_on).toMatch(/runtime is requested/);
+  expect(Date.parse(two.result.last_advanced_at)).toBeGreaterThanOrEqual(Date.parse(one.result.last_advanced_at) + 5000);
+  expect(two.progress).toMatchObject({phase: 'provisioning', finished: false, execution_state: 'not_started'});
+  expect(two.progress.waiting_on).toMatch(/requested/);
+});
+
+it('a compact client still sees the run essentials when the large result is deduplicated', async () => {
+  const w = await world(), {deps} = runtimeFakes({log: 'x'.repeat(5000) + 'TAIL'});
+  const tool = playground.runToolDefinition(deps, {pollMs: 1});
+  const dispatchDoor = doorsFor(tool).find(d => d.name === 'dispatch');
+  const raw = await dispatchDoor.call(w, {...args, argv: ['sh', '-c', 'echo ' + 'y'.repeat(300)], requestKey: 'compact'});
+  const compact = deduplicateLargeEnvelope(raw);
+  expect(compact.structuredContent.omitted_fields).toContain('result');
+  expect(compact.structuredContent.progress).toMatchObject({phase: 'done', finished: true, exit_code: 0, outcome: 'succeeded', execution_state: 'finished'});
+  expect(compact.structuredContent.progress.log_end.endsWith('TAIL')).toBe(true);
+  expect(compact.structuredContent.progress.next).toMatch(/Finished/);
+  // Multibyte logs never push the digest past the write layer's bound.
+  const big = runEssentials(presentRun({phase: 'done', workspace_id: 'job_0123456789abcdef', owner: 'o', repo: 'r', ref: 'main', execution_id: 'e', execution: {state: 'completed', exitCode: 1}, log_tail: '\u{1F600}'.repeat(400), lastError: 'z'.repeat(400), waitingOn: 'w'.repeat(400)}));
+  expect(Buffer.byteLength(JSON.stringify(big))).toBeLessThanOrEqual(1200);
 });
