@@ -72,7 +72,7 @@ Card(s): A-5, B-2, B-3, B-8, C-1, C-2, R-1, O-1, X-1, PUB-7. Meta-tools, connect
 | `github_create_pass` | Make a short-lived preview pass for the HTTPS API and Robinson's Toolkit (read-only unless changes are allowed; $0; no access changes; shown once on the setup page) | C | N | — | O | F | R-1 built #225 |
 | `github_where_is_setting` | Structured steps (link, numbered actions, expected result, read-back check) for any GitHub setting with no API | — | N | — | O | R | B-8 built #24 |
 | `github_admin_overview` | Bounded owner/org security review, true optional user-selected MCP spend cap (legacy default $0 is uncapped), actual verified monthly GitHub billed usage or unreadable, enrolled U personal identity, explicit plan/permission gaps | — | N | I,U | O | R | O-1 built #197/#224; current provider-read correction |
-| `github_launch_readiness` | Owner only: the eight public-launch conditions checked against evidence (acceptance ledger, trust pages, load-test and key-rotation records, PUB-8 tool, owner boxes, switch names): met / not met / needs owner with next steps; never changes `GITHUB_PUBLIC_CONNECT` or any setting | — | N | — | O | R | PUB-7 built #518 |
+| `github_launch_readiness` | Owner only: the eight public-launch conditions checked against evidence (acceptance ledger, trust pages, load-test and key-rotation records, PUB-8 tool, owner boxes, switch names): met / not met / needs owner with next steps; never changes `GITHUB_PUBLIC_CONNECT` or any setting | — | N | — | O | R | PUB-7 built #520 |
 
 ## Repositories (`github_repo_*`) — 22
 
