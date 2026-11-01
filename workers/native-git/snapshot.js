@@ -3,20 +3,23 @@ import { createCipheriv, createDecipheriv, randomBytes, createHash } from 'node:
 import { lstat, readFile, writeFile, readdir, mkdir, open, rm } from 'node:fs/promises';
 import { join, dirname, resolve } from 'node:path';
 import { NativeGitWorker } from './engine.js';
+import { planLeanExport, cleanLeanExport, completeLeanImport, finishLeanImport } from './lean.js';
 const MAX_BYTES = 100 * 1024 * 1024;
 const ID = /^git_[a-f0-9]{32}$/;
 const keyBytes = key => { const b = Buffer.from(key ?? '', 'base64'); if (b.length !== 32) throw new TypeError('Use a protected 32-byte base64 snapshot encryption key.'); return b; };
 const validPath = p => typeof p === 'string' && p.length <= 4096 && !p.includes('\\') && !/[\x00-\x1f]/.test(p) && p.split('/').every(x => x && x !== '.' && x !== '..');
-export async function exportWorkspaceFile({root,id,key,path,expectedGeneration}){
+export async function exportWorkspaceFile({root,id,key,path,expectedGeneration,lean=false,allowLocalFixtures=false}){
  if(!ID.test(id))throw new TypeError('Invalid workspace.');const dir=join(resolve(root),id);if((await lstat(dir)).isSymbolicLink())throw new TypeError('Invalid workspace root.');
  const lock=await open(join(dir,'mutation.lock'),'wx',0o600);let output;
  try{
   const meta=JSON.parse(await readFile(join(dir,'workspace.json'),'utf8'));if(meta.state!=='ready'||expectedGeneration!==undefined&&meta.generation!==expectedGeneration)throw new TypeError('Workspace state or generation changed before export.');
+  // Lean: skip Git history the receiver can fetch from GitHub and unchanged tracked files.
+  const leanPlan=lean?await planLeanExport(dir,{allowLocalFixtures}):null,skip=leanPlan?.skip??new Set();
   output=await open(path,'wx',0o600);const nonce=randomBytes(12),cipher=createCipheriv('aes-256-gcm',keyBytes(key),nonce);cipher.setAAD(Buffer.from('robinson-native-git-snapshot/v1'));await output.write(Buffer.concat([Buffer.from('RNG1'),nonce,Buffer.alloc(16)]));
   const emit=async value=>{const bytes=cipher.update(value);if(bytes.length)await output.write(bytes);};let first=true,total=0,files=0;
   await emit(Buffer.from(JSON.stringify({version:1,id}).slice(0,-1)+',"files":['));
   const walk=async(base,prefix='')=>{for(const name of (await readdir(base)).sort()){
-   const relative=prefix?prefix+'/'+name:name;if(relative==='mutation.lock'||relative==='attachment.json'||relative==='attachment-freeze.json')continue;if(!validPath(relative)||++files>100000)throw new TypeError('Unsupported snapshot path/count.');
+   const relative=prefix?prefix+'/'+name:name;if(relative==='mutation.lock'||relative==='attachment.json'||relative==='attachment-freeze.json')continue;if(leanPlan&&(relative==='repo/.git/objects'||skip.has(relative)))continue;if(!validPath(relative)||++files>100000)throw new TypeError('Unsupported snapshot path/count.');
    const stat=await lstat(join(base,name));if(stat.isSymbolicLink())throw new TypeError('Snapshot symlinks require an isolated filesystem snapshot.');if(!first)await emit(Buffer.from(','));first=false;
    if(stat.isDirectory()){await emit(Buffer.from(JSON.stringify({path:relative,directory:true})));await walk(join(base,name),relative);}
    else if(stat.isFile()){
@@ -24,8 +27,8 @@ export async function exportWorkspaceFile({root,id,key,path,expectedGeneration})
     const file=await open(join(base,name),'r');try{const b=Buffer.alloc(32766);let offset=0;while(offset<stat.size){const n=Math.min(b.length,stat.size-offset),r=await file.read(b,0,n,offset);if(r.bytesRead!==n)throw new TypeError('Source file changed during snapshot.');await emit(Buffer.from(b.subarray(0,n).toString('base64')));offset+=n;}const after=await file.stat();if(after.size!==stat.size||after.mtimeMs!==stat.mtimeMs)throw new TypeError('Source file changed during snapshot.');}finally{await file.close();}await emit(Buffer.from('"}'));
    }else throw new TypeError('Unsupported snapshot file type.');
   }};
-  await walk(dir);await emit(Buffer.from(']}'));const tail=cipher.final();if(tail.length)await output.write(tail);await output.write(cipher.getAuthTag(),0,16,16);await output.sync();return {files,bytes:total};
- }catch(error){await output?.close();output=null;await rm(path,{force:true});throw error;}finally{await output?.close();await lock.close();await rm(join(dir,'mutation.lock'),{force:true});}
+  await walk(dir);await emit(Buffer.from(']}'));const tail=cipher.final();if(tail.length)await output.write(tail);await output.write(cipher.getAuthTag(),0,16,16);await output.sync();if(leanPlan)await cleanLeanExport(dir);return {files,bytes:total,lean:!!leanPlan};
+ }catch(error){await output?.close();output=null;await rm(path,{force:true});await cleanLeanExport(dir).catch(()=>{});throw error;}finally{await output?.close();await lock.close();await rm(join(dir,'mutation.lock'),{force:true});}
 }
 export async function exportWorkspace(options){
  const staging=join(resolve(options.root),'.snapshot-exports');await mkdir(staging,{recursive:true,mode:0o700});const path=join(staging,randomBytes(16).toString('hex'));
@@ -34,7 +37,7 @@ export async function exportWorkspace(options){
 
 // Receiver-only bootstrap for an allocation with separately mounted worktree,
 // Git metadata and broker-control volumes. Never overwrites initialized work.
-export async function importMountedWorkspace({root,bytes,key,id,expectedBinding}){
+export async function importMountedWorkspace({root,bytes,key,id,expectedBinding,token=null,allowLocalFixtures=false}){
  if(!ID.test(id)||!Buffer.isBuffer(bytes)||bytes.length<32||bytes.length>150*1024*1024||bytes.subarray(0,4).toString()!=='RNG1')throw new TypeError('Invalid attachment snapshot.');
  const cipher=createDecipheriv('aes-256-gcm',keyBytes(key),bytes.subarray(4,16));cipher.setAAD(Buffer.from('robinson-native-git-snapshot/v1'));cipher.setAuthTag(bytes.subarray(16,32));
  const payload=JSON.parse(Buffer.concat([cipher.update(bytes.subarray(32)),cipher.final()]).toString('utf8'));
@@ -51,11 +54,25 @@ export async function importMountedWorkspace({root,bytes,key,id,expectedBinding}
  // Keep the broker unavailable for Git until all files and hash verification finish.
  await writeFile(join(dir,'workspace.json'),JSON.stringify({...meta,state:'opening'}),{mode:0o600});
  for(const f of payload.files.filter(f=>f.directory)){const path=join(dir,f.path);await mkdir(path,{recursive:true,mode:0o700});if(await (await import('node:fs/promises')).realpath(path)!==path)throw new TypeError('Attachment directory contains a symlink.');}
- for(const f of payload.files.filter(f=>!f.directory&&f.path!=='workspace.json')){
+ const leanFile=payload.files.find(f=>f.path==='lean.json'&&!f.directory),plan=leanFile?JSON.parse(Buffer.from(leanFile.base64,'base64').toString('utf8')):null;
+ const working=f=>plan&&f.path.startsWith('repo/')&&!f.path.startsWith('repo/.git/')&&f.path!=='repo/.git';
+ const write=async f=>{
   const path=join(dir,f.path);await mkdir(dirname(path),{recursive:true,mode:0o700});if(await (await import('node:fs/promises')).realpath(dirname(path))!==dirname(path))throw new TypeError('Attachment parent contains a symlink.');
   const data=Buffer.from(f.base64,'base64');try{await writeFile(path,data,{flag:'wx',mode:(f.mode&0o111)?0o700:0o600});}catch(e){if(e.code!=='EEXIST'||!(await readFile(path)).equals(data))throw new TypeError('Attachment conflicts with existing bytes; both copies were preserved.');}
   if(!(await readFile(path)).equals(data))throw new TypeError('Attachment file hash did not verify.');
+ };
+ const files=payload.files.filter(f=>!f.directory&&f.path!=='workspace.json');
+ // Lean: write Git metadata, fetch history from GitHub, rebuild tracked files from
+ // the index, THEN lay the changed/untracked files on top.
+ for(const f of files.filter(f=>!working(f)))await write(f);
+ let lean=null;
+ if(plan){if(typeof token!=='string'||!token)throw new TypeError('A lean attachment needs short-lived network authorization.');lean=await completeLeanImport(dir,{plan,token,remote:meta.remote,allowLocalFixtures});}
+ for(const f of files.filter(working)){
+  const path=join(dir,f.path),data=Buffer.from(f.base64,'base64');
+  if(plan){await mkdir(dirname(path),{recursive:true,mode:0o700});if(await (await import('node:fs/promises')).realpath(dirname(path))!==dirname(path))throw new TypeError('Attachment parent contains a symlink.');await writeFile(path,data,{mode:(f.mode&0o111)?0o700:0o600});if(!(await readFile(path)).equals(data))throw new TypeError('Attachment file hash did not verify.');}
+  else await write(f);
  }
+ if(plan)await finishLeanImport(dir,lean,plan);
  const worker=new NativeGitWorker({root:resolve(root),authorize:async()=>true});const trees=payload.files.filter(f=>f.directory&&/^worktrees\/[^/]+$/.test(f.path)).map(f=>join(dir,f.path));if(trees.length)await worker.git(join(dir,'repo'),['worktree','repair','--',...trees]);
  await writeFile(join(dir,'workspace.json'),JSON.stringify(meta),{mode:0o600});const result={digest,complete:true,workspace_id:id,generation:meta.generation,files:names.size,bytes:size};await writeFile(marker,JSON.stringify(result),{mode:0o600});return result;
 }

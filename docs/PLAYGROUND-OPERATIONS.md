@@ -85,9 +85,14 @@ requested → (waiting_resources) → creating → created → exposing → expo
   (broker, files, git, execution) and private networks; the provider-assigned `appName` is read back and pinned; two
   HTTPS domains (`/` and `/v1/workspace`, `internalPath=/`, `stripPath=false`) go only to the gateway. Every transition is a
   Neon compare-and-set; a lost create is recovered from exact inventory, never by creating another stack.
-- **Attach:** the controller seals the Git workspace's exact state and relays encrypted 256 KiB pages from the native worker
-  to the allocation's broker over several sweeps (≤ 100 MiB raw, ≤ 100,000 files, no symlinks; larger repositories stay
-  Git-only and report attachment unavailable). Routing switches only after generation, ancestry, uncommitted state and
+- **Attach (lean, FLEET-6):** the source worker seals only what GitHub lacks — refs, index and config, a Git bundle of
+  local-only commits, stash and staged blobs, and changed/untracked files — and the controller relays it in encrypted
+  256 KiB pages to the allocation's broker. The broker, given a short-lived repository-scoped app token, fetches the
+  remote commits by exact SHA from GitHub into a scratch repository, moves the objects in, unbundles, rebuilds tracked files
+  from the index, lays the changed files on top and verifies every object is present (`rev-list --objects --all`). Long
+  fetches continue in the background across sweeps. The 100 MiB / 100,000-file / no-symlink bound now applies only to the
+  copied local changes. Shallow workspaces, linked worktrees and in-progress merge/rebase/cherry-pick/revert/bisect fall
+  back to the full copy (whole workspace ≤ 100 MiB). Routing switches only after generation, ancestry, uncommitted state and
   mount evidence match.
 - **Run:** the controller signs a 60 s claim and calls the gateway; the executor checks binding/purpose/expiry.
 - **Heartbeat:** every 30 s the runtime sends a signed heartbeat (executor → broker → `/api/playground/lifecycle`); the

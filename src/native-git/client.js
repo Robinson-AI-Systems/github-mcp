@@ -47,14 +47,16 @@ export async function nativeRecord(ctx, id, { allowDisposed = false } = {}) {
  if(allocation&&(allocation.binding!==allocationBinding||allocation.connection!==binding.connection||allocation.workspace!==id))throw new TypeError('Dedicated broker allocation does not match this workspace.');
  return {row,job:{id,idleTimeoutMs,host:meta.host,createdAt:row.created_at,...(allocation?.phase==='attached'?{brokerOrigin:allocation.brokerOrigin,allocationBinding}:{})},binding,worker:meta.worker};
 }
-export async function callNativeWorker(ctx, { binding, action, workspace_id, operation, options, requestKey, expectedGeneration, allowWrite = false, network = false, job, renewLease = true }) {
+export async function callNativeWorker(ctx, { binding, action, workspace_id, operation, options, requestKey, expectedGeneration, allowWrite = false, network = false, job, renewLease = true, preferShortLived = false }) {
  const url = nativeWorkerRoute(ctx.env, job);
  if(ctx.env?.NATIVE_GIT_WORKER_DRAINING==='true'&&url===workerUrl(ctx.env))throw Object.assign(new TypeError('The native Git worker is temporarily draining for an update. No worker request was sent; existing files are retained. Retry after maintenance completes.'),{safeMessage:true,safeCode:'native_worker_maintenance',safeRetryable:true,status:503});
  const scannerPolicy=binding?await loadScannerPolicy(ctx.db,binding.owner,binding.repo):null;
  let credential;
  if (network) {
   const result = await credentialFor(ctx, { owner: binding.owner, ...(!isOwnerConnection(ctx.connection) ? { scope: { repositories: [binding.repo] } } : {}) });
-  credential = result.personal?.token ?? result.token;
+  // A Playground broker (possibly on a person's own machine) gets the short-lived,
+  // repository-scoped app token when one exists, never a long-lived personal token first.
+  credential = preferShortLived ? (result.token ?? result.personal?.token) : (result.personal?.token ?? result.token);
   if (typeof credential !== 'string' || !credential) throw new TypeError('GitHub network authorization is unavailable.');
  }
  const activeJob = job && renewLease && !['capabilities','close'].includes(action);

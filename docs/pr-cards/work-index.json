@@ -2653,11 +2653,33 @@
         "FLEET-1"
       ],
       "card": "docs/pr-cards/FLEET-3.md",
-      "status": "IN_PROGRESS",
+      "status": "MERGED",
       "migration": "none (tenant settings rows: mailbox, device route, allocation placement)",
       "budget": 800,
       "units": [
         "FLEET-3"
+      ],
+      "readiness": "READY",
+      "ownerInputs": [],
+      "pr": [
+        504
+      ]
+    },
+    {
+      "id": "FLEET-6",
+      "title": "Lean attachment: runtimes fetch history from GitHub, only local changes copied",
+      "batch": "FIN",
+      "design": "docs/designs/RUNTIME-FLEET-2026-11-01.md",
+      "dependencies": [
+        "PLAY-1",
+        "FLEET-3"
+      ],
+      "card": "docs/pr-cards/FLEET-6.md",
+      "status": "IN_PROGRESS",
+      "migration": "none",
+      "budget": 800,
+      "units": [
+        "FLEET-6"
       ],
       "readiness": "READY",
       "ownerInputs": [],

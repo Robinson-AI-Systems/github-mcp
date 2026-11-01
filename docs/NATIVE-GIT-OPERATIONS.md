@@ -91,7 +91,7 @@ new intent. Error messages are bounded and redacted, including worker paths.
 | Signed request validity | MCP signs for 60 s; worker accepts ≤ 90 s | `src/native-git/client.js`, `protocol.js` |
 | MCP → worker | 50 s fetch timeout; 3 MiB response cap | `src/native-git/client.js` |
 | Worker request body | 2 MiB (413 above); 15 s request timeout | `workers/native-git/server.js` |
-| Snapshot export | ≤ 100 MiB raw, ≤ 100,000 files, no symlinks/special files; encrypted import ≤ 150 MiB | `snapshot.js` |
+| Snapshot export | ≤ 100 MiB raw, ≤ 100,000 files, no symlinks/special files; encrypted import ≤ 150 MiB. Playground attachment uses the **lean** format when eligible (history fetched from GitHub; only local changes count) | `snapshot.js`, `lean.js` |
 
 ## API content-commit alternative
 
