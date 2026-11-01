@@ -27,7 +27,11 @@ export async function playgroundAvailability(ctx,record,probe){
   if(stored?.placement==='device'){baseline=await deviceBaseline(ctx,stored,{workspace:record.row.id,binding:record.allocation.binding});if(stored.connection!==record.binding.connection||new URL(record.allocation.url).origin!==new URL(stored.origin).origin)baseline=null;if(!baseline)return playgroundFallback('device_unavailable',{retryable:true,mode:'recovery'});}
   else{baseline=managedResourceBaseline(ctx.env,stored,{workspace:record.row.id,binding:record.allocation.binding});if(stored?.connection!==record.binding.connection||new URL(record.allocation.url).origin!==stored?.origin)baseline=null;if(baseline&&!await managedNetworkVerified(ctx,stored))return playgroundFallback('network_isolation_unverified');}}
  if(!evidence&&!baseline)return playgroundFallback('enforcement_unverified');
- let cap;try{cap=await probe();}catch(e){if(['playground_transport','playground_response'].includes(e.safeCode))return playgroundFallback('runtime_unavailable',{retryable:true,mode:'recovery'});throw e;}
+ // A runtime that was just attached takes a few seconds to receive its first signed
+ // authority lease; wait briefly (bounded) instead of reporting recovery mode at once.
+ const waits=ctx.authorityStartupWait??{tries:4,ms:2000};
+ let cap;for(let i=0;;i++){try{cap=await probe();}catch(e){if(['playground_transport','playground_response'].includes(e.safeCode))return playgroundFallback('runtime_unavailable',{retryable:true,mode:'recovery'});throw e;}
+  if(!(cap?.authority?.required===true&&cap.authority.allowed!==true)||i+1>=waits.tries)break;await new Promise(r=>setTimeout(r,waits.ms));}
  if(cap.protocol!==1||cap.arbitraryCommands!==true||cap.idleTimeoutMs!==record.job.idleTimeoutMs)return playgroundFallback('runtime_incompatible');
  if(cap.authority?.required===true&&cap.authority.allowed!==true)return playgroundFallback('authority_unavailable',{retryable:true,mode:'recovery'});
  const cpu=cap.capacity?.cpu?.cgroupQuotaCpus,memory=cap.capacity?.memory?.cgroupLimitBytes;

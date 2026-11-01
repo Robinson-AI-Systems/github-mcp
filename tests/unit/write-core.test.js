@@ -175,6 +175,26 @@ describe('failures and retries', () => {
     expect(calls).toBe(2);
   });
 
+  it('a replay can report the current state of the same target without sending anything again', async () => {
+    let applies = 0, state = 'running';
+    const spec = (refresh) => defineWrite({ name: 'github_x_refreshing', description: 'd', declarations: { production: 'never' },
+      target: () => ({ owner: 'example-org', scope: 'org' }), read: async () => null, classify: () => ({}), summarize: () => 's',
+      apply: async () => { applies += 1; return { id: 'e1' }; }, readAfter: async () => ({ id: 'e1', state }), verify: () => true,
+      present: ({ after }) => ({ execution: after }), requestKey: () => 'rmcp_refreshing', ...(refresh ? { refreshReplay: refresh } : {}) });
+    const w = await makeWorld({ gates: [] });
+    const def = spec(async ({ prior }) => ({ ...prior, state }));
+    expect(parse(await def.handler({}, w.ctx)).result.execution.state).toBe('running');
+    state = 'failed';
+    const replay = parse(await def.handler({}, w.ctx));
+    expect(replay).toMatchObject({ status: 'replayed', replayed: true, replay_state: 'current', result: { execution: { id: 'e1', state: 'failed' } } });
+    const broken = spec(async () => { throw new Error('status read failed'); });
+    const fallback = parse(await broken.handler({}, w.ctx));
+    expect(fallback).toMatchObject({ status: 'replayed', replay_state: 'as_recorded' });
+    expect(applies).toBe(1);
+    expect(() => defineWrite({ name: 'github_x_bad', description: 'd', declarations: { production: 'never' }, target: () => ({}), read: async () => null, classify: () => ({}),
+      summarize: () => 's', apply: async () => null, readAfter: async () => null, verify: () => true, requestKey: () => 'rmcp_x', refreshReplay: 'yes' })).toThrow(/refreshReplay/);
+  });
+
   it('a caller request key makes differently worded retries one change', async () => {
     const w = await makeWorld();
     ok(w.gh);

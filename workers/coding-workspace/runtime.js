@@ -1,6 +1,7 @@
 import {runtimeIdentity} from './authority.js';
 // One separately isolated container per workspace. Never import this into native-git.
 import {spawn} from 'node:child_process';
+import {writeFileSync} from 'node:fs';
 import {createHash,randomBytes} from 'node:crypto';
 import {mkdir,open,readFile,readdir,rename,realpath,stat} from 'node:fs/promises';
 import {join,resolve,isAbsolute} from 'node:path';
@@ -15,7 +16,7 @@ export class CodingRuntime {
   if(process.getuid?.()!==0)throw fail('isolation_required','Run the supervisor as the isolated container root; commands always use a different unprivileged UID.');
   if(!isAbsolute(root??'')||!ID.test(binding??'')||uid!==1000||gid!==1000||!Number.isSafeInteger(maxLogBytes)||maxLogBytes<1024||maxLogBytes>64*1024*1024||!Number.isSafeInteger(idleMs)||idleMs<60000||idleMs>86400000)throw fail('invalid_configuration','Invalid isolated workspace configuration.');
   if(egressProxy!==undefined&&egressProxy!=='http://ingress:3128')throw fail('invalid_configuration','Use only the fixed private egress service.');this.egressProxy=egressProxy;
-  Object.assign(this,{root:resolve(root),binding,uid,gid,now,maxLogBytes,idleMs});this.cacheRoot=typeof cacheRoot==='string'&&/^\/[A-Za-z0-9_./-]{1,200}$/.test(cacheRoot)&&!cacheRoot.includes('..')?cacheRoot:null;this.authorityRequired=authorityRequired;this.authorityLease=null;this.active=new Map();this.admitting=new Set();this.lastActivity=now();this.expired=false;this.stopping=false;this.leaseWrites=Promise.resolve();this.resources=resources??createResourceMonitor({root:this.root});
+  Object.assign(this,{root:resolve(root),binding,uid,gid,now,maxLogBytes,idleMs,commandOomScoreAdj:1000});this.cacheRoot=typeof cacheRoot==='string'&&/^\/[A-Za-z0-9_./-]{1,200}$/.test(cacheRoot)&&!cacheRoot.includes('..')?cacheRoot:null;this.authorityRequired=authorityRequired;this.authorityLease=null;this.active=new Map();this.admitting=new Set();this.lastActivity=now();this.expired=false;this.stopping=false;this.leaseWrites=Promise.resolve();this.resources=resources??createResourceMonitor({root:this.root});
  }
  async init(){
   const {chown}=await import('node:fs/promises');
@@ -63,6 +64,10 @@ export class CodingRuntime {
    if(this.cacheRoot)Object.assign(env,{XDG_CACHE_HOME:this.cacheRoot,NPM_CONFIG_CACHE:join(this.cacheRoot,'npm'),npm_config_cache:join(this.cacheRoot,'npm'),YARN_CACHE_FOLDER:join(this.cacheRoot,'yarn'),PNPM_STORE_DIR:join(this.cacheRoot,'pnpm'),PIP_CACHE_DIR:join(this.cacheRoot,'pip')});
    if(this.egressProxy)Object.assign(env,{HTTP_PROXY:this.egressProxy,HTTPS_PROXY:this.egressProxy,http_proxy:this.egressProxy,https_proxy:this.egressProxy,NO_PROXY:'127.0.0.1,localhost,::1',no_proxy:'127.0.0.1,localhost,::1',NODE_USE_ENV_PROXY:'1'});
    let child;try{child=spawn(argv[0],argv.slice(1),{cwd:directory,uid:this.uid,gid:this.gid,env,detached:true,stdio:['ignore','pipe','pipe']});}catch(e){await log.close();throw e;}
+   // A command that exhausts memory must be the one the kernel kills, never this
+   // supervisor (which would take the whole runtime down with it). Raising a score
+   // needs no extra capability; later child processes inherit it.
+   if(child.pid)try{writeFileSync(`/proc/${child.pid}/oom_score_adj`,String(this.commandOomScoreAdj));}catch{/* Not Linux, or the command already ended. */}
    slot.child=child;let chain=Promise.resolve(),bytes=0,logFailed=false;
    const kill=reason=>{slot.reason??=reason;try{process.kill(-child.pid,'SIGKILL');}catch{/* Already ended. */}child.stdout.destroy();child.stderr.destroy();};
    slot.kill=kill;slot.timer=setTimeout(()=>kill('timeout'),timeoutMs);slot.timer.unref();

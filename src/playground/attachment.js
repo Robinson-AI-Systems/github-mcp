@@ -9,7 +9,7 @@ const keyFor=(ctx,binding,id)=>createHash('sha256').update(signNativeWorkerBody(
 export async function attachRepository(ctx,record,{budgetMs=15000}={}){
  const binding=playgroundBinding(record),setting='playground.'+binding.slice(0,40),started=Date.now();
  let stored=await ctx.db.getSetting(setting);if(stored?.binding!==binding||!stored.composeId||!['allocated','attaching','attached'].includes(stored.phase))throw failure('Allocate this exact workspace before attaching its repository.');
- const save=async patch=>{const next=await ctx.db.compareAndSetSetting(setting,stored.revision,{...stored,...patch,revision:stored.revision+1});if(!next)throw failure('Another attachment transition is in progress; inspect the original allocation.');stored=next;await indexAllocation(ctx,stored);};
+ const save=async patch=>{const next=await ctx.db.compareAndSetSetting(setting,stored.revision,{...stored,...patch,revision:stored.revision+1});if(!next)throw Object.assign(failure('Another attach of this workspace is already in progress (the automatic one starts right after provisioning). Nothing was lost; read the allocation in a minute instead of attaching again.'),{safeRetryable:true});stored=next;await indexAllocation(ctx,stored);};
  const sourceJob={...record.job,brokerOrigin:undefined,allocationBinding:undefined};
  const brokerJob={...record.job,brokerOrigin:stored.plan.origin,allocationBinding:binding};
  const invoke=(job,action,options,network=false)=>callNativeWorker(ctx,{binding:record.binding,workspace_id:record.worker,job,action,options,allowWrite:true,renewLease:false,network,preferShortLived:network});
@@ -33,7 +33,9 @@ export async function attachRepository(ctx,record,{budgetMs=15000}={}){
  while(receiver.offset<t.bytes&&Date.now()-started<budgetMs){
   const page=await invoke(sourceJob,'attachment_export',{mode:'read',transferId:t.transferId,offset:receiver.offset});
   if(page.digest!==t.digest||page.offset!==receiver.offset||page.nextOffset<=receiver.offset||page.nextOffset>t.bytes||typeof page.base64!=='string'||Buffer.from(page.base64,'base64').length!==page.nextOffset-page.offset)throw failure('Sealed attachment window differs; no unverified bytes were accepted.');
-  receiver=await invoke(brokerJob,'attachment_import',{mode:'append',transferId:t.transferId,offset:receiver.offset,base64:page.base64});
+  // Two concurrent attaches race on the same window; the receiver refuses the stale one.
+  try{receiver=await invoke(brokerJob,'attachment_import',{mode:'append',transferId:t.transferId,offset:receiver.offset,base64:page.base64});}
+  catch(error){if(/window differs|original offset/i.test(String(error?.message)))throw Object.assign(failure('Another attach of this workspace is already in progress (the automatic one starts right after provisioning). Nothing was lost; read the allocation in a minute instead of attaching again.'),{safeRetryable:true});throw error;}
  }
  if(receiver.offset<t.bytes){await save({transfer:{...t,offset:receiver.offset}});return stored;}
  const frozen=await invoke(sourceJob,'attachment_export',{mode:'freeze',transferId:t.transferId});if(!frozen.frozen||frozen.generation!==t.generation)throw failure('Source finalization lease differs.');

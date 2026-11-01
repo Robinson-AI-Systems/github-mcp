@@ -74,3 +74,24 @@ on Dokploy's 401 for volume reads. Fixed: the runtime retries during a 3-minute 
 it), attach reports a retryable "not reachable yet", and best-effort disposal completes on independent compose/container
 absence with volumes recorded unverified. Tests: `playground-authority.test.js`, `playground-allocations.test.js`. Live
 re-test after release is recorded in the status note.
+
+## 2026-11-01 — Live acceptance run and the fixes it produced
+
+Live on release `c58402425e37`, operator pool, medium runtime `job_211b893572fa67d5` (auto-attached, no manual attach):
+
+| Leg | Result | requestKey |
+|---|---|---|
+| Cancel a running command | `SIGKILL`, `reason: cancelled`, `process_group_stopped: true`, logs complete (`started\n`) | `play1-accept-cancel-1` |
+| Replay the same execute | `status: replayed`, no second command — but it showed the first-start state (`running`) after the cancel → **fixed** (`refreshReplay`) | `play1-accept-cancel-target-1` |
+| PostgreSQL workflow | `npm run test:db`: real PostgreSQL in the runtime, 33 files / 264 tests passed, 16 s | `play1-accept-db-1` |
+| Browser workflow | `npm run test:browser`: 30 passed, 1 skipped (WebKit engine not in the image; Chromium works), 12 s | `play1-accept-browser-1` |
+| Development preview (text) | `operation: preview` port 4173 → HTTP 200, `authenticated-control-loopback`, body exact | — |
+| Development preview (browser link) | one-time entry issued (`private`, `one_time`, 300 s session); **not opened** — needs a real browser (agent workspace and runtime cannot reach the public origin, by design) | `play1-accept-preview-entry-2` |
+| Memory pressure | a command allocating past the limit made the **whole runtime** exit 137 → **fixed** (command `oom_score_adj` 1000; `memswap_limit` = `mem_limit` for every service) | `play1-accept-pressure-mem-1` |
+| Dispose a crashed runtime | `disposed: true`; Dokploy readback shows no containers | `play1-accept-dispose-1` |
+
+Fixes in the same PR: replay reports current state; concurrent attach says "already in progress" (retryable)
+instead of "Attachment window differs"; availability waits up to ~6 s for a just-attached runtime's first authority lease;
+OOM protection above. Tests: `write-core.test.js` (replay refresh), `playground-attach-concurrency.test.js`,
+`playground-authority-startup.test.js`, `playground-sizing.test.js` (swap cap), coding-workspace `smoke.test.js`
+(command reads `oom_score_adj` 1000).
