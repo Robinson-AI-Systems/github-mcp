@@ -11,3 +11,19 @@ This helper runs on **your own** WSL2/Linux machine, not in an AI tool or on the
 If a device is lost or not yours, revoke the enrollment from My connection. For pending-only enrollment, revocation is immediate; once a real runtime is available, disconnected-host revocation must remain pending until bounded local fail-closed expiry and independent signed cleanup evidence. This helper does not claim that live shutdown has been tested.
 
 **Fences:** User-owned machine and connection only. Never run another customer's work here, put a GitHub/private signing key into a chat, pass an agent-chosen runtime origin, expose host Docker privileges to user code, or claim that a tailnet hostname is accessible from Vercel. This pairing helper does not buy hosting and is not a fallback for PLAY-1.
+
+## Disposable local coding-image baseline (Phase 2)
+
+`install.mjs` adds an **owner-run, non-network-exposed Docker baseline**. Use the reviewed exact image `repository@sha256:<digest>` and obtain the workspace's current 64-hex allocation binding and Ed25519 control **public** key from the already-authorized MCP's workspace setup response. The public verifier is not a credential. The private signing key remains only on the control plane; the device signing key from pairing remains local. This does not enroll a device on your behalf or enable live execution.
+
+From the installed, reviewed repository in your own WSL2, with local Docker available, run these actions (substitute only your real pairing/workspace/public-key values):
+
+```sh
+node tools/playground-device/install.mjs --action install --device DEVICE_ID --binding BINDING_64_HEX --image 'IMAGE_REPOSITORY@sha256:REVIEWED_DIGEST' --control-key 'ed25519:PUBLIC_CONTROL_VERIFIER'
+node tools/playground-device/install.mjs --action canary --device DEVICE_ID --binding BINDING_64_HEX --image 'IMAGE_REPOSITORY@sha256:REVIEWED_DIGEST' --control-key 'ed25519:PUBLIC_CONTROL_VERIFIER'
+node tools/playground-device/install.mjs --action remove --device DEVICE_ID --binding BINDING_64_HEX --image 'IMAGE_REPOSITORY@sha256:REVIEWED_DIGEST' --control-key 'ed25519:PUBLIC_CONTROL_VERIFIER'
+```
+
+The installer requires the exact immutable image already pulled and verified by the device owner (no automatic pull or silent upgrade). It creates a uniquely named `--internal` network, one Docker volume and a single UID-separated runtime container with no published ports, Docker socket or host-file mount. It limits CPU/memory to 2 CPU / 2 GiB by default and does **not** invent a 150-GB disk reservation. The fixed canary starts Node 24 under UID 1000, launches and stops a disposable PostgreSQL 15 test database, exercises a real Chromium page, and rechecks the exact runtime ownership. Removal stops and verifies the container, then deletes only its independently label-matched volume and network and rechecks their absence. A mismatched name/label, uncertain provider response, unsupported network or partial deletion fails closed.
+
+**This is not the completed Playground enrollment.** It does not attach native Git files, configure the owner's outbound HTTPS tunnel, proxy public dependency downloads, produce a signed controller-side canary or allow `github_playground_execute` to place work. An enrolled host remains `pending_canary` until those later contracts and the actual remote/owner-PC acceptance pass. Never expose the internal coding container's port to the internet or claim that local Docker labels are protection against a malicious host administrator. The image can be upgraded only by an explicit new digest and independent drain/cleanup/cutover procedure; there is no silent update in this unit.
