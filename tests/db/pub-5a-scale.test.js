@@ -20,15 +20,21 @@ const sqlFor = (client) => async (template, ...values) => {
 const rootSql = () => sqlFor(admin);
 // One shared connection that switches to the person's own namespace before each query (hundreds of people must not open
 // hundreds of connections). It also remembers which stores were opened, so a test can prove only the right ones were touched.
-let shared = null;
+let shared = null, turn = Promise.resolve();
 const tenantSqlFactory = (u) => {
   const options = new URL(u).searchParams.get('options');
   const schema = options.replace('-c search_path=', '');
-  return async (parts, ...params) => {
-    opened.add(options);
-    shared ??= await connect(url);
-    await shared.query('SET search_path TO "' + schema + '"');
-    return sqlFor(shared)(parts, ...params);
+  // The switch and the query run as one unit: two callers at once (the concurrent backfill below) must never interleave a
+  // second person's SET between the first person's SET and query, or one store would be read as another's.
+  return (parts, ...params) => {
+    const run = turn.then(async () => {
+      opened.add(options);
+      shared ??= await connect(url);
+      await shared.query('SET search_path TO "' + schema + '"');
+      return sqlFor(shared)(parts, ...params);
+    });
+    turn = run.catch(() => {});
+    return run;
   };
 };
 const optionsOf = (tenantId) => '-c search_path=' + tenantSchemaName(tenantId);

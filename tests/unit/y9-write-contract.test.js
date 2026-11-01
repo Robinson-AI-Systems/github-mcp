@@ -38,7 +38,7 @@ runWriteContract({
   definition:def(hosted,'github_hosted_runner_create'),
   args:{name:'team-linux',runnerGroupId:7,imageId:'ubuntu-latest',
     imageSource:'github',size:'4-core',maximumRunners:1},
-  arrange:hostedCreate,profile:'full',production:true,needsConfirm:true,
+  arrange:hostedCreate,profile:'full',production:true,needsConfirm:true,strictSpend:true,
   expectedWrites:1
 });
 runWriteContract({
@@ -46,6 +46,6 @@ runWriteContract({
   definition:def(tasks,'github_copilot_agent_task_start'),
   args:{repo:'test-repo',prompt:'Review the pull request and add a test',
     baseRef:'main',createPullRequest:false},
-  arrange:agentStart,profile:'full',production:true,needsConfirm:true,
+  arrange:agentStart,profile:'full',production:true,needsConfirm:true,strictSpend:true,
   expectedWrites:1
 });

@@ -39,6 +39,7 @@ import * as enterprisePolicy from './enterprise-policy.js';
 import * as wiki from './wiki.js';
 import * as autofix from './autofix.js';
 import * as asyncJobs from './async-jobs.js';
+import * as tenantRemove from './tenant-remove.js';
 import * as artifactsRead from './artifacts-read.js';
 import * as repositorySnapshot from './repository-snapshot.js';
 import * as checksWrite from './checks-write.js';
@@ -137,9 +138,20 @@ import * as pullsStacks from './pulls-stacks.js';
 import * as codeQuality from './code-quality.js';
 import * as docsSearch from './docs-search.js';
 import * as undo from './undo.js';
+import * as mergeQueue from './merge-queue.js';
+import * as copilotAssign from './copilot-assign.js';
+import * as featureFamilies from './feature-families.js';
+import { familyOf } from '../github/feature-gates.js';
 
 // Tool modules are added here as their cards land.
-const baseRegistry = mergeNamespaces([meta, server, undo, diagnostics, devRunsRead, devScratchWrite, devSeedWrite, devTestWrite, devCiWrite, devForwardWrite, devForwardRead, devIntegration, devCleanupWrite, repos, reposWrite, nativeGit, playground, codeRead, codeWrite, gitDataCommit, branches, pullsRead, issuesRead, issuesWrite, issuesRelationsWrite, issuesReactionsWrite, issuesTransferWrite, labels, milestones, labelsSync, searchGitHub, discussions, projectsRead, projectsWrite, projectsManage, projectsItems, moderation, orgPlanning, orgIssueDiscovery, runnersRead, runnersWrite, actionsLimits, advisories, securityScanningWrites, securityConfig, governanceRead, governanceWrite, protectionWrite, webhooksRead, webhooksActions, webhooksSave, accessRead, accessWrite, securityRead, securityScanFiles, securityAlertsWrite, securitySettingsRead, securitySettingsWrite, adminGuided, adminOverview, orgRead, orgGovernanceRead, orgScimWrite, orgSaml, appJwtRead, appJwtInstallGovernance, appJwtWrite, orgWrite, teamRoleRead, teamRoleWrite, billingRead, billingGuided, billingWrite, appsTokens, userAccount, usersPublic, codeQuality, docsSearch, socialWrite, notificationsGists, profiles, appReadiness, projectSetup, workflowHealth, workflowRelease, workflowFind, vulnerabilityAlerts, workflowPr, workflowMerge, workflowReview, workflowCi, workflowWriteBatch, pullsWrite, pullsMerge, pullsStacks, reviews, reviewsWrite, actionsRead, actionsWrite, actionsForkApproval, checksRead, asyncJobs, artifactsRead, repositorySnapshot, autofix, wiki, orgAdminExtras, accountExport, copilotSpaces, smallMaster, y9Copilot, y9CopilotRepos, y9Sponsors, y9Hosted, y9AgentTasks, checksWrite, variables, secrets, environmentsRead, environmentsWrite, environmentsPolicies, deploymentsRead, deploymentsWrite, releasesRead, releasesWrite, releasesAssets, pagesRead, packagesRead, pagesWrite, packagesWrite, packagesRestore, universal, universalGraphql, enterprise, enterpriseWrite, enterprisePolicy, ipAllowlist, scannerSettings]);
+const baseRegistry = mergeNamespaces([meta, server, tenantRemove, undo, diagnostics, devRunsRead, devScratchWrite, devSeedWrite, devTestWrite, devCiWrite, devForwardWrite, devForwardRead, devIntegration, devCleanupWrite, repos, reposWrite, nativeGit, playground, codeRead, codeWrite, gitDataCommit, branches, pullsRead, issuesRead, issuesWrite, issuesRelationsWrite, issuesReactionsWrite, issuesTransferWrite, labels, milestones, labelsSync, searchGitHub, discussions, projectsRead, projectsWrite, projectsManage, projectsItems, moderation, orgPlanning, orgIssueDiscovery, runnersRead, runnersWrite, actionsLimits, advisories, securityScanningWrites, securityConfig, governanceRead, governanceWrite, protectionWrite, webhooksRead, webhooksActions, webhooksSave, accessRead, accessWrite, securityRead, securityScanFiles, securityAlertsWrite, securitySettingsRead, securitySettingsWrite, adminGuided, adminOverview, orgRead, orgGovernanceRead, orgScimWrite, orgSaml, appJwtRead, appJwtInstallGovernance, appJwtWrite, orgWrite, teamRoleRead, teamRoleWrite, billingRead, billingGuided, billingWrite, appsTokens, userAccount, usersPublic, codeQuality, docsSearch, socialWrite, notificationsGists, profiles, appReadiness, projectSetup, workflowHealth, workflowRelease, workflowFind, vulnerabilityAlerts, workflowPr, workflowMerge, workflowReview, workflowCi, workflowWriteBatch, pullsWrite, pullsMerge, pullsStacks, reviews, reviewsWrite, actionsRead, actionsWrite, actionsForkApproval, checksRead, asyncJobs, artifactsRead, repositorySnapshot, autofix, wiki, orgAdminExtras, accountExport, copilotSpaces, smallMaster, y9Copilot, y9CopilotRepos, y9Sponsors, y9Hosted, y9AgentTasks, mergeQueue, copilotAssign, featureFamilies, checksWrite, variables, secrets, environmentsRead, environmentsWrite, environmentsPolicies, deploymentsRead, deploymentsWrite, releasesRead, releasesWrite, releasesAssets, pagesRead, packagesRead, pagesWrite, packagesWrite, packagesRestore, universal, universalGraphql, enterprise, enterpriseWrite, enterprisePolicy, ipAllowlist, scannerSettings]);
+
+// CAP-6 (owner decision 2026-11-01): every tool in a gated family (runners, larger runners, merge queue, Copilot) that can
+// cost money asks everyone first, the owner included, and refuses when its cost cannot be worked out.
+for (const tool of baseRegistry.tools) {
+  if (familyOf(tool.name) && tool.declarations?.spend && tool.declarations.strictSpend !== true)
+    throw new Error(`${tool.name}: a spending tool in a gated family must declare strictSpend.`);
+}
 
 // C-3: standalone compact connector exposes everyday code/PR/CI tools directly. The
 // complete catalog, lazy RTC/Hub protocol and every tool's actual authorization stay unchanged.

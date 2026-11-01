@@ -13,7 +13,7 @@ export function effectiveToolAccess({connection,account,tool}){
   if(!connection?.accounts?.some(a=>String(a).toLowerCase()===String(account?.login).toLowerCase()))
     throw new TypeError('The account is not in this connection.');
   if(!tool?.name?.startsWith('github_'))throw new TypeError('Choose a registered GitHub tool.');
-  const profileAllowed=isToolVisible(tool,connection.profile);
+  const profileAllowed=isToolVisible(tool,connection.profile,connection);
   const kind=tool.declarations?.cred??(tool.writes===true?'I':null);
   const stored=kind==='I'
     ? account.credential_kind==='fine_grained'?account.has_fine_grained===true

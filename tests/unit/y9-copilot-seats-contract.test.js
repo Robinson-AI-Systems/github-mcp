@@ -32,7 +32,7 @@ function remove(gh,result){
 }
 runWriteContract({label:'Y-9d github_copilot_team_seats',definition:def('github_copilot_team_seats'),
   args:{teamSlug:'engineering',action:'add'},arrange:add,
-  production:true,profile:'full',needsConfirm:true,spendCents:1900,accessWidening:true});
+  production:true,profile:'full',needsConfirm:true,strictSpend:true,spendCents:1900,accessWidening:true});
 runWriteContract({label:'Y-9d github_copilot_team_seats_remove',definition:def('github_copilot_team_seats_remove'),
   args:{teamSlug:'engineering',action:'remove'},arrange:remove,
   production:true,profile:'full',needsConfirm:true});

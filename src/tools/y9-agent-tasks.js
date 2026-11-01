@@ -51,7 +51,7 @@ const agentTaskStart=defineGithubWrite({
     model:{type:'string',minLength:1,maxLength:100},customAgent:{type:'string',minLength:1,maxLength:100},
     createPullRequest:{type:'boolean'}},
   required:['repo','prompt'],
-  declarations:{production:'always',confirm:'always',spend:true,cred:'U',profiles:['full']},
+  declarations:{production:'always',confirm:'always',spend:true,strictSpend:true,cred:'U',profiles:['full']},
   target:(a,c)=>({owner:ownerOf(a,c),repo:a.repo,scope:'repo',kind:'copilot-agent-task'}),
   read:async(a,c)=>{
     const {gh,owner,repository}=await actor(a,c);

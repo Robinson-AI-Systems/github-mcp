@@ -8,15 +8,22 @@ import { listedDescription, toolsForProfile, toolsForListing } from '../core/reg
 import {OptionalConsentRequired} from '../tenancy/optional-challenge.js';
 
 const readOnly = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false };
-const visible = (ctx) => toolsForProfile(ctx.registry, ctx.connection.profile);
+const visible = (ctx) => toolsForProfile(ctx.registry, ctx.connection.profile, ctx.connection);
 const find = (ctx, name) => visible(ctx).find((t) => t.name === name);
+
+// CAP-6: on the production doors the dispatcher hands in `ctx.offered`, which keeps only the runner, merge-queue and
+// Copilot families an account really has and says, per family and account, why one was left out.
+const offeredView = async (ctx, list) => (typeof ctx.offered === 'function' ? ctx.offered(list) : { tools: list, hidden: [] });
 
 async function searchHandler(args, ctx) {
   if (!args.query && !args.area && !args.audience) throw new TypeError('Say what you want to do (query), or narrow by area or audience.');
-  const found = searchTools(visible(ctx), args);
+  const all = searchTools(visible(ctx), { ...args, limit: 25 });
+  const { tools: shown, hidden } = await offeredView(ctx, all);
+  const found = shown.slice(0, args.limit ?? 10);
   return {
     count: found.length,
     tools: found.map((t) => ({ name: t.name, what: listedDescription(t), kind: kindOf(t), area: areaOf(t), safety: marksOf(t) })),
+    ...(hidden.length ? { hidden_families: hidden } : {}),
     next: 'github_describe_tool shows the arguments; github_call runs a tool that is not in your list.'
   };
 }
@@ -29,7 +36,7 @@ const MANIFEST_CHANGELOG = Object.freeze([
 ]);
 const digest = (data) => createHash('sha256').update(JSON.stringify(data)).digest('hex');
 function manifestHandler(_args, ctx) {
-  const direct = toolsForListing(ctx.registry, ctx.connection.profile, 'compact');
+  const direct = toolsForListing(ctx.registry, ctx.connection.profile, 'compact', ctx.connection);
   const tools = direct.map((tool) => ({
     name: tool.name, kind: kindOf(tool),
     version: '1-' + digest({ schema: tool.inputSchema, annotations: tool.annotations,
@@ -44,6 +51,11 @@ function manifestHandler(_args, ctx) {
 async function describeHandler(args, ctx) {
   const tool = find(ctx, args.name);
   if (!tool) throw new TypeError(`Unknown or unavailable tool: ${redact(String(args.name)).slice(0, 80)}. Search with github_search_tools.`);
+  const { tools: shown, hidden } = await offeredView(ctx, [tool]);
+  if (!shown.length) {
+    const why = hidden[0]?.accounts?.map((a) => `${a.account}: ${a.reason}`).join(' ') ?? '';
+    return { ...describeTool(tool), offered: false, hidden_because: why.slice(0, 1200) };
+  }
   return describeTool(tool);
 }
 

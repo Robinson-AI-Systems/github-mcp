@@ -226,10 +226,13 @@ async function copilotState(ctx, target, nodeId) {
 }
 const requestCopilot = defineGithubWrite({
   name: 'github_review_request_copilot', area: 'review', audience: ['B'],
-  description: 'Ask GitHub Copilot to review an open pull request. Needs a Copilot plan with code review; the review arrives in minutes.',
+  description: 'Ask GitHub Copilot to review an open pull request. Billed by use (Copilot AI credits, Actions minutes), so it always asks first.',
   properties: { owner: OWNER, repo: REPO, number: NUMBER },
   required: ['repo', 'number'],
-  declarations: { production: 'never' },
+  // CAP-6 (2026-11-01): since 2026-06-01 Copilot code review uses AI credits and Actions minutes, billed by use with no
+  // published price per review, so it is spend with an explicitly unknown price and always asks, the owner included.
+  declarations: { production: 'never', spend: true, strictSpend: true, confirm: 'always' },
+  price: () => null,
   target: prTarget,
   read: async (args, ctx, target) => {
     const pr = await getPr(ctx, target, args);
@@ -237,7 +240,7 @@ const requestCopilot = defineGithubWrite({
     return { open: true, nodeId: pr.node_id, ...(await copilotState(ctx, target, pr.node_id)) };
   },
   classify: () => ({}),
-  summarize: ({ args, before, target }) => (before.open ? `Ask Copilot to review pull request #${args.number} in ${slug(target.owner, target.repo)}${before.reviews ? ' again' : ''}` : `Pull request #${args.number} in ${slug(target.owner, target.repo)} is not open, so Copilot cannot review it`),
+  summarize: ({ args, before, target }) => (before.open ? `Ask Copilot to review pull request #${args.number} in ${slug(target.owner, target.repo)}${before.reviews ? ' again' : ''}; billed by use (Copilot AI credits and GitHub Actions minutes, no fixed price per review)` : `Pull request #${args.number} in ${slug(target.owner, target.repo)} is not open, so Copilot cannot review it`),
   apply: async ({ ctx, target, before }) => {
     if (!before.open) throw refusal('Copilot can only review an open pull request.');
     try {
