@@ -2,7 +2,7 @@
 // schema, A-3a adds the connector login store. Service-independent in-memory fake of createDb(): it mirrors the behavior
 // of src/db.js (hashed storage, single-use codes, atomic refresh) and is held to the same contract suite
 // (test/contract/oauth-contract.js) as real PostgreSQL.
-import { JOB_ID, RESULT_HANDLE, SCHEMA_TABLES, SETUP_PURPOSES, ETAG_BODY_LIMIT_BYTES, PROTECTED_SEEDED_KEY, checkConnection, checkProtected, connectionSettings, normalizeChange } from '../../src/db.js';
+import { APP_SECRET_KINDS, JOB_ID, RESULT_HANDLE, SCHEMA_TABLES, SETUP_PURPOSES, ETAG_BODY_LIMIT_BYTES, PROTECTED_SEEDED_KEY, checkConnection, checkProtected, connectionSettings, normalizeChange } from '../../src/db.js';
 import { hashToken } from '../../src/core/oauth.js';
 import { createHash } from 'node:crypto';
 import { createFakeDevLedger } from './dev-ledger-fake.js';
@@ -29,6 +29,7 @@ export function createFakeDb({ clock = Date.now } = {}) {
   const accounts = [];
   const slots = new Map();
   const apps = new Map();
+  const previousSecrets = new Map(); // `${appId}|${kind}` -> { secret_enc, accepted_until, replaced_at }
   const accountRows = new Map();
   const installTokens = new Map();
   const setupStates = new Map();
@@ -326,6 +327,29 @@ export function createFakeDb({ clock = Date.now } = {}) {
         client_secret_enc: app.clientSecretEnc, private_key_enc: app.privateKeyEnc, webhook_secret_enc: app.webhookSecretEnc, permissions: structuredClone(app.permissions ?? {}) });
     },
     async getApp(id) { return apps.has(Number(id)) ? structuredClone(apps.get(Number(id))) : null; },
+    async replaceAppSecret({ id, kind, expectedEnc, newEnc, acceptedUntil }) {
+      const app = apps.get(Number(id));
+      if (!APP_SECRET_KINDS.includes(kind) || !expectedEnc || !newEnc || expectedEnc === newEnc || !app || app[kind + '_enc'] !== expectedEnc) return false;
+      app[kind + '_enc'] = newEnc;
+      previousSecrets.set(`${Number(id)}|${kind}`, { secret_enc: expectedEnc, accepted_until: new Date(acceptedUntil), replaced_at: new Date(clock()) });
+      return true;
+    },
+    async getAppPreviousSecrets(id) {
+      return APP_SECRET_KINDS.map((kind) => [kind, previousSecrets.get(`${Number(id)}|${kind}`)])
+        .filter(([, p]) => p && p.accepted_until.getTime() > clock())
+        .map(([kind, p]) => ({ kind, secret_enc: p.secret_enc, accepted_until: new Date(p.accepted_until), replaced_at: new Date(p.replaced_at) }));
+    },
+    async restorePreviousAppSecret({ id, kind, expectedEnc }) {
+      const key = `${Number(id)}|${kind}`, prev = previousSecrets.get(key), app = apps.get(Number(id));
+      if (!APP_SECRET_KINDS.includes(kind) || !expectedEnc || !prev || prev.accepted_until.getTime() <= clock() || !app || app[kind + '_enc'] !== expectedEnc) return false;
+      app[kind + '_enc'] = prev.secret_enc;
+      previousSecrets.delete(key);
+      return true;
+    },
+    async endAppSecretOverlap({ id, kind }) {
+      if (!APP_SECRET_KINDS.includes(kind)) return false;
+      return previousSecrets.delete(`${Number(id)}|${kind}`);
+    },
     async upsertAccount({ login, accountId, accountType, label, credentialKind = 'app', appId = null, isScratch = false }) {
       const key = login.toLowerCase();
       const existing = accountRows.get(key);

@@ -36,8 +36,9 @@ Set in Vercel Production, then redeploy.
 
 ## 4. Keys
 
+- Replacing any key or secret, step by step and without downtime: [KEY-ROTATION](KEY-ROTATION.md) (App private key, client secret and webhook secret on the setup page; routing and encryption keys in Vercel). Only needed if one is ever exposed.
 - Change the encryption key without logging everyone out: put the old key in `TOKEN_ENCRYPTION_KEY_PREVIOUS` (at most two), set the new one in `TOKEN_ENCRYPTION_KEY`, release (`src/core/crypto.js:17-20`). Remove an old key only after everything sealed with it is re-saved.
-- Changing `GITHUB_TENANT_ROUTING_KEY` signs everyone out at once (emergency lever). No overlap period.
+- Change `GITHUB_TENANT_ROUTING_KEY` without signing people out: old key into `GITHUB_TENANT_ROUTING_KEY_PREVIOUS` plus an end time `GITHUB_TENANT_ROUTING_KEY_PREVIOUS_UNTIL` (UTC, at most 30 days ahead), new key into `GITHUB_TENANT_ROUTING_KEY`, release. Leaving out the two `_PREVIOUS` settings still signs everyone out at once (emergency lever).
 - Optional test: `GITHUB_STATELESS_INSTALLATION_TOKENS=enabled`, make a few calls, then remove the setting (`disabled` forces the old tokens).
 
 ## 5. Marketplace (only if wanted; not activated)

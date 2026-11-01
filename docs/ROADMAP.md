@@ -235,3 +235,11 @@ Issues found by the 2026-11-01 audit, for scheduling:
 - **PLAY-2 pairing UI vs endpoint gate:** My connection can show a code where `/api/playground/enroll` returns 404 (pilot
   gate); expired pending records never change status and count toward the eight-device cap.
 
+
+## Found while building KEY-ROTATION (2026-11-01)
+
+- **Bulk re-seal after an encryption-key change.** `TOKEN_ENCRYPTION_KEY_PREVIOUS` lets old saved credentials be read, but
+  nothing re-saves them with the new key, so an old key can never be removed safely. A small owner-only re-seal job (setup
+  page) would finish that rotation. Not built; needs Chris's say-so as new scope.
+- **Marketplace webhook secret** (`GITHUB_MARKETPLACE_WEBHOOK_SECRET`, not activated) has no overlap window; add one like the
+  App webhook secret if the Marketplace listing is ever turned on.

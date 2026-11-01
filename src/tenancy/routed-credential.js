@@ -20,6 +20,27 @@ function keyFor(env) {
     throw new Error('Private tenant token routing signing key is invalid.');
   return key;
 }
+// KEY-ROTATION: during a routing-key change the replaced key may still CHECK (never issue) credentials, for a stored,
+// time-bounded window: GITHUB_TENANT_ROUTING_KEY_PREVIOUS (the old key) and GITHUB_TENANT_ROUTING_KEY_PREVIOUS_UNTIL
+// (an ISO UTC time at most ROUTING_OVERLAP_MAX_DAYS ahead). Anything else (missing, malformed, past, too far ahead, the
+// same as the current key) means no previous key: the strict, pre-rotation behaviour. New credentials always use the
+// current key, so a person whose app refreshes during the window simply moves to the new key.
+export const ROUTING_OVERLAP_MAX_DAYS = 30;
+function previousKeyFor(env, now) {
+  const text = env?.GITHUB_TENANT_ROUTING_KEY_PREVIOUS, until = env?.GITHUB_TENANT_ROUTING_KEY_PREVIOUS_UNTIL;
+  if (typeof text !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(text) || text === env?.GITHUB_TENANT_ROUTING_KEY) return null;
+  if (typeof until !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,3})?)?Z$/.test(until)) return null;
+  const ends = Date.parse(until);
+  if (!Number.isFinite(ends) || ends <= now || ends > now + ROUTING_OVERLAP_MAX_DAYS * 86400000) return null;
+  const key = Buffer.from(text, 'base64url');
+  return key.length === 32 && key.toString('base64url') === text ? key : null;
+}
+/** Plain words for diagnostics and the runbook: whether a routing-key overlap is open. Never a key value. */
+export function routingKeyOverlap(env = process.env, now = Date.now()) {
+  const open = env?.GITHUB_PRIVATE_TENANT_PILOT === 'enabled' && previousKeyFor(env, now) !== null;
+  return open ? { open: true, until: new Date(Date.parse(env.GITHUB_TENANT_ROUTING_KEY_PREVIOUS_UNTIL)).toISOString() }
+    : { open: false, until: null, ignored: typeof env?.GITHUB_TENANT_ROUTING_KEY_PREVIOUS === 'string' && env.GITHUB_TENANT_ROUTING_KEY_PREVIOUS !== '' };
+}
 function bytesOf(uuid) {
   if (typeof uuid !== 'string' || !UUID.test(uuid))
     throw new TypeError('A verified tenant and identity UUID are required.');
@@ -49,7 +70,7 @@ export function issueTenantCredential(kind, { tenantId, identityId, membershipRe
   const payload=Buffer.concat([bytesOf(tenantId),bytesOf(identityId),revision,randomBytes(24)]);
   return `${kind}_${payload.toString('base64url')}_${mac(key, kind, payload).toString('base64url')}`;
 }
-export function verifyTenantCredential(value, expectedKind, env = process.env) {
+export function verifyTenantCredential(value, expectedKind, env = process.env, now = Date.now()) {
   if (!KINDS.has(expectedKind)) return null;
   // Any token with a tenant marker MUST stay on this path; never fall back
   // to the owner database because of invalid shape, key or signature.
@@ -62,8 +83,11 @@ export function verifyTenantCredential(value, expectedKind, env = process.env) {
   const signature = Buffer.from(found[3], 'base64url');
   if (payload.length !== 64 || signature.length !== 32 ||
       payload.toString('base64url') !== found[2] ||
-      signature.toString('base64url') !== found[3] ||
-      !timingSafeEqual(mac(key, expectedKind, payload), signature)) return null;
+      signature.toString('base64url') !== found[3]) return null;
+  // The current key first; the previous key only inside its window. Both are full constant-time MAC checks.
+  const previous = previousKeyFor(env, now);
+  const signedByCurrent = timingSafeEqual(mac(key, expectedKind, payload), signature);
+  if (!signedByCurrent && !(previous && timingSafeEqual(mac(previous, expectedKind, payload), signature))) return null;
   const membershipRevision=payload.readUInt32BE(32);
   const pilotRevision=payload.readUInt32BE(36);
   if (membershipRevision===0 || pilotRevision===0) return null;

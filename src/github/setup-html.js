@@ -1,10 +1,11 @@
 // The private setup page's HTML (A4/A5/A11). Plain words for a non-developer owner. Every dynamic value is escaped; no script
-// runs on the page; the only inputs that accept a secret are the token boxes and the passphrase boxes.
+// runs on the page; the only inputs that accept a secret are the token boxes, the App key/secret replacement box (KEY-ROTATION)
+// and the passphrase boxes.
 import { escapeHtml as h } from '../core/http.js';
 import { installUrl } from './app-manifest.js';
 import { unlockSection } from './unlock-html.js';
 
-const STYLE = 'body{font:16px system-ui,sans-serif;max-width:640px;margin:4vh auto;padding:16px;line-height:1.5}form,.card{display:grid;gap:10px;margin:18px 0;padding:14px;border:1px solid #ccc;border-radius:10px}.card{display:block}input,select,button{font:inherit;padding:8px}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f4f4f4;padding:10px;border-radius:6px}button{cursor:pointer}.ok{color:#116611}.todo{color:#8a5200}small{color:#555}';
+const STYLE = 'body{font:16px system-ui,sans-serif;max-width:640px;margin:4vh auto;padding:16px;line-height:1.5}form,.card{display:grid;gap:10px;margin:18px 0;padding:14px;border:1px solid #ccc;border-radius:10px}.card{display:block}input,select,button,textarea{font:inherit;padding:8px}textarea{width:100%;box-sizing:border-box}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f4f4f4;padding:10px;border-radius:6px}button{cursor:pointer}.ok{color:#116611}.todo{color:#8a5200}small{color:#555}';
 
 const hidden = (name, value) => `<input type="hidden" name="${h(name)}" value="${h(value)}">`;
 const passphrase = '<label>Administrator passphrase<input type="password" name="passphrase" required autocomplete="current-password"></label>';
@@ -60,6 +61,7 @@ const publicUsageSection = (u) => {
 export function renderSetup({ csrf, result = '', revealed = null, show = '', accounts = null, manifestForm = null, installLink = null, blocked = '', keyHelp = '', productionNames = null, protectedList = null, spendLimits = null, ownPeopleExtra = null, secretEntry = null, oauthReadiness = null, connections = null, publicUsage = null, publicInvites = null }) {
   const form = (action, inner, button, extra = '') => `<form method="post" action="#setup-feedback" autocomplete="off">${hidden('csrf', csrf)}${hidden('action', action)}${extra}${inner}${passphrase}<button type="submit">${h(button)}</button></form>`;
   const login = '<label>GitHub account name (for example your organization or user name)<input name="login" required maxlength="39" autocomplete="off"></label>';
+  const secretKind = '<label>Which secret<select name="kind"><option value="private_key">Private key</option><option value="client_secret">Client secret</option><option value="webhook_secret">Webhook secret</option></select></label>';
   const type = '<label>Account type<select name="accountType"><option value="Organization">Organization</option><option value="User">Personal user</option></select></label>';
   return '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
     `<title>Robinson GitHub MCP — private setup</title><style>${STYLE}</style></head><body>` +
@@ -149,6 +151,15 @@ export function renderSetup({ csrf, result = '', revealed = null, show = '', acc
       form('remove-invite', '<label>GitHub name to remove<input name="login" required maxlength="39" autocomplete="off"></label>', 'Remove from the invite list') : '') +
     '<h2>Delete a person\'s data</h2><p>For a person who connected through the public sign-in and asks to be removed. Type their personal GitHub account name twice. This deletes their sign-in, tokens and stored settings for good. It cannot be undone and never touches anyone else.</p>' +
     form('forget-person', '<label>GitHub account name<input name="login" required maxlength="39" autocomplete="off"></label><label>Type it again<input name="confirmLogin" required maxlength="39" autocomplete="off"></label><label><input type="checkbox" name="confirmDelete" value="yes"> Yes, delete this person\'s data</label>', 'Delete this person\'s data') +
+    '<h2>Replace a GitHub App key or secret</h2><p>Only needed if one is ever exposed (or you want to change it). Step by step in docs/KEY-ROTATION.md. Nobody is signed out. ' +
+    '<strong>Private key</strong> or <strong>client secret</strong>: first make a new one on the App\'s settings page on GitHub, paste it here, and GitHub checks it before anything changes; then delete the old one on GitHub. ' +
+    '<strong>Webhook secret</strong>: leave the box empty; this page makes a new one and shows it once for you to paste on GitHub. The old one keeps working for 24 hours so no event is lost.</p>' +
+    form('replace-app-secret', login.replace('GitHub account name (for example your organization or user name)', 'Account whose App this is') + secretKind +
+      '<label>New private key or client secret (empty for the webhook secret)<textarea name="newSecret" rows="4" maxlength="16384" autocomplete="off" spellcheck="false"></textarea></label>' +
+      '<label><input type="checkbox" name="confirmReplace" value="yes"> Yes, replace this secret</label>', 'Replace the secret') +
+    '<p>Changed your mind within 24 hours? <strong>Undo</strong> puts the previous one back. If the old one was exposed, press <strong>Finish now</strong> as soon as the new one works, so the old one stops being accepted at once.</p>' +
+    form('undo-app-secret', login.replace('GitHub account name (for example your organization or user name)', 'Account whose App this is') + secretKind, 'Undo: put the previous one back') +
+    form('finish-app-secret', login.replace('GitHub account name (for example your organization or user name)', 'Account whose App this is') + secretKind, 'Finish now: stop accepting the old one') +
     '<h2>Time zone</h2><p>Times shown to your assistants use this zone. If none is saved they show in UTC. Use a name like America/Denver.</p>' +
     form('set-time-zone', '<label>Time zone<input name="zone" maxlength="64" autocomplete="off" placeholder="UTC"></label>', 'Save time zone') +
     unlockSection({ form, login }) +

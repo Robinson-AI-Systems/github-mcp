@@ -44,8 +44,13 @@ export function createWebhookHandler({ db, credentials, publicCleanup = null }) 
     // Which App is this for? Only a number that matches a stored App can have a secret; any other delivery is simply unauthorized.
     const target = String(header(req, 'x-github-hook-installation-target-id') || '');
     const appId = /^\d{1,15}$/.test(target) ? Number(target) : null;
-    const secret = appId != null ? await credentials.webhookSecret(appId).catch(() => null) : null;
-    if (!secret || !signatureMatches(secret, raw, header(req, 'x-hub-signature-256'))) return reply(res, 401, { error: 'unauthorized' });
+    // KEY-ROTATION: during a webhook-secret replacement (at most 24 hours) the replaced secret is still believed, because
+    // GitHub keeps signing with it until the owner saves the new one there. Each candidate is a full constant-time check.
+    const secrets = appId == null ? [] : typeof credentials.webhookSecrets === 'function'
+      ? await credentials.webhookSecrets(appId).catch(() => [])
+      : [await credentials.webhookSecret(appId).catch(() => null)];
+    const signature = header(req, 'x-hub-signature-256');
+    if (!secrets.slice(0, 2).some((secret) => signatureMatches(secret, raw, signature))) return reply(res, 401, { error: 'unauthorized' });
 
     const event = String(header(req, 'x-github-event') || '');
     if (!HANDLED.has(event)) return reply(res, 202, { ok: true, ignored: true });

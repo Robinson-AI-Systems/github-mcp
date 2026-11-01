@@ -34,3 +34,20 @@ No gate raises spend, widens access or opens public sign-up by itself. Secrets n
 - **Drift found:** the card says "draft legal pages"; on `main` they were already approved by Chris and live. They were not
   relabelled as not in effect in production (that would withdraw a live, approved privacy notice); the lawyer review became
   an owner row instead.
+
+## Key rotation rehearsed 2026-11-01 (branch `ai/claude/key-rotation-rehearsal`)
+
+- **Why:** the readiness report's "Key and secret safety" condition was not met: no rehearsed replacement for the tenant
+  routing key or the App private key, client secret and webhook secret, and no written procedure for the three App ones.
+- **Runbook:** [KEY-ROTATION](../KEY-ROTATION.md), one section per secret (what Chris does on GitHub or Vercel, what the
+  server does, how to check, how to roll back, downtime). `docs/launch/key-rotation.json` now points every secret at it.
+- **No-downtime code:** App secrets are replaced one at a time on the protected setup page (`replace-app-secret`, `undo-app-secret`,
+  `finish-app-secret`). A typed private key is proved with GitHub (`GET /app` signed with it) and a typed client secret with
+  an OAuth exchange of a made-up code before anything is saved; the webhook secret is server-generated and shown once. The
+  replaced value is kept sealed for 24 hours in the new table `gh_app_previous_secrets` (Undo; webhook deliveries signed with
+  it are still believed); Finish now ends that at once. The routing key accepts `GITHUB_TENANT_ROUTING_KEY_PREVIOUS` for
+  checking only, until `GITHUB_TENANT_ROUTING_KEY_PREVIOUS_UNTIL` (at most 30 days ahead; anything doubtful means strict).
+- **Rehearsals:** `tests/unit/key-rotation-rehearsal.test.js` (old works, both during the change, only new after; wrong values
+  refused with nothing changed) against a fake GitHub that really checks RS256 signatures and client secrets; the store
+  contract (fake and real Postgres) covers the new table. `readiness.js` only gained the two new evidence file paths.
+- **Not agent work:** a real rotation on Chris's App is an optional owner checklist row.

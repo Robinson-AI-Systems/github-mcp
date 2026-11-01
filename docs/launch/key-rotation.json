@@ -1,36 +1,36 @@
 {
   "version": 1,
-  "note": "PUB-7 launch evidence: for each key or secret the public service depends on, where the replace-it-fast procedure is written down and where it was rehearsed. Names only, never values. A rehearsal is a test that changes the key in the local harness and proves people stay connected (or are signed out on purpose); it is never a production rotation. The readiness report checks that each procedure file exists and each rehearsal test name is really in its test file.",
+  "note": "PUB-7 launch evidence: for each key or secret the public service depends on, where the replace-it-fast procedure is written down and where it was rehearsed. Names only, never values. A rehearsal is a test that changes the key in the local harness and proves people stay connected (or are signed out on purpose); it is never a production rotation. The readiness report checks that each procedure file exists and each rehearsal test name is really in its test file. A real-account rehearsal (really replacing a key on Chris's App) is an optional owner checklist row, not agent work.",
   "secrets": [
     {
       "id": "token_encryption_key",
       "name": "Encryption key for saved GitHub credentials (TOKEN_ENCRYPTION_KEY, old key kept in TOKEN_ENCRYPTION_KEY_PREVIOUS)",
-      "procedure": "docs/GO-LIVE-CHECKLIST.md",
+      "procedure": "docs/KEY-ROTATION.md",
       "rehearsal": { "test": "tests/browser/sign-in.test.js", "name": "a key change does not sign people out", "recorded": "2026-10-24" }
     },
     {
       "id": "tenant_routing_key",
-      "name": "Routing key that signs every public connection (GITHUB_TENANT_ROUTING_KEY); changing it signs everyone out at once",
-      "procedure": "docs/GO-LIVE-CHECKLIST.md",
-      "rehearsal": null
+      "name": "Routing key that signs every public connection (GITHUB_TENANT_ROUTING_KEY; the old key still checks until GITHUB_TENANT_ROUTING_KEY_PREVIOUS_UNTIL, at most 30 days ahead)",
+      "procedure": "docs/KEY-ROTATION.md",
+      "rehearsal": { "test": "tests/unit/key-rotation-rehearsal.test.js", "name": "rehearsal: replacing the tenant routing key with an overlap window keeps people connected", "recorded": "2026-11-01" }
     },
     {
       "id": "app_private_key",
-      "name": "The public GitHub App's private key",
-      "procedure": null,
-      "rehearsal": null
+      "name": "The public GitHub App's private key (replaced on the setup page; GitHub checks the new key first)",
+      "procedure": "docs/KEY-ROTATION.md",
+      "rehearsal": { "test": "tests/unit/key-rotation-rehearsal.test.js", "name": "rehearsal: replacing the App private key keeps installation tokens flowing, then only the new key is used", "recorded": "2026-11-01" }
     },
     {
       "id": "app_client_secret",
-      "name": "The public GitHub App's client secret",
-      "procedure": null,
-      "rehearsal": null
+      "name": "The public GitHub App's client secret (replaced on the setup page; GitHub checks the new secret first)",
+      "procedure": "docs/KEY-ROTATION.md",
+      "rehearsal": { "test": "tests/unit/key-rotation-rehearsal.test.js", "name": "rehearsal: replacing the App client secret keeps GitHub sign-ins renewing, then only the new secret is used", "recorded": "2026-11-01" }
     },
     {
       "id": "app_webhook_secret",
-      "name": "The public GitHub App's webhook secret",
-      "procedure": null,
-      "rehearsal": null
+      "name": "The public GitHub App's webhook secret (made on the setup page; the old one is still believed for 24 hours)",
+      "procedure": "docs/KEY-ROTATION.md",
+      "rehearsal": { "test": "tests/unit/key-rotation-rehearsal.test.js", "name": "rehearsal: replacing the App webhook secret loses no delivery, then only the new secret is believed", "recorded": "2026-11-01" }
     }
   ]
 }
