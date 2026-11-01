@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated": "2026-10-29",
+  "updated": "2026-10-31",
   "order": [
     "A",
     "B",
@@ -2598,6 +2598,28 @@
       "ownerInputs": [],
       "pr": [
         476
+      ]
+    },
+    {
+      "id": "PLAY-2",
+      "title": "Enrolled runtime hosts for Robinson's Playground",
+      "batch": "FIN",
+      "design": "docs/pr-cards/PLAY-2.md",
+      "dependencies": [
+        "PUB-1",
+        "PLAY-1"
+      ],
+      "card": "docs/pr-cards/PLAY-2.md",
+      "status": "IN_PROGRESS",
+      "migration": "additive tenant-scoped host enrollment and placement records (Phase 2; not yet implemented)",
+      "budget": 800,
+      "units": [
+        "PLAY-2"
+      ],
+      "readiness": "READY",
+      "ownerInputs": [],
+      "pr": [
+        494
       ]
     }
   ],
