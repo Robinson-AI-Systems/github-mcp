@@ -37,3 +37,11 @@ small runtime on the Dokploy host waits for PLAY-1's live pass and a release.
 
 Extends PLAY-1's allocation planning only by lowering ceilings; does not change PLAY-1's security contract, PLAY-2's
 fences, the RTC dialect or any owner default. If PLAY-1 live corrections conflict, PLAY-1's operational record governs.
+
+## 2026-11-01 — Medium becomes the default
+
+A live medium runtime (operator pool, release `c58402425e37`) installed this repository and ran the full unit suite
+(10,632/10,633 passed in 404 s; the one failure was an older-Git worktree relink bug fixed alongside). The code default
+for `runtime: auto` is now `medium`; `PLAYGROUND_DEFAULT_SIZE=large` restores the original size. Tests:
+`playground-sizing.test.js` ("uses medium when no size…", "keeps the original full-size plan when the protected
+default is large"). Evidence: `docs/status/2026-11-01-medium-default.md`.
