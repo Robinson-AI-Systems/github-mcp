@@ -33,6 +33,9 @@ Only things that need you (your sign-in, phone or desktop, money, or a decision)
 
 ## Playground (coding workspaces)
 
+**PLAY-2 (2026-10-31):** After reviewed/deployed enrolled-host software exists, the first real acceptance needs your own WSL2/Docker PC paired by you under your own connection, plus a user-owned outbound HTTPS tunnel reachable from the controller. The bench GitHub key stays on your device; never paste keys or tunnel secrets into chat. Real appliance-desk workspace measurement, ownership proof and mid-run revocation can occur only after your personal enrollment. Agents may implement and test synthetic fixtures independently. No new paid fallback, operator quota, or hosting plan has been approved. See [PLAY-2](pr-cards/PLAY-2.md).
+
+
 Released in "best effort" mode (`vercel.json` sets `PLAYGROUND_RESOURCE_MODE`). Dokploy credentials are saved in protected setup; live provisioning reached Dokploy on 2026-10-30. Host monitoring, quotas and backups are optional. Private workspace isolation and clean-up are required. Some Dokploy host reads return 401; a signed clean-up proof covers that. Do not give unrestricted admin, paste credentials in chat, or buy more resources. Details: [PLAYGROUND-OPERATIONS](PLAYGROUND-OPERATIONS.md).
 
 Acceptance counts (56 passed, 15 not yet) are from the 2026-10-29 ledger in [STATUS](STATUS.md); unverified today.
