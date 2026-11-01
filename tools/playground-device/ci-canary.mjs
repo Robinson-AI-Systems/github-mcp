@@ -14,6 +14,8 @@ const plan=devicePlan({
 const runtime=createLocalRuntime();
 let passed=false;
 try{
+ const preview=runtime.plan(plan);
+ if(preview.providerMutated!==false||preview.controllerAdmission!==false)throw new Error('Local plan unexpectedly admits or mutates a host.');
  await runtime.install(plan);
  const proof=await runtime.canary(plan);
  if(proof.canaryPassed!==true||proof.controllerAdmission!==false||
