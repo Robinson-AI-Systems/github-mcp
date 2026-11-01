@@ -522,7 +522,7 @@ export function createPublicConnect({ env = process.env, fetchImpl = fetch, root
   async function manageAction({ handle, action, value }) {
     active();
     if (!STATE.test(String(handle ?? '')) ||
-        !['refresh', 'read_only', 'allow_changes', 'time_zone', 'disconnect', 'add', 'master', 'add_place', 'place_changes', 'remove_place', 'act_as_me', 'rule_override', 'begin_pair', 'approve_pair', 'revoke_pair'].includes(action)) throw refused('r33');
+        !['refresh', 'read_only', 'allow_changes', 'time_zone', 'disconnect', 'add', 'master', 'add_place', 'place_changes', 'remove_place', 'act_as_me', 'rule_override', 'begin_pair', 'approve_pair', 'revoke_pair','probe_pair'].includes(action)) throw refused('r33');
     const flow = await directory().consumePublicFlow(sha(handle), 'god');
     if (!flow || flow.purpose !== 'manage' || !flow.tenantId || !flow.identityId || !flow.accountLogin) throw refused('r34');
     const { db, dir, tenant } = await scopeOf(flow);
@@ -530,7 +530,7 @@ export function createPublicConnect({ env = process.env, fetchImpl = fetch, root
     const view = (notice,pairing=null) => manageView({ tenantId: flow.tenantId, identityId: flow.identityId, signedInAs: flow.accountLogin, offers: flow.offers, db, notice, pairing });
     // The user just authenticated with GitHub to reach this one-use management handle.
     // Never accept a device origin or secret here as an assistant tool argument.
-    if (['begin_pair','approve_pair','revoke_pair'].includes(action)) {
+    if (['begin_pair','approve_pair','revoke_pair','probe_pair'].includes(action)) {
       const active=(await db.listUpgradeableConnections()).filter(c=>c.client_id!==MANAGE_CLIENT&&c.profile==='full');
       const root=createDb(rootSql());
       if(action==='begin_pair'){
@@ -547,6 +547,10 @@ export function createPublicConnect({ env = process.env, fetchImpl = fetch, root
       if(action==='approve_pair'){
         await hosts.approve(value);
         return {manage:await view('Device identity approved. Canary verification is still required before commands are available.')};
+      }
+      if(action==='probe_pair'){
+        await hosts.probe(value);
+        return {manage:await view('The pinned tunnel and device signing key answered a live signed probe. The device remains pending its separate execution canary.')};
       }
       const revoked=await hosts.revoke(value);
       return {manage:await view(revoked.cleanupConfirmed?'Enrollment revoked. No runtime had been admitted.':'Enrollment revoked. Runtime termination is pending independent device evidence.')};
