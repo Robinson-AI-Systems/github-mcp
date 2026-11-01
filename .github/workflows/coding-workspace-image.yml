@@ -30,6 +30,11 @@ jobs:
       - name: Test credential-free commands, database, browser and isolation in the real image
         run: docker run --rm --network none --read-only --cap-drop ALL --cap-add SETUID --cap-add SETGID --cap-add KILL --cap-add CHOWN --cap-add DAC_OVERRIDE --security-opt no-new-privileges --memory 2g --cpus 2 --tmpfs /tmp:rw,nosuid,nodev,size=1g,mode=1777 robinson-coding:test node --test workers/coding-workspace/smoke.test.js
 
+      - name: Build and check the slim image (FLEET-2; same code, no PostgreSQL or Chromium)
+        run: |
+          docker build --target slim -f workers/coding-workspace/Dockerfile -t robinson-coding:slim .
+          docker run --rm --network none --read-only --cap-drop ALL --user 1000:1000 robinson-coding:slim sh -c 'node --version && test ! -e /usr/lib/postgresql && test ! -e /opt/playwright && node -e "import(\"/app/workers/coding-workspace/server.js\").then(m=>{if(typeof m.codingServer!==\"function\")process.exit(1)})"'
+
       - name: Rehearse owner-operated local Docker install, Postgres, Chromium and exact cleanup
         run: node tools/playground-device/ci-canary.mjs
 
