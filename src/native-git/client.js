@@ -1,4 +1,5 @@
 import {loadScannerPolicy} from '../github/scanner-policy.js';
+import { transportFetch } from '../fleet/relay.js';
 import { createHash } from 'node:crypto';
 import { githubFor, credentialFor, requestKey } from '../github/client.js';
 import { WORKER_PROTOCOL, nativeWorkerRoute, workerUrl } from './protocol.js';
@@ -65,7 +66,7 @@ export async function callNativeWorker(ctx, { binding, action, workspace_id, ope
  });
  let response;
  try {
-  response = await (ctx.fetch ?? globalThis.fetch)(url, { method: 'POST', redirect: 'error', signal: AbortSignal.timeout(50000), headers: { 'Content-Type': 'application/json', 'x-robinson-signature': signNativeWorkerBody(body, job?.brokerOrigin?{...ctx.env,NATIVE_GIT_WORKER_KEY:undefined}:ctx.env) }, body });
+  response = await transportFetch(ctx)(url, { method: 'POST', redirect: 'error', signal: AbortSignal.timeout(50000), headers: { 'Content-Type': 'application/json', 'x-robinson-signature': signNativeWorkerBody(body, job?.brokerOrigin?{...ctx.env,NATIVE_GIT_WORKER_KEY:undefined}:ctx.env) }, body });
  } catch {
   throw failure('native_transport', 'Native Git worker could not be reached. Inspect workspace state and the same intent receipt before retrying; the outcome may be unknown.');
  }

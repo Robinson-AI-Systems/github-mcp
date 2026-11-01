@@ -1,4 +1,44 @@
-# PLAY-2: first-device pairing (experimental, not runtime activation)
+# Add your own computer or server to Robinson's Playground
+
+Anyone who signs in to Robinson GitHub MCP can let their AI run builds and tests on machines **they** own or administer —
+a desktop PC, a laptop, a VPS, a home server, a Dokploy or any other Docker host, machines on a private network or
+tailnet. Each machine only ever runs **your own** work, under your own connection. It only makes **outbound** HTTPS
+check-ins to the server, so it needs no tunnel, no public IP and no open port.
+
+**You need:** Docker with Compose v2 (Docker Desktop on Windows with WSL2, or Docker Engine on Linux/macOS), Node.js 22
+or newer, and enough room for the runtime (at least 1 CPU, 1.5 GB free memory and 10 GB free disk; more is better).
+
+1. Get the agent: `curl -fsSLO https://raw.githubusercontent.com/Robinson-AI-Systems/github-mcp/main/tools/playground-device/agent.mjs`
+   and `curl -fsSLO https://raw.githubusercontent.com/Robinson-AI-Systems/github-mcp/main/tools/playground-device/pair.mjs`
+   into one folder (or clone the repository). Read them first — they are short.
+2. Open **My connection** (`https://github.robinsonaisystems.com/connection`), sign in with GitHub and press
+   **Add a computer or server for &lt;app&gt;**. It shows a command with a one-time code (valid ten minutes).
+3. Run that command on the machine: `node agent.mjs join --device DEVICE_ID --code CODE`. It prints a fingerprint.
+4. Reload My connection, check the fingerprint matches, press **Approve**.
+5. Start the agent: `node agent.mjs run`. Keep it running (see below). On its first check-in it runs a short readiness
+   check (Docker works, a private network really is private, containers run as an unprivileged user) and then shows
+   **Ready** on My connection. From then on, new workspaces you open are placed on your ready machines first.
+
+**Keep it running:** on Linux use a user service (`systemd-run --user --unit ras-playground node $PWD/agent.mjs run`),
+on Windows/WSL2 or macOS leave a terminal open or use your usual "run at login" tool. If the machine sleeps, work waits
+and resumes when it checks in again; a runtime that cannot reach the server stops new commands and, after five minutes,
+stops itself.
+
+**Remove a machine:** press **Revoke** on My connection (its runtimes are stopped and deleted at its next check-in), then
+run `node agent.mjs leave` on it. `node agent.mjs status` shows what it is doing.
+
+**What it will and will not do:** it only accepts orders signed by the server key it pinned when you joined: start or stop
+one Playground runtime from a signed plan (a private network, unprivileged containers, no Docker socket, the gateway on
+127.0.0.1 only), forward an already-signed request to that runtime, run the readiness check, or stop everything. It never
+receives your GitHub token. You, as the machine's owner, can always see and stop its containers; it is not a sandbox
+against you, and other people's work never runs on it.
+
+Interactive browser previews are not available on your own machine yet (text previews are); very large repositories
+still transfer at up to 100 MiB.
+
+---
+
+## Older tunnel-based pairing (PLAY-2)
 
 This helper runs on **your own** WSL2/Linux machine, not in an AI tool or on the operator's behalf. It is the **device identity/pairing leg** only: it does not install the Docker supervisor, enable arbitrary commands, bind repository storage, configure a tunnel, or pass the enrollment canary. Those are separate PLAY-2 implementation/acceptance requirements. The owner must confirm the exact fingerprint after the device proves it owns its locally generated Ed25519 key.
 

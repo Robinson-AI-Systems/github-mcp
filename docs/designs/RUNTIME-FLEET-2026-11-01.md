@@ -2,8 +2,10 @@
 
 **Status:** design requested by Chris on 2026-11-01 ("make use of more resources on different platforms when available —
 Dokploy, my PC, other devices in my tailnet — and scale workspaces so small projects use small spaces and finish fast").
-Only **FLEET-1 (right-sized runtimes)** is built (this PR). FLEET-2 … FLEET-6 are proposed scope recorded in
-`docs/ROADMAP.md` and `docs/pr-cards/work-index.json` as `PROPOSED`; nothing here overrides PLAY-1's operational record or
+**Update 2026-11-01:** Chris approved the recommendations (dial-out agent, own machines first, medium default after a
+real build, prebuilt image) and set the frame: the product works the same for **everyone who signs in**; his own PC,
+Dokploy and tailnet are just resources he has. FLEET-1 (sizes) is merged; FLEET-3 (dial-out agent with placement) is
+built in source ([card](../pr-cards/FLEET-3.md)); FLEET-2, 4–6 remain in `docs/ROADMAP.md`; nothing here overrides PLAY-1's operational record or
 PLAY-2's fences. It changes no security rule: signed short-lived claims, no credentials in executable containers, tenant
 isolation, uncertain-never-rerun receipts and exact-ownership cleanup all stay.
 

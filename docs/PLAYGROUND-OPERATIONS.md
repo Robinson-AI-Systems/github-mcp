@@ -33,6 +33,25 @@ Set inside each allocation by the plan (never by hand): `CODING_WORKSPACE_BINDIN
 broker's `NATIVE_GIT_SINGLE_*` values, and the gateway's `EGRESS_BLOCKED_HOSTS`/`EGRESS_BLOCKED_ADDRESSES`. The manager
 container gets `PLAYGROUND_SWEEP_URL` and a derived `PLAYGROUND_SWEEP_KEY`.
 
+## Placement: people's own machines first
+
+Every person who signs in can add computers or servers they control from My connection
+([setup guide](../tools/playground-device/README.md)). The host agent only checks in **outward**
+(`POST /api/fleet/checkin`, long-poll ≤ 20 s; `POST /api/fleet/report`), signed with the device key the person approved.
+The control plane leaves signed orders in that person's tenant database (`fleet_q.*`/`fleet_m.*` rows): `readiness`,
+`allocation_up`/`allocation_down` (the same compose plan as below, gateway published on 127.0.0.1 only), `relay` (an
+already-signed `/v1/coding` or `/v1/workspace` request, forwarded unchanged), `terminate`. Device origins look like
+`https://d<device>-<binding>.fleet.invalid/` and can never be resolved, so they only ever travel by relay.
+
+- **Placement order:** the person's own `ready` machines that checked in within 90 s and have room (≥ 1 CPU, 1.5 GB free
+  memory, 10 GB free disk; the size class is capped to ¾ of the machine), then the operator pool, then Git-only.
+- **Liveness:** commands need a check-in within 90 s; the runtime's own heartbeat does not depend on the agent, so a slow
+  check-in never stops running work. A revoked machine's runtimes stop on their next heartbeat.
+- **Revocation:** bumps the device generation; the next check-in gets a `terminate` order; the agent deletes every runtime
+  and attests absence; then the machine is refused (410). Cleanup evidence on a person's own machine is labelled
+  `device_attested`.
+- Endpoints answer only on the production deployment with the public-connect tenant mode enabled (same gate as pairing).
+
 ## Right-sized runtimes
 
 Every allocation has a **size class**, chosen when it is first queued (`github_git_workspace_open.runtime`) or provisioned

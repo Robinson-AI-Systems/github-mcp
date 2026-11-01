@@ -3,6 +3,7 @@ import {nativeRecord,nativeConnection,callNativeWorker} from '../native-git/clie
 import {signCodingWorkerBody,nativeWorkerPublicKey} from '../native-git/signing.js';
 import {loadScannerPolicy} from '../github/scanner-policy.js';
 import {redact} from '../github/content-protection.js';
+import {transportFetch} from '../fleet/relay.js';
 const fail=(code,message,status)=>Object.assign(new TypeError(message),{safeMessage:true,safeCode:code,...(status?{status}:{})});
 export const playgroundBinding=record=>createHash('sha256').update(JSON.stringify(['robinson-playground/v1',record.row.id,record.binding.authority,record.binding.connection,record.binding.owner.toLowerCase(),record.binding.repo.toLowerCase(),record.worker])).digest('hex');
 export function playgroundAllocation(env,record){
@@ -43,7 +44,7 @@ export async function callPlayground(ctx,record,action,options={}){
  if(renew&&!await ctx.db.renewNativeGitJob(record.row.id,nativeConnection(ctx),{idleTimeoutMs:record.job.idleTimeoutMs}))throw fail('playground_expired','Workspace expired or authorization metadata is unavailable. No runtime request was sent.');
  const policy=await loadScannerPolicy(ctx.db,record.binding.owner,record.binding.repo);
  const body=JSON.stringify({scannerPolicy:{settings:policy.settings,revision:policy.revision},purpose:'robinson-coding/v1',binding:record.allocation.binding,expiresAt:(ctx.now??Date.now)()+60000,action,options});
- let response;try{response=await (ctx.fetch??globalThis.fetch)(record.allocation.url,{method:'POST',redirect:'error',signal:AbortSignal.timeout(15000),headers:{'Content-Type':'application/json','x-robinson-signature':signCodingWorkerBody(body,ctx.env)},body});}
+ let response;try{response=await transportFetch(ctx)(record.allocation.url,{method:'POST',redirect:'error',signal:AbortSignal.timeout(15000),headers:{'Content-Type':'application/json','x-robinson-signature':signCodingWorkerBody(body,ctx.env)},body});}
  catch{throw fail('playground_transport','Runtime transport did not confirm the result. Inspect the original execution ID; do not repeat a command using a new intent.');}
  let data;try{const reader=response.body.getReader(),chunks=[];let size=0;try{for(;;){const {done,value}=await reader.read();if(done)break;size+=value.length;if(size>128*1024){await reader.cancel();throw Error();}chunks.push(Buffer.from(value));}}finally{reader.releaseLock();}data=JSON.parse(Buffer.concat(chunks).toString('utf8'));if(!data||typeof data!=='object'||Array.isArray(data))throw Error();}
  catch{throw fail('playground_response','Runtime response was invalid or incomplete. Inspect the original execution ID.');}

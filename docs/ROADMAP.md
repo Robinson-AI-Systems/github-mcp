@@ -210,7 +210,7 @@ as this entry ([card](pr-cards/FLEET-1.md)). Proposed next outcomes, not in the 
 
 - **FLEET-2** slim image for `small`, collapsed single-container shape, warm pool of pre-started single-use containers,
   ephemeral "run at this commit" mode, honest upsize hint on pressure.
-- **FLEET-3** outbound host agent: hosts long-poll the control plane for signed ≤ 90 s work leases and post results back,
+- **FLEET-3 (approved and built 2026-11-01, [card](pr-cards/FLEET-3.md))** outbound host agent: hosts long-poll the control plane for signed ≤ 90 s work leases and post results back,
   so a PC or tailnet-only machine needs **no public tunnel or inbound port**; revocation via heartbeat plus local
   fail-closed expiry. Would replace PLAY-2's public-tunnel transport as the first path (needs Chris's approval and a
   measured Vercel invocation budget).

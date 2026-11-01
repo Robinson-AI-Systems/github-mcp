@@ -190,24 +190,25 @@ function managePage(res, m) {
           (pl.repos?.length ? pl.repos.map((r) => act('remove_place', `Remove ${h(pl.login)}/${h(r)}`, { value: pl.login + '/' + r, plain: true, id: 'remove-place-' + pl.login + '-' + r })).join('') : act('remove_place', `Remove ${h(pl.login)}`, { value: pl.login, plain: true, id: 'remove-place-' + pl.login }))).join('') : '<p class="muted">No extra places yet.</p>') +
         `<form method="post" action="${MANAGE_PATH}">${hidden('handle', m.handle)}${hidden('action', 'add_place')}<label>Organization or owner/repository<input type="text" name="value" id="place-value" maxlength="150" autocomplete="off"></label><button type="submit" id="add-place">Add place</button></form>`
       : '<p class="muted">Extra places need your master token. Add it above first.</p>')) +
-    (m.marketplaceAccountId ? '' : '<h2>Your Playground computers</h2>' +
-      '<p>Use only a computer you own or administer. It runs your own repository code and may consume CPU, memory and disk. A device owner can inspect its own containers; this is not a multi-tenant virtual machine. A separate canary and isolation check are required before any command can run. Your GitHub and tunnel secrets stay on your computer.</p>' +
-      (m.pairing ? '<p id="playground-pair-code">On your own computer, enter this one-time code in the reviewed local pairing helper within ten minutes: <code>' + h(m.pairing.code) + '</code>. Device ID: <code>' + h(m.pairing.deviceId) + '</code>. You will confirm its displayed signing-key fingerprint here after it proves possession. Never paste a GitHub token into the pairing tool.</p>' : '') +
+    (m.marketplaceAccountId ? '' : '<h2>Your computers and servers</h2>' +
+      '<p>Add any computer or server you own or administer (a PC, a laptop, a VPS, a home server, a Dokploy or other Docker host) so your AI can run builds and tests there. It needs Docker and Node.js 22+, and only makes outbound connections: no tunnel, no open port. It runs only your own work, may use its CPU, memory and disk, and is not a multi-tenant virtual machine. Your GitHub sign-in never goes to it. <a href="https://github.com/Robinson-AI-Systems/github-mcp/blob/main/tools/playground-device/README.md">Setup guide</a>.</p>' +
+      (m.pairing ? '<p id="playground-pair-code">Within ten minutes, run this on that computer (in the folder with the agent): <code>node agent.mjs join --device ' + h(m.pairing.deviceId) + ' --code ' + h(m.pairing.code) + '</code>. Then reload this page, check the fingerprint it printed matches the one shown here, and approve. Never paste a GitHub token into it.</p>' : '') +
       ((m.pairingGrants??[]).length ? m.pairingGrants.map(c =>
-        act('begin_pair', 'Pair my computer for ' + h(c.name),
+        act('begin_pair', 'Add a computer or server for ' + h(c.name),
           {value:c.clientId,id:'begin-playground-pair-' + c.clientId})).join('') :
-        '<p class="muted">Connect an app with Full permissions before enrolling a computer.</p>') +
+        '<p class="muted">Connect an app with Full permissions before adding a computer.</p>') +
       ((m.devices??[]).length ? m.devices.map(d=>'<div class="row"><span><strong>' + h(d.clientName) + '</strong> <small>' + h(d.deviceId) + '</small><br><span class="tag">' + h(d.status) + '</span>' +
-        (d.origin ? '<p><small>Tunnel: ' + h(d.origin) + '</small></p>' : '') +
+        (d.origin ? '<p><small>Tunnel: ' + h(d.origin) + '</small></p>' : '<p><small>Connects out to us (no tunnel needed).' + (d.lastCheckInAt ? ' Last check-in ' + h(new Date(d.lastCheckInAt).toISOString()) + '.' : ' Not checked in yet: run <code>node agent.mjs run</code> on it.') + (d.capacity?.cpus ? ' ' + h(String(d.capacity.cpus)) + ' CPUs' + (d.capacity.freeMemoryBytes ? ', ' + h((d.capacity.freeMemoryBytes / 1024 ** 3).toFixed(1)) + ' GB free memory' : '') + '.' : '') + '</small></p>') +
+        (d.status==='ready' ? '<p><small>Ready: your Playground work can run here.</small></p>' : '') +
         (d.fingerprint ? '<p><small>Signing-key fingerprint: <code>' + h(d.fingerprint) + '</code> — compare it with the one on your own computer before approving.</small></p>' : '') +
         (d.transportVerifiedAt ? '<p><small>Tunnel/device identity last proved at ' + h(new Date(d.transportVerifiedAt).toISOString()) + '. This does not permit commands.</small></p>' : '') +
         (d.localCanaryAt ? '<p><small>Local image test observed at ' + h(new Date(d.localCanaryAt).toISOString()) + ' for immutable image ' + h(d.localCanaryImage) + '. Source not attached; commands still disabled.</small></p>' : '') +
         '</span></div>' +
         (d.status==='pending_confirm' ? act('approve_pair','Approve this exact device fingerprint (canary still required)',{value:d.deviceId,id:'approve-' + d.deviceId}) : '') +
-        (d.status==='pending_canary' ? act('probe_pair','Check my signed device tunnel (no commands)',{value:d.deviceId,id:'probe-' + d.deviceId}) : '') +
-        (d.status==='pending_canary'&&d.transportVerifiedAt ? act('canary_pair','Verify my fixed local runtime test receipt (no commands)',{value:d.deviceId,id:'canary-' + d.deviceId}) : '') +
+        (d.status==='pending_canary'&&d.transport!=='dial-out' ? act('probe_pair','Check my signed device tunnel (no commands)',{value:d.deviceId,id:'probe-' + d.deviceId}) : '') +
+        (d.status==='pending_canary'&&d.transport!=='dial-out'&&d.transportVerifiedAt ? act('canary_pair','Verify my fixed local runtime test receipt (no commands)',{value:d.deviceId,id:'canary-' + d.deviceId}) : '') +
         (!['revoked','revocation_pending'].includes(d.status) ? act('revoke_pair','Revoke enrollment',{value:d.deviceId,plain:true,id:'revoke-' + d.deviceId}) : '')).join('') :
-        '<p class="muted">No computers enrolled yet.</p>')) +
+        '<p class="muted">No computers or servers added yet.</p>')) +
     '<h2>Time zone</h2>' +
     `<form method="post" action="${MANAGE_PATH}">${hidden('handle', m.handle)}${hidden('action', 'time_zone')}<label>Show times in<select name="value">` +
       COMMON_ZONES.map((z) => `<option value="${h(z)}"${z === m.timeZone ? ' selected' : ''}>${h(z.replace('_', ' '))}</option>`).join('') + '</select></label><button type="submit" id="save-zone">Save</button></form>' +

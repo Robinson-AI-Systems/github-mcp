@@ -10,6 +10,7 @@ const html=(res,action,fields)=>{
 };
 export async function createPreviewEntry(ctx,record,port){
  const binding=playgroundBinding(record),stored=await ctx.db.getSetting('playground.'+binding.slice(0,40));
+  if(stored?.placement==='device')throw new TypeError('Interactive browser previews are not available for runtimes on your own computer yet; use github_playground_read operation preview, or open the app on that computer.');
  if(stored?.phase!=='attached'||stored.binding!==binding||!Number.isSafeInteger(port)||port<1024||port>65535)throw new TypeError('An attached allocation and enabled development port are required.');
  const capabilities=await callPlayground(ctx,record,'capabilities');if(!capabilities.preview?.ports?.includes(port)||capabilities.authority?.required===true&&capabilities.authority.allowed!==true)throw new TypeError('Development port or current runtime authority is unavailable.');
  const authority=await allocationAuthority({...ctx,stored});if(!authority.allowed)throw new TypeError('Current allocation authorization/enforcement is unavailable.');
