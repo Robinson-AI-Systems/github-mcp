@@ -90,8 +90,10 @@ export function createLocalRuntime({docker=dockerRun}={}){
   // Never invoke an agent-supplied argv here. These are fixed local image probes.
   const node=exactOutput(await docker(['exec','--user','1000:1000','-w','/app',plan.container,
    'node','-e',"if(!process.version.startsWith('v24.'))process.exit(2);if(process.getuid()!==1000)process.exit(3);console.log('node24-uid1000')"]), 'Node');
-  const postgres=exactOutput(await docker(['exec','--user','1000:1000','-w','/app',plan.container,
-   'pg_config','--version']), 'PostgreSQL');
+  const postgres=exactOutput(await docker(['exec','--user','1000:1000','--env','HOME=/workspace/home',
+    '-w','/app',plan.container,'node','--input-type=module','-e',
+    "import {spawn,spawnSync} from 'node:child_process';import {setTimeout as delay} from 'node:timers/promises';const child=spawn('/bin/sh',['/app/workers/coding-workspace/test-database'],{detached:true,stdio:'ignore',env:{...process.env,HOME:'/workspace/home'}});let passed=false;try{for(let i=0;i<80;i++){if(spawnSync('pg_isready',['-h','127.0.0.1','-p','5432'],{stdio:'ignore'}).status===0){passed=true;break;}await delay(100);}if(!passed)process.exitCode=2;else console.log('postgres15-started');}finally{try{process.kill(-child.pid,'SIGTERM')}catch{}await delay(100);}"
+  ]), 'PostgreSQL');
   const chromium=exactOutput(await docker(['exec','--user','1000:1000','-w','/app',plan.container,
    'node','--input-type=module','-e',"import {chromium} from 'playwright';const b=await chromium.launch({headless:true});const p=await b.newPage();await p.goto('data:text/html,<title>Device Canary</title>');if(await p.title()!=='Device Canary')process.exit(4);await b.close();console.log('chromium-ok');"]), 'Chromium');
   if(!node.includes('node24-uid1000')||!/PostgreSQL 15\./.test(postgres)||!chromium.includes('chromium-ok'))throw fail('The local image did not pass its runtime canary.');
