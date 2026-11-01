@@ -56,6 +56,7 @@ export function createLocalRuntime({docker=dockerRun}={}){
   }
   return {container,network,volume};
  };
+ function planOnly(plan){return {image:plan.image,container:plan.container,network:plan.network,volume:plan.volume,cpuCpus:plan.cpuCpus,memoryMiB:plan.memoryMiB,providerMutated:false,canaryPassed:false,controllerAdmission:false,warning:'Requires device-owner review and real canary before host admission.'};}
  async function install(plan){
   let current=await evidence(plan);
   if(current.container&&current.container.State?.Running===true)return {alreadyInstalled:true,container:plan.container,canaryPassed:false};
@@ -92,11 +93,11 @@ export function createLocalRuntime({docker=dockerRun}={}){
    'node','-e',"if(!process.version.startsWith('v24.'))process.exit(2);if(process.getuid()!==1000)process.exit(3);console.log('node24-uid1000')"]), 'Node');
   const postgres=exactOutput(await docker(['exec','--user','1000:1000','--env','HOME=/workspace/home',
     '-w','/app',plan.container,'node','--input-type=module','-e',
-    "import {spawn,spawnSync} from 'node:child_process';import {setTimeout as delay} from 'node:timers/promises';const child=spawn('/bin/sh',['/app/workers/coding-workspace/test-database'],{detached:true,stdio:'ignore',env:{...process.env,HOME:'/workspace/home'}});let passed=false;try{for(let i=0;i<80;i++){if(spawnSync('pg_isready',['-h','127.0.0.1','-p','5432'],{stdio:'ignore'}).status===0){passed=true;break;}await delay(100);}if(!passed)process.exitCode=2;else console.log('postgres15-started');}finally{try{process.kill(-child.pid,'SIGTERM')}catch{}await delay(100);}"
+    "import {spawn,spawnSync} from 'node:child_process';import {setTimeout as delay} from 'node:timers/promises';const child=spawn('/bin/sh',['/app/workers/coding-workspace/test-database'],{detached:true,stdio:'ignore',env:{...process.env,HOME:'/workspace/home'}});let passed=false;try{for(let i=0;i<80;i++){if(spawnSync('pg_isready',['-h','127.0.0.1','-p','5432'],{stdio:'ignore'}).status===0){passed=true;break;}await delay(100);}if(!passed)process.exitCode=2;}finally{try{process.kill(-child.pid,'SIGTERM')}catch(e){if(e.code!=='ESRCH')throw e}let stopped=false;for(let i=0;i<80;i++){if(spawnSync('pg_isready',['-h','127.0.0.1','-p','5432'],{stdio:'ignore'}).status!==0){stopped=true;break;}await delay(100);}if(!stopped)process.exitCode=5;}if(passed&&process.exitCode!==5)console.log('postgres15-started-stopped');"
   ]), 'PostgreSQL');
   const chromium=exactOutput(await docker(['exec','--user','1000:1000','-w','/app',plan.container,
    'node','--input-type=module','-e',"import {chromium} from 'playwright';const b=await chromium.launch({headless:true});const p=await b.newPage();await p.goto('data:text/html,<title>Device Canary</title>');if(await p.title()!=='Device Canary')process.exit(4);await b.close();console.log('chromium-ok');"]), 'Chromium');
-  if(!node.includes('node24-uid1000')||!postgres.includes('postgres15-started')||!chromium.includes('chromium-ok'))throw fail('The local image did not pass its runtime canary.');
+  if(!node.includes('node24-uid1000')||!postgres.includes('postgres15-started-stopped')||!chromium.includes('chromium-ok'))throw fail('The local image did not pass its runtime canary.');
   const after=await evidence(plan);
   if(after.container?.State?.Running!==true)throw fail('Runtime exited during canary.');
   return {canaryPassed:true,deviceId:plan.deviceId,binding:plan.binding,
@@ -123,7 +124,7 @@ export function createLocalRuntime({docker=dockerRun}={}){
   if(current.container||current.volume||current.network)throw fail('Whole owned allocation cleanup unconfirmed.');
   return {disposed:true,containerAbsent:true,volumeAbsent:true,networkAbsent:true};
  }
- return {install,canary,remove,evidence};
+ return {plan:planOnly,install,canary,remove,evidence};
 }
 function options(argv){
  const data={};
@@ -131,7 +132,7 @@ function options(argv){
   if(!['--device','--binding','--image','--control-key','--action'].includes(key)||typeof value!=='string'||data[key])throw fail('Unknown or repeated installer argument.');
   data[key]=value;
  }
- if(!['install','canary','remove'].includes(data['--action']))throw fail('Choose --action install, canary, or remove.');
+ if(!['plan','install','canary','remove'].includes(data['--action']))throw fail('Choose --action plan, install, canary, or remove.');
  return data;
 }
 if(process.argv[1]&&pathToFileURL(resolve(process.argv[1])).href===import.meta.url){
