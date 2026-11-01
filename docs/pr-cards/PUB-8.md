@@ -14,7 +14,7 @@ Accepted when the gate is implemented as code with tests for both the on and off
 
 No gate raises spend, widens access or opens public sign-up by itself. Secrets never pass through a tool.
 
-## Built 2026-11-01 (PR #518)
+## Built 2026-11-01 (PR #522)
 
 What exists now:
 - **Tool `github_tenant_remove`** (`src/tools/tenant-remove.js`, `defineGithubWrite`, `audience: ['Op']`, full profile).
