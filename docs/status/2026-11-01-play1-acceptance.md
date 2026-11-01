@@ -19,3 +19,8 @@ never verify ("Generation, ancestry, local changes … differs"), holding the so
 `includeRepository` (still non-renewing), refuse an incomplete read, and heal transfers saved without a head (release
 the lock, prepare again). Tests: `playground-attach-concurrency.test.js` (both new tests fail without the fix; the
 mock now mirrors the worker).
+
+Follow-up (same day): after #527 healed the stuck transfer, the runtime still held the old partial import under the
+same transfer ID and refused the new one ("Attachment intent differs"). Re-prepared transfers now get a new ID
+(`transferAttempt`), and an "intent differs" answer from the runtime starts a fresh attempt automatically. Tests:
+`playground-attach-concurrency.test.js` (new ID test fails without the fix).

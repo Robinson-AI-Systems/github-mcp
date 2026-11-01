@@ -1,3 +1,4 @@
+import {createHash} from 'node:crypto';
 import {describe, expect, it, vi, beforeEach} from 'vitest';
 
 // The native worker is replaced by a scripted fake so the control-plane attach loop
@@ -14,7 +15,7 @@ vi.mock('../../src/native-git/client.js', () => ({
     if (action === 'attachment_export' && options.mode === 'release') { behaviour.released = (behaviour.released ?? 0) + 1; return {released: true}; }
     if (action === 'attachment_export' && options.mode === 'prepare') return {transferId: options.transferId, generation: 2, bytes: 64, digest: 'd'.repeat(64)};
     if (action === 'attachment_export' && options.mode === 'read') return {digest: 'd'.repeat(64), offset: options.offset, nextOffset: options.offset + 4, base64: Buffer.from('abcd').toString('base64')};
-    if (action === 'attachment_import' && options.mode === 'begin') return {transferId: 't'.repeat(64), bytes: 64, digest: 'd'.repeat(64), offset: 0};
+    if (action === 'attachment_import' && options.mode === 'begin') { if (behaviour.beginError) { const e = new Error(behaviour.beginError); e.status = 400; throw e; } return {transferId: 't'.repeat(64), bytes: 64, digest: 'd'.repeat(64), offset: 0}; }
     if (action === 'attachment_import' && options.mode === 'append') {
       if (behaviour.appendError) { const e = new Error(behaviour.appendError); e.status = 400; throw e; }
       return {offset: options.offset + 4};
@@ -26,7 +27,9 @@ const {attachRepository} = await import('../../src/playground/attachment.js');
 
 const binding = 'b'.repeat(64);
 function world({casFails = false, fresh = false, headless = false} = {}) {
-  const transfer = {transferId: 't'.repeat(64), bytes: 64, digest: 'd'.repeat(64), generation: 1, offset: 0, ...(headless ? {} : {sourceHead: 'a'.repeat(40), sourceStatus: ''})};
+  // A headless (stuck) transfer carries the same ID a naive re-prepare would compute (binding + generation 2).
+  const staleId = createHash('sha256').update(JSON.stringify([binding, 2])).digest('hex');
+  const transfer = {transferId: headless ? staleId : 't'.repeat(64), bytes: 64, digest: 'd'.repeat(64), generation: headless ? 2 : 1, offset: 0, ...(headless ? {} : {sourceHead: 'a'.repeat(40), sourceStatus: ''})};
   let row = {revision: 3, binding, composeId: 'c1', phase: fresh ? 'allocated' : 'attaching', plan: {origin: 'https://ras-pg.example.test/'}, ...(fresh ? {} : {transfer})};
   const db = {
     getSetting: async () => row,
@@ -78,5 +81,23 @@ describe('attach while another attach of the same workspace is running', () => {
     await attachRepository(ctx, record, {budgetMs: 0}).catch(() => {});
     expect(behaviour.released).toBe(1);
     expect(row().transfer.sourceHead).toBe('a'.repeat(40));
+  });
+  it('gives a healed transfer a new ID so the runtime never mixes it with the stale partial import', async () => {
+    const {ctx, record, row} = world({headless: true});
+    const staleId = row().transfer.transferId;
+    await attachRepository(ctx, record, {budgetMs: 0}).catch(() => {});
+    expect(row().transferAttempt).toBe(1);
+    expect(row().transfer.transferId).not.toBe(staleId);
+    const prepare = calls.find(c => c.action === 'attachment_export' && c.options?.mode === 'prepare');
+    expect(prepare.options.transferId).toBe(row().transfer.transferId);
+  });
+  it('starts a fresh attempt when the runtime holds a different partial import under the same ID', async () => {
+    behaviour.beginError = 'Native Git worker returned HTTP 400: Attachment intent differs. Inspect state before a new intent.';
+    const {ctx, record, row} = world();
+    const error = await attachRepository(ctx, record, {budgetMs: 1000}).catch(e => e);
+    expect(error.message).toMatch(/fresh transfer will start/);
+    expect(error.safeRetryable).toBe(true);
+    expect(row()).toMatchObject({phase: 'allocated', transfer: null, transferAttempt: 1});
+    expect(behaviour.released).toBe(1);
   });
 });
