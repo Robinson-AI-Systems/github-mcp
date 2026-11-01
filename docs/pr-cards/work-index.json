@@ -2728,6 +2728,112 @@
       "pr": [
         507
       ]
+    },
+    {
+      "id": "FLEET-2",
+      "title": "Faster small runtimes: slim image, run-at-commit mode, upsize hint",
+      "batch": "FIN",
+      "design": "docs/designs/GATED-EXPANSION-2026-11-01.md",
+      "dependencies": [
+        "FLEET-1"
+      ],
+      "card": "docs/pr-cards/FLEET-2.md",
+      "status": "APPROVED",
+      "migration": "none",
+      "budget": 800,
+      "units": [
+        "FLEET-2"
+      ],
+      "readiness": "READY",
+      "ownerInputs": [],
+      "pr": []
+    },
+    {
+      "id": "FLEET-7",
+      "title": "Warm runtimes that switch on only under measured demand",
+      "batch": "FIN",
+      "design": "docs/designs/GATED-EXPANSION-2026-11-01.md",
+      "dependencies": [
+        "FLEET-2"
+      ],
+      "card": "docs/pr-cards/FLEET-7.md",
+      "status": "APPROVED",
+      "migration": "none",
+      "budget": 800,
+      "units": [
+        "FLEET-7"
+      ],
+      "readiness": "READY",
+      "ownerInputs": [],
+      "pr": []
+    },
+    {
+      "id": "PUB-7",
+      "title": "Public-launch readiness report and draft trust pages (launch stays an owner decision)",
+      "batch": "PUB",
+      "design": "docs/designs/GATED-EXPANSION-2026-11-01.md",
+      "dependencies": [],
+      "card": "docs/pr-cards/PUB-7.md",
+      "status": "APPROVED",
+      "migration": "none",
+      "budget": 800,
+      "units": [
+        "PUB-7"
+      ],
+      "readiness": "READY",
+      "ownerInputs": [],
+      "pr": []
+    },
+    {
+      "id": "PUB-8",
+      "title": "Owner removal of a stranger's account and data by identity",
+      "batch": "PUB",
+      "design": "docs/designs/GATED-EXPANSION-2026-11-01.md",
+      "dependencies": [],
+      "card": "docs/pr-cards/PUB-8.md",
+      "status": "APPROVED",
+      "migration": "none",
+      "budget": 800,
+      "units": [
+        "PUB-8"
+      ],
+      "readiness": "READY",
+      "ownerInputs": [],
+      "pr": []
+    },
+    {
+      "id": "PUB-9",
+      "title": "Fine-grained token tenants, offered only when enrolled",
+      "batch": "PUB",
+      "design": "docs/designs/GATED-EXPANSION-2026-11-01.md",
+      "dependencies": [],
+      "card": "docs/pr-cards/PUB-9.md",
+      "status": "APPROVED",
+      "migration": "none",
+      "budget": 800,
+      "units": [
+        "PUB-9"
+      ],
+      "readiness": "READY",
+      "ownerInputs": [],
+      "pr": []
+    },
+    {
+      "id": "CAP-6",
+      "title": "Runners, merge queue and Copilot tools listed only where the feature exists",
+      "batch": "CAP",
+      "design": "docs/designs/GATED-EXPANSION-2026-11-01.md",
+      "dependencies": [],
+      "card": "docs/pr-cards/CAP-6.md",
+      "status": "APPROVED",
+      "migration": "none",
+      "budget": 800,
+      "units": [
+        "CAP-6"
+      ],
+      "readiness": "READY",
+      "ownerInputs": [],
+      "pr": []
     }
   ],
   "gatewayBoundary": {
@@ -2771,7 +2877,7 @@
       "docs/pr-cards/RESULT-OWN-KEYS.md",
       "docs/pr-cards/RESULT-OFFSET-METADATA.md"
     ],
-    "sourceAndAutomated": "All five #151\u2013#155 source implementations accepted by the complete seven exact-head CI/release gates; #155 merger/final-main CI must still be observed independently.",
+    "sourceAndAutomated": "All five #151–#155 source implementations accepted by the complete seven exact-head CI/release gates; #155 merger/final-main CI must still be observed independently.",
     "deployedExactRevision": "UNVERIFIED for this batch; last independently observed production source #146",
     "authenticatedCustomMcp": "UNVERIFIED",
     "directOAuth": "UNVERIFIED",

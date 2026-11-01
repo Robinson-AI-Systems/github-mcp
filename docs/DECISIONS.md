@@ -48,3 +48,10 @@ Chris: the sign-in must not refuse Production mode, and Production should be the
 - **Prebuilt runtime image:** approved to publish the runtime image and pin `PLAYGROUND_IMAGE` to its digest.
 - **The two audit problems** (heartbeat outages, large clones) approved and fixed (PR #503).
 
+
+## 2026-11-01 — Gated expansion approved (items 1–9)
+
+Chris approved building all nine previously unapproved items, each used only when its own coded gate says so
+("self aware on when to actually use the things that are built"). Item 5 (single-container runtime) is not built:
+it removes executed-code/Git-broker isolation and no demand level justifies that. Design:
+[GATED-EXPANSION](designs/GATED-EXPANSION-2026-11-01.md); cards FLEET-2, FLEET-7, PUB-7, PUB-8, PUB-9, CAP-6.
