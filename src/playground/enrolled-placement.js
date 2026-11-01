@@ -76,6 +76,7 @@ export async function prepareEnrolledPlacement(ctx,record,deviceId){
  const scope=authorized(ctx,record);
  if(!DEVICE.test(deviceId??''))throw fail('Select only your own previously paired device ID.');
  const binding=playgroundBinding(record),now=(ctx.now??Date.now)();
+ if(record.allocation)throw fail('This workspace already has an operator allocation; never migrate it implicitly.');
  const activeOperator=await ctx.db.getSetting('playground.'+binding.slice(0,40));
  if(activeOperator&&activeOperator.phase!=='disposed')
   throw fail('An operator allocation is already recorded for this workspace. Drain and reconcile it separately; no automatic migration.');
