@@ -37,15 +37,15 @@ async function cas(db,key,update){
   }
   throw safe('Enrollment changed concurrently. Reopen My connection.');
 }
-export function createEnrolledHostStore({db,root,tenantId,identityId,now=Date.now,random=randomBytes}={}){
+export function createEnrolledHostStore({db,root,tenantId,identityId,clientId,now=Date.now,random=randomBytes}={}){
   if(!db?.getSetting||!db?.compareAndSetSetting||!root?.getSetting||!root?.setSetting||
-     typeof tenantId!=='string'||typeof identityId!=='string')throw safe('Verified enrollment scope is required.');
+     typeof tenantId!=='string'||typeof identityId!=='string'||typeof clientId!=='string'||!clientId)throw safe('Verified enrollment scope is required.');
   const current=()=>now();
   const list=async()=>{
     const idx=await db.getSetting(indexKey),ids=idx?.ids??[];
     if(!Array.isArray(ids)||ids.length>32||!ids.every(validId))throw safe('Invalid enrolled host index.');
     const found=await Promise.all(ids.map(id=>db.getSetting(keyFor(id))));
-    return found.filter(h=>h?.tenantId===tenantId&&h.identityId===identityId).map(h=>({
+    return found.filter(h=>h?.tenantId===tenantId&&h.identityId===identityId&&h.clientId===clientId).map(h=>({
       deviceId:h.deviceId,status:h.status,fingerprint:h.fingerprint??null,origin:h.origin??null,
       generation:h.generation,pairedAt:h.pairedAt??null,revocationPending:h.status==='revocation_pending'
     }));
@@ -54,19 +54,19 @@ export function createEnrolledHostStore({db,root,tenantId,identityId,now=Date.no
     const existing=await list();
     if(existing.filter(x=>x.status!=='revoked').length>=8)throw safe('This connection already has eight enrolled or pending devices.');
     const deviceId=random(16).toString('hex'),code=random(32).toString('base64url'),hash=sha(code),expiresAt=current()+600000;
-    const host={kind:'playground-enrolled-host',tenantId,identityId,deviceId,generation:1,
+    const host={kind:'playground-enrolled-host',tenantId,identityId,clientId,deviceId,generation:1,
       status:'pending_pair',codeHash:hash,expiresAt,createdAt:current(),revision:1};
     if(!await db.compareAndSetSetting(keyFor(deviceId),0,host))throw safe('Device identity collision.');
     await cas(db,indexKey,old=>({ids:[...new Set([...(old?.ids??[]),deviceId])].sort()}));
-    await root.setSetting(rootKey(hash),{kind:'playground-pair-selector',tenantId,identityId,deviceId,expiresAt});
+    await root.setSetting(rootKey(hash),{kind:'playground-pair-selector',tenantId,identityId,clientId,deviceId,expiresAt});
     return {deviceId,code,expiresAt};
   }
   async function claim({code,deviceId,publicKey,origin,signature}={}){
     if(!codePattern.test(code??'')||!validId(deviceId)||typeof signature!=='string'||!/^[-_A-Za-z0-9]{80,128}$/.test(signature))throw safe('Invalid device pairing proof.');
     const h=await db.getSetting(keyFor(deviceId)),hash=sha(code),pointer=await root.getSetting(rootKey(hash));
-    if(!h||h.tenantId!==tenantId||h.identityId!==identityId||h.deviceId!==deviceId||
+    if(!h||h.tenantId!==tenantId||h.identityId!==identityId||h.clientId!==clientId||h.deviceId!==deviceId||
       h.status!=='pending_pair'||h.codeHash!==hash||h.expiresAt<=current()||
-      pointer?.tenantId!==tenantId||pointer.identityId!==identityId||pointer.deviceId!==deviceId||
+      pointer?.tenantId!==tenantId||pointer.identityId!==identityId||pointer.clientId!==clientId||pointer.deviceId!==deviceId||
       pointer.expiresAt!==h.expiresAt)throw safe('Pairing was already used, expired, or belongs to another person.');
     const url=originOf(origin),pk=publicKeyOf(publicKey),msg=pairingMessage({deviceId,code,origin:url});
     if(!verify(null,Buffer.from(msg),pk,Buffer.from(signature,'base64url')))throw safe('Device did not prove its signing key.');
@@ -81,7 +81,7 @@ export function createEnrolledHostStore({db,root,tenantId,identityId,now=Date.no
   async function approve(deviceId){
     if(!validId(deviceId))throw safe('Unknown device.');
     const saved=await cas(db,keyFor(deviceId),h=>{
-      if(h?.tenantId!==tenantId||h.identityId!==identityId||h.status!=='pending_confirm'||h.expiresAt<=current()||
+      if(h?.tenantId!==tenantId||h.identityId!==identityId||h.clientId!==clientId||h.status!=='pending_confirm'||h.expiresAt<=current()||
          !h.publicKey||!h.fingerprint||!h.origin)return null;
       return {...h,status:'pending_canary',pairedAt:current(),codeHash:null,expiresAt:null};
     });
@@ -91,7 +91,7 @@ export function createEnrolledHostStore({db,root,tenantId,identityId,now=Date.no
   async function revoke(deviceId){
     if(!validId(deviceId))throw safe('Unknown device.');
     const saved=await cas(db,keyFor(deviceId),h=>{
-      if(h?.tenantId!==tenantId||h.identityId!==identityId)return null;
+      if(h?.tenantId!==tenantId||h.identityId!==identityId||h.clientId!==clientId)return null;
       if(['revoked','revocation_pending'].includes(h.status))return {...h};
       return {...h,status:h.status==='ready'||h.status==='constrained'?'revocation_pending':'revoked',
         codeHash:null,revokedAt:current(),generation:h.generation+1};
