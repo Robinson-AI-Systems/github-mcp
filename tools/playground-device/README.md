@@ -2,7 +2,7 @@
 
 This helper runs on **your own** WSL2/Linux machine, not in an AI tool or on the operator's behalf. It is the **device identity/pairing leg** only: it does not install the Docker supervisor, enable arbitrary commands, bind repository storage, configure a tunnel, or pass the enrollment canary. Those are separate PLAY-2 implementation/acceptance requirements. The owner must confirm the exact fingerprint after the device proves it owns its locally generated Ed25519 key.
 
-1. In `https://github.robinsonaisystems.com/connection`, sign in with **your own GitHub login**, choose one connected Full app, and choose **Start pairing my computer**. This generates a device ID and a ten-minute one-use code.
+1. In `https://github.robinsonaisystems.com/connection`, sign in with **your own GitHub login**, choose one connected Full app, and choose **Pair my computer for <app>** (shown for each Full connection; not shown for Marketplace accounts). This generates a device ID and a ten-minute one-use code.
 2. On the computer you own, ensure Node 24 and your own outbound **HTTPS tunnel** are configured. The public Vercel controller cannot resolve a private tailnet-only hostname by itself. Verify the tunnel belongs to you; do not paste its credentials into the helper or chat.
 3. From the checked repository source run `node tools/playground-device/pair.mjs` in WSL2/Linux. It prompts locally for the device ID, the one-use pairing code and the HTTPS tunnel origin. No GitHub key/token is required. Prefer a pinned reviewed Git revision; the installer/update signing mechanism and operational verification are a later PLAY-2 unit.
 4. The tool creates an Ed25519 device private key under `~/.config/ras-playground/device-ed25519.pk8`, with owner-only permissions, and posts **only the public key, signed pairing statement and one-time code**. It does not read, upload or alter your existing bench GitHub key.
@@ -60,11 +60,19 @@ When your **own** pending-canary enrollment exists, you may run the device's rea
 node tools/playground-device/probe-server.mjs --device DEVICE_ID --origin 'https://your-owned-public-tunnel.example' --generation ENROLLED_GENERATION --control-key 'ed25519:PINNED_CONTROLLER_PUBLIC_KEY' --port 4143
 ```
 
-3. Configure an outbound **HTTPS** tunnel in **your own account** that forwards the exact enrolled public hostname's `/v1/enrollment/probe` path to local `127.0.0.1:4143`. The enrolled origin must already be set through your earlier signed pairing; the MCP never accepts an arbitrary request-time hostname. Tailnet-only names or private addresses are not directly reachable from Vercel. Do not expose Docker, PostgreSQL, the coding container or any additional path through this tunnel.
+3. Configure an outbound **HTTPS** tunnel in **your own account** that forwards the exact enrolled public hostname's `/v1/enrollment/probe` and `/v1/enrollment/canary` paths to local `127.0.0.1:4143`. The enrolled origin must already be set through your earlier signed pairing; the MCP never accepts an arbitrary request-time hostname. Tailnet-only names or private addresses are not directly reachable from Vercel. Do not expose Docker, PostgreSQL, the coding container or any additional path through this tunnel.
 4. Sign in to `/connection` with the enrolling GitHub account, find the exact fingerprint and origin, and click **Check my signed device tunnel**. The control plane verifies your current Full client grant, pins a public DNS address for TLS, sends a 60-second Ed25519 claim, verifies the device's signed reply and records the observation.
 5. The enrollment **remains `pending_canary`**. A successful probe is only a signed tunnel/key reachability check. Actual Node 24/PostgreSQL/Chromium source attachment, current-grant runtime heartbeat, permissions, isolation, command/handle recovery and revocation still require separate proof. Stop the receiver when finished; to revoke, use your own My connection page.
 
 The receiver requires a live signature, matching device ID, generation, pinned origin and previously unseen nonce. It durably records used nonce hashes under `~/.config/ras-playground/probe-replay/` with owner-only permissions, so a receiver restart does not restore an old claim; this directory contains no GitHub keys or file contents. If the PC sleeps or loses the tunnel, the probe fails closed and does not create another host or rerun an uncertain command. No hosted fallback or paid tunnel is automatically started.
+
+## Practical notes (added 2026-11-01)
+
+- **Generation:** My connection does not show the enrollment generation yet. A fresh pairing always starts at generation `1`, and only an unrevoked record can be probed, so use `1`.
+- **Timing:** the local canary receipt is valid for five minutes, and the canary button needs a probe under five minutes old. Run `install.mjs --action canary`, then click **Check my signed device tunnel**, then **Verify my fixed local runtime test receipt**, all within five minutes.
+- **Pairing endpoint:** `/api/playground/enroll` answers only on the production deployment with the public-connect tenant pilot enabled; elsewhere it returns 404 even though My connection may show a code.
+- **Tailscale:** a tailnet-only name (`*.ts.net` via Serve, `100.x` addresses) is refused — the control plane runs on Vercel and must reach a public IPv4 HTTPS origin. Tailscale **Funnel** gives a public `*.ts.net` HTTPS name and should pass the checks (unverified). The proposed outbound host agent ([RUNTIME-FLEET](../../docs/designs/RUNTIME-FLEET-2026-11-01.md) §2.1) would remove the tunnel requirement entirely.
+- **Keys:** every enrollment from the same OS user shares `~/.config/ras-playground/device-ed25519.pk8`; each `probe-server` process serves one device ID. The receiver is started by hand (no service), so restart it after a reboot.
 
 ## Device-signed local runtime proof — separate from host admission
 

@@ -200,3 +200,36 @@ All original improvement issues **#427–#436** are now independently closed/com
 Owner requests development execution, tests, disposable PostgreSQL and preview services in isolated per-workspace environments, targeting8vCPU/8GiB/150GB. This scope is approved under PAR-2; the advance plan, real infrastructure prerequisites and source/deployment/benchmark distinctions are in [the current expansion record](status/2026-10-29-coding-workspace-expansion.md). No superiority or running allocation is claimed before verification.
 
 Playground follow-through now has its own owner-approved [PLAY-1](pr-cards/PLAY-1.md) card: accessible agent command execution/result retrieval and the unfinished integrated allocation/files/preview/revocation lifecycle. Original merged PAR-2 work is not uncounted.
+
+## 2026-11-01 — Runtime fleet: more hosts, right-sized and faster runtimes (proposed, needs Chris)
+
+Chris asked (2026-11-01) for the Git workspace + Playground runtime to use more resources when available — Dokploy even
+with its limits, his PC, other devices on his tailnet — and for small projects to get small, fast runtimes. Full design:
+[RUNTIME-FLEET](designs/RUNTIME-FLEET-2026-11-01.md). **FLEET-1 (size classes, Git-only open) is built** in the same PR
+as this entry ([card](pr-cards/FLEET-1.md)). Proposed next outcomes, not in the work index until Chris approves:
+
+- **FLEET-2** slim image for `small`, collapsed single-container shape, warm pool of pre-started single-use containers,
+  ephemeral "run at this commit" mode, honest upsize hint on pressure.
+- **FLEET-3** outbound host agent: hosts long-poll the control plane for signed ≤ 90 s work leases and post results back,
+  so a PC or tailnet-only machine needs **no public tunnel or inbound port**; revocation via heartbeat plus local
+  fail-closed expiry. Would replace PLAY-2's public-tunnel transport as the first path (needs Chris's approval and a
+  measured Vercel invocation budget).
+- **FLEET-4** one scheduler across the user's enrolled hosts and one or more operator Dokploy pools, preferring hosts that
+  already hold the repository; deferred receipts, never silent moves of started commands.
+- **FLEET-5** per-host, per-tenant Git object and dependency caches.
+- **FLEET-6** several native Git workers (generalise current/previous origin pins to a weighted set) and device-native Git
+  on enrolled hosts, removing the 100 MiB sealed-transfer step there.
+
+Issues found by the 2026-11-01 audit, for scheduling:
+
+- **Heartbeat fragility (PLAY-1):** any heartbeat failure, including a transient Vercel/Neon error, makes the runtime stop
+  itself (the lifecycle route answers 401 to any exception). Proposed: distinguish "authority denied" (stop) from
+  "authority unreachable" (pause new commands, keep running ones until the 60 s lease actually expires), without ever
+  extending a lease.
+- **Native clone watchdog:** the 45 s Git watchdog includes clone, so big repositories come back `uncertain`; proposed
+  longer, separately bounded clone/fetch budget.
+- **PLAY-2 enrollment index:** each pairing attempt adds an ID to a per-tenant index that is never pruned; past 32 IDs
+  (abandoned codes included) the list read throws and My connection breaks for that tenant. Fix tracked as its own PR.
+- **PLAY-2 pairing UI vs endpoint gate:** My connection can show a code where `/api/playground/enroll` returns 404 (pilot
+  gate); expired pending records never change status and count toward the eight-device cap.
+

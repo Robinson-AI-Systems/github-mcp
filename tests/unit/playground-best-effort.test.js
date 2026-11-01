@@ -41,6 +41,7 @@ it('executes and replays through every public door without quota/monitoring evid
  for(const door of doorsFor(definition)){
   const {w}=await world();w.playgroundCapacity={cpu:{cgroupQuotaCpus:null},memory:{cgroupLimitBytes:null}};
   expect(await available(w)).toMatchObject({mode:'best_effort',execution_available:true,limits:{cpuCpus:null,memoryBytes:null,storageQuotaBytes:null},enforcement:{resourceGuarantees:false,storageQuotaVerified:false,hostMonitoringAvailable:false}});
+  expect((await available(w)).limitations.join(' ')).toMatch(/gateway proxy/);
   const args={...base,argv:['true'],requestKey:'best-effort'},first=parse(await door.call(w,args));expect(first.status,JSON.stringify(first)).toBe('applied');expect(parse(await door.call(w,args)).status).toBe('replayed');expect(w.playground.starts()).toBe(1);
  }
 });

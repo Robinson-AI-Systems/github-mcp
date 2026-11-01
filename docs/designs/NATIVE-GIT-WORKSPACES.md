@@ -1,5 +1,7 @@
 # Native Git capability through the GitHub MCP
 
+> **Historical design (banner added 2026-11-01).** The initial adapter was merged and accepted on Dokploy; the built surface is narrower than this design. Not built: export/renew-lease/rev-parse/ls-tree/cat-file/remote-configuration operations, concurrent reads within one workspace (one request at a time, reads included), a durable queue and autoscaling. Current behaviour: [NATIVE-GIT-OPERATIONS](../NATIVE-GIT-OPERATIONS.md); scale-out plan: [RUNTIME-FLEET](RUNTIME-FLEET-2026-11-01.md) §2.5.
+
 Status: source implementation in progress on 2026-10-28; not yet reviewed, merged, installed or accepted live. The dated parity-completion checkpoint and docs/NATIVE-GIT-OPERATIONS.md identify delivered source versus deployment proof. This extends the active [authority/parity plan](AUTHORITY-PARITY-2026-10-28.md); it must not be counted as delivered by existing GitHub git-data API tools or the wiki's isomorphic-git adapter.
 
 ## Observable outcome

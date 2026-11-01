@@ -104,14 +104,14 @@ Card(s): D-1.
 
 ## Robinson Playground commands (`github_playground_*`) — 4
 
-Agent-facing runtime operations through the existing search/describe/call contract. A protected isolated allocation must already be attached; absence is setup-required, never a shell in the shared Git worker.
+Agent-facing runtime operations through the existing search/describe/call contract. Clone queues an allocation automatically (unless `runtime: none`); `github_playground_workspace` provisions, attaches, resumes, previews or disposes it. Commands need an attached allocation; absence is reported as a Git-only fallback, never a shell in the shared Git worker. Guide: [CODING-WORKSPACES](CODING-WORKSPACES.md).
 
 | Tool | What it does | Safety | Origin | Cred | Audience | Profile | Card |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `github_playground_execute` | Start an isolated command with durable intent; acceptance is distinct from command success | P·Prod* | N | I | B,O,Op | F | PLAY-1 |
-| `github_playground_read` | Read capabilities, actual exit/status and complete hash-pinned protected log windows | — | N | I | B,O,Op | R | PLAY-1 |
+| `github_playground_read` | Read capabilities, availability, allocation phase, actual exit/status, complete hash-pinned protected log windows and private text previews | — | N | I | B,O,Op | R | PLAY-1 |
 | `github_playground_cancel` | Stop an execution process group and verify terminal state; does not claim allocation disposal | P | N | I | B,O,Op | F | PLAY-1 |
-| `github_playground_workspace` | Provision, attach, resume, privately preview or dispose the exact owned allocation with independent readback | P | N | I | B,O,Op | F | PLAY-1 |
+| `github_playground_workspace` | Provision (optional `size` small/medium/large), attach, resume, privately preview or dispose the exact owned allocation with independent readback | P | N | I | B,O,Op | F | PLAY-1 |
 
 ## Files, commits and git data (`github_content_*, github_commit_*, github_git_*`) — 23
 
@@ -119,7 +119,7 @@ Card(s): D-2.
 
 | Tool | What it does | Safety | Origin | Cred | Audience | Profile | Card |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| `github_git_workspace_open` | Clone with a distinct intent per workspace; replay reports historical receipt and current availability | P | N | I | B,O,Op | F | PAR-2 |
+| `github_git_workspace_open` | Clone with a distinct intent per workspace; optional `runtime` (none/small/medium/large/auto) sizes or skips the Playground; replay reports historical receipt and current availability | P | N | I | B,O,Op | F | PAR-2 |
 | `github_git_workspace_read` | Inspect native Git capabilities and exact operation help, history, conflicts, refs, receipts and protected byte windows | — | N | I | B,O,Op | R | PAR-2 |
 | `github_git_workspace_run` | Typed native Git; branch name/branch aliases, switch ref alias, independent branch readback and verified push | P·D·Prod* | N | I | B,O,Op | F | PAR-2 |
 | `github_git_workspace_close` | Dispose only the owned local workspace, verify absence and retain immutable disposal replay | P·D·Prod* | N | I | B,O,Op | F | PAR-2 |
@@ -998,3 +998,5 @@ Playground private previews: `github_playground_read` now accepts operation `pre
 Playground availability: `github_playground_read` operation `availability` returns ready/constrained/recovery/git_only or protected best_effort mode for exactly attached managed private allocations. Best effort reports unknown resource/storage guarantees honestly and requires pinned runtime identity, read-only shared Git metadata and current authority. Verified mode remains the default. `github_playground_execute` defers without spawning under resource pressure; repeat the identical intent only after fresh authorization/resource recovery. No background retry, automatic push/paid runner/provider fallback or weakened isolation. See docs/PLAYGROUND-OPERATIONS.md for protected setup and the controlled HTTP(S) dependency proxy and unsupported outbound ports.
 
 Playground project-scoped cleanup: `github_playground_workspace` disposal can verify exact four-volume absence from a fresh signed operator observation when host-volume inspection returns401/403; independent owned-project Compose/container absence is still required. No caller proof, static assertion, delete acknowledgement, foreign/incomplete volume set or widened host permission can substitute. See docs/PLAYGROUND-OPERATIONS.md. PR480's integrated source is built/released; whole live allocation acceptance remains unpassed.
+
+Runtime sizing (2026-11-01): `github_git_workspace_open.runtime` and `github_playground_workspace.size` pick a Playground size class — small (2 CPU / 2 GiB), medium (4 / 4) or large (8 / 8, the original size) — for the whole allocation, never above the protected `PLAYGROUND_CPU_CPUS`/`PLAYGROUND_MEMORY_BYTES` ceilings or fresh host headroom. `auto` uses protected `PLAYGROUND_DEFAULT_SIZE` (unset = large, unchanged behaviour). `runtime: "none"` opens a Git-only workspace and queues no allocation. An allocation keeps its recorded size; see [Playground operations](PLAYGROUND-OPERATIONS.md#right-sized-runtimes).

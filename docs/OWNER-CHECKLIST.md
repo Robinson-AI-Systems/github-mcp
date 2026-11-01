@@ -33,6 +33,13 @@ Only things that need you (your sign-in, phone or desktop, money, or a decision)
 
 ## Playground (coding workspaces)
 
+**Runtime fleet decisions (2026-11-01, none blocks work):**
+- [ ] **Approve or decline the "dial-out" host agent** ([design §2.1](designs/RUNTIME-FLEET-2026-11-01.md)). Yes means your PC and tailnet machines can run Playground work with no public tunnel; each machine makes one small check-in request about every 25 seconds while idle. Recommended: yes.
+- [ ] **Pool order** when several hosts are online. Recommended: your own machines first, then the Dokploy server.
+- [ ] **Smaller default runtime** (after a real build passes on a medium runtime): set `PLAYGROUND_DEFAULT_SIZE=medium` in Vercel. Agents can already ask for small/medium/large per workspace.
+- [ ] **Faster startup:** let agents publish the runtime image once and set `PLAYGROUND_IMAGE` to its digest, instead of building it for every workspace. Needs a container registry choice (GitHub Packages is free for public images).
+
+
 **PLAY-2 (2026-10-31):** After reviewed/deployed enrolled-host software exists, the first real acceptance needs your own WSL2/Docker PC paired by you under your own connection, plus a user-owned outbound HTTPS tunnel reachable from the controller. The bench GitHub key stays on your device; never paste keys or tunnel secrets into chat. Real appliance-desk workspace measurement, ownership proof and mid-run revocation can occur only after your personal enrollment. Agents may implement and test synthetic fixtures independently. The first pairing-only helper is `tools/playground-device/pair.mjs` with instructions in `tools/playground-device/README.md`; it retains the Ed25519 signing key locally. Do not run it as a completed Playground installation: approved devices still require an independently verified canary before commands. This step remains owner-operated and is not requested until the source is reviewed, deployed and the owner's tunnel is ready. No new paid fallback, operator quota, or hosting plan has been approved. See [PLAY-2](pr-cards/PLAY-2.md).
 
 

@@ -103,7 +103,7 @@ Login store (`createDb(sql)`): codes, access tokens, refresh credentials and cli
 | `/api/tenant/oauth/authorize`, `/api/tenant/oauth/callback`, `/api/tenant/optional` | `api/tenant/*` | Tenant GitHub consent and protected optional master-token form (cookie `gh_tenant_optional_state`, scoped to its path) |
 | `/api/marketplace/mcp`, `/resource`, `/webhook`, `/sweep` | `api/marketplace/*` | Marketplace-account MCP door (`tac_` bearer, 404 unless `GITHUB_MARKETPLACE_CONNECT=enabled` in production), protected-resource metadata, signed webhook, cron-authenticated hourly sweep |
 | `/api/native-git-key` | `api/native-git-key.js` | Public Ed25519 verification key to pin on the native Git worker; 503 `native_git_signing_not_configured` when unavailable |
-| `/api/playground/preview`, `/lifecycle`, `/sweep` | `api/playground/*` | Playground private preview entry, signed lifecycle heartbeat, and the bearer-keyed maintenance sweep (`docs/PLAYGROUND-OPERATIONS.md`) |
+| `/api/playground/preview`, `/lifecycle`, `/sweep`, `/enroll` | `api/playground/*` | Playground private preview entry, signed lifecycle heartbeat, the bearer-keyed maintenance sweep called every 30 s by the project manager container (`docs/PLAYGROUND-OPERATIONS.md`), and the PLAY-2 device pairing claim (production public-connect pilot only; `tools/playground-device/README.md`) |
 | `/api/developer/connect` | `api/developer/connect.js` | Developer-connection handoff helper (`docs/pr-cards/DEVELOPER-CONNECTION.md`); machine protocol, never an MCP tool |
 
 ## GitHub API version and descriptions

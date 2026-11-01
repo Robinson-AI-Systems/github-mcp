@@ -1,5 +1,6 @@
 import {passRefusal} from '../rtc/pass-scope.js';
 import {enqueueAllocation,disposeAllocation} from '../playground/allocations.js';
+import {RUNTIME_CHOICES} from '../playground/sizing.js';
 import { nativeWorkerPublicKey } from '../native-git/signing.js';
 import { randomBytes } from 'node:crypto';
 import { defineRead } from './define-read.js';
@@ -31,7 +32,7 @@ const open = defineGithubWrite({
  explain: error => error?.safeMessage ? error.message : explainGithubError(error),
  name: 'github_git_workspace_open', area: 'git', audience: ['B', 'O', 'Op'],
  description: 'Clone an authorized repository. Use a fresh requestKey per new workspace and reuse it only for retries; a closed clone receipt is historical.',
- properties: { owner: OWNER, repo: REPO, branch: TEXT, authorName: { type: 'string', minLength: 1, maxLength: 100 }, authorEmail: { type: 'string', minLength: 1, maxLength: 254 }, depth: { type: 'integer', minimum: 1, maximum: 100000 }, leaseMinutes: { type: 'integer', minimum: 1, maximum: 1440, description: 'Idle timeout in minutes, renewed by authorized workspace activity; default 240 (four hours).' } }, required: ['repo'], declarations,
+ properties: { owner: OWNER, repo: REPO, branch: TEXT, authorName: { type: 'string', minLength: 1, maxLength: 100 }, authorEmail: { type: 'string', minLength: 1, maxLength: 254 }, depth: { type: 'integer', minimum: 1, maximum: 100000 }, leaseMinutes: { type: 'integer', minimum: 1, maximum: 1440, description: 'Idle timeout in minutes, renewed by authorized workspace activity; default 240 (four hours).' }, runtime: { type: 'string', enum: RUNTIME_CHOICES, description: 'Playground runtime size: none (Git only, no runtime), small, medium, large, or auto (operator default).' } }, required: ['repo'], declarations,
  target: (a, c) => ({ owner: a.owner ?? c.connection.default_account, repo: a.repo, scope: 'repo', kind: 'native-git' }),
  read: async (a, c, t) => { configured(c); await authorizeNativeRepo(c, t.owner, t.repo);
   const key=await nativeOpenRequestKey(c,a);
@@ -48,7 +49,8 @@ const open = defineGithubWrite({
    throw error;
   });
   try {const result=await callNativeWorker(c, { action: 'open', binding, job: {id,host,idleTimeoutMs:(a.leaseMinutes ?? 240)*60000}, requestKey, allowWrite: true, network: true, options: { branch: a.branch, depth: a.depth, authorName: a.authorName, authorEmail: a.authorEmail, ttlMs: (a.leaseMinutes ?? 240) * 60000 } });let playground={phase:'git_only',reason:'provider_setup_required'};
-   if(result.state==='ready'&&c.env.PLAYGROUND_DOKPLOY_ORIGIN&&!passRefusal({tool:{name:'github_playground_workspace',area:'playground',writes:true,inputSchema:{properties:{repo:{}}}},args:{owner:t.owner,repo:t.repo},connection:c.connection})){try{const allocated=await enqueueAllocation(c,await nativeRecord(c,id));playground={phase:allocated.phase,workspace_id:id,next:'Allocation manager will provision and attach this workspace; read Playground allocation for progress.'};}catch{playground={phase:'git_only',reason:'allocation_recovery_required',next:'Git work is preserved; inspect Playground allocation with this same workspace ID.'};}}
+   if(result.state==='ready'&&a.runtime==='none')playground={phase:'git_only',reason:'runtime_not_requested',next:'Provision later with github_playground_workspace operation provision and a size if commands are needed.'};
+   else if(result.state==='ready'&&c.env.PLAYGROUND_DOKPLOY_ORIGIN&&!passRefusal({tool:{name:'github_playground_workspace',area:'playground',writes:true,inputSchema:{properties:{repo:{}}}},args:{owner:t.owner,repo:t.repo},connection:c.connection})){try{const allocated=await enqueueAllocation(c,await nativeRecord(c,id),{size:a.runtime});playground={phase:allocated.phase,workspace_id:id,runtime_size:allocated.size??null,next:'Allocation manager will provision and attach this workspace; read Playground allocation for progress.'};}catch{playground={phase:'git_only',reason:'allocation_recovery_required',next:'Git work is preserved; inspect Playground allocation with this same workspace ID.'};}}
    return {workspace_id:id,result,playground};}
   catch(error) {if(error.nativeNoOperationStarted){await c.db.finishJob(id,nativeConnection(c),{state:'failed',detail:'Worker resource admission declined before clone.'});throw error;}return { workspace_id: id, result: { state: 'uncertain' } }; }
  },
