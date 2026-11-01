@@ -4,10 +4,13 @@ import {join} from 'node:path';
 import {exportWorkspaceFile,importMountedWorkspace} from './snapshot.js';
 const atomic=async(path,value)=>{const temp=path+'.'+randomBytes(12).toString('hex');try{const f=await open(temp,'wx',0o600);try{await f.writeFile(JSON.stringify(value));await f.sync();}finally{await f.close();}await rename(temp,path);}finally{await rm(temp,{force:true});}};
 const hash=b=>createHash('sha256').update(b).digest('hex');
-export async function attachmentRequest(worker,claim,{singleWorkspaceId}={}){
+// Lean imports fetch from GitHub and can outlast one request; they continue here.
+const FINISHING=new Map();
+const wait=ms=>new Promise(r=>setTimeout(r,ms));
+export async function attachmentRequest(worker,claim,{singleWorkspaceId,finishWaitMs=30000}={}){
  const o=claim.options??{},id=claim.workspace_id;
  if(!/^git_[a-f0-9]{32}$/.test(id??''))throw new TypeError('Invalid attachment workspace.');
- if(!/^[a-f0-9]{64}$/.test(o.transferId??'')||Object.keys(o).some(k=>!['transferId','mode','key','offset','base64','bytes','digest','expectedGeneration'].includes(k)))throw new TypeError('Invalid private attachment envelope.');
+ if(!/^[a-f0-9]{64}$/.test(o.transferId??'')||Object.keys(o).some(k=>!['transferId','mode','key','offset','base64','bytes','digest','expectedGeneration','lean'].includes(k)))throw new TypeError('Invalid private attachment envelope.');
  if(claim.allowWrite!==true)throw new TypeError('Attachment requires current write authorization.');await worker.access(claim.binding,true);
  const dir=join(worker.root,'.attachments',id,o.transferId);await mkdir(dir,{recursive:true,mode:0o700});
  const requestLock=await open(join(dir,'request.lock'),'wx',0o600);
@@ -19,7 +22,7 @@ export async function attachmentRequest(worker,claim,{singleWorkspaceId}={}){
    if(!Number.isSafeInteger(o.expectedGeneration)||o.expectedGeneration!==w.meta.generation)throw new TypeError('Attachment source generation changed.');
    let prior;try{prior=JSON.parse(await readFile(metaPath,'utf8'));}catch(e){if(e.code!=='ENOENT')throw e;}
    if(prior){if(prior.generation!==o.expectedGeneration)throw new TypeError('Attachment intent conflicts.');return prior;}
-   await rm(dataPath,{force:true});await exportWorkspaceFile({root:worker.root,id,key:o.key,path:dataPath,expectedGeneration:o.expectedGeneration});const digest=createHash('sha256'),file=await open(dataPath,'r');let size=0;try{const buffer=Buffer.alloc(262144);for(;;){const r=await file.read(buffer,0,buffer.length,size);if(!r.bytesRead)break;digest.update(buffer.subarray(0,r.bytesRead));size+=r.bytesRead;}}finally{await file.close();}const meta={transferId:o.transferId,generation:o.expectedGeneration,bytes:size,digest:digest.digest('hex')};
+   await rm(dataPath,{force:true});const exported=await exportWorkspaceFile({root:worker.root,id,key:o.key,path:dataPath,expectedGeneration:o.expectedGeneration,lean:o.lean===true,allowLocalFixtures:worker.allowLocalFixtures});const digest=createHash('sha256'),file=await open(dataPath,'r');let size=0;try{const buffer=Buffer.alloc(262144);for(;;){const r=await file.read(buffer,0,buffer.length,size);if(!r.bytesRead)break;digest.update(buffer.subarray(0,r.bytesRead));size+=r.bytesRead;}}finally{await file.close();}const meta={transferId:o.transferId,generation:o.expectedGeneration,bytes:size,digest:digest.digest('hex'),lean:exported.lean===true};
    await atomic(metaPath,meta);return meta;
   }
   if(o.mode==='release'){let freeze;try{freeze=JSON.parse(await readFile(join(w.dir,'attachment-freeze.json'),'utf8'));}catch(e){if(e.code!=='ENOENT')throw e;}if(freeze?.transferId===o.transferId){await rm(join(w.dir,'attachment-freeze.json'),{force:true});await rm(join(w.dir,'mutation.lock'),{force:true});}await rm(dir,{recursive:true,force:true});return {released:true};}
@@ -46,6 +49,11 @@ export async function attachmentRequest(worker,claim,{singleWorkspaceId}={}){
  if(o.mode==='status')return meta;
  if(o.mode!=='finish'||meta.offset!==meta.bytes)throw new TypeError('Attachment upload is incomplete.');const bytes=await readFile(dataPath);if(bytes.length!==meta.bytes||hash(bytes)!==meta.digest)throw new TypeError('Attachment ciphertext hash differs.');
  const expectedBinding=createHash('sha256').update(JSON.stringify(['authority','connection','owner','repo'].map(k=>claim.binding[k]))).digest('hex');
- return importMountedWorkspace({root:worker.root,id,bytes,key:o.key,expectedBinding});
+ const token=typeof claim.credential==='string'&&claim.credential?claim.credential:null;
+ let job=FINISHING.get(dir);
+ if(!job){job=importMountedWorkspace({root:worker.root,id,bytes,key:o.key,expectedBinding,token,allowLocalFixtures:worker.allowLocalFixtures}).finally(()=>FINISHING.delete(dir));FINISHING.set(dir,job);job.catch(()=>{});}
+ const done=await Promise.race([job.then(r=>({r})),wait(finishWaitMs).then(()=>null)]);
+ if(done)return done.r;
+ return {transferId:o.transferId,complete:false,pending:true,next:'The broker is fetching history from GitHub; call finish again.'};
  }finally{await requestLock.close();await rm(join(dir,'request.lock'),{force:true});}
 }

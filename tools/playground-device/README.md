@@ -41,8 +41,9 @@ one Playground runtime from a signed plan (a private network, unprivileged conta
 receives your GitHub token. You, as the machine's owner, can always see and stop its containers; it is not a sandbox
 against you, and other people's work never runs on it.
 
-Interactive browser previews are not available on your own machine yet (text previews are); very large repositories
-still transfer at up to 100 MiB.
+Interactive browser previews are not available on your own machine yet (text previews are). Your machine fetches the
+repository's history from GitHub itself, so big repositories are fine; only your uncommitted and unpushed changes are
+copied to it (up to 100 MiB of them).
 
 ---
 

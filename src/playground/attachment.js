@@ -12,14 +12,15 @@ export async function attachRepository(ctx,record,{budgetMs=15000}={}){
  const save=async patch=>{const next=await ctx.db.compareAndSetSetting(setting,stored.revision,{...stored,...patch,revision:stored.revision+1});if(!next)throw failure('Another attachment transition is in progress; inspect the original allocation.');stored=next;await indexAllocation(ctx,stored);};
  const sourceJob={...record.job,brokerOrigin:undefined,allocationBinding:undefined};
  const brokerJob={...record.job,brokerOrigin:stored.plan.origin,allocationBinding:binding};
- const invoke=(job,action,options)=>callNativeWorker(ctx,{binding:record.binding,workspace_id:record.worker,job,action,options,allowWrite:true,renewLease:false});
+ const invoke=(job,action,options,network=false)=>callNativeWorker(ctx,{binding:record.binding,workspace_id:record.worker,job,action,options,allowWrite:true,renewLease:false,network,preferShortLived:network});
  if(stored.phase==='attached'){if(stored.transfer)await invoke(sourceJob,'attachment_export',{mode:'release',transferId:stored.transfer.transferId});return stored;}
  const [sourceCap,brokerCap]=await Promise.all([callNativeWorker(ctx,{action:'capabilities',job:sourceJob}),callNativeWorker(ctx,{action:'capabilities',job:brokerJob})]);
  if(sourceCap.repository_attachment!=='sealed-mounted-v1'||brokerCap.repository_attachment!=='sealed-mounted-v1')throw failure('Update the Git worker/broker to the checked sealed attachment protocol. No shared-worker command execution is used.');
  if(!stored.transfer){
   const state=await callNativeWorker(ctx,{binding:record.binding,workspace_id:record.worker,job:sourceJob,action:'inspect'});
   const id=hash(JSON.stringify([binding,state.generation])),key=keyFor(ctx,binding,id);
-  const prepared=await invoke(sourceJob,'attachment_export',{mode:'prepare',transferId:id,key,expectedGeneration:state.generation});
+  // Lean (FLEET-6): send only what GitHub lacks; the source falls back to a full copy when ineligible.
+  const prepared=await invoke(sourceJob,'attachment_export',{mode:'prepare',transferId:id,key,expectedGeneration:state.generation,lean:true});
   if(prepared.transferId!==id||prepared.generation!==state.generation||!Number.isSafeInteger(prepared.bytes)||prepared.bytes<32||prepared.bytes>150*1024*1024||!/^[a-f0-9]{64}$/.test(prepared.digest??''))throw failure('Source attachment manifest was not independently confirmed.');
   await save({phase:'attaching',transfer:{...prepared,sourceHead:state.head,sourceStatus:state.status,offset:0}});
  }
@@ -33,7 +34,8 @@ export async function attachRepository(ctx,record,{budgetMs=15000}={}){
  }
  if(receiver.offset<t.bytes){await save({transfer:{...t,offset:receiver.offset}});return stored;}
  const frozen=await invoke(sourceJob,'attachment_export',{mode:'freeze',transferId:t.transferId});if(!frozen.frozen||frozen.generation!==t.generation)throw failure('Source finalization lease differs.');
- const imported=await invoke(brokerJob,'attachment_import',{mode:'finish',transferId:t.transferId,key});
+ const imported=await invoke(brokerJob,'attachment_import',{mode:'finish',transferId:t.transferId,key},t.lean===true);
+ if(imported.pending===true&&imported.complete===false&&imported.transferId===t.transferId)return stored;
  if(imported.digest!==t.digest||imported.complete!==true||imported.generation!==t.generation)throw failure('Receiver did not verify the full repository attachment.');
  const [source,target,runtime]=await Promise.all([
   invoke(sourceJob,'inspect',{includeRepository:true}),invoke(brokerJob,'inspect',{includeRepository:true}),

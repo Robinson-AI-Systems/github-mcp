@@ -33,8 +33,10 @@ Production runs in `best_effort` resource mode: CPU/memory ceilings are configur
    `github_playground_workspace` operation `provision` and `size`.
 2. **Wait for attachment.** The response's `playground.phase` starts at `requested` and `playground.placement` says
    where it runs: `device` (one of your own ready computers or servers — always tried first) or `operator_pool` (the
-   shared Dokploy pool). With neither, the workspace is Git-only (`reason: no_runtime_host`). The runtime is provisioned and attaches the workspace's files (≤ 100 MiB, no symlinks — larger repositories stay
-   Git-only and report attachment unavailable). Follow progress with `github_playground_read` operation `allocation`, or
+   shared Dokploy pool). With neither, the workspace is Git-only (`reason: no_runtime_host`). The runtime is provisioned and attaches the workspace. Attachment is **lean**: the runtime fetches the
+   repository's history from GitHub itself and only your local changes are copied (unpushed commits, stash, staged,
+   modified and untracked files — those count toward 100 MiB, no symlinks). Shallow clones, linked worktrees and
+   half-finished merges/rebases use the older full copy (whole workspace ≤ 100 MiB). Follow progress with `github_playground_read` operation `allocation`, or
    push it along yourself with `github_playground_workspace` operations `provision`/`attach`. Then read `availability`.
 3. **Run** with `github_playground_execute`: `argv` (e.g. `["npm","test"]`), a stable `requestKey`, optional
    repository-relative `cwd`, optional `timeoutMs` (default 10 minutes, maximum 4 hours). "Applied" means *accepted*, not
