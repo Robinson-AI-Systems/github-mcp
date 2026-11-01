@@ -2,7 +2,8 @@
 // authority. A host stays pending_canary until separately verified by the runtime.
 import {createHash, randomBytes, createPublicKey, verify} from 'node:crypto';
 import {probeEnrolledDevice} from './device-probe.js';
-import {signEnrolledDeviceProbeBody} from '../native-git/signing.js';
+import {readEnrolledLocalCanary} from './device-canary.js';
+import {signEnrolledDeviceProbeBody,signEnrolledLocalCanaryBody} from '../native-git/signing.js';
 
 const sha = value => createHash('sha256').update(value).digest('hex');
 const safe = message => Object.assign(new TypeError(message), {safeMessage:true, safeCode:'playground_enrollment_denied'});
@@ -39,7 +40,7 @@ async function cas(db,key,update){
   }
   throw safe('Enrollment changed concurrently. Reopen My connection.');
 }
-export function createEnrolledHostStore({db,root,tenantId,identityId,clientId,now=Date.now,random=randomBytes,env=process.env,probeClient=probeEnrolledDevice}={}){
+export function createEnrolledHostStore({db,root,tenantId,identityId,clientId,now=Date.now,random=randomBytes,env=process.env,probeClient=probeEnrolledDevice,canaryClient=readEnrolledLocalCanary}={}){
   if(!db?.getSetting||!db?.compareAndSetSetting||!root?.getSetting||!root?.setSetting||
      typeof tenantId!=='string'||typeof identityId!=='string'||typeof clientId!=='string'||!clientId)throw safe('Verified enrollment scope is required.');
   const current=()=>now();
@@ -49,7 +50,9 @@ export function createEnrolledHostStore({db,root,tenantId,identityId,clientId,no
     const found=await Promise.all(ids.map(id=>db.getSetting(keyFor(id))));
     return found.filter(h=>h?.tenantId===tenantId&&h.identityId===identityId&&h.clientId===clientId).map(h=>({
       deviceId:h.deviceId,status:h.status,fingerprint:h.fingerprint??null,origin:h.origin??null,
-      generation:h.generation,pairedAt:h.pairedAt??null,transportVerifiedAt:h.transportVerifiedAt??null,revocationPending:h.status==='revocation_pending'
+      generation:h.generation,pairedAt:h.pairedAt??null,transportVerifiedAt:h.transportVerifiedAt??null,localCanaryAt:h.localCanaryAt??null,
+      localCanaryImage:h.localCanaryImage??null,localCanaryBinding:h.localCanaryBinding??null,
+      revocationPending:h.status==='revocation_pending'
     }));
   };
   async function begin(){
@@ -102,6 +105,30 @@ export function createEnrolledHostStore({db,root,tenantId,identityId,clientId,no
     if(!saved)throw safe('Enrollment changed during probe; no host was admitted.');
     return {deviceId,status:'pending_canary',transportVerifiedAt:saved.transportVerifiedAt,executionReady:false};
   }
+  async function canary(deviceId){
+    if(!validId(deviceId))throw safe('Unknown device.');
+    const h=await db.getSetting(keyFor(deviceId));
+    if(!h||h.tenantId!==tenantId||h.identityId!==identityId||h.clientId!==clientId||
+       h.status!=='pending_canary'||!h.publicKey||!h.fingerprint||!h.origin||
+       !Number.isSafeInteger(h.transportVerifiedAt)||h.transportVerifiedAt<=current()-300000)
+      throw safe('A fresh pinned device-tunnel proof is required before local canary readback.');
+    const result=await canaryClient({record:h,now:current,
+      signClaim:body=>signEnrolledLocalCanaryBody(body,env)});
+    if(result.deviceId!==h.deviceId||result.generation!==h.generation||
+       result.origin!==h.origin||result.executionReady!==false||
+       result.repositoryAttached!==false||!Number.isSafeInteger(result.localCanaryAt)||
+       typeof result.image!=='string'||typeof result.binding!=='string'||
+       !/^[a-f0-9]{64}$/.test(result.receiptHash??''))
+      throw safe('Local canary receipt does not match the enrolled device.');
+    const next=await db.compareAndSetSetting(keyFor(deviceId),h.revision,{
+      ...h,revision:h.revision+1,localCanaryAt:result.localCanaryAt,
+      localCanaryImage:result.image,localCanaryBinding:result.binding,
+      localCanaryReceiptHash:result.receiptHash
+    });
+    if(!next)throw safe('Enrollment changed before canary proof could be recorded. No command was admitted.');
+    return {deviceId,status:'pending_canary',localCanaryAt:next.localCanaryAt,
+      localCanaryImage:next.localCanaryImage,executionReady:false};
+  }
   async function revoke(deviceId){
     if(!validId(deviceId))throw safe('Unknown device.');
     const saved=await cas(db,keyFor(deviceId),h=>{
@@ -113,5 +140,5 @@ export function createEnrolledHostStore({db,root,tenantId,identityId,clientId,no
     if(!saved)throw safe('Device is not enrolled under this connection.');
     return {deviceId,status:saved.status,cleanupConfirmed:saved.status==='revoked'};
   }
-  return {begin,claim,approve,probe,revoke,list};
+  return {begin,claim,approve,probe,canary,revoke,list};
 }
