@@ -123,7 +123,7 @@ const makeTeamSeats=(adding)=>defineGithubWrite({
   description:'Assign or remove a Copilot team with exact membership and existing-seat pricing, spending ceiling and confirmation.',
   properties:{owner:OWNER,teamSlug:SLUG,action:{type:'string',enum:adding?['add']:['remove']}},
   required:['teamSlug','action'],
-  declarations:{production:'always',confirm:'always',accessWidening:adding,spend:adding,profiles:['full']},
+  declarations:{production:'always',confirm:'always',accessWidening:adding,spend:adding,...(adding?{strictSpend:true}:{}),profiles:['full']},
   target:org,
   read:async(a,c,t)=>{await enrolled(c,t);return seatState(c,t,a.teamSlug);},
   ...(adding?{price:({before:b})=>{

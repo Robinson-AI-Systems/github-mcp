@@ -1,6 +1,6 @@
 # Owner guide: what you can ask for
 
-Plain things to say to Claude. Your own full connection does what you ask in one call: it tells you the effect and any known or unknown cost, does it, logs it, and reads the result back. GitHub's own permissions and repository rules still apply, and Claude passes along any refusal honestly. Rules: [OWNER-DECISION-2026-10-27](OWNER-DECISION-2026-10-27.md). What is live vs. waiting for the next daily release: [STATUS](STATUS.md). Tool names below are in the code today (498 tools: `src/tools/index.js`).
+Plain things to say to Claude. Your own full connection does what you ask in one call: it tells you the effect and any known or unknown cost, does it, logs it, and reads the result back. GitHub's own permissions and repository rules still apply, and Claude passes along any refusal honestly. Rules: [OWNER-DECISION-2026-10-27](OWNER-DECISION-2026-10-27.md). What is live vs. waiting for the next daily release: [STATUS](STATUS.md). Tool names below are in the code today (503 tools: `src/tools/index.js`).
 
 ## Safety rules that stay
 
@@ -14,7 +14,7 @@ Plain things to say to Claude. Your own full connection does what you ask in one
 
 - Add the connector (phone steps too): [START-HERE](START-HERE.md).
 - "Which GitHub accounts am I connected to?" (`github_list_accounts`, `github_whoami`): accounts, mode, profile, rate budget.
-- Profiles on the sign-in page: **Read only** (208 tools, never changes GitHub), **Everyday** (295, routine changes, the default), **Full** (all 498, everything your real GitHub grant allows). Full needs no extra token.
+- Profiles on the sign-in page: **Read only** (210 tools, never changes GitHub), **Everyday** (299, routine changes, the default), **Full** (all 503, everything your real GitHub grant allows). Full needs no extra token.
 - Mode is Preview or Production. Unverified: the sign-in page still refuses Production until it is switched on per account (`src/oauth/policy.js:71-75`); this conflicts with the 2026-10-27 decision and is being fixed.
 - "Can this connection do X?" (`github_check_permissions`): says exactly which permission or extra token is missing, and may give a private setup link.
 
