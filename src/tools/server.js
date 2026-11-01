@@ -22,7 +22,7 @@ const dollars = (cents) => `$${((Number(cents) || 0) / 100).toFixed(2)}`;
 const when = (value) => (value ? formatDenver(value) : null);
 
 function installationLabel(row) {
-  if (row.credential_kind === 'master') return 'extra place (your master token)';
+  if (row.credential_kind === 'master') return row.place_cred === 'F' ? 'extra place (your fine-grained token)' : 'extra place (your master token)';
   if (row.credential_kind === 'fine_grained') return row.has_fine_grained ? 'token saved' : 'no token';
   if (row.app_id == null) return 'no GitHub App yet';
   return row.installation_status === 'active' ? 'installed' : row.installation_status === 'suspended' ? 'suspended' : 'not installed';
@@ -32,7 +32,9 @@ const credentialsOf = (row) => ({
   I: row.credential_kind === 'master' ? false : row.credential_kind === 'fine_grained' ? row.has_fine_grained : row.installation_status === 'active',
   U: !!row.has_user_token,
   K: !!row.has_classic,
-  P: !!row.has_package
+  P: !!row.has_package,
+  // PUB-9: only a place opened by the person's fine-grained token says so; nothing about it appears otherwise.
+  ...(row.place_cred === 'F' ? { F: true } : {})
 });
 
 /** Accounts this connection may use, default first. An account removed since the connection was made simply disappears. */
@@ -60,12 +62,15 @@ function masterExpiry(iso, now = Date.now()) {
 async function whoami(args, ctx) {
   // One independent master-status read per tool call; never cache credentials
   // between requests. Account inventory and master state are independent.
-  const [rows, master] = await Promise.all([
+  const [rows, master, fine] = await Promise.all([
     visibleAccounts(ctx),
     typeof ctx.credentials?.masterStatus === 'function'
       ? ctx.credentials.masterStatus().catch(() => ({ enrolled: false }))
-      : null
+      : null,
+    // PUB-9: fine-grained tokens appear only once one was added (an empty list says nothing at all).
+    typeof ctx.credentials?.fineStatus === 'function' ? ctx.credentials.fineStatus().catch(() => []) : []
   ]);
+  const ownerFine = rows.some((r) => r.credential_kind === 'fine_grained');
   const accounts = [];
   const accountEntry = async (row) => {
     const rate = await ctx.db.getRateState(row.login, 'core');
@@ -99,7 +104,9 @@ async function whoami(args, ctx) {
   return {
     mode: ctx.connection.mode.toUpperCase(), profile: ctx.connection.profile, listing: ctx.connection.listing, acting_as,
     default_account: ctx.connection.default_account, api_version: GITHUB_API_VERSION,
-    credential_types: { I: 'installation token (or fine-grained token)', U: 'your sign-in for personal settings', K: 'notifications-only classic token', P: 'package-only classic token', ...(master ? { M: 'your master token (everything your GitHub login can do, used only when the App cannot)' } : {}) },
+    credential_types: { I: ownerFine ? 'installation token (or fine-grained token)' : 'installation token', U: 'your sign-in for personal settings', K: 'notifications-only classic token', P: 'package-only classic token', ...(master ? { M: 'your master token (everything your GitHub login can do, used only when the App cannot)' } : {}),
+      ...(fine.length ? { F: 'your fine-grained token (only for the extra place it opens, with the permissions you gave it on GitHub)' } : {}) },
+    ...(fine.length ? { fine_grained_tokens: fine.map((f) => ({ ...f, how_to_change: 'Add, re-check or remove it on My connection. Its permissions are changed on GitHub (Settings, Developer settings, Fine-grained tokens), then tap Re-check.' })) } : {}),
     ...(master ? { master_token: master.enrolled ? { added: true, permissions: master.scopes, ...masterExpiry(master.expires_at), unlocks: masterUnlocks(master.scopes ?? []) } : { added: false, how_to_add: 'Ask the assistant to run github_master_token_link; it gives you a private link.', would_unlock: MASTER_AREAS.map((a) => a.area) } } : {}),
     // Public sign-ins have a page where the person adds accounts, the master token, read-only, time zone, or disconnects.
     ...(String(ctx.connection.client_id ?? '').startsWith('pcl_') ? (() => { try { return { my_connection_page: publicOrigin() + '/connection' }; } catch { return {}; } })() : {}),
@@ -111,7 +118,7 @@ async function listAccounts(args, ctx) {
   const rows = await visibleAccounts(ctx);
   const accounts = rows.map((row) => {
     const entry = {
-      login: row.login, label: row.label, account_type: row.account_type, credential_kind: row.credential_kind === 'app' ? 'GitHub App' : row.credential_kind === 'master' ? 'master token (extra place)' : 'fine-grained token', ...placeOf(row),
+      login: row.login, label: row.label, account_type: row.account_type, credential_kind: row.credential_kind === 'app' ? 'GitHub App' : row.credential_kind === 'master' ? (row.place_cred === 'F' ? 'fine-grained token (extra place)' : 'master token (extra place)') : 'fine-grained token', ...placeOf(row),
       setup: installationLabel(row), repository_selection: row.repository_selection ?? null,
       user_authorization: row.has_user_token ? `signed in as ${row.user_login ?? 'you'}` : 'not signed in',
       notifications_token: row.has_classic ? 'saved' : 'none', production_enabled: !!row.production_enabled, is_default: !!row.is_default

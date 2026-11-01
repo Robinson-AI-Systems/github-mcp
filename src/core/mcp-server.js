@@ -19,13 +19,18 @@ function listingFor(req, connection) {
   return LISTINGS.includes(connection.listing) ? connection.listing : 'catalog';
 }
 
-export function createMcpHandler({ db, registry, env = process.env, toConnection, toolSecuritySchemes, dispatch = denyAll, serverInfo = { name: 'robinson-mcp', version: '0.1.0' } }) {
+/** `offered(registry, connection, listing)` (optional, async) narrows what tools/list shows, e.g. to features an account
+ *  really has. It only hides: calls still go to `dispatch`, which applies its own checks. A failure lists the registry. */
+export function createMcpHandler({ db, registry, env = process.env, toConnection, toolSecuritySchemes, offered = null, dispatch = denyAll, serverInfo = { name: 'robinson-mcp', version: '0.1.0' } }) {
   return async function mcp(req, res) {
     const connection = await requireMcpToken(req, res, db, env, { toConnection });
     if (!connection) return;
     const server = new Server(serverInfo, { capabilities: { tools: {} } });
     server.setRequestHandler(ListToolsRequestSchema, async (request) => {
-      const page=pageToolsForListing(registry, connection.profile, listingFor(req, connection), request.params?.cursor);
+      const listing = listingFor(req, connection);
+      let shown = registry;
+      if (typeof offered === 'function') { try { shown = (await offered(registry, connection, listing)) ?? registry; } catch { shown = registry; } }
+      const page=pageToolsForListing(shown, connection.profile, listing, request.params?.cursor, connection);
       if(toolSecuritySchemes)
         page.tools=page.tools.map(tool=>({...tool,securitySchemes:toolSecuritySchemes(tool,connection)}));
       return page;

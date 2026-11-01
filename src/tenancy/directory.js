@@ -107,7 +107,7 @@ export function createTenantDirectory(sql) {
         identity_id UUID NOT NULL REFERENCES gh_tenant_identities(id),
         client_id TEXT NOT NULL,
         account_login TEXT NOT NULL,
-        kind TEXT NOT NULL CHECK (kind IN ('K','P','M')),
+        kind TEXT NOT NULL CHECK (kind IN ('K','P','M','F')),
         redirect_uri TEXT NOT NULL,
         membership_revision BIGINT NOT NULL,
         pilot_revision BIGINT NOT NULL,
@@ -120,19 +120,20 @@ export function createTenantDirectory(sql) {
         ADD COLUMN IF NOT EXISTS oauth_context JSONB`;
       await widenOptionalKinds();
   }
-  // GOD-1: kind 'M' (the master token). Additive: older tables are re-checked once, new ones are created with it.
+  // GOD-1: kind 'M' (the master token); PUB-9: kind 'F' (a fine-grained token). Additive: older tables are re-checked once,
+  // new ones are created with it.
   async function widenOptionalKinds(){
     for(const table of ['gh_tenant_optional_credentials','gh_tenant_optional_setup_states']){
       const name=table+'_kind_check';
       const found=await sql`SELECT pg_get_constraintdef(c.oid) AS def FROM pg_constraint c
         WHERE c.conname=${name} AND c.conrelid=to_regclass(${table})`;
-      if(found.length===1 && !String(found[0].def).includes("'M'")){
+      if(found.length===1 && !String(found[0].def).includes("'F'")){
         if(table==='gh_tenant_optional_credentials'){
           await sql`ALTER TABLE gh_tenant_optional_credentials DROP CONSTRAINT IF EXISTS gh_tenant_optional_credentials_kind_check`;
-          await sql`ALTER TABLE gh_tenant_optional_credentials ADD CONSTRAINT gh_tenant_optional_credentials_kind_check CHECK (kind IN ('K','P','M'))`;
+          await sql`ALTER TABLE gh_tenant_optional_credentials ADD CONSTRAINT gh_tenant_optional_credentials_kind_check CHECK (kind IN ('K','P','M','F'))`;
         }else{
           await sql`ALTER TABLE gh_tenant_optional_setup_states DROP CONSTRAINT IF EXISTS gh_tenant_optional_setup_states_kind_check`;
-          await sql`ALTER TABLE gh_tenant_optional_setup_states ADD CONSTRAINT gh_tenant_optional_setup_states_kind_check CHECK (kind IN ('K','P','M'))`;
+          await sql`ALTER TABLE gh_tenant_optional_setup_states ADD CONSTRAINT gh_tenant_optional_setup_states_kind_check CHECK (kind IN ('K','P','M','F'))`;
         }
       }
     }
@@ -235,7 +236,7 @@ export function createTenantDirectory(sql) {
         tenant_id UUID NOT NULL REFERENCES gh_tenants(id),
         identity_id UUID NOT NULL REFERENCES gh_tenant_identities(id),
         account_login TEXT NOT NULL,
-        kind TEXT NOT NULL CHECK (kind IN ('K','P','M')),
+        kind TEXT NOT NULL CHECK (kind IN ('K','P','M','F')),
         provider_host TEXT NOT NULL DEFAULT 'github.com',
         actor_id BIGINT NOT NULL,
         account_id BIGINT NOT NULL,
@@ -338,14 +339,90 @@ export function createTenantDirectory(sql) {
       )`;
       // PUB-5 B: when an app registration last got a token, so registrations nobody uses can be cleaned away.
       await sql`ALTER TABLE gh_public_clients ADD COLUMN IF NOT EXISTS last_token_at TIMESTAMPTZ`;
-      // PUB-6: owner-requested deletion of ONE public person's data. Only a tenant created by the public sign-in
-      // (bootstrap key 'public-connect') with a single member can go. It removes every root row that points at the tenant,
-      // then drops that tenant's own database namespace, so nothing of theirs survives and nobody else's data is touched.
-      await retryConcurrent(() => sql`CREATE OR REPLACE FUNCTION gh_forget_public_tenant(target UUID)
+      // PUB-8: ONE removal core for a person's tenant, used by the owner tool (github_tenant_remove), the owner setup page and the
+      // person's own "Delete my data" page. It removes the row in EVERY shared table that has a tenant_id column (found from the
+      // catalog, so a table added later is covered without editing this), the shared Playground pointers (device routes and
+      // pairing selectors are deleted; a managed allocation's index row stays, so the regular sweep disposes it through its usual
+      // "namespace removed" path; an allocation on the person's own computer loses its authority and is recorded as such), drops the
+      // tenant's own namespace (settings, connections, tokens, jobs, saved results, indexes), and deletes the identity when nothing else
+      // uses it. It refuses a tenant with other members. Callers check WHICH kind of tenant they may remove before calling it.
+      await retryConcurrent(() => sql`CREATE OR REPLACE FUNCTION gh_remove_person_tenant(target UUID)
         RETURNS BOOLEAN LANGUAGE plpgsql SECURITY INVOKER AS $body$
-      DECLARE ns TEXT; ident UUID; others INTEGER;
+      DECLARE ns TEXT; ident UUID; others INTEGER; tbl TEXT; pending TEXT[]; failed TEXT[]; pass INTEGER;
       BEGIN
         SELECT namespace INTO ns FROM gh_tenants WHERE id = target FOR UPDATE;
+        IF NOT FOUND THEN RETURN FALSE; END IF;
+        IF ns !~ '^gh_t_[0-9a-f]{32}$' THEN RAISE EXCEPTION 'Invalid tenant namespace'; END IF;
+        SELECT identity_id INTO ident FROM gh_tenant_memberships WHERE tenant_id = target ORDER BY identity_id LIMIT 1;
+        IF ident IS NULL THEN SELECT identity_id INTO ident FROM gh_tenant_pilot_bootstraps WHERE tenant_id = target; END IF;
+        SELECT count(DISTINCT identity_id) INTO others FROM gh_tenant_memberships
+          WHERE tenant_id = target AND identity_id IS DISTINCT FROM ident;
+        IF others > 0 THEN RAISE EXCEPTION 'Tenant has other members'; END IF;
+        SELECT array_agg(c.table_name::text ORDER BY c.table_name) INTO pending
+          FROM information_schema.columns c JOIN information_schema.tables t
+            ON t.table_schema = c.table_schema AND t.table_name = c.table_name AND t.table_type = 'BASE TABLE'
+          WHERE c.table_schema = current_schema() AND c.column_name = 'tenant_id'
+            AND c.table_name NOT IN ('gh_tenant_memberships','gh_tenant_pilot_bootstraps','gh_marketplace_tenants');
+        -- A later table may reference another carrier; retry what a foreign key held back (bounded passes).
+        FOR pass IN 1..4 LOOP
+          failed := ARRAY[]::TEXT[];
+          FOREACH tbl IN ARRAY COALESCE(pending, ARRAY[]::TEXT[]) LOOP
+            BEGIN
+              EXECUTE format('DELETE FROM %I WHERE tenant_id::text = $1', tbl) USING target::text;
+            EXCEPTION WHEN foreign_key_violation THEN failed := failed || tbl;
+            END;
+          END LOOP;
+          pending := failed;
+          EXIT WHEN cardinality(pending) = 0;
+        END LOOP;
+        IF cardinality(pending) > 0 THEN RAISE EXCEPTION 'Tenant rows could not be removed'; END IF;
+        IF to_regclass('server_settings') IS NOT NULL THEN
+          EXECUTE $q$DELETE FROM server_settings WHERE (setting LIKE 'fleet_route.%' OR setting LIKE 'pg_pair.%')
+            AND value->>'tenantId' = $1$q$ USING target::text;
+          EXECUTE $q$UPDATE server_settings SET updated_at = now(), value = jsonb_set(value, '{allocation}',
+              (value->'allocation') || jsonb_build_object('revision', (value->'allocation'->>'revision')::bigint + 1,
+                'phase', 'disposed', 'disposed', true, 'disposedAt', (extract(epoch FROM now()) * 1000)::bigint,
+                'cleanupEvidence', 'tenant_removed_device_authority_revoked', 'volumesVerified', false))
+            WHERE setting LIKE 'pg_index.%' AND value->'allocation'->'scope'->>'tenantId' = $1
+              AND value->'allocation'->>'placement' = 'device' AND value->'allocation'->>'phase' <> 'disposed'$q$ USING target::text;
+          EXECUTE $q$UPDATE server_settings SET updated_at = now(), value = jsonb_set(value, '{allocation}',
+              (value->'allocation') || jsonb_build_object('cleanupRequested', true, 'cleanupReason', 'namespace_removed'))
+            WHERE setting LIKE 'pg_index.%' AND value->'allocation'->'scope'->>'tenantId' = $1
+              AND value->'allocation'->>'phase' <> 'disposed'$q$ USING target::text;
+        END IF;
+        DELETE FROM gh_tenant_pilot_bootstraps WHERE tenant_id = target;
+        DELETE FROM gh_tenant_memberships WHERE tenant_id = target;
+        IF to_regclass('gh_marketplace_tenants') IS NOT NULL THEN
+          EXECUTE 'DELETE FROM gh_marketplace_tenants WHERE tenant_id = $1' USING target;
+        END IF;
+        DELETE FROM gh_tenants WHERE id = target;
+        EXECUTE format('DROP SCHEMA IF EXISTS %I CASCADE', ns);
+        IF ident IS NOT NULL THEN PERFORM gh_remove_person_identity(ident); END IF;
+        RETURN TRUE;
+      END $body$`);
+      // PUB-8: an identity goes once no tenant uses it: every row in a shared table with an identity_id column, then the identity.
+      await retryConcurrent(() => sql`CREATE OR REPLACE FUNCTION gh_remove_person_identity(ident UUID)
+        RETURNS BOOLEAN LANGUAGE plpgsql SECURITY INVOKER AS $body$
+      DECLARE tbl TEXT;
+      BEGIN
+        IF EXISTS (SELECT 1 FROM gh_tenant_memberships WHERE identity_id = ident)
+          OR EXISTS (SELECT 1 FROM gh_tenant_pilot_bootstraps WHERE identity_id = ident) THEN RETURN FALSE; END IF;
+        FOR tbl IN SELECT c.table_name::text FROM information_schema.columns c JOIN information_schema.tables t
+            ON t.table_schema = c.table_schema AND t.table_name = c.table_name AND t.table_type = 'BASE TABLE'
+          WHERE c.table_schema = current_schema() AND c.column_name = 'identity_id' AND c.table_name <> 'gh_tenant_identities'
+        LOOP
+          EXECUTE format('DELETE FROM %I WHERE identity_id::text = $1', tbl) USING ident::text;
+        END LOOP;
+        DELETE FROM gh_tenant_identities WHERE id = ident;
+        RETURN FOUND;
+      END $body$`);
+      // PUB-6: owner-requested deletion of ONE public person's data (setup page and "Delete my data"). Only a tenant created by
+      // the public sign-in (bootstrap key 'public-connect') with a single member can go here; the removal itself is the PUB-8 core.
+      await retryConcurrent(() => sql`CREATE OR REPLACE FUNCTION gh_forget_public_tenant(target UUID)
+        RETURNS BOOLEAN LANGUAGE plpgsql SECURITY INVOKER AS $body$
+      DECLARE ident UUID; others INTEGER;
+      BEGIN
+        PERFORM 1 FROM gh_tenants WHERE id = target FOR UPDATE;
         IF NOT FOUND THEN RETURN FALSE; END IF;
         SELECT identity_id INTO ident FROM gh_tenant_pilot_bootstraps
           WHERE tenant_id = target AND account_login = 'public-connect';
@@ -353,24 +430,7 @@ export function createTenantDirectory(sql) {
         SELECT count(*) INTO others FROM gh_tenant_memberships
           WHERE tenant_id = target AND identity_id <> ident;
         IF others > 0 THEN RAISE EXCEPTION 'Tenant has other members'; END IF;
-        DELETE FROM gh_tenant_optional_setup_states WHERE tenant_id = target;
-        DELETE FROM gh_tenant_optional_credentials WHERE tenant_id = target;
-        DELETE FROM gh_tenant_user_authorizations WHERE tenant_id = target;
-        DELETE FROM gh_tenant_oauth_flows WHERE tenant_id = target;
-        DELETE FROM gh_public_flows WHERE tenant_id = target;
-        DELETE FROM gh_tenant_pilot_allowlist WHERE tenant_id = target;
-        DELETE FROM gh_public_installations WHERE tenant_id = target;
-        DELETE FROM gh_public_usage_daily WHERE tenant_id = target;
-        DELETE FROM gh_public_usage_hourly WHERE tenant_id = target;
-        DELETE FROM gh_tenant_pilot_bootstraps WHERE tenant_id = target;
-        DELETE FROM gh_tenant_memberships WHERE tenant_id = target;
-        DELETE FROM gh_tenants WHERE id = target;
-        EXECUTE format('DROP SCHEMA IF EXISTS %I CASCADE', ns);
-        IF NOT EXISTS (SELECT 1 FROM gh_tenant_memberships WHERE identity_id = ident)
-          AND NOT EXISTS (SELECT 1 FROM gh_tenant_pilot_bootstraps WHERE identity_id = ident) THEN
-          DELETE FROM gh_tenant_identities WHERE id = ident;
-        END IF;
-        RETURN TRUE;
+        RETURN gh_remove_person_tenant(target);
       END $body$`);
       await sql`CREATE INDEX IF NOT EXISTS gh_public_flows_expires
         ON gh_public_flows (expires_at)`;
@@ -563,7 +623,11 @@ export function createTenantDirectory(sql) {
         (kind==='P'&&operation==='GET /orgs/{org}/packages'&&
           resource==='org/'+accountId&&Array.isArray(scopes)&&
           scopes.includes('read:packages')&&scopes.length<=4&&
-          scopes.every(x=>['read:packages','write:packages','delete:packages','repo'].includes(x)));
+          scopes.every(x=>['read:packages','write:packages','delete:packages','repo'].includes(x)))||
+        // PUB-9: one fine-grained token per owner it belongs to. `scopes` is the permission set GitHub showed at enrollment.
+        (kind==='F'&&operation==='GET /user/repos'&&resource==='owner/'+accountId&&
+          Array.isArray(scopes)&&scopes.length>=1&&scopes.length<=80&&scopes.includes('metadata:read')&&
+          scopes.every(x=>typeof x==='string'&&/^[a-z_]+:(read|none)$/.test(x)));
       if(!permitted||typeof accountLogin!=='string'||!/^[a-z0-9][a-z0-9-]{0,38}$/.test(accountLogin)||
         !Number.isSafeInteger(actorId)||actorId<1||!Number.isSafeInteger(accountId)||accountId<1||
         !Number.isSafeInteger(membershipRevision)||membershipRevision<1||
@@ -607,7 +671,7 @@ export function createTenantDirectory(sql) {
     /** Encrypted grant retrieval for trusted runtime only; never MCP output. */
     async getPilotOptionalCredential({tenantId,identityId,accountLogin,kind}) {
       const t=validUuid(tenantId),i=validUuid(identityId);
-      if(!/^[a-z0-9][a-z0-9-]{0,38}$/.test(accountLogin)||!['K','P','M'].includes(kind))return null;
+      if(!/^[a-z0-9][a-z0-9-]{0,38}$/.test(accountLogin)||!['K','P','M','F'].includes(kind))return null;
       const rows=await sql`SELECT g.access_enc,g.cipher_fingerprint,g.kind,g.actor_id,
         g.account_id,g.verified_operation,g.verified_resource,g.scopes,
         g.expires_at,g.revision,g.provider_host
@@ -626,9 +690,26 @@ export function createTenantDirectory(sql) {
           (g.expires_at IS NULL OR g.expires_at>now())`;
       return rows.length===1?rows[0]:null;
     },
+    /** PUB-9: this person's stored grants of one kind, for status pages only: no ciphertext, expired ones included. */
+    async listPilotOptionalCredentials({tenantId,identityId,kind}) {
+      const t=validUuid(tenantId),i=validUuid(identityId);
+      if(!['K','P','M','F'].includes(kind))return [];
+      return await sql`SELECT g.account_login,g.kind,g.actor_id,g.account_id,g.verified_operation,
+        g.verified_resource,g.scopes,g.expires_at,g.revision,g.provider_host
+        FROM gh_tenant_optional_credentials g
+        JOIN gh_tenants ten ON ten.id=g.tenant_id
+        JOIN gh_tenant_memberships m ON m.tenant_id=g.tenant_id AND m.identity_id=g.identity_id
+        JOIN gh_tenant_pilot_allowlist p ON p.tenant_id=g.tenant_id AND p.identity_id=g.identity_id
+        JOIN gh_tenant_identities ident ON ident.id=g.identity_id
+        WHERE g.tenant_id=${t}::uuid AND g.identity_id=${i}::uuid AND g.kind=${kind}
+          AND g.revoked_at IS NULL AND ten.status='active' AND m.active=TRUE AND p.active=TRUE
+          AND g.membership_revision=m.revision AND g.pilot_revision=p.revision
+          AND ident.provider='github' AND ident.provider_subject=g.actor_id::text
+        ORDER BY g.account_login LIMIT 50`;
+    },
     async revokePilotOptionalCredential({tenantId,identityId,accountLogin,kind,expectedFingerprint=null}) {
       const t=validUuid(tenantId),i=validUuid(identityId);
-      if(!/^[a-z0-9][a-z0-9-]{0,38}$/.test(accountLogin)||!['K','P','M'].includes(kind)||
+      if(!/^[a-z0-9][a-z0-9-]{0,38}$/.test(accountLogin)||!['K','P','M','F'].includes(kind)||
         (expectedFingerprint!==null&&!/^[a-f0-9]{64}$/.test(expectedFingerprint)))return false;
       const rows=await sql`UPDATE gh_tenant_optional_credentials g
         SET revoked_at=now(),revision=g.revision+1,
@@ -827,7 +908,7 @@ export function createTenantDirectory(sql) {
       if(!/^[a-f0-9]{64}$/.test(stateHash)||typeof clientId!=='string'||
         !(clientId.startsWith('tcl_')||clientId.startsWith('pcl_'))||
         !/^[a-z0-9][a-z0-9-]{0,38}$/.test(accountLogin)||
-        !['K','P','M'].includes(kind)||typeof redirectUri!=='string'||
+        !['K','P','M','F'].includes(kind)||typeof redirectUri!=='string'||
         redirectUri.length>2048||
         !Number.isSafeInteger(membershipRevision)||membershipRevision<1||
         !Number.isSafeInteger(pilotRevision)||pilotRevision<1||
@@ -871,7 +952,7 @@ export function createTenantDirectory(sql) {
     async pilotOptionalFingerprint({tenantId,identityId,accountLogin,kind}) {
       const t=validUuid(tenantId),i=validUuid(identityId);
       if(!/^[a-z0-9][a-z0-9-]{0,38}$/.test(accountLogin)||
-        !['K','P','M'].includes(kind))return null;
+        !['K','P','M','F'].includes(kind))return null;
       const rows=await sql`SELECT g.cipher_fingerprint FROM gh_tenant_optional_credentials g
         JOIN gh_tenants ten ON ten.id=g.tenant_id
         JOIN gh_tenant_memberships m ON m.tenant_id=g.tenant_id AND m.identity_id=g.identity_id
@@ -986,7 +1067,7 @@ export function createTenantDirectory(sql) {
           (clientState !== null && (typeof clientState !== 'string' || clientState.length > 256)) ||
           (accountLogin !== null && !/^[a-z0-9][a-z0-9-]{0,38}(,[a-z0-9][a-z0-9-]{0,38}){0,9}$/.test(String(accountLogin))) ||
           (timeZone !== null && !validZone(timeZone)) ||
-          (purpose !== null && !['forget', 'master', 'approve', 'manage', 'revoke', 'revoke_form'].includes(purpose)) ||
+          (purpose !== null && !['forget', 'master', 'fine', 'approve', 'manage', 'revoke', 'revoke_form'].includes(purpose)) ||
           (offers !== null && !(Array.isArray(offers) && offers.length >= 1 && offers.length <= 8 && offers.every((o) =>
             /^[A-Za-z0-9][A-Za-z0-9-]{0,38}$/.test(String(o?.login)) && Number.isSafeInteger(o?.id) && o.id > 0 && ['User', 'Organization'].includes(o?.type)))) ||
           !Number.isSafeInteger(ttlSeconds) || ttlSeconds < 60 || ttlSeconds > 1800 ||

@@ -19,6 +19,7 @@ import { shapeResult, redact, redactExcerpt, containsCredential } from './util.j
 import {optionalConsentChallenge,OptionalConsentRequired} from '../tenancy/optional-challenge.js';
 import { actingAsFor, createActorLog } from '../github/act-as.js';
 import { createRateCollector } from '../github/rate.js';
+import { familyOf, featureRefusal, offeredTools } from '../github/feature-gates.js';
 
 const fail = (text) => ({ isError: true, content: [{ type: 'text', text: redactExcerpt(text) }] });
 const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -100,7 +101,9 @@ const COUNTED_STATUSES = new Set(['applied', 'unconfirmed', 'uncertain']);
 
 /** `usage` is optional: `{ beforeWrite(): Promise<null|{message, retryAfterSeconds}> (reserves a slot), afterWrite(): Promise<void> (confirms it), release?(): Promise<void> (hands it back) }`. Absent = no limits
  *  (every existing caller and the owner path behave exactly as before). It is asked before each real change and told after it. */
-export function createDispatch({ env = process.env, now = Date.now, fetch = globalThis.fetch, credentials = null, gates = null, sleep = undefined, usage = null } = {}) {
+/** `featureGates: true` (CAP-6, set by every production door) refuses a call to a runner, merge-queue or Copilot tool on an
+ *  account where GitHub showed the feature is absent, and lets the meta-tools offer only the families an account has. */
+export function createDispatch({ env = process.env, now = Date.now, fetch = globalThis.fetch, credentials = null, gates = null, sleep = undefined, usage = null, featureGates = false } = {}) {
   // PUB-5 B: a change slot is reserved before the change runs (so parallel calls cannot slip past the limit) and handed back
   // unless the change was counted. `box` remembers that for this one call.
   const dispatch=async(input)=>withProtectionContext(async()=>{
@@ -134,7 +137,7 @@ export function createDispatch({ env = process.env, now = Date.now, fetch = glob
     const {registry,name,args,connection,db}=input,tool=registry.tools.find(t=>t.name===name);
     if(['github_security_scanner_configure','github_security_scanner_get_settings'].includes(name))return withRepositoryProtection([],()=>runScoped(input,box),{isolateFiles:true});
     const owner=args?.owner??connection?.default_account,repo=args?.repo;
-    if(tool&&isToolVisible(tool,connection?.profile)&&!validateArgs(tool.inputSchema,args)&&!passRefusal({tool,args:args??{},connection})&&typeof repo==='string'&&/^[A-Za-z0-9_.-]{1,100}$/.test(repo)&&connection?.accounts?.some(a=>a.toLowerCase()===String(owner).toLowerCase())&&typeof db?.getSetting==='function'){
+    if(tool&&isToolVisible(tool,connection?.profile,connection)&&!validateArgs(tool.inputSchema,args)&&!passRefusal({tool,args:args??{},connection})&&typeof repo==='string'&&/^[A-Za-z0-9_.-]{1,100}$/.test(repo)&&connection?.accounts?.some(a=>a.toLowerCase()===String(owner).toLowerCase())&&typeof db?.getSetting==='function'){
       try{const policy=await loadScannerPolicy(db,owner,repo);return withRepositoryProtection(policy.settings.additionalRules.filter(r=>!policy.settings.disabledRules.includes(r.id)),()=>runScoped(input,box),{repository:JSON.stringify([owner.toLowerCase(),repo.toLowerCase()])});}
       catch{return fail('Repository scanner policy could not be loaded; no unprotected result was returned. Inspect scanner settings and retry.');}
     }
@@ -151,12 +154,22 @@ export function createDispatch({ env = process.env, now = Date.now, fetch = glob
     const isRead = tool?.annotations?.readOnlyHint === true && tool.writes !== true && tool.passthrough !== true;
     // A runner (github_call) hands another tool's call back to this same function, so that tool's own checks run; it is neither read nor write itself.
     const isRunner = tool?.passthrough === true && tool.usesRegistry === true && tool.writes !== true;
-    if (!handler || (!isWrite && !isRead && !isRunner) || !isToolVisible(tool, connection?.profile)) return fail(`Unknown or unavailable tool: ${redact(String(name)).slice(0, 80)}`);
+    if (!handler || (!isWrite && !isRead && !isRunner) || !isToolVisible(tool, connection?.profile, connection)) return fail(`Unknown or unavailable tool: ${redact(String(name)).slice(0, 80)}`);
     const problem = validateArgs(tool.inputSchema, args);
     if (problem) return fail(problem);
     // A service pass is narrower than its profile. This is the one place every call passes, so a workflow's nested calls are held to it too.
     const outside = passRefusal({ tool, args: args ?? {}, connection });
     if (outside) return fail(outside);
+    const gateCtx = { connection, db, env, now, fetch, credentials };
+    if (featureGates && familyOf(name)) {
+      let refused = null;
+      try { refused = await featureRefusal(gateCtx, name, args ?? {}); } catch { refused = null; /* an unanswerable gate never blocks: GitHub decides */ }
+      if (refused) {
+        const body = { done: false, status: 'refused', reason_code: 'feature_not_available', retryable: false, no_change_sent: true,
+          family: refused.family, account: refused.account, reason: refused.reason, error: refused.message };
+        return { isError: true, content: [{ type: 'text', text: JSON.stringify(body) }], structuredContent: body };
+      }
+    }
     // PUB-5 B: the free fair-use limit on real changes. A preview (dryRun) is never limited and never counted; reads are never limited.
     const limited = usage && isWrite && args?.dryRun !== true;
     if (limited) {
@@ -170,7 +183,7 @@ export function createDispatch({ env = process.env, now = Date.now, fetch = glob
         name,args:args??{},connection,credentials,env});
       if(challenge)return challenge;
       const callTool = (innerName, innerArgs) => dispatch({ registry, name: innerName, args: innerArgs, connection, db, actor: actorLog, actAsCache: cache, rateObservations });
-      result = await handler(args ?? {}, { connection, db, env, now, fetch, credentials, actor: actorLog, actAsCache: cache, rateObservations, ...(sleep ? { sleep } : {}), ...(isWrite ? { gates } : {}), ...(tool.usesRegistry ? { registry, callTool } : {}) });
+      result = await handler(args ?? {}, { connection, db, env, now, fetch, credentials, actor: actorLog, actAsCache: cache, rateObservations, ...(sleep ? { sleep } : {}), ...(isWrite ? { gates } : {}), ...(tool.usesRegistry ? { registry, callTool, ...(featureGates ? { offered: (list) => offeredTools(gateCtx, list) } : {}) } : {}) });
     } catch (error) {
       if(error instanceof OptionalConsentRequired)return error.reply;
       const response=fail(error instanceof TypeError ? error.message : 'That tool could not complete right now. Nothing was changed.');

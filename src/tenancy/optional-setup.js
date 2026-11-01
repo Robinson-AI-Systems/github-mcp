@@ -9,6 +9,8 @@ import {verifyGithubBearerIdentity} from './github-identity.js';
 import {enrollVerifiedPilotOptionalCredential,currentPilotOptionalReadback}
   from './optional-credentials.js';
 import {enrollMasterCredential,currentMasterReadback,MASTER_HANDLE} from './master-credential.js';
+import {enrollFineGrainedCredential,currentFineReadback,FineSetupRefusal} from './fine-grained-credential.js';
+import {FINE_HANDLE} from '../github/fine-grained.js';
 import {bareOctokit} from '../github/client.js';
 import {publicOrigin} from '../core/http.js';
 import {validRedirectUri} from '../core/oauth.js';
@@ -19,7 +21,7 @@ const digest=s=>createHash('sha256').update(s).digest('hex');
 const randomState=()=>randomBytes(32).toString('base64url');
 const LOGIN=/^[a-z0-9][a-z0-9-]{0,38}$/;
 const OPERATIONS=Object.freeze({
-  K:'GET /notifications',P:'GET /orgs/{org}/packages',M:'GET /user'
+  K:'GET /notifications',P:'GET /orgs/{org}/packages',M:'GET /user',F:'GET /user/repos'
 });
 const denied=()=>new Error('Additional GitHub credential setup was not verified. Restart from your connected client.');
 const isAccount=(row,login,env)=>row?.login?.toLowerCase()===login &&
@@ -74,6 +76,8 @@ export function createPrivateOptionalEnrollment({
     if(!scope.client.redirect_uris.includes(redirect_uri))throw denied();
     // The master token (M) belongs to the person, not to one account; only the fixed handle is accepted for it.
     if(kind==='M'){ if(account!==MASTER_HANDLE)throw denied(); }
+    // PUB-9: a fine-grained token's owner is only known once GitHub is asked with it, so the form uses a fixed handle.
+    else if(kind==='F'){ if(account!==FINE_HANDLE||oauthContext)throw denied(); }
     else{ const row=await scope.db.getAccount(account); if(!isAccount(row,account,env))throw denied(); }
     const subject=await scope.directory.getPilotVerifiedSubject(
       scope.claim.tenantId,scope.claim.identityId);
@@ -126,6 +130,7 @@ export function createPrivateOptionalEnrollment({
       !scope.client.redirect_uris.includes(flow.redirectUri))throw denied();
     const isMaster=flow.kind==='M';
     if(isMaster&&flow.accountLogin!==MASTER_HANDLE)throw denied();
+    if(flow.kind==='F')return await finishFine(flow,scope,action,value);
     // M belongs to the person, not to one account. (Every connected account is re-checked below when a connection
     // is being completed.)
     const row=isMaster ? null : await scope.db.getAccount(flow.accountLogin);
@@ -215,6 +220,34 @@ export function createPrivateOptionalEnrollment({
     return Object.freeze({status,kind:flow.kind,
       operation:OPERATIONS[flow.kind],destination:destination.toString()});
   }
+  // PUB-9: save a fine-grained token. Removing one is on My connection (the person is signed in there), so this form only
+  // saves. The plain refusal sentences (never the token) are shown on the page.
+  async function finishFine(flow,scope,action,value){
+    if(action!=='save'||flow.accountLogin!==FINE_HANDLE||flow.oauthContext)throw denied();
+    const subject=await scope.directory.getPilotVerifiedSubject(flow.tenantId,flow.identityId);
+    if(!/^[1-9][0-9]{0,18}$/.test(String(subject)))throw denied();
+    const saved=await enrollFineGrainedCredential({directory:scope.directory,db:scope.db,tenant:scope.tenant,bearer:value,env,fetchImpl});
+    const login=saved.owner.toLowerCase();
+    const row=await scope.directory.getPilotOptionalCredential({tenantId:flow.tenantId,identityId:flow.identityId,accountLogin:login,kind:'F'});
+    if(!currentFineReadback({row,subject:String(subject),place:await scope.db.getAccount(login)}))
+      throw new FineSetupRefusal('The token was checked but could not be saved. Try again.');
+    const destination=new URL('/api/tenant/optional',origin());
+    destination.searchParams.set('github_mcp_optional','read-observed-at-enrollment');
+    destination.searchParams.set('github_mcp_operation',OPERATIONS.F);
+    destination.searchParams.set('github_mcp_owner',saved.owner);
+    return Object.freeze({status:'read-observed-at-enrollment',kind:'F',operation:OPERATIONS.F,owner:saved.owner,
+      repositories:saved.repositories,permissions:saved.permissions,expiresAt:saved.expiresAt,destination:destination.toString()});
+  }
+  // PUB-9: the one-use link My connection makes for "Add a fine-grained token" arrives here.
+  async function startFineLink(handle){
+    origin();
+    if(typeof handle!=='string'||!/^[A-Za-z0-9_-]{43}$/.test(handle))throw denied();
+    const directory=directoryFactory();
+    const flow=await directory.consumePublicFlow(digest(handle),'god');
+    if(!flow||flow.purpose!=='fine'||!flow.tenantId||!flow.identityId)throw denied();
+    return await begin({client_id:flow.clientId,account:FINE_HANDLE,kind:'F',redirect_uri:flow.redirectUri},
+      null,{tenantId:flow.tenantId,identityId:flow.identityId});
+  }
   // GOD-1: "add the master token any time". The one-use link made by github_master_token_link arrives here. The link
   // itself proves nothing; the token pasted next must belong to the same GitHub person who is connected.
   async function startMasterLink(handle){
@@ -260,5 +293,5 @@ export function createPrivateOptionalEnrollment({
     }catch(error){status=Number.isInteger(error?.status)?error.status:0;}
     return Object.freeze({accepted:status===202,status,count:tokens.length,last4:Object.freeze(tokens.map(t=>t.slice(-4)))});
   }
-  return {start,startOAuth,startMasterLink,startRevokeLink,revokeLeaked,finish};
+  return {start,startOAuth,startMasterLink,startFineLink,startRevokeLink,revokeLeaked,finish};
 }

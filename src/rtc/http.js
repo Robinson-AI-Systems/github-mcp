@@ -212,7 +212,9 @@ async function writeReply({output,connection}){
   return {status:200,body:wire,final:true};
 }
 
-export function createRtcHttpHandler({db,registry,dispatch}){
+// `offered(tools, connection)` (optional, CAP-6) narrows discovery to the feature families an account has; calls are
+// still decided by the dispatcher.
+export function createRtcHttpHandler({db,registry,dispatch,offered=null}){
   if(!db||!registry||typeof dispatch!=='function')
     throw new TypeError('RTC HTTP needs the existing guarded dispatcher.');
   const allowed=connection=>connection?.pass===true
@@ -272,6 +274,7 @@ export function createRtcHttpHandler({db,registry,dispatch}){
           (!audience||rtcMetadata(t).audience.includes(audience))&&
           (!q||t.name.toLowerCase().includes(q)||t.description.toLowerCase().includes(q)));
         if(listing==='compact')tools=tools.filter(t=>t.compact===true);
+        if(typeof offered==='function'){try{tools=await offered(tools,connection);}catch{/* discovery keeps the profile's list */}}
         const start=(page-1)*limit;
         const reply=await rtcDiscoveryReply({
           tools:tools.slice(start,start+limit).map(rtcMetadata),count:tools.length,

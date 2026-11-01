@@ -25,8 +25,8 @@ function decodeCursor(cursor, profile, listing, total, fingerprintValue) {
 }
 
 /** Each page is a truthful slice of the selected profile/listing, with an MCP nextCursor. */
-export function pageToolsForListing(registry, profile, listing, cursor) {
-  const available = toolsForListing(registry, profile, listing);
+export function pageToolsForListing(registry, profile, listing, cursor, connection = null) {
+  const available = toolsForListing(registry, profile, listing, connection);
   const digest = fingerprint(available);
   const offset = decodeCursor(cursor, profile, listing, available.length, digest);
   const tools = available.slice(offset, offset + TOOLS_PER_PAGE).map(tool => listedTool(tool, { compact: listing === 'compact' }));

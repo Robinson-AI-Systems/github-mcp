@@ -39,11 +39,10 @@ The owner explicitly requires GitHub MCP to support **both mobile and desktop** 
 Not approved scope. An item moves into a design only with Chris's approval (a dated DECISIONS entry). The usual signal
 for hand-building something is repeated `github_api_*` / `github_graphql_*` calls for it in the change log.
 
-- **Self-hosted and larger runners** (`github_runner_*`): hosted runners are spend; reached by the universal tools
-  meanwhile (classified as spend).
-- **Merge queue** tools: Chris merges with merge commits at the exact head and does not use a merge queue.
-- **Copilot coding agent, Copilot review requests, Copilot Spaces, premium-request reports** as hand-built tools, if Chris
-  returns to Copilot (cancelled 2026-10-09). Seat billing tools exist already (O-4).
+- *(Moved out 2026-11-01: self-hosted and larger runners, merge queue tools, and the Copilot coding agent, review requests,
+  Spaces and premium-request reports were approved by Chris as gated families: built in
+  [CAP-6](pr-cards/CAP-6.md), listed only where the account has the feature.)* Still not built from that list: Copilot
+  usage-metrics reports (GitHub returns only signed download links; see CAP-6).
 - **Organization issue types, issue fields, autolinks, interaction limits, SBOM and attestations, migrations, Classroom**
   as hand-built tools.
 - **GitHub Models:** retired July 30, 2026 according to [GitHub](https://docs.github.com/en/github-models); no new catalog/inference tools planned. This supersedes the historical D1 “belongs with Hub model servers” exclusion.
@@ -116,8 +115,8 @@ Approach: one public GitHub App, opened gradually. Every item below is part of "
 ## Remaining after PUB-6 (named, not built)
 - Make the GitHub App publicly installable and turn on `GITHUB_PUBLIC_CONNECT` (needs Chris's go-ahead; see the rollout plan above).
 - (Done 2026-10-23) The old "make changes" tick-box became an optional **Read-only** choice: changes are on by default, and a read-only connection refuses changes with wording that says how to reconnect.
-- Fine-grained-token tenants (God mode currently offers the notifications and package keys).
-- Revoke or delete a stranger's tenant and data by identity (today's revoke tools are keyed by account for the private pilot).
+- (Done 2026-11-01, PUB-9) Fine-grained-token tenants: a person adds a fine-grained token on the protected page; it opens its one owner as a read-only extra place with the permissions GitHub shows for it.
+- (Done 2026-11-01, PUB-8) Revoke or delete a stranger's tenant and data by identity: owner-only `github_tenant_remove` (preview, confirm, revoke at GitHub first, one removal core shared with "Delete my data", readback).
 - Self-host the brand fonts (pages currently use system fonts) and a favicon `.ico`.
 - Move the connector to `github.robinsonaisystems.com` (OAuth callbacks, App settings, existing clients; DNS row on the owner checklist).
 - Real-device acceptance of the new flow (owner checklist, optional).

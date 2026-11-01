@@ -85,7 +85,10 @@ export function createFakeGithub() {
     codes: new Map(),
     tokens: new Map(),
     nextInstall: 50001,
-    log: []
+    log: [],
+    // PUB-8: user tokens the App revoked, and a switch that makes GitHub refuse revocation (the retry case).
+    revoked: new Set(),
+    refuseRevocation: false
   };
   const addPerson = ({ login, id, orgs = {}, authorized = false }) => {
     const person = { login, id, orgs, authorized, installs: [], token: 'ghu_FAKE' + randomBytes(12).toString('hex') };
@@ -108,6 +111,12 @@ export function createFakeGithub() {
   const classicToken = (person, scopes = ['repo', 'notifications', 'gist']) => {
     const token = 'ghp_FAKE' + randomBytes(14).toString('hex');
     state.tokens.set(token, { ...person, classicScopes: scopes, ref: person });
+    return token;
+  };
+  /** PUB-9: a fine-grained token for one owner and its repositories; `grants` are the permission names it may read. */
+  const fineToken = (person, { owner, repos, grants = [] }) => {
+    const token = 'github_pat_FAKE' + randomBytes(16).toString('hex');
+    state.tokens.set(token, { ...person, fine: { owner, repos, grants }, ref: person });
     return token;
   };
   const issueCode = (person) => {
@@ -162,10 +171,25 @@ export function createFakeGithub() {
       const person = state.codes.get(params.get('code'));
       state.codes.delete(params.get('code'));
       if (!person) return json(200, { error: 'bad_verification_code' });
+      state.revoked.delete(person.token); // a fresh sign-in gives working access again
       return json(200, { access_token: person.token, refresh_token: person.token + '_refresh', expires_in: 28800, refresh_token_expires_in: 15897600, token_type: 'bearer' });
     }
     const auth = String(new Headers(init.headers ?? {}).get('authorization') ?? '');
+    // The App's own token endpoints (Basic auth with the App's client): revoke, then "check a token" (404 once revoked).
+    const appToken = /^https:\/\/api\.github\.com\/applications\/([^/]+)\/token$/.exec(url);
+    if (appToken) {
+      if (!auth.startsWith('Basic ')) return json(401, { message: 'Requires authentication' });
+      const method = String(init.method ?? (typeof input === 'string' ? 'GET' : input.method)).toUpperCase();
+      const token = JSON.parse(String(init.body ?? '{}')).access_token;
+      state.log.push(method + ' API /applications/token');
+      if (method === 'DELETE') {
+        if (state.refuseRevocation) return json(500, { message: 'Server Error' });
+        state.revoked.add(token); return new Response(null, { status: 204 });
+      }
+      return state.revoked.has(token) || ![...state.people.values()].some((p) => p.token === token) ? json(404, { message: 'Not Found' }) : json(200, { id: 1, token: null });
+    }
     const person = state.tokens.get(auth.replace(/^(Bearer|token) /i, ''));
+    if (person && state.revoked.has(person.token)) return json(401, { message: 'Bad credentials' });
     if (!url.startsWith('https://api.github.com/')) throw new Error('fake GitHub: unexpected address ' + url);
     if (!person) return json(401, { message: 'Bad credentials' });
     const path = url.slice('https://api.github.com'.length);
@@ -174,6 +198,21 @@ export function createFakeGithub() {
       const res = json(200, { id: person.id, login: person.login, type: 'User' });
       if (person.classicScopes) res.headers.set('x-oauth-scopes', person.classicScopes.join(', '));
       return res;
+    }
+    if (person.fine) {
+      // PUB-9: what a fine-grained token sees: only its owner's chosen repositories, and only the permissions it was given.
+      const bare = path.split('?')[0];
+      const NOPE = { message: 'Resource not accessible by personal access token' };
+      if (bare === '/user/repos') return json(200, person.fine.repos.map((name) => ({ name, full_name: person.fine.owner.login + '/' + name, owner: person.fine.owner, default_branch: 'main' })));
+      const fr = /^\/repos\/([^/]+)\/([^/]+)(?:\/(.*))?$/.exec(bare);
+      if (fr && fr[1] === person.fine.owner.login && person.fine.repos.includes(fr[2])) {
+        if (!fr[3]) return json(200, { name: fr[2], full_name: fr[1] + '/' + fr[2], owner: person.fine.owner, private: true, default_branch: 'main' });
+        const area = { commits: 'contents', issues: 'issues', pulls: 'pull_requests' }[fr[3].split('/')[0]];
+        if (!area) return json(404, { message: 'Not Found' });
+        return person.fine.grants.includes(area) ? json(200, []) : json(403, NOPE);
+      }
+      if (bare.startsWith('/orgs/')) return json(403, NOPE);
+      return json(404, { message: 'Not Found' });
     }
     if (path.startsWith('/user/installations')) return json(200, { total_count: person.installs.length, installations: person.installs });
     if (path.startsWith('/user/memberships/orgs?'))
@@ -195,7 +234,7 @@ export function createFakeGithub() {
     return json(404, { message: 'fake GitHub has no route for ' + path });
   }
 
-  return { state, addPerson, install, classicToken, browser, api };
+  return { state, addPerson, install, classicToken, fineToken, browser, api };
 }
 
 // ---------------------------------------------------------------- the local "internet": one HTTPS server, a proxy

@@ -8,6 +8,8 @@ import { publicOrigin } from '../core/http.js';
 import { verifyGithubBearerIdentity, verifyGithubUserInstallation } from './github-identity.js';
 import {pilotOptionalAad,currentPilotOptionalReadback} from './optional-credentials.js';
 import {masterAad,currentMasterReadback,MASTER_HANDLE} from './master-credential.js';
+import {currentFineReadback} from './fine-grained-credential.js';
+import {fineDecision,refusedBy,validLearned,fineUnlocks,finePermissionSummary,fineSettingKey} from '../github/fine-grained.js';
 import { userGrantBinding, currentUserGrantBinding } from './credential-binding.js';
 import { resolveDocumentedCredential } from '../github/credential-authority.js';
 import {pilotAppClient} from './pilot-app-client.js';
@@ -187,6 +189,33 @@ export function createTenantScopedCredentials({ base, directory, tenant, db,
     if(needAny&&!needAny.some(s=>seen.scopes.includes(s)))throw optionalDenied();
     return {row,scopes:seen.scopes,expiresAt:seen.expiresAt};
   }
+  // PUB-9: the person's fine-grained token for one extra place (its owner). Same checks as every optional grant: current
+  // member, same GitHub person, the place is a fine-grained place for that very owner, intact ciphertext, not expired.
+  const FINE_LOGIN=/^[a-z0-9][a-z0-9-]{0,38}$/;
+  const fineKey=fineSettingKey;
+  async function currentFine(accountLogin){
+    if(typeof directory.getPilotOptionalCredential!=='function'||typeof accountLogin!=='string'||
+      !FINE_LOGIN.test(accountLogin.toLowerCase()))throw optionalDenied();
+    const active=await directory.authorizedPilotIdentity(tenant.tenantId,tenant.identityId);
+    if(!active||active.tenantId!==tenant.tenantId||active.identityId!==tenant.identityId||
+      active.membershipRevision!==tenant.membershipRevision||
+      active.pilotRevision!==tenant.pilotRevision)throw optionalDenied();
+    const subject=await directory.getPilotVerifiedSubject(tenant.tenantId,tenant.identityId);
+    if(typeof subject!=='string'||!/^[1-9][0-9]{0,18}$/.test(subject))throw optionalDenied();
+    const owner=accountLogin.toLowerCase();
+    const place=await db.getAccount(owner);
+    const row=await directory.getPilotOptionalCredential({tenantId:tenant.tenantId,
+      identityId:tenant.identityId,accountLogin:owner,kind:'F'});
+    const seen=currentFineReadback({row,subject,place,now:now()});
+    if(!seen)throw new GithubClientError('no_credentials',
+      `Your fine-grained token for ${owner} is missing or expired. Add a new one on My connection.`);
+    const read=async name=>{try{return await db.getSetting(fineKey(name,subject,owner));}catch{return null;}};
+    if(await read('fine_rejected_at'))throw new GithubClientError('no_credentials',
+      `GitHub no longer accepts your fine-grained token for ${owner} (it was revoked or changed). Add a new one on My connection.`);
+    let refused=[];
+    try{const parsed=JSON.parse((await read('fine_refused'))||'[]');if(validLearned(parsed))refused=parsed;}catch{refused=[];}
+    return {row,owner,subject,scopes:seen.scopes,refused};
+  }
   const FALLBACK_SCOPES={K:['notifications'],P:['read:packages','repo']};
   const apiOnly=url=>{
     let parsed;
@@ -256,6 +285,15 @@ export function createTenantScopedCredentials({ base, directory, tenant, db,
         now:now()});
     },
     async authorizeOptionalRequest({account,kind,method,url}={}){
+      // PUB-9: a fine-grained token may only go to api.github.com, and only for what its recorded permissions do not rule
+      // out. A refusal is plain guidance, decided before anything reaches GitHub.
+      if(kind==='F'){
+        const fine=await currentFine(account);
+        if(!apiOnly(url))throw optionalDenied();
+        const decision=fineDecision({method,url,scopes:fine.scopes,refused:fine.refused});
+        if(!decision.allow)throw new GithubClientError('outside_scope',decision.reason,{account:fine.owner});
+        return true;
+      }
       // M may use any GitHub API address; the tool lifecycle (classification, confirmation, spend and production
       // gates) decides whether the operation itself is allowed. It can never go to another host.
       if(kind==='M'){ await currentMaster(); return apiOnly(url)?true:(()=>{throw optionalDenied();})(); }
@@ -303,6 +341,49 @@ export function createTenantScopedCredentials({ base, directory, tenant, db,
       if(!ok)throw optionalDenied();
       return {url:publicOrigin(env)+'/api/tenant/optional?revoke_link='+handle,expiresInMinutes:10};
     },
+    /** PUB-9: remembers what GitHub said about a fine-grained token's request (never the token): a 401 means GitHub no
+     * longer accepts it; a "not accessible by personal access token" refusal means it lacks that permission. */
+    async noteFineOutcome({account,method,url,status,message}={}){
+      try{
+        const subject=await directory.getPilotVerifiedSubject(tenant.tenantId,tenant.identityId);
+        const owner=String(account??'').toLowerCase();
+        if(typeof subject!=='string'||!/^[1-9][0-9]{0,18}$/.test(subject)||!FINE_LOGIN.test(owner))return;
+        if(status===401){await db.setSetting(fineKey('fine_rejected_at',subject,owner),new Date(now()).toISOString());return;}
+        const lacks=refusedBy({method,url,status,message});
+        if(!lacks.length)return;
+        let had=[];
+        try{const parsed=JSON.parse((await db.getSetting(fineKey('fine_refused',subject,owner)))||'[]');if(validLearned(parsed))had=parsed;}catch{had=[];}
+        const next=[...new Set([...had,...lacks])].slice(-100);
+        await db.setSetting(fineKey('fine_refused',subject,owner),JSON.stringify(next));
+      }catch{ /* bookkeeping never changes the result of a GitHub call */ }
+    },
+    /** PUB-9: nonsecret status of each of this person's fine-grained tokens. Empty when none was ever added. */
+    async fineStatus(){
+      if(typeof directory.listPilotOptionalCredentials!=='function')return [];
+      const subject=await directory.getPilotVerifiedSubject(tenant.tenantId,tenant.identityId).catch(()=>null);
+      if(typeof subject!=='string'||!/^[1-9][0-9]{0,18}$/.test(subject))return [];
+      const rows=await directory.listPilotOptionalCredentials({tenantId:tenant.tenantId,identityId:tenant.identityId,kind:'F'}).catch(()=>[]);
+      const out=[];
+      for(const row of rows){
+        if(String(row.actor_id)!==subject||!FINE_LOGIN.test(String(row.account_login)))continue;
+        const owner=row.account_login;
+        const place=await db.getAccount(owner).catch(()=>null);
+        const read=async name=>{try{return await db.getSetting(fineKey(name,subject,owner));}catch{return null;}};
+        let refused=[];
+        try{const parsed=JSON.parse((await read('fine_refused'))||'[]');if(validLearned(parsed))refused=parsed;}catch{refused=[];}
+        const at=row.expires_at?new Date(row.expires_at):null;
+        const expired=!!(at&&Number.isFinite(at.getTime())&&at.getTime()<=now());
+        const rejected=!!(await read('fine_rejected_at'));
+        const scopes=Array.isArray(row.scopes)?row.scopes:[];
+        out.push({owner:place?.login??owner,
+          status:expired?'expired':rejected?'rejected by GitHub (revoked or changed)':place?.place_cred==='F'?'active':'not in use',
+          expires_at:at&&Number.isFinite(at.getTime())?at.toISOString():null,
+          repositories:Array.isArray(place?.allowed_repos)?place.allowed_repos:'all of '+(place?.login??owner),
+          allow_changes:place?.allow_changes===true,
+          permissions:finePermissionSummary(scopes,refused),unlocks:fineUnlocks(scopes,refused)});
+      }
+      return out;
+    },
     /** Nonsecret summary for github_whoami. Never the token. */
     async masterStatus(){
       // GOD-6: also the person's numeric GitHub id (`subject`, the key of every per-person setting) and the saved login.
@@ -326,6 +407,15 @@ export function createTenantScopedCredentials({ base, directory, tenant, db,
     },
     async token(args={}) {
       const cred=args.cred??'I';
+      if(cred==='F'){
+        // A fine-grained token cannot be narrowed further by this server; GitHub already limits it.
+        if(args.scope?.repositories?.length||args.scope?.repository_ids?.length||args.scope?.permissions)throw optionalDenied();
+        const fine=await currentFine(args.account);
+        try{
+          return decryptSecret(fine.row.access_enc,{aad:pilotOptionalAad({tenantId:tenant.tenantId,
+            identityId:tenant.identityId,accountLogin:fine.owner,kind:'F'}),key:key()});
+        }catch{throw optionalDenied();}
+      }
       if(cred==='M'){
         if(args.scope?.repositories?.length||args.scope?.repository_ids?.length||args.scope?.permissions)throw optionalDenied();
         const {row}=await currentMaster();

@@ -30,7 +30,7 @@ const arrangeCopilot = (gh, outcome) => {
     { status: 200, body: state(outcome === 'ok') }
   ]);
 };
-runWriteContract({ label: 'github_review_request_copilot', definition: def(reviews, 'github_review_request_copilot'), needsConfirm: false,
+runWriteContract({ label: 'github_review_request_copilot', definition: def(reviews, 'github_review_request_copilot'), needsConfirm: true, strictSpend: true,
   args: { repo: 'hello', number: 4 }, arrange: arrangeCopilot });
 
 describe('PAR-1 Copilot review request', () => {

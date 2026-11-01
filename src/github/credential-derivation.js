@@ -23,6 +23,8 @@ const CLASSIC_SENTENCE = /[^.\n]*personal access tokens? \(classic\)[^.]*\./i;
 const SCOPE_TOKEN = /`([a-z_:]+(?::[a-z_]+)?)`/g;
 
 export function listedFor(route) { return Object.hasOwn(DATA.ops, route) ? DATA.ops[route] : {}; }
+/** Every operation in the vendored lists ("METHOD /path/{param}"). PUB-9 matches a sent request against these. */
+export function listedRoutes() { return Object.keys(DATA.ops); }
 const unknown = (reason) => ({ disposition: 'unknown', evidence: null, permissions: null, scopes: null, reason });
 
 /** @returns {{decisions: Record<string, object>, conflicts: object[]}} only the kinds it can decide; the rest keep their defaults */

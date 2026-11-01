@@ -5,6 +5,7 @@ import {createPrivateOptionalEnrollment} from '../../src/tenancy/optional-setup.
 import {TenantCapacityError} from '../../src/tenancy/runtime-limits.js';
 import {escapeHtml,paramsOf,publicOrigin,send} from '../../src/core/http.js';
 import {masterTokenLink} from '../../src/tenancy/master-credential.js';
+import {FineSetupRefusal} from '../../src/tenancy/fine-grained-credential.js';
 import {BRAND_CSS,brandHeader,brandFooter} from '../../src/brand/brand.js';
 
 // Same Robinson look as the sign-in pages. Every field and button fits the screen width on a phone.
@@ -55,7 +56,33 @@ const revokeResult=out=>'<!doctype html><html lang="en"><head><meta charset="utf
     ?'You sent '+out.count+' token'+(out.count===1?'':'s')+' for cancelling (ending in '+out.last4.map(x=>'<strong>'+escapeHtml(x)+'</strong>').join(', ')+'). GitHub cancels valid ones within moments; a token that was already invalid is simply ignored.'
     :'Nothing was cancelled (GitHub answered '+escapeHtml(String(out.status||'no answer'))+'). Open a fresh link from your assistant and try again.')+'</p>'+
   '<p>Nothing you pasted was saved. You can close this page.</p>'+brandFooter()+'</main></body></html>';
-const markup=details=>details.kind==='M'?masterMarkup(details):details.kind==='R'?revokeMarkup(details):standardMarkup(details);
+// PUB-9: a fine-grained token. It opens one place (the owner it belongs to), never more than GitHub gave it.
+const fineMarkup=details=>'<!doctype html><html lang="en"><head><meta charset="utf-8">'+
+  '<meta name="viewport" content="width=device-width,initial-scale=1">'+
+  '<title>Fine-grained token</title><style>'+PAGE_CSS+'</style></head><body><main>'+brandHeader()+
+  '<h1>Add a fine-grained token</h1>'+
+  '<p>This is optional. A fine-grained token lets your assistant use repositories of an account or organization where the '+
+  'Robinson GitHub MCP App is not installed, with only the repositories and permissions you pick on GitHub.</p>'+
+  '<ol><li>Tap the button below. GitHub opens its fine-grained token page. Sign in to GitHub if it asks.</li>'+
+  '<li>Under <strong>Resource owner</strong> pick the account or organization. Under <strong>Repository access</strong> pick the repositories.</li>'+
+  '<li>Under <strong>Permissions</strong> give what you want your assistant to have (for example Contents, Issues and Pull requests). Then tap <strong>Generate token</strong>.</li>'+
+  '<li>Copy the token (it starts with github_pat_), come back here, paste it in the box and tap Continue.</li></ol>'+
+  '<p><a class="big" href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener noreferrer">Create a fine-grained token on GitHub</a></p>'+
+  '<form method="post" action="/api/tenant/optional">'+
+  '<input type="hidden" name="csrf" value="'+escapeHtml(details.state)+'">'+
+  '<input type="hidden" name="action" value="save">'+
+  '<label>Paste the token here<input type="password" name="value" required minlength="20" maxlength="4096" autocomplete="off"></label>'+
+  '<button type="submit">Verify and save my fine-grained token</button></form>'+
+  '<p>Paste it here only, never into a chat. We check it belongs to your own GitHub login, read which repositories it reaches '+
+  'and what it may read, and store it encrypted. It is never shown again. The place it opens starts read-only until you allow changes on My connection. '+
+  'Remove it any time on My connection; also delete it in your GitHub settings if you will not use it again.</p>'+brandFooter()+'</main></body></html>';
+const refusedMarkup=plain=>'<!doctype html><html lang="en"><head><meta charset="utf-8">'+
+  '<meta name="viewport" content="width=device-width,initial-scale=1">'+
+  '<title>Not saved</title><style>'+PAGE_CSS+'</style></head><body><main>'+brandHeader()+
+  '<h1 id="optional-refused">Not saved</h1><p>'+escapeHtml(plain)+'</p>'+
+  '<p>Nothing was stored. Open My connection and tap "Add a fine-grained token" to try again.</p>'+
+  '<p><a href="/connection">Back to My connection</a></p>'+brandFooter()+'</main></body></html>';
+const markup=details=>details.kind==='F'?fineMarkup(details):details.kind==='M'?masterMarkup(details):details.kind==='R'?revokeMarkup(details):standardMarkup(details);
 const standardMarkup=details=>'<!doctype html><html lang="en"><head><meta charset="utf-8">'+
   '<meta name="viewport" content="width=device-width,initial-scale=1">'+
   '<title>Additional GitHub authority</title><style>'+PAGE_CSS+'</style></head><body><main>'+brandHeader()+
@@ -101,10 +128,12 @@ export function makePrivateOptionalPage({
     try{
       if(req.method==='GET'){
         if(['read-observed-at-enrollment','revoked-on-this-service'].includes(req.query?.github_mcp_optional))
-          return send(res,200,'<!doctype html><html lang="en"><meta name="viewport" content="width=device-width,initial-scale=1"><title>GitHub setup</title><style>'+PAGE_CSS+'</style><main>'+brandHeader()+'<h1 id="optional-done">'+(req.query.github_mcp_optional==='revoked-on-this-service'?'Removed':'Saved')+'</h1><p>'+(req.query.github_mcp_optional==='revoked-on-this-service'?'It is no longer stored here. Also delete it in your GitHub settings if you will not use it again.':'Your assistant can use it straight away; no reconnecting needed.')+'</p><p><a href="/connection">Back to My connection</a></p></main></html>','text/html; charset=utf-8');
+          return send(res,200,'<!doctype html><html lang="en"><meta name="viewport" content="width=device-width,initial-scale=1"><title>GitHub setup</title><style>'+PAGE_CSS+'</style><main>'+brandHeader()+'<h1 id="optional-done">'+(req.query.github_mcp_optional==='revoked-on-this-service'?'Removed':'Saved')+'</h1><p>'+(req.query.github_mcp_optional==='revoked-on-this-service'?'It is no longer stored here. Also delete it in your GitHub settings if you will not use it again.':'Your assistant can use it straight away; no reconnecting needed.'+(/^[A-Za-z0-9-]{1,39}$/.test(String(req.query.github_mcp_owner??''))?' It opens '+escapeHtml(req.query.github_mcp_owner)+' as an extra place, read-only until you allow changes on My connection.':''))+'</p><p><a href="/connection">Back to My connection</a></p></main></html>','text/html; charset=utf-8');
         // GOD-1: a one-use link from github_master_token_link (add the master token any time, no reconnecting).
         if(typeof req.query?.revoke_link==='string')
           return renderOptionalForm(res,await enrollment.startRevokeLink(req.query.revoke_link));
+        if(typeof req.query?.fine_link==='string')
+          return renderOptionalForm(res,await enrollment.startFineLink(req.query.fine_link));
         if(typeof req.query?.master_link==='string')
           return renderOptionalForm(res,await enrollment.startMasterLink(req.query.master_link));
         const result=await enrollment.start(paramsOf(req));
@@ -133,6 +162,8 @@ export function makePrivateOptionalPage({
         return send(res,429,{error:'rate_limited',description:'This private connection is temporarily busy.'});
       }
       if(req.method==='POST')res.setHeader('Set-Cookie',CLEAR);
+      // PUB-9: our own fixed sentence (never a token or a GitHub response) says what to change.
+      if(error instanceof FineSetupRefusal)return send(res,403,refusedMarkup(error.plain),'text/html; charset=utf-8');
       return send(res,403,{error:'credential_setup_denied',
         description:'This setup was not verified. Restart from your connection.'});
     }
