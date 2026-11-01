@@ -1,0 +1,103 @@
+// PLAY-2: per-tenant, personally confirmed host pairing. Never returns execution
+// authority. A host stays pending_canary until separately verified by the runtime.
+import {createHash, randomBytes, createPublicKey, verify} from 'node:crypto';
+
+const sha = value => createHash('sha256').update(value).digest('hex');
+const safe = message => Object.assign(new TypeError(message), {safeMessage:true, safeCode:'playground_enrollment_denied'});
+const validId = id => typeof id === 'string' && /^[a-f0-9]{32}$/.test(id);
+const codePattern = /^[A-Za-z0-9_-]{43}$/;
+const keyFor = id => 'pg_host.' + id;
+const rootKey = hash => 'pg_pair.' + hash.slice(0,48);
+const indexKey = 'pg_enrolled_index';
+const publicKeyOf = key => {
+  if(typeof key!=='string'||!/^ed25519:[A-Za-z0-9_-]{40,160}$/.test(key)) throw safe('Invalid pairing key.');
+  const pk = createPublicKey({key:Buffer.from(key.slice(8),'base64url'),format:'der',type:'spki'});
+  if(pk.asymmetricKeyType!=='ed25519') throw safe('Expected an Ed25519 device key.');
+  return pk;
+};
+export const deviceFingerprint = value => sha(Buffer.from(value.slice(8),'base64url'));
+export const pairingIndexKey = code => rootKey(sha(code));
+export const pairingMessage = ({deviceId,code,origin}) =>
+  JSON.stringify({purpose:'robinson-playground-device-pair/v1',deviceId,code,origin});
+const originOf = text => {
+  let u;try{u=new URL(text);}catch{throw safe('The device HTTPS origin is invalid.');}
+  if(u.protocol!=='https:'||u.username||u.password||u.port||u.pathname!=='/'||u.search||u.hash||
+     !/^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])$/i.test(u.hostname)||
+     /^[0-9.]+$/.test(u.hostname)||u.hostname==='localhost'||u.hostname.endsWith('.localhost')||
+     u.hostname.endsWith('.local')||u.hostname.endsWith('.internal'))throw safe('Only a pinned public HTTPS tunnel name can be enrolled.');
+  return u.origin;
+};
+async function cas(db,key,update){
+  for(let n=0;n<4;n++){
+    const old=await db.getSetting(key),revision=old?.revision??0;
+    const next=update(old);
+    if(!next)return null;
+    const saved=await db.compareAndSetSetting(key,revision,{...next,revision:revision+1});
+    if(saved)return saved;
+  }
+  throw safe('Enrollment changed concurrently. Reopen My connection.');
+}
+export function createEnrolledHostStore({db,root,tenantId,identityId,clientId,now=Date.now,random=randomBytes}={}){
+  if(!db?.getSetting||!db?.compareAndSetSetting||!root?.getSetting||!root?.setSetting||
+     typeof tenantId!=='string'||typeof identityId!=='string'||typeof clientId!=='string'||!clientId)throw safe('Verified enrollment scope is required.');
+  const current=()=>now();
+  const list=async()=>{
+    const idx=await db.getSetting(indexKey),ids=idx?.ids??[];
+    if(!Array.isArray(ids)||ids.length>32||!ids.every(validId))throw safe('Invalid enrolled host index.');
+    const found=await Promise.all(ids.map(id=>db.getSetting(keyFor(id))));
+    return found.filter(h=>h?.tenantId===tenantId&&h.identityId===identityId&&h.clientId===clientId).map(h=>({
+      deviceId:h.deviceId,status:h.status,fingerprint:h.fingerprint??null,origin:h.origin??null,
+      generation:h.generation,pairedAt:h.pairedAt??null,revocationPending:h.status==='revocation_pending'
+    }));
+  };
+  async function begin(){
+    const existing=await list();
+    if(existing.filter(x=>x.status!=='revoked').length>=8)throw safe('This connection already has eight enrolled or pending devices.');
+    const deviceId=random(16).toString('hex'),code=random(32).toString('base64url'),hash=sha(code),expiresAt=current()+600000;
+    const host={kind:'playground-enrolled-host',tenantId,identityId,clientId,deviceId,generation:1,
+      status:'pending_pair',codeHash:hash,expiresAt,createdAt:current(),revision:1};
+    if(!await db.compareAndSetSetting(keyFor(deviceId),0,host))throw safe('Device identity collision.');
+    await cas(db,indexKey,old=>({ids:[...new Set([...(old?.ids??[]),deviceId])].sort()}));
+    await root.setSetting(rootKey(hash),{kind:'playground-pair-selector',tenantId,identityId,clientId,deviceId,expiresAt});
+    return {deviceId,code,expiresAt};
+  }
+  async function claim({code,deviceId,publicKey,origin,signature}={}){
+    if(!codePattern.test(code??'')||!validId(deviceId)||typeof signature!=='string'||!/^[-_A-Za-z0-9]{80,128}$/.test(signature))throw safe('Invalid device pairing proof.');
+    const h=await db.getSetting(keyFor(deviceId)),hash=sha(code),pointer=await root.getSetting(rootKey(hash));
+    if(!h||h.tenantId!==tenantId||h.identityId!==identityId||h.clientId!==clientId||h.deviceId!==deviceId||
+      h.status!=='pending_pair'||h.codeHash!==hash||h.expiresAt<=current()||
+      pointer?.tenantId!==tenantId||pointer.identityId!==identityId||pointer.clientId!==clientId||pointer.deviceId!==deviceId||
+      pointer.expiresAt!==h.expiresAt)throw safe('Pairing was already used, expired, or belongs to another person.');
+    const url=originOf(origin),pk=publicKeyOf(publicKey),msg=pairingMessage({deviceId,code,origin:url});
+    if(!verify(null,Buffer.from(msg),pk,Buffer.from(signature,'base64url')))throw safe('Device did not prove its signing key.');
+    const fp=deviceFingerprint(publicKey);
+    const saved=await db.compareAndSetSetting(keyFor(deviceId),h.revision,{
+      ...h,revision:h.revision+1,status:'pending_confirm',codeHash:null,publicKey,fingerprint:fp,origin:url,
+      claimedAt:current(),expiresAt:Math.min(h.expiresAt,current()+300000)
+    });
+    if(!saved)throw safe('Pairing was consumed concurrently.');
+    return {deviceId,status:'pending_confirm',fingerprint:fp,origin:url};
+  }
+  async function approve(deviceId){
+    if(!validId(deviceId))throw safe('Unknown device.');
+    const saved=await cas(db,keyFor(deviceId),h=>{
+      if(h?.tenantId!==tenantId||h.identityId!==identityId||h.clientId!==clientId||h.status!=='pending_confirm'||h.expiresAt<=current()||
+         !h.publicKey||!h.fingerprint||!h.origin)return null;
+      return {...h,status:'pending_canary',pairedAt:current(),codeHash:null,expiresAt:null};
+    });
+    if(!saved)throw safe('The device must first prove its key; reconnect and verify its fingerprint.');
+    return {deviceId,status:'pending_canary',fingerprint:saved.fingerprint};
+  }
+  async function revoke(deviceId){
+    if(!validId(deviceId))throw safe('Unknown device.');
+    const saved=await cas(db,keyFor(deviceId),h=>{
+      if(h?.tenantId!==tenantId||h.identityId!==identityId||h.clientId!==clientId)return null;
+      if(['revoked','revocation_pending'].includes(h.status))return {...h};
+      return {...h,status:h.status==='ready'||h.status==='constrained'?'revocation_pending':'revoked',
+        codeHash:null,revokedAt:current(),generation:h.generation+1};
+    });
+    if(!saved)throw safe('Device is not enrolled under this connection.');
+    return {deviceId,status:saved.status,cleanupConfirmed:saved.status==='revoked'};
+  }
+  return {begin,claim,approve,revoke,list};
+}

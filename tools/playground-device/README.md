@@ -1,0 +1,13 @@
+# PLAY-2: first-device pairing (experimental, not runtime activation)
+
+This helper runs on **your own** WSL2/Linux machine, not in an AI tool or on the operator's behalf. It is the **device identity/pairing leg** only: it does not install the Docker supervisor, enable arbitrary commands, bind repository storage, configure a tunnel, or pass the enrollment canary. Those are separate PLAY-2 implementation/acceptance requirements. The owner must confirm the exact fingerprint after the device proves it owns its locally generated Ed25519 key.
+
+1. In `https://github.robinsonaisystems.com/connection`, sign in with **your own GitHub login**, choose one connected Full app, and choose **Start pairing my computer**. This generates a device ID and a ten-minute one-use code.
+2. On the computer you own, ensure Node 24 and your own outbound **HTTPS tunnel** are configured. The public Vercel controller cannot resolve a private tailnet-only hostname by itself. Verify the tunnel belongs to you; do not paste its credentials into the helper or chat.
+3. From the checked repository source run `node tools/playground-device/pair.mjs` in WSL2/Linux. It prompts locally for the device ID, the one-use pairing code and the HTTPS tunnel origin. No GitHub key/token is required. Prefer a pinned reviewed Git revision; the installer/update signing mechanism and operational verification are a later PLAY-2 unit.
+4. The tool creates an Ed25519 device private key under `~/.config/ras-playground/device-ed25519.pk8`, with owner-only permissions, and posts **only the public key, signed pairing statement and one-time code**. It does not read, upload or alter your existing bench GitHub key.
+5. Return to **My connection** and compare the complete device fingerprint displayed on both sides and the exact tunnel origin before pressing **Approve**. The enrollment remains `pending_canary` and cannot receive arbitrary code until the signed runtime image, isolation and canary are verified.
+
+If a device is lost or not yours, revoke the enrollment from My connection. For pending-only enrollment, revocation is immediate; once a real runtime is available, disconnected-host revocation must remain pending until bounded local fail-closed expiry and independent signed cleanup evidence. This helper does not claim that live shutdown has been tested.
+
+**Fences:** User-owned machine and connection only. Never run another customer's work here, put a GitHub/private signing key into a chat, pass an agent-chosen runtime origin, expose host Docker privileges to user code, or claim that a tailnet hostname is accessible from Vercel. This pairing helper does not buy hosting and is not a fallback for PLAY-1.

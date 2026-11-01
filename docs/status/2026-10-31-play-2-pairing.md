@@ -1,0 +1,9 @@
+# 2026-10-31 — PLAY-2 owner-confirmed pairing implementation
+
+Phase 1 design PR #495 merged on reviewed main a70d4275f9edef1622c3557bce4bd340d62f97a9 (required exact-head ci and release-policy green). Original owner card PR #494 merged first. PLAY-2 is registered IN_PROGRESS; no PLAY-1 obligations were closed or altered.
+
+Phase 2 implementation branch `ai/gpt/play-2-enrollment-20261031`, based on a70d4275. This first coherent outcome adds per-tenant, per-current-client pairing state, one-time hashed root locator, authenticated My connection begin/approve/revoke, device-signed proof of possession through a dedicated API with membership/grant recheck, and a local owner-operated Node 24 signing helper. A claimed or approved device is **pending_canary**, never ready; operator allocations and the existing three agent-facing execute/read/cancel tools are untouched. Added dedicated unit/real PostgreSQL contract tests for identity, replay, expiry, cross-tenant and concurrent CAS. This is source-in-progress, not a verified, merged or deployed feature.
+
+Remaining before claiming this outcome: source syntax/lint/check, focused test and exact-head CI/release-policy, self-review, any findings, merge, checked release and live owner-initiated pairing proof. The full PLAY-2 remains open for image/supervisor installation+updates, tunnel reachability/pinning, real canary, file attachment/direct clone, runtime placement, lease/cleanup and owner-PC appliance-desk acceptance. The original operator PLAY-1 live acceptance continues independently; its Docker address-pool remediation remains an external operator requirement.
+
+No PC, keys, tunnel, GitHub account settings, production provider data, paid resources or other projects were changed. No device credentials were sent through an agent tool. The assisted builder does not enroll the owner's PC on another tenant's behalf.

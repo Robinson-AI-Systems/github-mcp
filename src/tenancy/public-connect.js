@@ -40,6 +40,7 @@ import { publicOrigin } from '../core/http.js';
 import { isPublicClientId, publicAuthCode, parsePublicCode } from './public-code.js';
 import { MUSE_PUBLIC_CLIENT_ID, MUSE_REDIRECT_URI } from './muse-client.js';
 import { createMarketplaceStore } from '../marketplace/store.js';
+import { createEnrolledHostStore } from '../playground/enrolled-hosts.js';
 import { accountFromResource, marketplaceAccount } from '../marketplace/resource.js';
 import { marketplaceEnabled, verifyMarketplacePurchase } from '../marketplace/lifecycle.js';
 
@@ -473,7 +474,7 @@ export function createPublicConnect({ env = process.env, fetchImpl = fetch, root
       clientName: 'My connection', authorizedAccount: null });
     return { manage: await manageView({ tenantId, identityId: made.identityId, signedInAs: principal.login, offers, db }) };
   }
-  async function manageView({ tenantId, identityId, signedInAs, offers, db, notice = null }) {
+  async function manageView({ tenantId, identityId, signedInAs, offers, db, notice = null, pairing = null }) {
     const marketplace = await directory().marketplaceBinding(tenantId);
     const handle = await openHandle({ clientId: MANAGE_CLIENT, redirectUri: manageUrl(), purpose: 'manage', tenantId, identityId,
       accountLogin: signedInAs.toLowerCase(), offers: offers?.length ? offers : null }, MANAGE_SECONDS);
@@ -504,21 +505,52 @@ export function createPublicConnect({ env = process.env, fetchImpl = fetch, root
           rejected: !!(await read('master_rejected_at')), expired: !!expired };
       }
     }
+    // PLAY-2: a host belongs to one particular active full client and tenant. Listing never changes authority.
+    const pairingGrants = (await db.listUpgradeableConnections()).filter(c => c.client_id !== MANAGE_CLIENT && c.profile === 'full');
+    const root = createDb(rootSql());
+    const devices = (await Promise.all(pairingGrants.map(async c =>
+      (await createEnrolledHostStore({db,root,tenantId,identityId,clientId:c.client_id}).list())
+        .map(device => ({...device,clientId:c.client_id,clientName:c.client_name ?? 'An app'}))
+    ))).flat();
     // PUB-5 B: "used today: 312 of 5,000" (numbers only; a counting problem just hides the line).
     const usage = await createPublicUsage(rootSql(), usageLimits).usedToday(tenantId).catch(() => null);
     return { handle, signedInAs, accounts, places, connections, usage, marketplaceAccountId:marketplace?.accountId ?? null, offers: offers ?? [], timeZone: (await db.getSetting(ZONE_SETTING)) ?? 'UTC',
-      master: master ? { added: true, expiresAt: master.expires_at ?? null, unlocks: masterUnlocks(master.scopes ?? []), actAs } : { added: false, unlocks: [] }, notice };
+      master: master ? { added: true, expiresAt: master.expires_at ?? null, unlocks: masterUnlocks(master.scopes ?? []), actAs } : { added: false, unlocks: [] }, notice,
+      pairing, pairingGrants: pairingGrants.map(c=>({clientId:c.client_id,name:c.client_name??'An app'})),devices };
   }
   /** One action on My connection. Every action uses up the page's handle and returns a fresh page (or somewhere to go). */
   async function manageAction({ handle, action, value }) {
     active();
     if (!STATE.test(String(handle ?? '')) ||
-        !['refresh', 'read_only', 'allow_changes', 'time_zone', 'disconnect', 'add', 'master', 'add_place', 'place_changes', 'remove_place', 'act_as_me', 'rule_override'].includes(action)) throw refused('r33');
+        !['refresh', 'read_only', 'allow_changes', 'time_zone', 'disconnect', 'add', 'master', 'add_place', 'place_changes', 'remove_place', 'act_as_me', 'rule_override', 'begin_pair', 'approve_pair', 'revoke_pair'].includes(action)) throw refused('r33');
     const flow = await directory().consumePublicFlow(sha(handle), 'god');
     if (!flow || flow.purpose !== 'manage' || !flow.tenantId || !flow.identityId || !flow.accountLogin) throw refused('r34');
     const { db, dir, tenant } = await scopeOf(flow);
     if (await dir.marketplaceBinding(flow.tenantId) && !['refresh','read_only','allow_changes','time_zone','disconnect'].includes(action)) throw refused('marketplace-action');
-    const view = (notice) => manageView({ tenantId: flow.tenantId, identityId: flow.identityId, signedInAs: flow.accountLogin, offers: flow.offers, db, notice });
+    const view = (notice,pairing=null) => manageView({ tenantId: flow.tenantId, identityId: flow.identityId, signedInAs: flow.accountLogin, offers: flow.offers, db, notice, pairing });
+    // The user just authenticated with GitHub to reach this one-use management handle.
+    // Never accept a device origin or secret here as an assistant tool argument.
+    if (['begin_pair','approve_pair','revoke_pair'].includes(action)) {
+      const active=(await db.listUpgradeableConnections()).filter(c=>c.client_id!==MANAGE_CLIENT&&c.profile==='full');
+      const root=createDb(rootSql());
+      if(action==='begin_pair'){
+        const selected=active.find(c=>c.client_id===value);
+        if(!selected)throw refused('pair-client');
+        const started=await createEnrolledHostStore({db,root,tenantId:flow.tenantId,identityId:flow.identityId,clientId:selected.client_id}).begin();
+        return {manage:await view('Pairing code created for '+(selected.client_name??'your app')+'.',started)};
+      }
+      const match=(await Promise.all(active.map(async c=>({clientId:c.client_id,
+        devices:await createEnrolledHostStore({db,root,tenantId:flow.tenantId,identityId:flow.identityId,clientId:c.client_id}).list()}))))
+        .find(x=>x.devices.some(d=>d.deviceId===value));
+      if(!match)throw refused('pair-device');
+      const hosts=createEnrolledHostStore({db,root,tenantId:flow.tenantId,identityId:flow.identityId,clientId:match.clientId});
+      if(action==='approve_pair'){
+        await hosts.approve(value);
+        return {manage:await view('Device identity approved. Canary verification is still required before commands are available.')};
+      }
+      const revoked=await hosts.revoke(value);
+      return {manage:await view(revoked.cleanupConfirmed?'Enrollment revoked. No runtime had been admitted.':'Enrollment revoked. Runtime termination is pending independent device evidence.')};
+    }
     if (action === 'read_only') {
       const n = await db.setConnectionsReadOnly(true);
       return { manage: await view(n ? 'Done. Your apps can now look, but not change anything.' : 'No app is connected yet.') };

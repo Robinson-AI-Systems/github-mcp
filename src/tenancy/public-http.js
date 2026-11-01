@@ -16,7 +16,7 @@ const CSP = "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; form
 const STYLE = BRAND_CSS + '.row{display:flex;justify-content:space-between;gap:10px;align-items:center;border-top:1px solid var(--border);padding:10px 0}' +
   '.row:first-of-type{border-top:0}.tag{font-size:.8rem;color:var(--muted)}.ok{color:var(--brand)}button.plain{background:none;border:1px solid var(--border);color:var(--text)}' +
   'a.button{display:block;text-align:center;font:600 16px Inter,-apple-system,sans-serif;color:#fff;background:var(--grad);border-radius:50px;padding:13px 20px;text-decoration:none}' +
-  '.notice{border:1px solid var(--brand);border-radius:12px;padding:12px;margin:0 0 14px}';
+  '.notice{border:1px solid var(--brand);border-radius:12px;padding:12px;margin:0 0 14px}.row>span{min-width:0;overflow-wrap:anywhere}code{overflow-wrap:anywhere}';
 const STEP = '/api/oauth/authorize';
 
 function page(res, status, title, body) {
@@ -190,6 +190,20 @@ function managePage(res, m) {
           (pl.repos?.length ? pl.repos.map((r) => act('remove_place', `Remove ${h(pl.login)}/${h(r)}`, { value: pl.login + '/' + r, plain: true, id: 'remove-place-' + pl.login + '-' + r })).join('') : act('remove_place', `Remove ${h(pl.login)}`, { value: pl.login, plain: true, id: 'remove-place-' + pl.login }))).join('') : '<p class="muted">No extra places yet.</p>') +
         `<form method="post" action="${MANAGE_PATH}">${hidden('handle', m.handle)}${hidden('action', 'add_place')}<label>Organization or owner/repository<input type="text" name="value" id="place-value" maxlength="150" autocomplete="off"></label><button type="submit" id="add-place">Add place</button></form>`
       : '<p class="muted">Extra places need your master token. Add it above first.</p>')) +
+    (m.marketplaceAccountId ? '' : '<h2>Your Playground computers</h2>' +
+      '<p>Use only a computer you own or administer. It runs your own repository code and may consume CPU, memory and disk. A device owner can inspect its own containers; this is not a multi-tenant virtual machine. A separate canary and isolation check are required before any command can run. Your GitHub and tunnel secrets stay on your computer.</p>' +
+      (m.pairing ? '<p id="playground-pair-code">On your own computer, enter this one-time code in the reviewed local pairing helper within ten minutes: <code>' + h(m.pairing.code) + '</code>. Device ID: <code>' + h(m.pairing.deviceId) + '</code>. You will confirm its displayed signing-key fingerprint here after it proves possession. Never paste a GitHub token into the pairing tool.</p>' : '') +
+      ((m.pairingGrants??[]).length ? m.pairingGrants.map(c =>
+        act('begin_pair', 'Pair my computer for ' + h(c.name),
+          {value:c.clientId,id:'begin-playground-pair-' + c.clientId})).join('') :
+        '<p class="muted">Connect an app with Full permissions before enrolling a computer.</p>') +
+      ((m.devices??[]).length ? m.devices.map(d=>'<div class="row"><span><strong>' + h(d.clientName) + '</strong> <small>' + h(d.deviceId) + '</small><br><span class="tag">' + h(d.status) + '</span>' +
+        (d.origin ? '<p><small>Tunnel: ' + h(d.origin) + '</small></p>' : '') +
+        (d.fingerprint ? '<p><small>Signing-key fingerprint: <code>' + h(d.fingerprint) + '</code> — compare it with the one on your own computer before approving.</small></p>' : '') +
+        '</span></div>' +
+        (d.status==='pending_confirm' ? act('approve_pair','Approve this exact device fingerprint (canary still required)',{value:d.deviceId,id:'approve-' + d.deviceId}) : '') +
+        (!['revoked','revocation_pending'].includes(d.status) ? act('revoke_pair','Revoke enrollment',{value:d.deviceId,plain:true,id:'revoke-' + d.deviceId}) : '')).join('') :
+        '<p class="muted">No computers enrolled yet.</p>')) +
     '<h2>Time zone</h2>' +
     `<form method="post" action="${MANAGE_PATH}">${hidden('handle', m.handle)}${hidden('action', 'time_zone')}<label>Show times in<select name="value">` +
       COMMON_ZONES.map((z) => `<option value="${h(z)}"${z === m.timeZone ? ' selected' : ''}>${h(z.replace('_', ' '))}</option>`).join('') + '</select></label><button type="submit" id="save-zone">Save</button></form>' +
