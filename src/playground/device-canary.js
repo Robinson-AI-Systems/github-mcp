@@ -1,7 +1,7 @@
 // PLAY-2: a fresh current-grant controller claim reads a previous *owner-run*
 // fixed local canary receipt. No arbitrary commands are sent over this path,
 // and this evidence cannot promote a workspace to executable readiness.
-import {createPublicKey,verify,randomBytes,createHash} from 'node:crypto';
+import {createPublicKey,verify,randomBytes} from 'node:crypto';
 import {pinnedDeviceOrigin,pinnedDeviceRequest} from './device-probe.js';
 
 const fail=()=>Object.assign(new TypeError('The enrolled local runtime canary was not verified. No command was allowed.'),{safeCode:'device_canary_unconfirmed'});
