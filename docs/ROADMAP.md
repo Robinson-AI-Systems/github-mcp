@@ -208,7 +208,7 @@ with its limits, his PC, other devices on his tailnet — and for small projects
 [RUNTIME-FLEET](designs/RUNTIME-FLEET-2026-11-01.md). **FLEET-1 (size classes, Git-only open) is built** in the same PR
 as this entry ([card](pr-cards/FLEET-1.md)). Proposed next outcomes, not in the work index until Chris approves:
 
-- **FLEET-2** slim image for `small`, collapsed single-container shape, warm pool of pre-started single-use containers,
+- **FLEET-2** (publishing the prebuilt runtime image is approved and its workflow is built 2026-11-01) slim image for `small`, collapsed single-container shape, warm pool of pre-started single-use containers,
   ephemeral "run at this commit" mode, honest upsize hint on pressure.
 - **FLEET-3 (approved and built 2026-11-01, [card](pr-cards/FLEET-3.md))** outbound host agent: hosts long-poll the control plane for signed ≤ 90 s work leases and post results back,
   so a PC or tailnet-only machine needs **no public tunnel or inbound port**; revocation via heartbeat plus local
