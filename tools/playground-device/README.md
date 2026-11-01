@@ -28,3 +28,23 @@ node tools/playground-device/install.mjs --action remove --device DEVICE_ID --bi
 The installer requires the exact immutable image already pulled and verified by the device owner (no automatic pull or silent upgrade). It creates a uniquely named `--internal` network, one Docker volume and a single UID-separated runtime container with no published ports, Docker socket or host-file mount. It limits CPU/memory to 2 CPU / 2 GiB by default and does **not** invent a 150-GB disk reservation. The `plan` action prints the intended resource names and exact image without calling Docker or admitting any workload. The fixed canary runs Node 24 under UID 1000, starts and independently verifies shutdown of a disposable PostgreSQL 15 test database, exercises a real Chromium page, and rechecks the exact runtime ownership. Removal stops and verifies the container, then deletes only its independently label-matched volume and network and rechecks their absence. A mismatched name/label, uncertain provider response, unsupported network or partial deletion fails closed.
 
 **This is not the completed Playground enrollment.** It does not attach native Git files, configure the owner's outbound HTTPS tunnel, proxy public dependency downloads, produce a signed controller-side canary or allow `github_playground_execute` to place work. An enrolled host remains `pending_canary` until those later contracts and the actual remote/owner-PC acceptance pass. Never expose the internal coding container's port to the internet or claim that local Docker labels are protection against a malicious host administrator. The image can be upgraded only by an explicit new digest and independent drain/cleanup/cutover procedure; there is no silent update in this unit.
+
+## Appliance Desk attachment preflight — read-only, no file bodies
+
+The actual transfer limit is **100 MiB of raw files, 100,000 path entries and no symlinks**. A clean repository clone is not enough: the native-Git source snapshot also carries `workspace.json`, `control`, Git metadata and worktrees. Before offering an enrolled host real work, measure the **authorized disposable native workspace root** where it exists. The owner does not need to share file contents or a GitHub key.
+
+For a *plain Git checkout* (preliminary proxy only):
+
+```sh
+node tools/playground-device/measure-workspace.mjs --root /your/local/appliance-desk --kind repository
+```
+
+For the *true native Git worker workspace root*, only where an authorized operator can read it:
+
+```sh
+node tools/playground-device/measure-workspace.mjs --root /authorized/native-git/job-workspace-root --kind native --expected-binding EXACT_64_HEX_BINDING
+```
+
+The JSON output contains Git HEAD, dirty-worktree status, worker generation, file count, total bytes, category totals, largest-file size, symlink count, a metadata digest and elapsed time. It **never prints filenames, file contents or Git credentials**. It does not acquire the worker's mutation lock, copy bytes, or prove an encrypted transfer; a true source snapshot may change immediately after this scan. `sealedTransferCandidate` is only a preflight decision for a recognized, stable native workspace with the expected binding, not an attachment success flag. A plain clone always says false.
+
+If the native workspace exceeds the bound or contains symlinks, the next engineering step is device-local native-Git clone plus safe, generation-bound reconciliation of uncommitted changes, **not** truncation or silently dropping work. Do not raise the transfer limit or claim Appliance Desk acceptance based on synthetic files.
