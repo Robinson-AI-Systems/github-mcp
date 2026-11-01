@@ -10,13 +10,18 @@ import {redact} from '../../src/github/content-protection.js';
 const ID=/^[a-f0-9]{64}$/;
 const hash=x=>createHash('sha256').update(JSON.stringify(x)).digest('hex');
 const fail=(code,message)=>Object.assign(new TypeError(message),{code});
+// FLEET-2: the cgroup v2 kill counter for this container (best effort; null when unreadable).
+export async function readOomKills(path='/sys/fs/cgroup/memory.events'){try{const m=/^oom_kill (\d+)$/m.exec(await readFile(path,'utf8'));return m?Number(m[1]):null;}catch{return null;}}
+// Killed by the kernel's out-of-memory killer: SIGKILL (or a shell's 137) the supervisor did
+// not send, while this container's oom_kill counter went up. Anything else keeps its reason.
+export const killedByOom=({signal,code,supervisorReason,before,after})=>!supervisorReason&&(signal==='SIGKILL'||code===137)&&Number.isSafeInteger(before)&&Number.isSafeInteger(after)&&after>before;
 async function atomic(path,value){const temp=path+'.'+randomBytes(8).toString('hex')+'.new';const f=await open(temp,'w',0o600);try{await f.writeFile(JSON.stringify(value));await f.sync();}finally{await f.close();}await rename(temp,path);const d=await open(resolve(path,'..'),'r');try{await d.sync();}finally{await d.close();}}
 export class CodingRuntime {
- constructor({root,binding,uid=1000,gid=1000,now=Date.now,maxLogBytes=32*1024*1024,idleMs=4*3600000,resources,authorityRequired=false,egressProxy=process.env.CODING_EGRESS_PROXY,cacheRoot=process.env.CODING_CACHE_ROOT}={}){
+ constructor({root,binding,uid=1000,gid=1000,now=Date.now,maxLogBytes=32*1024*1024,idleMs=4*3600000,resources,authorityRequired=false,egressProxy=process.env.CODING_EGRESS_PROXY,cacheRoot=process.env.CODING_CACHE_ROOT,oomKills=readOomKills}={}){
   if(process.getuid?.()!==0)throw fail('isolation_required','Run the supervisor as the isolated container root; commands always use a different unprivileged UID.');
   if(!isAbsolute(root??'')||!ID.test(binding??'')||uid!==1000||gid!==1000||!Number.isSafeInteger(maxLogBytes)||maxLogBytes<1024||maxLogBytes>64*1024*1024||!Number.isSafeInteger(idleMs)||idleMs<60000||idleMs>86400000)throw fail('invalid_configuration','Invalid isolated workspace configuration.');
   if(egressProxy!==undefined&&egressProxy!=='http://ingress:3128')throw fail('invalid_configuration','Use only the fixed private egress service.');this.egressProxy=egressProxy;
-  Object.assign(this,{root:resolve(root),binding,uid,gid,now,maxLogBytes,idleMs,commandOomScoreAdj:1000});this.cacheRoot=typeof cacheRoot==='string'&&/^\/[A-Za-z0-9_./-]{1,200}$/.test(cacheRoot)&&!cacheRoot.includes('..')?cacheRoot:null;this.authorityRequired=authorityRequired;this.authorityLease=null;this.active=new Map();this.admitting=new Set();this.lastActivity=now();this.expired=false;this.stopping=false;this.leaseWrites=Promise.resolve();this.resources=resources??createResourceMonitor({root:this.root});
+  Object.assign(this,{root:resolve(root),binding,uid,gid,now,maxLogBytes,idleMs,commandOomScoreAdj:1000});this.cacheRoot=typeof cacheRoot==='string'&&/^\/[A-Za-z0-9_./-]{1,200}$/.test(cacheRoot)&&!cacheRoot.includes('..')?cacheRoot:null;this.authorityRequired=authorityRequired;this.authorityLease=null;this.active=new Map();this.admitting=new Set();this.lastActivity=now();this.expired=false;this.stopping=false;this.leaseWrites=Promise.resolve();this.resources=resources??createResourceMonitor({root:this.root});const reader=typeof oomKills==='function'?oomKills:readOomKills;this.oomKills=()=>Promise.resolve().then(reader).then(n=>Number.isSafeInteger(n)?n:null,()=>null);
  }
  async init(){
   const {chown}=await import('node:fs/promises');
@@ -63,6 +68,7 @@ export class CodingRuntime {
    // (only that person's work ever runs there). Package managers reuse downloads.
    if(this.cacheRoot)Object.assign(env,{XDG_CACHE_HOME:this.cacheRoot,NPM_CONFIG_CACHE:join(this.cacheRoot,'npm'),npm_config_cache:join(this.cacheRoot,'npm'),YARN_CACHE_FOLDER:join(this.cacheRoot,'yarn'),PNPM_STORE_DIR:join(this.cacheRoot,'pnpm'),PIP_CACHE_DIR:join(this.cacheRoot,'pip')});
    if(this.egressProxy)Object.assign(env,{HTTP_PROXY:this.egressProxy,HTTPS_PROXY:this.egressProxy,http_proxy:this.egressProxy,https_proxy:this.egressProxy,NO_PROXY:'127.0.0.1,localhost,::1',no_proxy:'127.0.0.1,localhost,::1',NODE_USE_ENV_PROXY:'1'});
+   const oomBefore=await this.oomKills();
    let child;try{child=spawn(argv[0],argv.slice(1),{cwd:directory,uid:this.uid,gid:this.gid,env,detached:true,stdio:['ignore','pipe','pipe']});}catch(e){await log.close();throw e;}
    // A command that exhausts memory must be the one the kernel kills, never this
    // supervisor (which would take the whole runtime down with it). Raising a score
@@ -76,7 +82,7 @@ export class CodingRuntime {
    // Both spawn errors and close settle through this one receipt update.
    let spawnFailed=false,drainTimer;child.once('error',()=>{spawnFailed=true;});child.once('exit',()=>{try{process.kill(-child.pid,'SIGKILL');}catch{/* Original group already ended. */}drainTimer=setTimeout(()=>kill('detached_output_still_open'),1000);drainTimer.unref();});
    slot.done=new Promise(resolveDone=>child.once('close',(code,signal)=>{clearTimeout(slot.timer);clearTimeout(drainTimer);try{process.kill(-child.pid,'SIGKILL');}catch{/* No background descendants. */}
-    chain.then(async()=>{await log.sync();await log.close();Object.assign(receipt,{state:spawnFailed?'failed':slot.reason||signal||code!==0?'failed':'completed',exitCode:code,signal:signal??null,reason:spawnFailed?'executable_unavailable':slot.reason??(logFailed?'log_storage_failed':null),finishedAt:this.now(),bytes});await atomic(p.receipt,receipt);}).catch(()=>{receipt.state='uncertain';}).finally(()=>{this.active.delete(id);resolveDone();});
+    chain.then(async()=>{await log.sync();await log.close();const oom=!spawnFailed&&!logFailed&&killedByOom({signal,code,supervisorReason:slot.reason,before:oomBefore,after:await this.oomKills()});Object.assign(receipt,{state:spawnFailed?'failed':slot.reason||signal||code!==0?'failed':'completed',exitCode:code,signal:signal??null,reason:spawnFailed?'executable_unavailable':slot.reason??(logFailed?'log_storage_failed':oom?'out_of_memory':null),finishedAt:this.now(),bytes});await atomic(p.receipt,receipt);}).catch(()=>{receipt.state='uncertain';}).finally(()=>{this.active.delete(id);resolveDone();});
    }));
    receipt.state='running';// Do not overwrite a completed receipt after a very short child exits.
    // The already durable starting receipt is sufficient after a crash; running status is in memory.

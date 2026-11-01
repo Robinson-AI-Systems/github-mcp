@@ -54,6 +54,24 @@ test('timeout, cancellation, complete paged logs and explicit log overflow failu
   const over=await r.start({requestKey:'overflow',argv:[node,'-e',"console.log('x'.repeat(100000))"]});assert.equal((await settled(r,over.id)).reason,'log_limit_exceeded');
  }finally{await cleanup(r);}
 });
+// FLEET-2: a kernel out-of-memory kill is reported as out_of_memory; the supervisor's own kills keep their reason.
+test('kernel out-of-memory kill is recorded as out_of_memory, never confused with timeout or cancel',async()=>{
+ let reads=0;const rising=async()=>reads++%2===0?5:6;// every command sees the counter rise during it
+ const r=await fixture({oomKills:rising});try{
+  const oom=await r.start({requestKey:'oom-kill',argv:[node,'-e',"process.kill(process.pid,'SIGKILL')"]});assert.equal((await settled(r,oom.id)).reason,'out_of_memory');
+  const shell=await r.start({requestKey:'oom-shell',argv:['/bin/sh','-c','exit 137']});assert.equal((await settled(r,shell.id)).reason,'out_of_memory');
+  const timed=await r.start({requestKey:'oom-timeout',argv:[node,'-e','setInterval(()=>{},1000)'],timeoutMs:30});assert.equal((await settled(r,timed.id)).reason,'timeout');
+  const cancel=await r.start({requestKey:'oom-cancel',argv:[node,'-e','setInterval(()=>{},1000)']});assert.equal((await r.cancel(cancel.id)).reason,'cancelled');
+ }finally{await cleanup(r);}
+ const steady=await fixture({oomKills:async()=>7});try{
+  const killed=await steady.start({requestKey:'plain-kill',argv:[node,'-e',"process.kill(process.pid,'SIGKILL')"]});const receipt=await settled(steady,killed.id);assert.equal(receipt.signal,'SIGKILL');assert.equal(receipt.reason,null);
+ }finally{await cleanup(steady);}
+ // The real cgroup counter, only inside a memory-limited container (CI runs this image with --memory 2g).
+ const {readOomKills}=await import('./runtime.js');let limit=null;try{limit=Number((await readFile('/sys/fs/cgroup/memory.max','utf8')).trim());}catch{/* not cgroup v2 */}
+ if(Number.isSafeInteger(limit)&&limit<=4*1024**3&&await readOomKills()!==null){const real=await fixture();try{
+  const hog=await real.start({requestKey:'real-oom',argv:[node,'-e',"const a=[];for(;;)a.push(Buffer.alloc(64*1024*1024,1))"],timeoutMs:120000});const receipt=await settled(real,hog.id);assert.equal(receipt.signal,'SIGKILL');assert.equal(receipt.reason,'out_of_memory');
+ }finally{await cleanup(real);}}
+});
 test('directory escape, resource pressure and four-hour inactivity',async()=>{
  let clock=Date.now();const r=await fixture({now:()=>clock});try{
   await assert.rejects(r.start({requestKey:'escape',argv:['true'],cwd:'..'}),{code:'invalid_directory'});
