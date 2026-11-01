@@ -9,6 +9,8 @@ vi.mock('../../src/native-git/client.js', () => ({
     calls.push(request);
     const {action, options = {}} = request;
     if (action === 'capabilities') return {repository_attachment: 'sealed-mounted-v1'};
+    if (action === 'inspect') return {generation: 2, head: 'h'.repeat(40), status: ''};
+    if (action === 'attachment_export' && options.mode === 'prepare') return {transferId: options.transferId, generation: 2, bytes: 64, digest: 'd'.repeat(64)};
     if (action === 'attachment_export' && options.mode === 'read') return {digest: 'd'.repeat(64), offset: options.offset, nextOffset: options.offset + 4, base64: Buffer.from('abcd').toString('base64')};
     if (action === 'attachment_import' && options.mode === 'begin') return {transferId: 't'.repeat(64), bytes: 64, digest: 'd'.repeat(64), offset: 0};
     if (action === 'attachment_import' && options.mode === 'append') {
@@ -21,9 +23,9 @@ vi.mock('../../src/native-git/client.js', () => ({
 const {attachRepository} = await import('../../src/playground/attachment.js');
 
 const binding = 'b'.repeat(64);
-function world({casFails = false} = {}) {
+function world({casFails = false, fresh = false} = {}) {
   const transfer = {transferId: 't'.repeat(64), bytes: 64, digest: 'd'.repeat(64), generation: 1, offset: 0};
-  let row = {revision: 3, binding, composeId: 'c1', phase: 'attaching', plan: {origin: 'https://ras-pg.example.test/'}, transfer};
+  let row = {revision: 3, binding, composeId: 'c1', phase: fresh ? 'allocated' : 'attaching', plan: {origin: 'https://ras-pg.example.test/'}, ...(fresh ? {} : {transfer})};
   const db = {
     getSetting: async () => row,
     compareAndSetSetting: async (_key, revision, next) => { if (casFails || revision !== row.revision) return null; row = next; return next; },
@@ -54,5 +56,12 @@ describe('attach while another attach of the same workspace is running', () => {
     behaviour.appendError = 'disk full';
     const {ctx, record} = world();
     await expect(attachRepository(ctx, record, {budgetMs: 1000})).rejects.toThrow('disk full');
+  });
+  it('never renews the workspace lease from attach (the cleanup sweep retries attaches)', async () => {
+    const {ctx, record} = world({fresh: true});
+    await attachRepository(ctx, record, {budgetMs: 0}).catch(() => {});
+    const workerCalls = calls.filter(c => c.workspace_id || c.action === 'inspect');
+    expect(workerCalls.some(c => c.action === 'inspect')).toBe(true);
+    for (const c of workerCalls) expect([c.action, c.renewLease]).toEqual([c.action, false]);
   });
 });

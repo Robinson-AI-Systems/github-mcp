@@ -6,3 +6,6 @@ Found and fixed in the same PR: stale replay state, confusing concurrent-attach 
 window, and one out-of-memory command taking the whole runtime down. Not yet tested: opening the one-time preview link
 in a real browser (needs a person or a browser tool; not a failure); idle-expiry cleanup run in progress
 (`job_5369bc0a1bbe5b6f`, 3-minute lease). The memory fix needs a release before it can be re-tested live.
+
+Update: idle-expiry cleanup passed live (`job_5369bc0a1bbe5b6f`). Found five Oct 30–31 allocations kept alive by the
+sweep renewing their leases; fixed in the follow-up PR; they clear within ~4 h after release.

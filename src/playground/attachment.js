@@ -20,7 +20,9 @@ export async function attachRepository(ctx,record,{budgetMs=15000}={}){
  let brokerCap;try{brokerCap=await callNativeWorker(ctx,{action:'capabilities',job:brokerJob});}catch{throw Object.assign(failure('The runtime is not reachable yet (still starting, or its HTTPS address is being set up). Nothing was transferred; run attach again in a minute.'),{safeRetryable:true,noOperationStarted:true});}
  if(sourceCap.repository_attachment!=='sealed-mounted-v1'||brokerCap.repository_attachment!=='sealed-mounted-v1')throw failure('Update the Git worker/broker to the checked sealed attachment protocol. No shared-worker command execution is used.');
  if(!stored.transfer){
-  const state=await callNativeWorker(ctx,{binding:record.binding,workspace_id:record.worker,job:sourceJob,action:'inspect'});
+  // Never renew the workspace lease here: the maintenance sweep retries unfinished attaches,
+  // and a renewing read kept abandoned workspaces alive (and uncleaned) forever.
+  const state=await callNativeWorker(ctx,{binding:record.binding,workspace_id:record.worker,job:sourceJob,action:'inspect',renewLease:false});
   const id=hash(JSON.stringify([binding,state.generation])),key=keyFor(ctx,binding,id);
   // Lean (FLEET-6): send only what GitHub lacks; the source falls back to a full copy when ineligible.
   const prepared=await invoke(sourceJob,'attachment_export',{mode:'prepare',transferId:id,key,expectedGeneration:state.generation,lean:true});
