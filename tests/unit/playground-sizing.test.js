@@ -41,6 +41,12 @@ it('uses medium when no size and no protected default are given',async()=>{
  const row=await ensureAllocation(w.ctx,record,{provider:p,config,manager:async()=>{}});
  expect(row.size).toBe('medium');const s=services(row.plan);expect(Number(s.coding.cpus)).toBeLessThanOrEqual(4);expect(parseInt(s.coding.mem_limit)).toBeLessThan(4096);
 });
+it('pins the published runtime image of the serving commit instead of building from source',async()=>{
+ const {w,record}=await world({PLAYGROUND_IMAGE:undefined,PLAYGROUND_IMAGE_REPOSITORY:'ghcr.io/example-org/runtime',PLAYGROUND_BUILD_SOURCE_SHA:'e'.repeat(40)}),p=provider();
+ const inner=w.ctx.fetch;w.ctx.fetch=async(url,init)=>String(url).startsWith('https://ghcr.io/token')?{status:200,json:async()=>({token:'anon'})}:String(url).startsWith('https://ghcr.io/v2/')?{status:200,headers:{get:k=>k==='docker-content-digest'?'sha256:'+'f'.repeat(64):null}}:inner(url,init);
+ const row=await ensureAllocation(w.ctx,record,{provider:p,config:{...config,image:undefined,sourceSha:'e'.repeat(40)},manager:async()=>{}});
+ const s=services(row.plan);expect(s.coding.image).toBe('ghcr.io/example-org/runtime@sha256:'+'f'.repeat(64));expect(s.coding.build).toBeUndefined();
+});
 it('keeps the original full-size plan when the protected default is large',async()=>{
  const {w,record}=await world({PLAYGROUND_DEFAULT_SIZE:'large'}),p=provider();
  const row=await ensureAllocation(w.ctx,record,{provider:p,config,manager:async()=>{}});

@@ -45,3 +45,13 @@ A live medium runtime (operator pool, release `c58402425e37`) installed this rep
 for `runtime: auto` is now `medium`; `PLAYGROUND_DEFAULT_SIZE=large` restores the original size. Tests:
 `playground-sizing.test.js` ("uses medium when no size…", "keeps the original full-size plan when the protected
 default is large"). Evidence: `docs/status/2026-11-01-medium-default.md`.
+
+## 2026-11-01 — Runtimes use the published image of each release
+
+The `github-mcp-runtime` package was made public (Chris approved; done by Vivienne). An anonymous pull from a live
+runtime (`job_53992f936c324d46`) was refused before the change (`token 401`, `manifest 403`) and succeeded after
+(`token 200`, `tags/list 200`, manifest `200`, digest `sha256:f1ca90e0…`). The only image was from an older commit, so it
+was **not** pinned (that would have reverted #509 fixes). Instead: the publish workflow now also runs after each release
+(workflow-token pushes start no workflows) and builds the exact `live` commit, skipping ones already published; new
+allocations look up `<PLAYGROUND_IMAGE_REPOSITORY>:<serving commit>` anonymously and pin its digest, else build from
+source. Tests: `playground-prebuilt-image.test.js`, `playground-sizing.test.js` ("pins the published runtime image…").

@@ -18,3 +18,10 @@ nothing was transferred", `medium-proof-attach-1`), retried a minute later and a
   "uncertain / may or may not have applied" even though nothing was sent.
 
 **Next:** release; then re-run the medium workspace's snapshot test after release to confirm on the runtime's Git.
+
+## Follow-up: public runtime image, automatic per-release pinning
+
+Package made public 2026-11-01 ~15:46 UTC (Vivienne, on Chris's approval). Verified anonymously from runtime
+`job_53992f936c324d46`: before `401/403`, after `200` (digest `sha256:f1ca90e0…`, tag `10de14e4…`, an older commit — not
+pinned). Change: publish after every release + server-side lookup of the serving commit's image. First real use: the next
+release (the workflow builds that commit's image; the following new allocations pull it instead of building).

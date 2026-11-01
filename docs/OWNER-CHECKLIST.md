@@ -33,7 +33,7 @@ Only things that need you (your sign-in, phone or desktop, money, or a decision)
 
 ## Playground (coding workspaces)
 
-**One click for faster runtimes (2026-11-01):** after the first **Publish runtime image** run, open GitHub → Robinson-AI-Systems → Packages → `github-mcp-runtime` → Package settings → **Change visibility → Public** (it contains only this public repository's code, no secrets). Then agents pin its digest in `PLAYGROUND_IMAGE`. Until then runtimes keep building from source (slower, still works).
+- [x] **Done 2026-11-01 (by Vivienne for Chris):** the `github-mcp-runtime` package is public (the org setting allowing public packages was turned on first). Anonymous pulls verified. Runtimes now use the published image of each release automatically — no digest to pin by hand.
 
 **More shared capacity (optional, 2026-11-01):** to add another Dokploy instance or server to the shared pool, give agents its address and put its API key in a new protected Vercel setting (for example `PLAYGROUND_KEY_SECOND`) — never in chat. Agents then add it to `PLAYGROUND_POOLS`.
 

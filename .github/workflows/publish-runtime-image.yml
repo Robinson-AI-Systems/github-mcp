@@ -14,6 +14,13 @@ on:
       - 'package.json'
       - 'package-lock.json'
       - '.github/workflows/publish-runtime-image.yml'
+  # The release job moves `live` with the workflow token, and pushes made with that
+  # token never start other workflows. Run after each release instead, so every
+  # released commit gets its image (the server looks it up by commit; see
+  # src/playground/prebuilt-image.js).
+  workflow_run:
+    workflows: [Daily live policy]
+    types: [completed]
   workflow_dispatch:
 permissions:
   contents: read
@@ -23,30 +30,48 @@ concurrency:
   cancel-in-progress: false
 jobs:
   publish:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a
         with:
+          # Always the released code: the commit `live` points at now.
+          ref: live
           persist-credentials: false
+      - name: Resolve the released commit
+        id: rev
+        run: |
+          sha=$(git rev-parse HEAD)
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          # Backup release runs repeat for the same commit; skip if its image exists.
+          if docker manifest inspect "ghcr.io/robinson-ai-systems/github-mcp-runtime:$sha" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "### Runtime image for \`$sha\` already published; nothing to do." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
       - name: Build the production runtime image
+        if: steps.rev.outputs.exists != 'true'
         # The source label links the package to this repository; GitHub only lets the
         # workflow token create an organization package that is linked this way.
         run: >-
           docker build --pull --target production -f workers/coding-workspace/Dockerfile
           --label "org.opencontainers.image.source=https://github.com/${GITHUB_REPOSITORY}"
-          --label "org.opencontainers.image.revision=${GITHUB_SHA}"
+          --label "org.opencontainers.image.revision=${{ steps.rev.outputs.sha }}"
           --label "org.opencontainers.image.description=Robinson Playground runtime (public source, no secrets)"
-          -t "ghcr.io/robinson-ai-systems/github-mcp-runtime:${GITHUB_SHA}" .
+          -t "ghcr.io/robinson-ai-systems/github-mcp-runtime:${{ steps.rev.outputs.sha }}" .
       - name: Smoke-test the exact image before publishing
-        run: docker run --rm --network none --read-only --cap-drop ALL --user 1000:1000 "ghcr.io/robinson-ai-systems/github-mcp-runtime:${GITHUB_SHA}" node --version
+        if: steps.rev.outputs.exists != 'true'
+        run: docker run --rm --network none --read-only --cap-drop ALL --user 1000:1000 "ghcr.io/robinson-ai-systems/github-mcp-runtime:${{ steps.rev.outputs.sha }}" node --version
       - name: Publish and record the digest
+        if: steps.rev.outputs.exists != 'true'
         env:
           TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           echo "$TOKEN" | docker login ghcr.io -u "${GITHUB_ACTOR}" --password-stdin
-          docker push "ghcr.io/robinson-ai-systems/github-mcp-runtime:${GITHUB_SHA}"
-          digest=$(docker inspect --format '{{index .RepoDigests 0}}' "ghcr.io/robinson-ai-systems/github-mcp-runtime:${GITHUB_SHA}")
+          docker push "ghcr.io/robinson-ai-systems/github-mcp-runtime:${{ steps.rev.outputs.sha }}"
+          digest=$(docker inspect --format '{{index .RepoDigests 0}}' "ghcr.io/robinson-ai-systems/github-mcp-runtime:${{ steps.rev.outputs.sha }}")
           docker logout ghcr.io
           {
             echo "### Runtime image published"
