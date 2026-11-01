@@ -90,10 +90,19 @@ it('selects smaller ceilings from fresh host headroom before creating a queued a
  const result=await ensureAllocation(w.ctx,record,{provider,config,manager:async()=>{}});expect(result.phase).toBe('allocated');const plan=JSON.parse(result.plan.composeFile);expect(plan.services.coding.cpus).toBe('1.4');expect(plan.services.coding.mem_limit).toBe('1408m');expect(provider.calls.filter(x=>x==='create')).toHaveLength(1);
 });
 
+it('without an operator feed, a forbidden volume read completes disposal as volume-unverified only once compose and containers are gone (issue #509)',async()=>{
+ const {w,record}=await world(),provider=fixtureProvider({remaining:true});await ensureAllocation(w.ctx,record,{provider,config,manager:async()=>{}});
+ provider.absent=async()=>{throw Object.assign(Error('volume inspection forbidden'),{safeCode:'playground_provider_refused',status:401});};
+ // A container still present: never disposed.
+ expect((await disposeAllocation(w.ctx,record,{provider,config})).disposed).toBe(false);
+ provider.containers=async()=>[];provider.inspect=async()=>null;
+ const done=await disposeAllocation(w.ctx,record,{provider,config});expect(done).toMatchObject({phase:'disposed',cleanupEvidence:'compose_and_containers_absent_volume_read_forbidden',volumesVerified:false});
+});
 it('uses scoped independent cleanup proof when host volume inspection is forbidden, never delete success alone',async()=>{
  const {w,record}=await world(),provider=fixtureProvider();const original=await ensureAllocation(w.ctx,record,{provider,config,manager:async()=>{}});
  provider.absent=async()=>{throw Object.assign(Error('volume inspection forbidden'),{safeCode:'playground_provider_refused',status:401});};
- await expect(disposeAllocation(w.ctx,record,{provider,config})).rejects.toThrow('volume inspection forbidden');expect((await allocationRecord(w.ctx,record)).phase).toBe('deleting');
+ w.ctx.env.PLAYGROUND_TELEMETRY_URL='https://operator.example.test/observations';w.ctx.fetch=async()=>{throw new Error('feed down');};
+ await expect(disposeAllocation(w.ctx,record,{provider,config})).rejects.toThrow();expect((await allocationRecord(w.ctx,record)).phase).toBe('deleting');
  const {privateKey,publicKey}=generateKeyPairSync('ed25519');let valid=false;
  w.ctx.env.PLAYGROUND_TELEMETRY_URL='https://operator.example.test/observations';w.ctx.env.PLAYGROUND_TELEMETRY_PUBLIC_KEY='ed25519:'+publicKey.export({format:'der',type:'spki'}).toString('base64');
  w.ctx.fetch=async()=>{const body=JSON.stringify({purpose:'robinson-playground-capacity/v1',project:config.project,observedAt:w.ctx.now(),allocations:[{workspace_id:record.row.id,binding:original.binding,observedAt:w.ctx.now(),expiresAt:w.ctx.now()+60000,cleanup:{composeId:original.composeId,composeAbsent:true,containersAbsent:true,volumesAbsent:valid?original.plan.volumes:original.plan.volumes.slice(1)}}]});return new Response(body,{headers:{'x-robinson-telemetry-signature':'ed25519:'+sign(null,Buffer.from(body),privateKey).toString('base64url')}});};

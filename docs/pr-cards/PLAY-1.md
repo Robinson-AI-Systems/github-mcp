@@ -64,3 +64,13 @@ A transient control-plane failure no longer terminates a runtime: signed denials
 unreachable control plane blocks new commands after the last lease expires and gives running commands a bounded grace
 (`CODING_AUTHORITY_GRACE_MS`, default 5 min, max 15). Large native clones continue in the background past the 45 s
 watchdog. Details and tests: [status note](../status/2026-11-01-runtime-reliability.md). Live acceptance still open.
+
+## 2026-11-01 — Fixes for the live failures in issue #509
+
+Live evidence (#509, and a reproduction the same morning) showed: the runtime container exited at boot because its first
+heartbeat raced the broker it is relayed through; the gateway's health check then failed (it forwards to the dead runtime),
+so the allocation's address never routed and attach reported "worker could not be reached". Dispose and close then failed
+on Dokploy's 401 for volume reads. Fixed: the runtime retries during a 3-minute startup window (forged answers still stop
+it), attach reports a retryable "not reachable yet", and best-effort disposal completes on independent compose/container
+absence with volumes recorded unverified. Tests: `playground-authority.test.js`, `playground-allocations.test.js`. Live
+re-test after release is recorded in the status note.
