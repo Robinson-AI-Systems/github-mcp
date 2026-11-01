@@ -1,6 +1,8 @@
 // PLAY-2: per-tenant, personally confirmed host pairing. Never returns execution
 // authority. A host stays pending_canary until separately verified by the runtime.
 import {createHash, randomBytes, createPublicKey, verify} from 'node:crypto';
+import {probeEnrolledDevice} from './device-probe.js';
+import {signEnrolledDeviceProbeBody} from '../native-git/signing.js';
 
 const sha = value => createHash('sha256').update(value).digest('hex');
 const safe = message => Object.assign(new TypeError(message), {safeMessage:true, safeCode:'playground_enrollment_denied'});
@@ -37,7 +39,7 @@ async function cas(db,key,update){
   }
   throw safe('Enrollment changed concurrently. Reopen My connection.');
 }
-export function createEnrolledHostStore({db,root,tenantId,identityId,clientId,now=Date.now,random=randomBytes}={}){
+export function createEnrolledHostStore({db,root,tenantId,identityId,clientId,now=Date.now,random=randomBytes,env=process.env,probeClient=probeEnrolledDevice}={}){
   if(!db?.getSetting||!db?.compareAndSetSetting||!root?.getSetting||!root?.setSetting||
      typeof tenantId!=='string'||typeof identityId!=='string'||typeof clientId!=='string'||!clientId)throw safe('Verified enrollment scope is required.');
   const current=()=>now();
@@ -47,7 +49,7 @@ export function createEnrolledHostStore({db,root,tenantId,identityId,clientId,no
     const found=await Promise.all(ids.map(id=>db.getSetting(keyFor(id))));
     return found.filter(h=>h?.tenantId===tenantId&&h.identityId===identityId&&h.clientId===clientId).map(h=>({
       deviceId:h.deviceId,status:h.status,fingerprint:h.fingerprint??null,origin:h.origin??null,
-      generation:h.generation,pairedAt:h.pairedAt??null,revocationPending:h.status==='revocation_pending'
+      generation:h.generation,pairedAt:h.pairedAt??null,transportVerifiedAt:h.transportVerifiedAt??null,revocationPending:h.status==='revocation_pending'
     }));
   };
   async function begin(){
@@ -88,6 +90,18 @@ export function createEnrolledHostStore({db,root,tenantId,identityId,clientId,no
     if(!saved)throw safe('The device must first prove its key; reconnect and verify its fingerprint.');
     return {deviceId,status:'pending_canary',fingerprint:saved.fingerprint};
   }
+  async function probe(deviceId){
+    if(!validId(deviceId))throw safe('Unknown device.');
+    const h=await db.getSetting(keyFor(deviceId));
+    if(!h||h.tenantId!==tenantId||h.identityId!==identityId||h.clientId!==clientId||
+       h.status!=='pending_canary'||!h.origin||!h.publicKey||!h.fingerprint)throw safe('Device must be approved under your current connection first.');
+    const observed=await probeClient({record:h,now:current,signClaim:body=>signEnrolledDeviceProbeBody(body,env)});
+    if(observed.deviceId!==h.deviceId||observed.generation!==h.generation||observed.origin!==h.origin||
+       observed.fingerprint!==h.fingerprint||observed.executionReady!==false||observed.transportVerified!==true)throw safe('Device proof did not match enrolled identity.');
+    const saved=await db.compareAndSetSetting(keyFor(deviceId),h.revision,{...h,revision:h.revision+1,transportVerifiedAt:observed.observedAt});
+    if(!saved)throw safe('Enrollment changed during probe; no host was admitted.');
+    return {deviceId,status:'pending_canary',transportVerifiedAt:saved.transportVerifiedAt,executionReady:false};
+  }
   async function revoke(deviceId){
     if(!validId(deviceId))throw safe('Unknown device.');
     const saved=await cas(db,keyFor(deviceId),h=>{
@@ -99,5 +113,5 @@ export function createEnrolledHostStore({db,root,tenantId,identityId,clientId,no
     if(!saved)throw safe('Device is not enrolled under this connection.');
     return {deviceId,status:saved.status,cleanupConfirmed:saved.status==='revoked'};
   }
-  return {begin,claim,approve,revoke,list};
+  return {begin,claim,approve,probe,revoke,list};
 }
