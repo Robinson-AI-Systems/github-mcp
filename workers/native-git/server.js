@@ -15,7 +15,7 @@ import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import {createResourceMonitor,resourcePolicyFromEnv} from './resources.js';
 
-export function nativeGitServer({ root, key, now = Date.now, allowLocalFixtures = false, fixtureRemote, resources, resourcePolicy = {}, singleWorkspaceId, singleBinding, authorityUrl } = {}) {
+export function nativeGitServer({ root, key, now = Date.now, allowLocalFixtures = false, fixtureRemote, resources, resourcePolicy = {}, singleWorkspaceId, singleBinding, authorityUrl, cloneTimeoutMs = 900000, cloneWaitMs = 30000 } = {}) {
  workerKey(key); const busy = new Set();
  const monitor=resources??createResourceMonitor({root,policy:resourcePolicy});
  const gitVersion=execFileSync('git',['--version'],{encoding:'utf8',timeout:2000}).trim();
@@ -46,7 +46,7 @@ export function nativeGitServer({ root, key, now = Date.now, allowLocalFixtures 
     const admitted=await monitor.check({needsDisk});
     if(!admitted.allowed){res.setHeader('Retry-After','2');return send(429,{error:'worker_resource_pressure',reason:admitted.reason,phase:'admission',no_operation_started:true,next:'Measured worker resources are under pressure. Inspect state, then retry after resources recover.'});}
    }
-   const worker = new NativeGitWorker({ root, allowLocalFixtures, now, scannerPolicy:{settings:policy,revision:claim.scannerPolicy?.revision??0},
+   const worker = new NativeGitWorker({ root, allowLocalFixtures, now, cloneTimeoutMs, cloneWaitMs, scannerPolicy:{settings:policy,revision:claim.scannerPolicy?.revision??0},
     authorize: async (binding, { write }) => JSON.stringify(binding) === expected && claim.expiresAt > now() && (!write || claim.allowWrite === true),
     credential: async () => { if (typeof claim.credential !== 'string' || !claim.credential) throw new TypeError('Missing short-lived network authorization.'); return claim.credential; }
    });
@@ -76,6 +76,7 @@ export function nativeGitServer({ root, key, now = Date.now, allowLocalFixtures 
  }));
  // No fixed connection/request ceiling: bounded bodies and measured memory admission remain.
  const maintenance = new NativeGitWorker({ root, authorize: async () => false, now });
+ maintenance.recoverInterruptedClones().catch(() => process.stderr.write('Native Git clone recovery failed; inspect storage.\n'));
  const timer = setInterval(() => singleWorkspaceId?Promise.resolve():maintenance.prune({ skip: busy }).catch(() => process.stderr.write('Native Git cleanup failed; inspect storage permissions and capacity.\n')), 60000); timer.unref();
  server.on('close', () => {clearInterval(timer);monitor.close();});
  return server;
@@ -83,7 +84,7 @@ export function nativeGitServer({ root, key, now = Date.now, allowLocalFixtures 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
  const root = process.env.NATIVE_GIT_STORAGE_ROOT;
  if (!root) throw new TypeError('Set NATIVE_GIT_STORAGE_ROOT to the mounted persistent volume.');
- const server=nativeGitServer({root,key:process.env.NATIVE_GIT_CONTROL_PUBLIC_KEY??process.env.NATIVE_GIT_WORKER_KEY,resourcePolicy:resourcePolicyFromEnv(process.env),singleWorkspaceId:process.env.NATIVE_GIT_SINGLE_WORKSPACE_ID,singleBinding:process.env.NATIVE_GIT_SINGLE_BINDING,authorityUrl:process.env.NATIVE_GIT_AUTHORITY_URL});
+ const server=nativeGitServer({root,key:process.env.NATIVE_GIT_CONTROL_PUBLIC_KEY??process.env.NATIVE_GIT_WORKER_KEY,resourcePolicy:resourcePolicyFromEnv(process.env),singleWorkspaceId:process.env.NATIVE_GIT_SINGLE_WORKSPACE_ID,singleBinding:process.env.NATIVE_GIT_SINGLE_BINDING,authorityUrl:process.env.NATIVE_GIT_AUTHORITY_URL,cloneTimeoutMs:Math.min(Math.max(Number(process.env.NATIVE_GIT_CLONE_TIMEOUT_MS??900000)||900000,45000),3600000)});
  server.listen(Number(process.env.PORT??3000),'0.0.0.0');
  for(const signal of ['SIGTERM','SIGINT'])process.once(signal,()=>server.close(()=>{process.exitCode=0;}));
 }

@@ -28,3 +28,28 @@ it('persists authorized Git activity without shortening a lease or renewing from
   await expect(CodingRuntime.prototype.recordAuthorizedActivity.call(runtime,now+90001)).rejects.toThrow();runtime.expired=true;await expect(CodingRuntime.prototype.recordAuthorizedActivity.call(runtime,now)).rejects.toThrow();
  }finally{await rm(root,{recursive:true,force:true});}
 });
+it('rides out a control-plane outage without extending the lease, then stops after the bounded grace',async()=>{
+ const runtimeKeys=generateKeyPairSync('ed25519'),controller=generateKeyPairSync('ed25519'),binding='a'.repeat(64),publicKey=k=>'ed25519:'+k.export({format:'der',type:'spki'}).toString('base64');
+ let now=1_000_000,mode='ok',calls=0;const lost=[];
+ const runtime={binding,now:()=>now,identity:{key:runtimeKeys.privateKey},recordAuthorizedActivity:async()=>{}};
+ const answer=init=>{const proof=verifyRuntimeProof(init.body,init.headers['x-robinson-runtime-signature'],{binding,runtimePublicKey:publicKey(runtimeKeys.publicKey)},now);const body=JSON.stringify({purpose:'robinson-coding/v1',action:'authority',binding,requestNonce:proof.nonce,allowed:mode!=='denied',bootstrap:false,reason:'grant_revoked',activityAt:now-1000,expiresAt:now+60000});return new Response(body,{headers:{'x-robinson-signature':'ed25519:'+sign(null,Buffer.from(body),controller.privateKey).toString('base64url')}});};
+ const ticks=[];let release;
+ const next=()=>new Promise(r=>{release=r;});
+ let waiter=next();
+ const stop=watchAuthority({runtime,key:publicKey(controller.publicKey),url:'https://control.example.test/lifecycle',intervalMs:5,retryMs:5,graceMs:120000,onLost:async reason=>{lost.push(reason);},fetch:async(_url,init)=>{calls++;ticks.push(mode);const r=mode==='down'?Promise.reject(new TypeError('fetch failed')):Promise.resolve(answer(init));release();waiter=next();return r;}});
+ const tick=async()=>{await waiter;await new Promise(r=>setTimeout(r,2));};
+ try{
+  await tick();expect(runtime.authorityLease.allowed).toBe(true);const first=runtime.authorityLease.expiresAt;
+  mode='down';now+=30000;await tick();expect(lost).toEqual([]);expect(runtime.authorityLease.expiresAt).toBe(first);
+  now+=40000;await tick();expect(lost).toEqual([]);expect(runtime.authorityLease.expiresAt).toBeLessThanOrEqual(now);
+  now+=200000;await tick();expect(lost).toEqual(['authorization_unavailable']);
+ }finally{stop();}
+ expect(calls).toBeGreaterThan(3);
+});
+it('still stops at once on a signed denial even after an outage',async()=>{
+ const runtimeKeys=generateKeyPairSync('ed25519'),controller=generateKeyPairSync('ed25519'),binding='b'.repeat(64),publicKey=k=>'ed25519:'+k.export({format:'der',type:'spki'}).toString('base64');
+ const now=2_000_000;const lost=[];let n=0,done;const finished=new Promise(r=>{done=r;});
+ const runtime={binding,now:()=>now,identity:{key:runtimeKeys.privateKey},recordAuthorizedActivity:async()=>{}};
+ const stop=watchAuthority({runtime,key:publicKey(controller.publicKey),url:'https://control.example.test/lifecycle',intervalMs:5,retryMs:5,onLost:async r=>{lost.push(r);done();},fetch:async(_u,init)=>{n++;if(n===2)throw new TypeError('down');const proof=verifyRuntimeProof(init.body,init.headers['x-robinson-runtime-signature'],{binding,runtimePublicKey:publicKey(runtimeKeys.publicKey)},now);const body=JSON.stringify({purpose:'robinson-coding/v1',action:'authority',binding,requestNonce:proof.nonce,allowed:n===1,bootstrap:false,reason:'grant_revoked',activityAt:now-1000,expiresAt:now+60000});return new Response(body,{headers:{'x-robinson-signature':'ed25519:'+sign(null,Buffer.from(body),controller.privateKey).toString('base64url')}});}});
+ try{await finished;expect(lost).toEqual(['grant_revoked']);expect(n).toBe(3);}finally{stop();}
+});

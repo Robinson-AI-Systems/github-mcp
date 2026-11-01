@@ -23,16 +23,22 @@ async function save(path, data) {
   const directory = await open(dirname(path), 'r'); try { await directory.sync(); } finally { await directory.close(); }
 }
 
+// Clones that outlive their HTTP request (large repositories). Shared by every
+// worker object in this process so the sweep never removes a live clone.
+const CLONING = new Set();
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+export const cloningWorkspaces = () => new Set(CLONING);
+
 export class NativeGitWorker {
-  constructor({ root, authorize, credential, allowLocalFixtures = false, timeoutMs = 45000, maxOutputBytes = 2 * 1024 * 1024, now = Date.now, scannerPolicy={settings:defaultScannerSettings(),revision:0} } = {}) {
+  constructor({ root, authorize, credential, allowLocalFixtures = false, timeoutMs = 45000, cloneTimeoutMs = 900000, cloneWaitMs = 30000, maxOutputBytes = 2 * 1024 * 1024, now = Date.now, scannerPolicy={settings:defaultScannerSettings(),revision:0} } = {}) {
     if (!isAbsolute(root ?? '') || typeof authorize !== 'function') throw new TypeError('Isolated absolute storage and an authorization callback are required.');
-    Object.assign(this, { root: resolve(root), authorize, credential, allowLocalFixtures, timeoutMs, maxOutputBytes, now, scannerPolicy });
+    Object.assign(this, { root: resolve(root), authorize, credential, allowLocalFixtures, timeoutMs, cloneTimeoutMs, cloneWaitMs, maxOutputBytes, now, scannerPolicy });
   }
   async access(binding, write) {
     bindingHash(binding);
     if (await this.authorize(binding, { write }) !== true) throw new TypeError('Current workspace authorization is not valid.');
   }
-  async git(cwd, args, { token, remote, allowedCodes = [0] } = {}) {
+  async git(cwd, args, { token, remote, allowedCodes = [0], timeoutMs = this.timeoutMs } = {}) {
     const env = { PATH: process.env.PATH, HOME: this.root, LANG: 'C.UTF-8', GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: '/dev/null', GIT_TERMINAL_PROMPT: '0', GIT_EDITOR: 'true', GIT_SEQUENCE_EDITOR: 'true', GIT_ATTR_NOSYSTEM: '1', GIT_LFS_SKIP_SMUDGE: '1', GIT_LITERAL_PATHSPECS: '1', GIT_OPTIONAL_LOCKS: '0' };
     let encoded;
     if (token) {
@@ -45,7 +51,7 @@ export class NativeGitWorker {
       const child = spawn('git', [...prefix, ...args], { cwd, env, stdio: ['ignore', 'pipe', 'pipe'], detached: true });
       const out = [], err = []; let bytes = 0, problem;
       const kill = reason => { problem ??= reason; try { process.kill(-child.pid, 'SIGKILL'); } catch { /* ended */ } };
-      const timer = setTimeout(() => kill('Git timed out; inspect the workspace and remote before another intent.'), this.timeoutMs);
+      const timer = setTimeout(() => kill('Git timed out; inspect the workspace and remote before another intent.'), timeoutMs);
       const collect = target => chunk => { bytes += chunk.length; if (bytes > this.maxOutputBytes) kill('Complete output exceeds the worker limit; narrow the query or use byte windows.'); else target.push(chunk); };
       child.stdout.on('data', collect(out)); child.stderr.on('data', collect(err));
       child.on('error', error => { clearTimeout(timer); reject(error); });
@@ -80,14 +86,46 @@ export class NativeGitWorker {
     try { await mkdir(dir, { mode: 0o700 }); } catch (e) { if (e.code !== 'EEXIST') throw e; const prior = await this.workspace(id, binding); if (prior.meta.createIntent !== createIntent) throw new TypeError('Clone request key belongs to different input.'); return { workspace_id: id, replayed: true, ...await this.inspect(id, binding) }; }
     const remote = fixtureRemote ?? `https://github.com/${owner}/${repo}.git`;
     await save(join(dir, 'workspace.json'), { binding: bindingHash(binding), createIntent, remote, generation: 0, idleTimeoutMs: ttlMs, lastActivityAt: this.now(), expiresAt: this.now() + ttlMs, state: 'opening' });
-    try {
-      const token = fixtureRemote ? null : await this.credential?.(binding, { write: false });
-      await this.git(dir, ['clone', '--no-recurse-submodules', ...(branch ? ['--branch', ref(branch)] : []), ...(depth ? ['--depth', String(depth)] : []), '--', remote, 'repo'], { token, remote });
-      await this.git(join(dir, 'repo'), ['config', '--local', 'user.name', value(authorName, 100)]);
-      await this.git(join(dir, 'repo'), ['config', '--local', 'user.email', value(authorEmail, 254)]);
-      const meta = await json(join(dir, 'workspace.json')); meta.state = 'ready'; await save(join(dir, 'workspace.json'), meta);
-      return { workspace_id: id, ...await this.inspect(id, binding) };
-    } catch { return { workspace_id: id, state: 'uncertain', next: 'Inspect the workspace. An interrupted clone is not replayed automatically; dispose it and create a new intent if incomplete.' }; }
+    let token;
+    try { token = fixtureRemote ? null : await this.credential?.(binding, { write: false }); }
+    catch { return { workspace_id: id, state: 'uncertain', next: 'Inspect the workspace. An interrupted clone is not replayed automatically; dispose it and create a new intent if incomplete.' }; }
+    // The clone has its own longer watchdog and may outlive this request: a big
+    // repository reports state "opening" and becomes "ready" (or "failed") later.
+    const key = join(this.root, id); CLONING.add(key);
+    const clone = (async () => {
+      try {
+        await this.git(dir, ['clone', '--no-recurse-submodules', ...(branch ? ['--branch', ref(branch)] : []), ...(depth ? ['--depth', String(depth)] : []), '--', remote, 'repo'], { token, remote, timeoutMs: this.cloneTimeoutMs });
+        await this.git(join(dir, 'repo'), ['config', '--local', 'user.name', value(authorName, 100)]);
+        await this.git(join(dir, 'repo'), ['config', '--local', 'user.email', value(authorEmail, 254)]);
+        await this.setState(dir, 'ready'); return true;
+      } catch { await this.setState(dir, 'failed').catch(() => {}); return false; }
+      finally { CLONING.delete(key); token = null; }
+    })();
+    const finished = await Promise.race([clone, sleep(this.cloneWaitMs).then(() => null)]);
+    if (finished === true) return { workspace_id: id, ...await this.inspect(id, binding) };
+    if (finished === false) return { workspace_id: id, state: 'failed', next: 'The clone did not complete. Close this workspace and open a new one with a fresh requestKey.' };
+    const meta = await json(join(dir, 'workspace.json'));
+    return { workspace_id: id, state: 'opening', generation: meta.generation, expires_at: meta.expiresAt, next: 'Large repository: the clone continues in the background (up to ' + Math.round(this.cloneTimeoutMs / 60000) + ' minutes). Read status until it reports ready; do not open another clone.' };
+  }
+  // Metadata writes share the per-workspace mutation lock with lease renewal.
+  async setState(dir, state) {
+    for (let attempt = 0; attempt < 200; attempt++) {
+      let lock;
+      try { lock = await open(join(dir, 'mutation.lock'), 'wx', 0o600); }
+      catch (e) { if (e.code !== 'EEXIST') throw e; await sleep(25); continue; }
+      try { const meta = await json(join(dir, 'workspace.json')); meta.state = state; await save(join(dir, 'workspace.json'), meta); return; }
+      finally { await lock.close(); await rm(join(dir, 'mutation.lock'), { force: true }); }
+    }
+    throw new TypeError('Workspace metadata stayed locked.');
+  }
+  // After a restart no clone is running: an "opening" workspace can never finish.
+  async recoverInterruptedClones() {
+    let failed = 0;
+    for (const id of await readdir(this.root).catch(e => e.code === 'ENOENT' ? [] : Promise.reject(e))) {
+      if (!ID.test(id) || CLONING.has(join(this.root, id))) continue;
+      try { const dir = join(this.root, id), meta = await json(join(dir, 'workspace.json')); if (meta.state === 'opening') { await this.setState(dir, 'failed'); failed++; } } catch { /* unreadable metadata stays for operator recovery */ }
+    }
+    return { failed };
   }
   async touch(id, binding, idleTimeoutMs, { admitted = false } = {}) {
     if (!Number.isSafeInteger(idleTimeoutMs) || idleTimeoutMs < 60000 || idleTimeoutMs > 86400000) throw new TypeError('Invalid workspace idle timeout.');
@@ -150,7 +188,7 @@ export class NativeGitWorker {
     gitCommand(operation, args); const writing = !READ_OPERATIONS.includes(operation);
     const w = await this.workspace(id, binding, writing);
     await this.selectWorktree(w, args.worktree);
-    if (w.meta.state !== 'ready') throw new TypeError('Workspace is not ready; inspect or dispose it.');
+    if (w.meta.state !== 'ready') throw new TypeError(w.meta.state === 'opening' ? 'The clone is still running; read status until it reports ready.' : 'Workspace is not ready; inspect or dispose it.');
     for (const p of [...(args.paths ?? []), ...(args.path && !operation.startsWith('worktree_') ? [args.path] : [])]) await this.filePath(w.repo, p);
     if (!writing && operation === 'operation_result') {
       value(args.intentKey, 128);
@@ -226,13 +264,14 @@ export class NativeGitWorker {
     await this.access(binding, true);
     try { await realpath(join(this.root,id)); } catch(error) { if(error.code!=='ENOENT')throw error;await rm(join(this.root,'.attachments',id),{recursive:true,force:true});return {disposed:true,alreadyAbsent:true}; }
     const w = await this.workspace(id, binding, true, true);
+    if (CLONING.has(w.dir)) throw new TypeError('The clone is still running; wait for ready or failed before closing. No files deleted.');
     let lock; try { lock = await open(join(w.dir, 'mutation.lock'), 'wx', 0o600); } catch { throw new TypeError('Workspace is busy; no files deleted.'); }
     try { await rm(w.dir, { recursive: true, force: true });await rm(join(this.root,'.attachments',id),{recursive:true,force:true}); return { disposed: true }; } finally { await lock.close(); }
   }
   async prune({ skip = new Set(), limit = 100 } = {}) {
     let removed = 0;
     for (const id of await readdir(this.root).catch(e => e.code === 'ENOENT' ? [] : Promise.reject(e))) {
-      if (removed >= limit || !ID.test(id) || skip.has(id)) continue;
+      if (removed >= limit || !ID.test(id) || skip.has(id) || CLONING.has(join(this.root, id))) continue;
       const dir = join(this.root, id); let lock;
       try {
         if (await realpath(dir) !== dir) continue;
