@@ -4,6 +4,7 @@ import {indexAllocation} from './index.js';
 import {enforcementObservation} from './availability.js';
 import {managedResourceBaseline,managedNetworkVerified} from './resource-policy.js';
 import {createHash} from 'node:crypto';
+import {resolveSizeClass,sizedConfig,describeSize} from './sizing.js';
 import {playgroundBinding} from './client.js';
 import {nativeWorkerPublicKey} from '../native-git/signing.js';
 import {nativeConnection} from '../native-git/client.js';
@@ -17,8 +18,13 @@ export async function allocationRecord(ctx,record){
 }
 // Every state transition is a DB compare-and-set. A lost provider create response
 // is recovered by exact owned source/plan, never by blindly creating another stack.
-export async function ensureAllocation(ctx,record,{provider,config,manager=ensureProjectManager}={}){
+export async function ensureAllocation(ctx,record,{provider,config,manager=ensureProjectManager,size}={}){
  config??=dokployConfig(ctx.env);
+ // A stored class is immutable for that allocation; a new row takes the caller's
+ // class (or the protected default). Classes only lower protected ceilings.
+ const prior=await allocationRecord(ctx,record),sizeClass=prior?prior.size:resolveSizeClass(size,ctx.env);
+ if(!prior&&sizeClass===null)throw fail('Runtime size none means no Playground allocation; choose auto, small, medium or large to provision.');
+ config=sizedConfig(config,sizeClass);
  const refreshed=await refreshAdmission(ctx,config),admission=allocationAdmission(refreshed.env,config,(ctx.now??Date.now)());
  if(admission.allowed&&admission.observedAt!==null){const observed=JSON.parse(refreshed.env.PLAYGROUND_ADMISSION);config={...config,cpuCpus:Math.min(config.cpuCpus??8,observed.availableCpuCpus??config.cpuCpus??8),memoryBytes:Math.min(config.memoryBytes??8*1024**3,observed.availableMemoryBytes)};}
  provider??=dokployProvider(config,{fetch:ctx.fetch});
@@ -27,7 +33,7 @@ export async function ensureAllocation(ctx,record,{provider,config,manager=ensur
  if(stored?.plan?.providerAppName&&stored.planHash===plan.planHash)plan=stored.plan;
  if(stored&&stored.planHash!==plan.planHash){if(stored.providerOrigin!==config.origin||stored.providerProject!==config.project||stored.providerEnvironment!==config.environment)throw fail('Allocation provider scope changed; preserve the original resources.');if(!admission.allowed||stored.composeId||!['requested','waiting_resources'].includes(stored.phase))plan=stored.plan;}
  const save=async patch=>{const next=await ctx.db.compareAndSetSetting(key,stored?.revision??0,{...stored,...patch,revision:(stored?.revision??0)+1});if(!next)throw fail('Another allocation transition is in progress; inspect the existing state.');stored=next;await indexAllocation(ctx,stored);};
- if(!stored){await provider.project();await save({kind:'playground-allocation',scope:ctx.db.playgroundScope??{legacy:true},delegated:ctx.connection.pass===true,providerOrigin:config.origin,providerProject:config.project,providerEnvironment:config.environment,binding,connection:nativeConnection(ctx),clientId:ctx.connection.client_id??null,passId:ctx.connection.pass_id??null,workspace:record.row.id,owner:record.row.owner,repo:record.row.repo,phase:'requested',planHash:plan.planHash,plan,native:{binding:record.binding,worker:record.worker,job:record.job},createdAt:(ctx.now??Date.now)(),expiresAt:new Date(record.row.expires_at).getTime()});
+ if(!stored){await provider.project();await save({kind:'playground-allocation',...(sizeClass?{size:sizeClass}:{}),scope:ctx.db.playgroundScope??{legacy:true},delegated:ctx.connection.pass===true,providerOrigin:config.origin,providerProject:config.project,providerEnvironment:config.environment,binding,connection:nativeConnection(ctx),clientId:ctx.connection.client_id??null,passId:ctx.connection.pass_id??null,workspace:record.row.id,owner:record.row.owner,repo:record.row.repo,phase:'requested',planHash:plan.planHash,plan,native:{binding:record.binding,worker:record.worker,job:record.job},createdAt:(ctx.now??Date.now)(),expiresAt:new Date(record.row.expires_at).getTime()});
  }
  await manager(ctx,config,provider);
  if(admission.allowed&&stored.planHash!==plan.planHash)await save({planHash:plan.planHash,plan});if(!admission.allowed){if(stored.phase==='requested'||stored.phase==='waiting_resources')await save({phase:'waiting_resources',admission});return stored;}
@@ -74,15 +80,16 @@ export async function inspectAllocation(ctx,record,{provider,config}={}){
  if(observed?.composeStatus==='done'&&stored.phase==='deploying'){
   const next=await ctx.db.compareAndSetSetting(allocationKey(stored.binding),stored.revision,{...stored,phase:'allocated',origin:stored.plan.origin,repositoryAttached:false,enforcementVerified:false,revision:stored.revision+1});if(next){stored=next;await indexAllocation(ctx,stored);}
  }
- return {workspace_id:record.row.id,phase:stored.phase,allocation_ready:['allocated','attaching','attached'].includes(stored.phase),repository_attached:stored.repositoryAttached===true,enforcement_verified:stored.enforcementVerified===true,execution_available:false,provider_observed:observed!==null,next:'Repository attachment and verified enforcement are required before commands.'};
+ return {workspace_id:record.row.id,phase:stored.phase,runtime_size:describeSize(stored.size),allocation_ready:['allocated','attaching','attached'].includes(stored.phase),repository_attached:stored.repositoryAttached===true,enforcement_verified:stored.enforcementVerified===true,execution_available:false,provider_observed:observed!==null,next:'Repository attachment and verified enforcement are required before commands.'};
 }
 
 export async function resumeAllocation(ctx,record,{provider,config}={}){ctx=await refreshAdmission(ctx,{project:ctx.env?.PLAYGROUND_DOKPLOY_PROJECT_ID});const stored=await allocationRecord(ctx,record);if(stored?.phase!=='attached'||!enforcementObservation(ctx,{row:record.row,allocation:{binding:stored.binding}})&&(!managedResourceBaseline(ctx.env,stored,{workspace:record.row.id,binding:playgroundBinding(record)})||!await managedNetworkVerified(ctx,stored)))throw fail('An attached managed allocation with verified private networking or fresh verified controls is required before resume.');config??=dokployConfig(ctx.env);providerScope(stored,config);provider??=dokployProvider(config,{fetch:ctx.fetch});await provider.start(stored.composeId,stored.plan);return stored;}
 
-export async function enqueueAllocation(ctx,record){
- const config=dokployConfig(ctx.env),binding=playgroundBinding(record),key=allocationKey(binding);
+export async function enqueueAllocation(ctx,record,{size}={}){
+ const sizeClass=resolveSizeClass(size,ctx.env);if(sizeClass===null)return null;
+ const config=sizedConfig(dokployConfig(ctx.env),sizeClass),binding=playgroundBinding(record),key=allocationKey(binding);
  const old=await allocationRecord(ctx,record);if(old)return old;
  const plan=allocationPlan({binding,verificationKey:nativeWorkerPublicKey(ctx.env),idleTimeoutMs:record.job.idleTimeoutMs},{...config,scope:ctx.db.playgroundScope,worker:record.worker,nativeBinding:createHash('sha256').update(JSON.stringify(['authority','connection','owner','repo'].map(k=>record.binding[k]))).digest('hex')});
- const row={revision:1,kind:'playground-allocation',scope:ctx.db.playgroundScope??{legacy:true},delegated:ctx.connection.pass===true,providerOrigin:config.origin,providerProject:config.project,providerEnvironment:config.environment,binding,connection:nativeConnection(ctx),clientId:ctx.connection.client_id??null,passId:ctx.connection.pass_id??null,workspace:record.row.id,owner:record.row.owner,repo:record.row.repo,phase:'requested',planHash:plan.planHash,plan,native:{binding:record.binding,worker:record.worker,job:record.job},createdAt:(ctx.now??Date.now)(),expiresAt:new Date(record.row.expires_at).getTime()};
+ const row={revision:1,kind:'playground-allocation',size:sizeClass,scope:ctx.db.playgroundScope??{legacy:true},delegated:ctx.connection.pass===true,providerOrigin:config.origin,providerProject:config.project,providerEnvironment:config.environment,binding,connection:nativeConnection(ctx),clientId:ctx.connection.client_id??null,passId:ctx.connection.pass_id??null,workspace:record.row.id,owner:record.row.owner,repo:record.row.repo,phase:'requested',planHash:plan.planHash,plan,native:{binding:record.binding,worker:record.worker,job:record.job},createdAt:(ctx.now??Date.now)(),expiresAt:new Date(record.row.expires_at).getTime()};
  const saved=await ctx.db.compareAndSetSetting(key,0,row);if(!saved)return await allocationRecord(ctx,record);await indexAllocation(ctx,saved);return saved;
 }

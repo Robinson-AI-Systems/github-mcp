@@ -482,3 +482,11 @@ it('records admission refusal after metadata creation as rejected and permits sa
  vi.restoreAllMocks();pressure=null;
  const retry=parse(await invoke('github_git_workspace_open',args));expect(retry.status,JSON.stringify(retry)).toBe('applied');
 });
+it('opens a Git-only workspace without queuing any Playground allocation when runtime is none', async () => {
+ routeEnv={PLAYGROUND_DOKPLOY_ORIGIN:'https://dokploy.example.test'};
+ const result = parse(await invoke('github_git_workspace_open', { owner: 'example-org', repo: 'hello', runtime: 'none' }));
+ expect(result.status, JSON.stringify(result)).toBe('applied');
+ expect(result.result.playground).toMatchObject({phase:'git_only',reason:'runtime_not_requested'});
+ const refused = await invoke('github_git_workspace_open', { owner: 'example-org', repo: 'hello', runtime: 'gigantic' });
+ expect(refused.isError).toBe(true); expect(refused.content[0].text).toMatch(/runtime/);
+});
