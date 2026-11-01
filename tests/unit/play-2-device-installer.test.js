@@ -12,7 +12,7 @@ function simulator({collision=false,networkInternal=true}={}){
  const missing=type=>{const e=new Error('No such '+type);e.stderr='Error: No such '+type;throw e;};
  const docker=async argv=>{
   calls.push(argv);
-  const [kind,action,name]=argv;
+  const [kind,action]=argv;
   if(action==='inspect'){
    const o=objects[kind==='container'?'container':kind==='network'?'network':kind==='volume'?'volume':'image'];
    if(!o)return missing(kind==='container'?'container':kind);

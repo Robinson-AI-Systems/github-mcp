@@ -12,7 +12,7 @@ const IMAGE=/^[a-z0-9][a-z0-9._/-]*(?::[a-z0-9._-]+)?@sha256:[a-f0-9]{64}$/;
 const ownerLabel='robinson.playground.enrollment';
 const purposeLabel='robinson.playground.purpose';
 const fail=(reason)=>Object.assign(new Error(reason),{code:'local_device_refused'});
-const hash=value=>createHash('sha256').update(value).digest('hex');
+const hash=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const observedLabels=(record)=>record?.Config?.Labels??record?.Labels??null;
 const hasLabels=(record,labels)=>Object.entries(labels).every(([k,v])=>observedLabels(record)?.[k]===v);
 const isMissing=error=>/No such (?:object|container|network|volume|image)/i.test(String(error?.stderr??error?.message??''));
