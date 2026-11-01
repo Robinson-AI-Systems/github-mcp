@@ -20,6 +20,38 @@ export function runCredentialsContract(name, make) {
       expect(await db.getApp(APP.id)).toMatchObject({ private_key_enc: 'v1.pk2', permissions: { contents: 'read' } });
     });
 
+    it('KEY-ROTATION: replaces one App secret only from the expected value, keeps the old one for its window, undoes and finishes', async () => {
+      const db = await make();
+      await db.saveApp(APP);
+      const soon = future(24 * 3600e3);
+      expect(await db.replaceAppSecret({ id: APP.id, kind: 'webhook_secret', expectedEnc: 'v1.stale', newEnc: 'v1.wh2', acceptedUntil: soon })).toBe(false);
+      expect(await db.replaceAppSecret({ id: APP.id, kind: 'not_a_kind', expectedEnc: 'v1.wh', newEnc: 'v1.wh2', acceptedUntil: soon })).toBe(false);
+      expect(await db.replaceAppSecret({ id: 1, kind: 'webhook_secret', expectedEnc: 'v1.wh', newEnc: 'v1.wh2', acceptedUntil: soon })).toBe(false);
+      expect(await db.replaceAppSecret({ id: APP.id, kind: 'webhook_secret', expectedEnc: 'v1.wh', newEnc: 'v1.wh2', acceptedUntil: soon })).toBe(true);
+      // Only that one column changed; the other two secrets are untouched.
+      expect(await db.getApp(APP.id)).toMatchObject({ webhook_secret_enc: 'v1.wh2', private_key_enc: 'v1.pk', client_secret_enc: 'v1.cs' });
+      expect((await db.getAppPreviousSecrets(APP.id)).map((p) => [p.kind, p.secret_enc])).toEqual([['webhook_secret', 'v1.wh']]);
+      // A second replacement keeps exactly one previous value (the one just replaced).
+      expect(await db.replaceAppSecret({ id: APP.id, kind: 'webhook_secret', expectedEnc: 'v1.wh2', newEnc: 'v1.wh3', acceptedUntil: soon })).toBe(true);
+      expect((await db.getAppPreviousSecrets(APP.id)).map((p) => p.secret_enc)).toEqual(['v1.wh2']);
+      // Undo only from the expected current value; it puts the previous value back and forgets the undone one.
+      expect(await db.restorePreviousAppSecret({ id: APP.id, kind: 'webhook_secret', expectedEnc: 'v1.other' })).toBe(false);
+      expect(await db.restorePreviousAppSecret({ id: APP.id, kind: 'webhook_secret', expectedEnc: 'v1.wh3' })).toBe(true);
+      expect((await db.getApp(APP.id)).webhook_secret_enc).toBe('v1.wh2');
+      expect(await db.getAppPreviousSecrets(APP.id)).toEqual([]);
+      expect(await db.restorePreviousAppSecret({ id: APP.id, kind: 'webhook_secret', expectedEnc: 'v1.wh2' })).toBe(false);
+      // Finish now removes the previous value at once.
+      expect(await db.replaceAppSecret({ id: APP.id, kind: 'private_key', expectedEnc: 'v1.pk', newEnc: 'v1.pk2', acceptedUntil: soon })).toBe(true);
+      expect(await db.endAppSecretOverlap({ id: APP.id, kind: 'private_key' })).toBe(true);
+      expect(await db.endAppSecretOverlap({ id: APP.id, kind: 'private_key' })).toBe(false);
+      expect(await db.getAppPreviousSecrets(APP.id)).toEqual([]);
+      // A window that already ended is never returned and cannot be undone.
+      expect(await db.replaceAppSecret({ id: APP.id, kind: 'client_secret', expectedEnc: 'v1.cs', newEnc: 'v1.cs2', acceptedUntil: new Date(Date.now() - 1000) })).toBe(true);
+      expect(await db.getAppPreviousSecrets(APP.id)).toEqual([]);
+      expect(await db.restorePreviousAppSecret({ id: APP.id, kind: 'client_secret', expectedEnc: 'v1.cs2' })).toBe(false);
+      expect((await db.getApp(APP.id)).client_secret_enc).toBe('v1.cs2');
+    });
+
     it('adds accounts: the first is the default, lookup ignores case, a duplicate GitHub id is refused', async () => {
       const db = await make();
       await db.upsertAccount(ORG);

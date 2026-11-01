@@ -104,8 +104,12 @@ describe('launch readiness evaluation', () => {
     expect(facts.code.trustPages).toEqual(expect.arrayContaining(['privacy', 'terms', 'security', 'support', 'status']));
     expect(facts.acceptance).not.toBeNull();
     expect(facts.keyRotation.find((k) => k.id === 'token_encryption_key')).toMatchObject({ procedureOk: true, rehearsalOk: true });
+    // KEY-ROTATION: every key the public service depends on has a written procedure and a rehearsal the gate found.
+    expect(facts.keyRotation.map((k) => k.id)).toEqual(['token_encryption_key', 'tenant_routing_key', 'app_private_key', 'app_client_secret', 'app_webhook_secret']);
+    for (const k of facts.keyRotation) expect(k, k.id).toMatchObject({ procedure: 'docs/KEY-ROTATION.md', procedureOk: true, rehearsalOk: true });
     expect(Object.values(facts.owner)).toEqual([false, false, false]);
     const report = evaluateLaunchReadiness(facts);
+    expect(state(report, 'key_safety')).toBe('met');
     expect(report.verdict).toBe('not ready');
     expect(state(report, 'gradual_opening')).toBe('needs owner');
     expect(readEvidenceFile('nope')).toBeNull();

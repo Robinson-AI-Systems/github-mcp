@@ -21,7 +21,10 @@ const FILES = Object.freeze({
   loadTest: new URL('../../docs/launch/load-test-result.json', import.meta.url),
   keyRotation: new URL('../../docs/launch/key-rotation.json', import.meta.url),
   vercel: new URL('../../vercel.json', import.meta.url),
-  'tests/browser/sign-in.test.js': new URL('../../tests/browser/sign-in.test.js', import.meta.url)
+  'tests/browser/sign-in.test.js': new URL('../../tests/browser/sign-in.test.js', import.meta.url),
+  // KEY-ROTATION: the written replace-it procedure for every key, and the test file that rehearses each replacement.
+  'docs/KEY-ROTATION.md': new URL('../../docs/KEY-ROTATION.md', import.meta.url),
+  'tests/unit/key-rotation-rehearsal.test.js': new URL('../../tests/unit/key-rotation-rehearsal.test.js', import.meta.url)
 });
 const PATH_OF = Object.freeze({ 'docs/GO-LIVE-CHECKLIST.md': 'goLive', 'docs/STATUS.md': 'status' });
 

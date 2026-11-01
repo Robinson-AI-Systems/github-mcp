@@ -29,6 +29,7 @@ import { saveTenantRuntimePolicy } from '../tenancy/runtime-limits.js';
 import { forgetPublicPerson } from '../tenancy/forget-person.js';
 import { publicUsageSummary } from '../tenancy/usage-summary.js';
 import { neon } from '@neondatabase/serverless';
+import { APP_SECRET_NAMES, ROTATION_WINDOW_MS, ROTATION_WINDOW_WORDS, checkClientSecret, checkPrivateKeyPem, clientSecretWorks, newWebhookSecret, privateKeyWorks } from './app-secret-rotation.js';
 
 const HTML = 'text/html; charset=utf-8';
 const CSP = "default-src 'none'; style-src 'unsafe-inline'; form-action 'self' https://github.com; base-uri 'none'; frame-ancestors 'none'";
@@ -215,6 +216,7 @@ export function createSetupHandlers({ db, credentials, oneTimeStore, env = proce
     if (action === 'forget-person') return await forgetPerson(p, page);
     if (action === 'add-invites' || action === 'remove-invite') return await editInvites(action, p, page);
     if (action === 'set-time-zone') return await setTimeZone(p, page);
+    if (action === 'replace-app-secret' || action === 'undo-app-secret' || action === 'finish-app-secret') return await rotateAppSecret(action, p, page);
     if (action === 'set-own-people') return await setOwnPeople(p, page);
     if (action === 'save-protected' || action === 'remove-protected') return await editProtected(action, p, page);
     if (!['start-app', 'start-user-auth', 'add-fine-grained', 'add-classic', 'add-package', 'remove-package', 'remove-classic', 'remove-fine-grained'].includes(action)) return page(400, { result: 'Unknown action.' });
@@ -411,6 +413,72 @@ export function createSetupHandlers({ db, credentials, oneTimeStore, env = proce
   }
 
   /** Display-only time zone for times shown to assistants. Blank means UTC. Not a security setting, so it works in any mode. */
+  /**
+   * KEY-ROTATION (docs/KEY-ROTATION.md): replace one GitHub App secret, put the previous one back (Undo, within the
+   * window), or stop accepting the previous one at once (Finish now, for an exposed secret). A typed value is proved
+   * with GitHub before anything is saved; the webhook secret is made here and shown once. No value is ever echoed.
+   */
+  async function rotateAppSecret(action, p, page) {
+    if (!isProduction()) return page(403, { blocked: NOT_PRODUCTION });
+    if (!credentials.keyConfigured()) return page(503, { keyHelp: 'The server has no encryption key, so it will not store anything. Set TOKEN_ENCRYPTION_KEY (see docs/DEPLOY.md) and reload.' });
+    if (!isValidLogin(p.login)) return page(400, { result: 'Enter the GitHub account name whose App this is.' });
+    const kind = String(p.kind || '');
+    if (!Object.hasOwn(APP_SECRET_NAMES, kind)) return page(400, { result: 'Choose which App secret: private key, client secret or webhook secret.' });
+    const row = await db.getAccount(p.login);
+    const app = row?.app_id != null ? await db.getApp(row.app_id) : null;
+    if (!app) return page(404, { result: 'That account has no GitHub App on this server. Nothing was changed.' });
+    const name = APP_SECRET_NAMES[kind];
+    const log = (summary) => db.recordChange({ account: row.login, mode: 'setup', tool: 'setup_' + action.replaceAll('-', '_'), target: `app/${app.id}/${kind}`,
+      summary, production: true, accessWidening: false, confirmed: true }).catch(() => {});
+    if (action === 'undo-app-secret') {
+      if (!await credentials.restoreAppSecret(app.id, kind)) return page(404, { result: `There is nothing to undo for the ${name}: it was not replaced in the last ${ROTATION_WINDOW_WORDS}, or the replacement was already finished.` });
+      await dropAppTokens(app.id, kind);
+      await log(`Put the previous App ${name} back (undo)`);
+      return page(200, { result: `The previous ${name} is in use again and the newer one is forgotten.${kind === 'webhook_secret' ? ' If you already saved the newer webhook secret on GitHub, make a new one here and paste that on GitHub.' : ' Keep the previous one active on GitHub.'}` });
+    }
+    if (action === 'finish-app-secret') {
+      if (!await credentials.endAppSecretOverlap(app.id, kind)) return page(404, { result: `There is no old ${name} waiting to be finished.` });
+      await log(`Stopped accepting the replaced App ${name}`);
+      return page(200, { result: `Done: the old ${name} is no longer accepted or kept by this server.${kind === 'webhook_secret' ? '' : ' Delete it on the App\'s settings page on GitHub if you have not yet.'}` });
+    }
+    if (p.confirmReplace !== 'yes') return page(400, { result: 'Tick the box to confirm you want to replace this secret. Nothing was changed.' });
+    const acceptedUntil = new Date(Date.now() + ROTATION_WINDOW_MS);
+    if (kind === 'webhook_secret') {
+      if (!oneTimeStore) return page(503, { keyHelp: 'Set TOKEN_ENCRYPTION_KEY before replacing the webhook secret.' });
+      const value = newWebhookSecret();
+      const { replaced } = await credentials.replaceAppSecret(app.id, kind, value, { acceptedUntil });
+      if (!replaced) return page(409, { result: 'Nothing was changed: the webhook secret changed while this page was open. Reload and try again.' });
+      let one;
+      try { one = await oneTimeStore.issue({ account: row.login, kind: 'app-webhook-secret', secret: value }); } catch {
+        await credentials.restoreAppSecret(app.id, kind);
+        return page(503, { result: 'The new webhook secret could not be prepared for showing, so the old one was put back. Nothing else changed.' });
+      }
+      await log('Made a new App webhook secret (old one accepted for ' + ROTATION_WINDOW_WORDS + ')');
+      return page(200, { result: `New webhook secret made. Open ${one.setupPath} in this browser to see it once (for 10 minutes), then paste it into "Webhook secret" on the App's settings page on GitHub and press "Save changes". Until you do, GitHub keeps signing with the old one, which this server still accepts until ${acceptedUntil.toUTCString()}. If the old one was exposed, press "Finish now" right after saving it on GitHub.` });
+    }
+    let value;
+    try { value = kind === 'private_key' ? checkPrivateKeyPem(p.value) : checkClientSecret(p.value); } catch (error) {
+      return page(400, { result: (error instanceof TypeError ? error.message : 'That value could not be read.') + ' Nothing was changed.' });
+    }
+    let works;
+    try {
+      works = kind === 'private_key' ? await privateKeyWorks({ appId: app.id, pem: value, fetch })
+        : await clientSecretWorks({ clientId: app.client_id, clientSecret: value, fetch });
+    } catch { return page(502, { result: `GitHub could not be asked whether the new ${name} works, so nothing was changed. Try again in a minute.` }); }
+    if (!works) return page(400, { result: `GitHub did not accept that ${name} for the App ${app.slug}. Nothing was changed. Copy the newest one from the App's settings page on GitHub and try again.` });
+    const { replaced, same } = await credentials.replaceAppSecret(app.id, kind, value, { acceptedUntil });
+    if (same) return page(400, { result: `That is the ${name} already in use. Generate a new one on GitHub first. Nothing was changed.` });
+    if (!replaced) return page(409, { result: `Nothing was changed: the ${name} changed while this page was open. Reload and try again.` });
+    await dropAppTokens(app.id, kind);
+    await log(`Replaced the App ${name} (GitHub accepted the new one; old one kept for Undo for ${ROTATION_WINDOW_WORDS})`);
+    return page(200, { result: `GitHub accepted the new ${name} and the server uses it from now on. Now delete the old ${name} on the App's settings page on GitHub. The old one is kept here, sealed, until ${acceptedUntil.toUTCString()} only so you can press Undo; press "Finish now" to forget it sooner.` });
+  }
+  /** After the private key changes, cached installation tokens are dropped so every new token is made with the new key. */
+  async function dropAppTokens(appId, kind) {
+    if (kind !== 'private_key') return;
+    for (const a of await db.listAccounts()) if (a.app_id === appId && Number.isSafeInteger(a.installation_id)) await db.deleteInstallationTokens(a.installation_id).catch(() => {});
+  }
+
   async function setTimeZone(p, page) {
     const text = String(p.zone ?? '').trim();
     const zone = text === '' ? DEFAULT_ZONE : validZone(text);

@@ -12,6 +12,7 @@ import { DEFAULT_PROJECTS, validateProjectProfile, storedProject } from './data/
 /** The 13 foundation tables, in BATCH-A §2 order. Later batches add their own tables and their own lists. */
 export const SCHEMA_TABLES = Object.freeze([
   'gh_apps',
+  'gh_app_previous_secrets',
   'gh_accounts',
   'gh_installation_tokens',
   'setup_states',
@@ -41,6 +42,8 @@ export const SCHEMA_TABLES = Object.freeze([
   'dev_forwarders',
   'dev_cleanup_executions'
 ]);
+/** KEY-ROTATION: the three App secrets that can be replaced one at a time (the column is `<kind>_enc` in gh_apps). */
+export const APP_SECRET_KINDS = Object.freeze(['private_key', 'client_secret', 'webhook_secret']);
 export const RESULT_HANDLE = /^res_[A-Za-z0-9_-]{20,64}$/;
 export const JOB_ID = /^job_[0-9a-f]{16}$/;
 
@@ -164,6 +167,16 @@ export function createDb(sql = productionSql()) {
         webhook_secret_enc TEXT NOT NULL,
         permissions JSONB NOT NULL,
         created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      )`;
+      // KEY-ROTATION: the one previous value of an App secret, kept only for a short, stored window after it was replaced
+      // (webhook deliveries signed with it are still believed; Undo puts it back). Ciphertext only, sealed like gh_apps.
+      await sql`CREATE TABLE IF NOT EXISTS gh_app_previous_secrets (
+        app_id BIGINT NOT NULL,
+        kind TEXT NOT NULL CHECK (kind IN ('private_key', 'client_secret', 'webhook_secret')),
+        secret_enc TEXT NOT NULL,
+        replaced_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        accepted_until TIMESTAMPTZ NOT NULL,
+        PRIMARY KEY (app_id, kind)
       )`;
       await sql`CREATE TABLE IF NOT EXISTS gh_accounts (
         login TEXT PRIMARY KEY,
@@ -1012,6 +1025,59 @@ export function createDb(sql = productionSql()) {
         ON CONFLICT (id) DO UPDATE SET slug = EXCLUDED.slug, owner_login = EXCLUDED.owner_login, owner_type = EXCLUDED.owner_type,
           client_id = EXCLUDED.client_id, client_secret_enc = EXCLUDED.client_secret_enc, private_key_enc = EXCLUDED.private_key_enc,
           webhook_secret_enc = EXCLUDED.webhook_secret_enc, permissions = EXCLUDED.permissions`;
+    },
+    /**
+     * KEY-ROTATION: replaces ONE App secret in one statement. Only when the stored value is still `expectedEnc` (two
+     * replacements cannot interleave); the replaced value becomes the one previous value until `acceptedUntil`.
+     * Returns true when it was replaced.
+     */
+    async replaceAppSecret({ id, kind, expectedEnc, newEnc, acceptedUntil }) {
+      if (!APP_SECRET_KINDS.includes(kind) || !expectedEnc || !newEnc || expectedEnc === newEnc) return false;
+      const rows = await sql`WITH upd AS (
+          UPDATE gh_apps SET
+            private_key_enc = CASE WHEN ${kind}::text = 'private_key' THEN ${newEnc} ELSE private_key_enc END,
+            client_secret_enc = CASE WHEN ${kind}::text = 'client_secret' THEN ${newEnc} ELSE client_secret_enc END,
+            webhook_secret_enc = CASE WHEN ${kind}::text = 'webhook_secret' THEN ${newEnc} ELSE webhook_secret_enc END
+          WHERE id = ${id} AND ${expectedEnc} = CASE ${kind}::text WHEN 'private_key' THEN private_key_enc
+            WHEN 'client_secret' THEN client_secret_enc ELSE webhook_secret_enc END
+          RETURNING id)
+        INSERT INTO gh_app_previous_secrets (app_id, kind, secret_enc, accepted_until)
+          SELECT id, ${kind}, ${expectedEnc}, ${acceptedUntil} FROM upd
+        ON CONFLICT (app_id, kind) DO UPDATE SET secret_enc = EXCLUDED.secret_enc, replaced_at = now(), accepted_until = EXCLUDED.accepted_until
+        RETURNING app_id`;
+      return rows.length === 1;
+    },
+    /** KEY-ROTATION: previous App secrets still inside their window, as [{ kind, secret_enc, accepted_until, replaced_at }]. */
+    async getAppPreviousSecrets(id) {
+      const rows = await sql`SELECT kind, secret_enc, accepted_until, replaced_at FROM gh_app_previous_secrets
+        WHERE app_id = ${id} AND accepted_until > now() ORDER BY kind`;
+      return rows.map((r) => ({ kind: r.kind, secret_enc: r.secret_enc, accepted_until: new Date(r.accepted_until), replaced_at: new Date(r.replaced_at) }));
+    },
+    /**
+     * KEY-ROTATION Undo: puts the previous value back as the current one, only while its window is open and only when the
+     * current value is still `expectedEnc`. The undone value is forgotten (not kept as a new previous). True when undone.
+     */
+    async restorePreviousAppSecret({ id, kind, expectedEnc }) {
+      if (!APP_SECRET_KINDS.includes(kind) || !expectedEnc) return false;
+      const rows = await sql`WITH prev AS (
+          SELECT secret_enc FROM gh_app_previous_secrets WHERE app_id = ${id} AND kind = ${kind} AND accepted_until > now()),
+        upd AS (
+          UPDATE gh_apps SET
+            private_key_enc = CASE WHEN ${kind}::text = 'private_key' THEN (SELECT secret_enc FROM prev) ELSE private_key_enc END,
+            client_secret_enc = CASE WHEN ${kind}::text = 'client_secret' THEN (SELECT secret_enc FROM prev) ELSE client_secret_enc END,
+            webhook_secret_enc = CASE WHEN ${kind}::text = 'webhook_secret' THEN (SELECT secret_enc FROM prev) ELSE webhook_secret_enc END
+          WHERE id = ${id} AND EXISTS (SELECT 1 FROM prev) AND ${expectedEnc} = CASE ${kind}::text WHEN 'private_key' THEN private_key_enc
+            WHEN 'client_secret' THEN client_secret_enc ELSE webhook_secret_enc END
+          RETURNING id),
+        del AS (DELETE FROM gh_app_previous_secrets WHERE app_id IN (SELECT id FROM upd) AND kind = ${kind} RETURNING app_id)
+        SELECT count(*)::integer AS n FROM upd`;
+      return Number(rows[0]?.n) === 1;
+    },
+    /** KEY-ROTATION Finish now: stops accepting the previous value at once (for an exposed secret). True when one was removed. */
+    async endAppSecretOverlap({ id, kind }) {
+      if (!APP_SECRET_KINDS.includes(kind)) return false;
+      const rows = await sql`DELETE FROM gh_app_previous_secrets WHERE app_id = ${id} AND kind = ${kind} RETURNING app_id`;
+      return rows.length === 1;
     },
     /** The full App row (ciphertext included) for the credential layer, or null. */
     async getApp(id) {

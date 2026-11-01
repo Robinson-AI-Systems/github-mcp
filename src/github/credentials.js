@@ -53,6 +53,13 @@ export function createCredentials({ db, env = process.env, fetch = globalThis.fe
     try { shared = await rootApps.getApp(id); } catch { shared = null; }
     return shared ?? db.getApp(id);
   } } : db;
+  // KEY-ROTATION: previous App secrets live only in the shared (root) store, next to the authoritative App row. A store
+  // without the table (or any read failure) simply has no previous value, which is the strict case.
+  async function previousSecrets(appId) {
+    const store = rootApps ?? db;
+    if (typeof store.getAppPreviousSecrets !== 'function') return [];
+    try { return await store.getAppPreviousSecrets(appId); } catch { return []; }
+  }
   let cachedKey = null;
   function key() {
     if (cachedKey) return cachedKey;
@@ -273,6 +280,43 @@ export function createCredentials({ db, env = process.env, fetch = globalThis.fe
     async webhookSecret(appId) {
       const app = await appStore.getApp(appId);
       return app ? open(app.webhook_secret_enc, contexts.webhookSecret(app.id)) : null;
+    },
+    /**
+     * KEY-ROTATION: every webhook secret a delivery may be signed with right now: the current one, plus the replaced one
+     * while its stored window (at most 24 hours) is open. Never more than two; the webhook handler checks each in turn.
+     */
+    async webhookSecrets(appId) {
+      const app = await appStore.getApp(appId);
+      if (!app) return [];
+      const out = [open(app.webhook_secret_enc, contexts.webhookSecret(app.id))];
+      const previous = (await previousSecrets(app.id)).find((x) => x.kind === 'webhook_secret' && x.accepted_until.getTime() > now());
+      if (previous) { try { out.push(open(previous.secret_enc, contexts.webhookSecret(app.id))); } catch { /* an unreadable old value is simply not accepted */ } }
+      return out;
+    },
+    /**
+     * KEY-ROTATION: replaces one App secret in the shared store (the caller already proved the new value with GitHub).
+     * The replaced value stays sealed until `acceptedUntil`. Returns { replaced: boolean }; never a value.
+     */
+    async replaceAppSecret(appId, kind, value, { acceptedUntil }) {
+      if (!['private_key', 'client_secret', 'webhook_secret'].includes(kind)) throw new TypeError('Unknown App secret.');
+      if (typeof value !== 'string' || !value) throw new TypeError('A new value is required.');
+      const app = await db.getApp(appId);
+      if (!app) return { replaced: false };
+      const column = kind + '_enc', context = { private_key: contexts.privateKey, client_secret: contexts.clientSecret, webhook_secret: contexts.webhookSecret }[kind](app.id);
+      if (open(app[column], context) === value) return { replaced: false, same: true };
+      const replaced = await db.replaceAppSecret({ id: app.id, kind, expectedEnc: app[column], newEnc: seal(value, context), acceptedUntil });
+      return { replaced };
+    },
+    /** KEY-ROTATION Undo: puts the replaced value back while its window is open. Returns true when undone. */
+    async restoreAppSecret(appId, kind) {
+      const app = await db.getApp(appId);
+      return app ? await db.restorePreviousAppSecret({ id: app.id, kind, expectedEnc: app[kind + '_enc'] }) : false;
+    },
+    /** KEY-ROTATION Finish now: the replaced value stops being accepted at once. Returns true when one was removed. */
+    async endAppSecretOverlap(appId, kind) { return await db.endAppSecretOverlap({ id: Number(appId), kind }); },
+    /** KEY-ROTATION: which App secrets have an open window, as [{ kind, acceptedUntil }] (no values). */
+    async appSecretWindows(appId) {
+      return (await previousSecrets(appId)).filter((x) => x.accepted_until.getTime() > now()).map((x) => ({ kind: x.kind, acceptedUntil: x.accepted_until }));
     },
     /** The App's OAuth client id and secret, for the user-authorization exchange on the setup page (A-5b). */
     async clientCredentials(appId) {
