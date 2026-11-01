@@ -68,4 +68,44 @@ describe('PLAY-2 real Postgres tenant enrollment',()=>{
   expect(results.filter(x=>x.status==='fulfilled')).toHaveLength(1);
   expect(results.filter(x=>x.status==='rejected')).toHaveLength(1);
  });
+ it('binds signed reachability to current tenant, exact connection and revoked generation, without runtime admission',async()=>{
+  const now=()=>1800000000000,proof=async({record})=>({
+   deviceId:record.deviceId,generation:record.generation,origin:record.origin,
+   fingerprint:record.fingerprint,observedAt:now(),transportVerified:true,executionReady:false
+  });
+  const ours=createEnrolledHostStore({db:alice,root,tenantId:'tenant-1',identityId:'person-1',
+   clientId:'client-1',now,probeClient:proof});
+  const foreign=createEnrolledHostStore({db:bob,root,tenantId:'tenant-2',identityId:'person-2',
+   clientId:'client-2',now,probeClient:proof});
+  const start=await ours.begin();
+  await ours.claim(device(start));await ours.approve(start.deviceId);
+  await expect(foreign.probe(start.deviceId)).rejects.toThrow(/approved/);
+  const result=await ours.probe(start.deviceId);
+  expect(result).toEqual({deviceId:start.deviceId,status:'pending_canary',
+   transportVerifiedAt:now(),executionReady:false});
+  expect((await ours.list()).find(x=>x.deviceId===start.deviceId)).toMatchObject({
+   status:'pending_canary',transportVerifiedAt:now()
+  });
+  const revoked=await ours.revoke(start.deviceId);
+  expect(revoked).toMatchObject({status:'revoked'});
+  await expect(ours.probe(start.deviceId)).rejects.toThrow(/approved/);
+  expect((await ours.list()).find(x=>x.deviceId===start.deviceId)).toMatchObject({status:'revoked',generation:2});
+ });
+ it('loses the CAS race if revocation arrives before the signed response is committed',async()=>{
+  const now=()=>1800000001000;
+  let original;
+  const ours=createEnrolledHostStore({db:alice,root,tenantId:'tenant-1',identityId:'person-1',
+   clientId:'client-1',now,probeClient:async({record})=>{
+    await original.revoke(record.deviceId);
+    return {deviceId:record.deviceId,generation:record.generation,origin:record.origin,
+     fingerprint:record.fingerprint,observedAt:now(),transportVerified:true,executionReady:false};
+   }});
+  original=ours;
+  const started=await ours.begin();await ours.claim(device(started));await ours.approve(started.deviceId);
+  await expect(ours.probe(started.deviceId)).rejects.toThrow(/changed during probe/);
+  expect((await ours.list()).find(x=>x.deviceId===started.deviceId)).toMatchObject({
+   status:'revoked',generation:2,transportVerifiedAt:null
+  });
+ });
+
 });

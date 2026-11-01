@@ -48,3 +48,20 @@ node tools/playground-device/measure-workspace.mjs --root /authorized/native-git
 The JSON output contains Git HEAD, dirty-worktree status, worker generation, file count, total bytes, category totals, largest-file size, symlink count, a metadata digest and elapsed time. It **never prints filenames, file contents or Git credentials**. It does not acquire the worker's mutation lock, copy bytes, or prove an encrypted transfer; a true source snapshot may change immediately after this scan. `sealedTransferCandidate` is only a preflight decision for a recognized, stable native workspace with the expected binding, not an attachment success flag. A plain clone always says false.
 
 If the native workspace exceeds the bound or contains symlinks, the next engineering step is device-local native-Git clone plus safe, generation-bound reconciliation of uncommitted changes, **not** truncation or silently dropping work. Do not raise the transfer limit or claim Appliance Desk acceptance based on synthetic files.
+
+## Signed outbound-tunnel identity check — still no command admission
+
+When your **own** pending-canary enrollment exists, you may run the device's read-only probe receiver. It **does not** run a coding workload, open Docker, install an image, or change your GitHub credentials.
+
+1. On your personally enrolled PC, review the release's source. Keep the private Ed25519 device key at `~/.config/ras-playground/device-ed25519.pk8` (the key created by `pair.mjs`), never share it with the controller or a chat.
+2. Obtain the *public* control-plane signing key from an authorized Playground setup response. In WSL2, run the receiver on an unused loopback port (example 4143):
+
+```sh
+node tools/playground-device/probe-server.mjs --device DEVICE_ID --origin 'https://your-owned-public-tunnel.example' --generation ENROLLED_GENERATION --control-key 'ed25519:PINNED_CONTROLLER_PUBLIC_KEY' --port 4143
+```
+
+3. Configure an outbound **HTTPS** tunnel in **your own account** that forwards the exact enrolled public hostname's `/v1/enrollment/probe` path to local `127.0.0.1:4143`. The enrolled origin must already be set through your earlier signed pairing; the MCP never accepts an arbitrary request-time hostname. Tailnet-only names or private addresses are not directly reachable from Vercel. Do not expose Docker, PostgreSQL, the coding container or any additional path through this tunnel.
+4. Sign in to `/connection` with the enrolling GitHub account, find the exact fingerprint and origin, and click **Check my signed device tunnel**. The control plane verifies your current Full client grant, pins a public DNS address for TLS, sends a 60-second Ed25519 claim, verifies the device's signed reply and records the observation.
+5. The enrollment **remains `pending_canary`**. A successful probe is only a signed tunnel/key reachability check. Actual Node 24/PostgreSQL/Chromium source attachment, current-grant runtime heartbeat, permissions, isolation, command/handle recovery and revocation still require separate proof. Stop the receiver when finished; to revoke, use your own My connection page.
+
+The receiver requires a live signature, matching device ID, generation, pinned origin and previously unseen nonce. It durably records used nonce hashes under `~/.config/ras-playground/probe-replay/` with owner-only permissions, so a receiver restart does not restore an old claim; this directory contains no GitHub keys or file contents. If the PC sleeps or loses the tunnel, the probe fails closed and does not create another host or rerun an uncertain command. No hosted fallback or paid tunnel is automatically started.

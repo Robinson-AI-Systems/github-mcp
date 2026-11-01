@@ -25,3 +25,12 @@ export function signCodingWorkerBody(body,env=process.env){
 }
 
 export function signPreviewBody(body,env=process.env){const claim=JSON.parse(body);if(claim.purpose!=='robinson-playground-preview/v1'||Object.hasOwn(claim,'credential'))throw new TypeError('Invalid preview delegation.');return sign(null,Buffer.from(body),signingKey(env)).toString('base64url');}
+
+// PLAY-2: non-executable, 60-second device identity/tunnel proof. The same
+// control-plane signer issues coding claims, but purpose separation is exact.
+export function signEnrolledDeviceProbeBody(body,env=process.env){
+ const c=JSON.parse(body);
+ if(!c||c.purpose!=='robinson-playground-device-probe/v1'||Object.hasOwn(c,'credential')||
+    Object.hasOwn(c,'argv')||Object.hasOwn(c,'options'))throw new TypeError('Invalid device reachability claim.');
+ return 'ed25519:'+sign(null,Buffer.from(body),signingKey(env)).toString('base64url');
+}
