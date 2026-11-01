@@ -201,7 +201,9 @@ Owner requests development execution, tests, disposable PostgreSQL and preview s
 
 Playground follow-through now has its own owner-approved [PLAY-1](pr-cards/PLAY-1.md) card: accessible agent command execution/result retrieval and the unfinished integrated allocation/files/preview/revocation lifecycle. Original merged PAR-2 work is not uncounted.
 
-## 2026-11-01 — Runtime fleet: more hosts, right-sized and faster runtimes (proposed, needs Chris)
+## 2026-11-01 — Runtime fleet: more hosts, right-sized and faster runtimes
+
+**Update 2026-11-01:** the remaining proposals were approved with self-aware gates; see [GATED-EXPANSION](designs/GATED-EXPANSION-2026-11-01.md).
 
 Chris asked (2026-11-01) for the Git workspace + Playground runtime to use more resources when available — Dokploy even
 with its limits, his PC, other devices on his tailnet — and for small projects to get small, fast runtimes. Full design:
