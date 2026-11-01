@@ -3,6 +3,7 @@ import {attachRepository} from '../playground/attachment.js';
 import {dokployConfig} from '../playground/dokploy.js';
 import {ensureAllocation,disposeAllocation,allocationRecord,inspectAllocation,resumeAllocation} from '../playground/allocations.js';
 import {playgroundAvailability,playgroundFallback,requirePlaygroundExecution} from '../playground/availability.js';
+import {prepareEnrolledPlacement,inspectEnrolledPlacement} from '../playground/enrolled-placement.js';
 import {defineRead} from './define-read.js';
 import {defineGithubWrite} from './define-github-write.js';
 import {playgroundRecord,playgroundRequestKey,playgroundRuntimeKey,playgroundExecutionId,callPlayground,presentPlayground,playgroundSetup} from '../playground/client.js';
@@ -28,8 +29,18 @@ const read=defineRead({name:'github_playground_read',area:'playground',audience:
   if(a.operation==='availability'&&!a.workspace_id)return playgroundFallback('workspace_required');
   if(a.operation==='capabilities'&&!a.workspace_id)return{product:"Robinson's Playground",operations:['github_playground_execute','github_playground_read','github_playground_cancel','github_playground_workspace'],runtime_attached:false,setup_required:true,next:'Use an attached workspace_id and repository to check its actual runtime. Installation alone does not attach a runtime.',setup:'https://github.com/Robinson-AI-Systems/github-mcp/blob/main/docs/CODING-WORKSPACES.md'};
   const record=await playgroundRecord(c,a,{allowUnattached:['capabilities','availability','allocation'].includes(a.operation)});
-  if(a.operation==='allocation')return await inspectAllocation(c,record);
-  if(a.operation==='availability')return await availability(c,record);
+  if(a.operation==='allocation'){
+   if(c.db.playgroundScope?.tenantId&&c.connection?.profile==='full'){
+    const enrolled=await inspectEnrolledPlacement(c,record);
+    if(enrolled)return enrolled;
+   }
+   return await inspectAllocation(c,record);
+  }
+  if(a.operation==='availability'){
+   if(!record.allocation&&c.db.playgroundScope?.tenantId&&c.connection?.profile==='full'&&
+      await inspectEnrolledPlacement(c,record))return playgroundFallback('enrolled_source_attachment_required');
+   return await availability(c,record);
+  }
   if(!record.allocation)return playgroundSetup(c,record);
   if(a.operation==='capabilities')return await callPlayground(c,record,'capabilities');
   if(a.operation==='preview')return presentPlayground(await callPlayground(c,record,'preview',{port:a.port,path:a.path??'/',offset:a.byteOffset??0,length:a.byteLength??8192,...(a.expectedBodyHash?{expectedBodyHash:a.expectedBodyHash}:{})}));
@@ -46,7 +57,26 @@ const cancel=defineGithubWrite({name:'github_playground_cancel',area:'playground
 });
 const workspace=defineGithubWrite({name:'github_playground_workspace',area:'playground',audience:['B','O','Op'],description:'Provision or dispose this workspace’s dedicated Playground allocation, with exact ownership and lifecycle readback.',
  guidance:'Use operation provision with a stable requestKey; an allocation may remain deploying or awaiting repository attachment/enforcement. Read allocation to inspect progress. Dispose deletes only this exact owned allocation and volume after whole-process absence is independently verified. No provider secrets or runtime URLs are tool arguments.',
- properties:{...properties,operation:{type:'string',enum:['provision','attach','resume','preview','dispose']},port:{type:'integer',minimum:1024,maximum:65535}},required:[...required,'operation','requestKey'],declarations:{production:'never',confirm:'when-needed',profiles:['full']},target:targetFor(true),explain,
+ properties:{...properties,operation:{type:'string',enum:['provision','attach','resume','preview','dispose']},port:{type:'integer',minimum:1024,maximum:65535},placement:{type:'string',enum:['operator','enrolled']},device_id:{type:'string',pattern:'^[a-f0-9]{32}required:[...required,'operation','requestKey'],declarations:{production:'never',confirm:'when-needed',profiles:['full']},target:targetFor(true),explain,
+ read:async(a,c,t)=>{
+  if(a.placement==='enrolled'){
+   if(a.operation!=='provision'||!a.device_id)throw new TypeError('Select an existing personally enrolled device for provision only.');
+   return {enrolled:await inspectEnrolledPlacement(c,t.record)};
+  }
+  if(a.device_id)throw new TypeError('Device identity is accepted only for an enrolled placement.');
+  if(a.operation!=='dispose')dokployConfig(c.env);
+  return {allocation:await allocationRecord(c,t.record)};
+ },classify:()=>({}),summarize:({args:a,target:t})=>a.placement==='enrolled'?
+  `Record the exact already-paired device placement for ${t.owner}/${t.repo}; no container, transfer, source attachment or command will be started.`:
+  `${({provision:'Provision',attach:'Attach the repository to',resume:'Resume',preview:'Open a private preview for',dispose:'Delete the files and volumes of'})[a.operation]} the exact dedicated Playground allocation for ${t.owner}/${t.repo}; uses configured host resources, no additional paid plan.`,
+ apply:({args:a,ctx:c,target:t})=>a.placement==='enrolled'?prepareEnrolledPlacement(c,t.record,a.device_id):a.operation==='provision'?ensureAllocation(c,t.record):a.operation==='attach'?attachRepository(c,t.record):a.operation==='resume'?resumeAllocation(c,t.record):a.operation==='preview'?createPreviewEntry(c,t.record,a.port??4173):disposeAllocation(c,t.record),
+ readAfter:async({args:a,ctx:c,target:t,response})=>a.placement==='enrolled'?({response,allocation:await inspectEnrolledPlacement(c,t.record),operation:a.operation,placement:'enrolled'}):({response,allocation:await allocationRecord(c,t.record),observed:await inspectAllocation(c,t.record),operation:a.operation}),
+ verify:({after})=>after.placement==='enrolled'?after.response?.placement==='enrolled'&&after.response?.phase==='awaiting_source'&&after.allocation?.phase==='awaiting_source'&&after.response.device_id===after.allocation.device_id&&after.response.execution_available===false:after.operation==='preview'?typeof after.response.entry_url==='string':after.operation==='dispose'?after.response.disposed===true:['requested','waiting_resources'].includes(after.allocation?.phase)||after.observed?.provider_observed===true&&!!after.allocation?.composeId&&['created','exposed','deploying','allocated','attaching','attached'].includes(after.allocation.phase),
+ present:({after})=>after.placement==='enrolled'?after.allocation:after.operation==='preview'?after.response:({workspace_id:after.allocation?.workspace,phase:after.allocation?.phase??'absent',allocation_ready:['allocated','attached'].includes(after.allocation?.phase),repository_attached:after.allocation?.repositoryAttached===true,disposed:after.response.disposed===true,execution_available:false,next:'Read allocation and availability. Provisioning acceptance is not repository attachment, enforcement or command success.'})
+});
+export const tools=[execute.tool,read.tool,cancel.tool,workspace.tool];
+export const handlers=Object.fromEntries([execute,read,cancel,workspace].map(x=>[x.tool.name,x.handler]));
+}},required:[...required,'operation','requestKey'],declarations:{production:'never',confirm:'when-needed',profiles:['full']},target:targetFor(true),explain,
  read:async(a,c,t)=>{if(a.operation!=='dispose')dokployConfig(c.env);return {allocation:await allocationRecord(c,t.record)};},classify:()=>({}),summarize:({args:a,target:t})=>`${({provision:'Provision',attach:'Attach the repository to',resume:'Resume',preview:'Open a private preview for',dispose:'Delete the files and volumes of'})[a.operation]} the exact dedicated Playground allocation for ${t.owner}/${t.repo}; uses configured host resources, no additional paid plan.`,
  apply:({args:a,ctx:c,target:t})=>a.operation==='provision'?ensureAllocation(c,t.record):a.operation==='attach'?attachRepository(c,t.record):a.operation==='resume'?resumeAllocation(c,t.record):a.operation==='preview'?createPreviewEntry(c,t.record,a.port??4173):disposeAllocation(c,t.record),
  readAfter:async({args:a,ctx:c,target:t,response})=>({response,allocation:await allocationRecord(c,t.record),observed:await inspectAllocation(c,t.record),operation:a.operation}),
