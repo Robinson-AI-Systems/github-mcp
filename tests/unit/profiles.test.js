@@ -47,7 +47,9 @@ describe('profiles decide which tools exist for a connection', () => {
     const counts = profileCounts(registry);
     expect(counts.read_only).toBeLessThanOrEqual(counts.everyday);
     expect(counts.everyday).toBeLessThan(counts.full);
-    expect(counts.full).toBe(registry.tools.length);
+    // Every tool except the operator-only ones (PUB-8), which only the operator's own connection sees.
+    expect(counts.full).toBe(registry.tools.filter((t) => t.operatorOnly !== true).length);
+    expect(toolsForProfile(registry, 'full', { client_id: 'c', default_account: 'o', accounts: ['o'], mode: 'preview', profile: 'full', listing: 'catalog', operator: true })).toHaveLength(registry.tools.length);
     expect(toolsForProfile(registry, 'everyday').map((t) => t.name)).not.toContain('github_enable_production');
     expect(toolsForProfile(registry, 'full').map((t) => t.name)).toContain('github_enable_production');
   });

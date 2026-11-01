@@ -2793,7 +2793,7 @@
       "design": "docs/designs/GATED-EXPANSION-2026-11-01.md",
       "dependencies": [],
       "card": "docs/pr-cards/PUB-8.md",
-      "status": "APPROVED",
+      "status": "MERGED",
       "migration": "none",
       "budget": 800,
       "units": [
@@ -2801,7 +2801,9 @@
       ],
       "readiness": "READY",
       "ownerInputs": [],
-      "pr": []
+      "pr": [
+        522
+      ]
     },
     {
       "id": "PUB-9",
@@ -2829,7 +2831,7 @@
       "design": "docs/designs/GATED-EXPANSION-2026-11-01.md",
       "dependencies": [],
       "card": "docs/pr-cards/CAP-6.md",
-      "status": "APPROVED",
+      "status": "MERGED",
       "migration": "none",
       "budget": 800,
       "units": [
@@ -2837,7 +2839,9 @@
       ],
       "readiness": "READY",
       "ownerInputs": [],
-      "pr": []
+      "pr": [
+        519
+      ]
     }
   ],
   "gatewayBoundary": {

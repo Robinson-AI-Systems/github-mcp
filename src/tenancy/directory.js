@@ -339,14 +339,90 @@ export function createTenantDirectory(sql) {
       )`;
       // PUB-5 B: when an app registration last got a token, so registrations nobody uses can be cleaned away.
       await sql`ALTER TABLE gh_public_clients ADD COLUMN IF NOT EXISTS last_token_at TIMESTAMPTZ`;
-      // PUB-6: owner-requested deletion of ONE public person's data. Only a tenant created by the public sign-in
-      // (bootstrap key 'public-connect') with a single member can go. It removes every root row that points at the tenant,
-      // then drops that tenant's own database namespace, so nothing of theirs survives and nobody else's data is touched.
-      await retryConcurrent(() => sql`CREATE OR REPLACE FUNCTION gh_forget_public_tenant(target UUID)
+      // PUB-8: ONE removal core for a person's tenant, used by the owner tool (github_tenant_remove), the owner setup page and the
+      // person's own "Delete my data" page. It removes the row in EVERY shared table that has a tenant_id column (found from the
+      // catalog, so a table added later is covered without editing this), the shared Playground pointers (device routes and
+      // pairing selectors are deleted; a managed allocation's index row stays, so the regular sweep disposes it through its usual
+      // "namespace removed" path; an allocation on the person's own computer loses its authority and is recorded as such), drops the
+      // tenant's own namespace (settings, connections, tokens, jobs, saved results, indexes), and deletes the identity when nothing else
+      // uses it. It refuses a tenant with other members. Callers check WHICH kind of tenant they may remove before calling it.
+      await retryConcurrent(() => sql`CREATE OR REPLACE FUNCTION gh_remove_person_tenant(target UUID)
         RETURNS BOOLEAN LANGUAGE plpgsql SECURITY INVOKER AS $body$
-      DECLARE ns TEXT; ident UUID; others INTEGER;
+      DECLARE ns TEXT; ident UUID; others INTEGER; tbl TEXT; pending TEXT[]; failed TEXT[]; pass INTEGER;
       BEGIN
         SELECT namespace INTO ns FROM gh_tenants WHERE id = target FOR UPDATE;
+        IF NOT FOUND THEN RETURN FALSE; END IF;
+        IF ns !~ '^gh_t_[0-9a-f]{32}$' THEN RAISE EXCEPTION 'Invalid tenant namespace'; END IF;
+        SELECT identity_id INTO ident FROM gh_tenant_memberships WHERE tenant_id = target ORDER BY identity_id LIMIT 1;
+        IF ident IS NULL THEN SELECT identity_id INTO ident FROM gh_tenant_pilot_bootstraps WHERE tenant_id = target; END IF;
+        SELECT count(DISTINCT identity_id) INTO others FROM gh_tenant_memberships
+          WHERE tenant_id = target AND identity_id IS DISTINCT FROM ident;
+        IF others > 0 THEN RAISE EXCEPTION 'Tenant has other members'; END IF;
+        SELECT array_agg(c.table_name::text ORDER BY c.table_name) INTO pending
+          FROM information_schema.columns c JOIN information_schema.tables t
+            ON t.table_schema = c.table_schema AND t.table_name = c.table_name AND t.table_type = 'BASE TABLE'
+          WHERE c.table_schema = current_schema() AND c.column_name = 'tenant_id'
+            AND c.table_name NOT IN ('gh_tenant_memberships','gh_tenant_pilot_bootstraps','gh_marketplace_tenants');
+        -- A later table may reference another carrier; retry what a foreign key held back (bounded passes).
+        FOR pass IN 1..4 LOOP
+          failed := ARRAY[]::TEXT[];
+          FOREACH tbl IN ARRAY COALESCE(pending, ARRAY[]::TEXT[]) LOOP
+            BEGIN
+              EXECUTE format('DELETE FROM %I WHERE tenant_id::text = $1', tbl) USING target::text;
+            EXCEPTION WHEN foreign_key_violation THEN failed := failed || tbl;
+            END;
+          END LOOP;
+          pending := failed;
+          EXIT WHEN cardinality(pending) = 0;
+        END LOOP;
+        IF cardinality(pending) > 0 THEN RAISE EXCEPTION 'Tenant rows could not be removed'; END IF;
+        IF to_regclass('server_settings') IS NOT NULL THEN
+          EXECUTE $q$DELETE FROM server_settings WHERE (setting LIKE 'fleet_route.%' OR setting LIKE 'pg_pair.%')
+            AND value->>'tenantId' = $1$q$ USING target::text;
+          EXECUTE $q$UPDATE server_settings SET updated_at = now(), value = jsonb_set(value, '{allocation}',
+              (value->'allocation') || jsonb_build_object('revision', (value->'allocation'->>'revision')::bigint + 1,
+                'phase', 'disposed', 'disposed', true, 'disposedAt', (extract(epoch FROM now()) * 1000)::bigint,
+                'cleanupEvidence', 'tenant_removed_device_authority_revoked', 'volumesVerified', false))
+            WHERE setting LIKE 'pg_index.%' AND value->'allocation'->'scope'->>'tenantId' = $1
+              AND value->'allocation'->>'placement' = 'device' AND value->'allocation'->>'phase' <> 'disposed'$q$ USING target::text;
+          EXECUTE $q$UPDATE server_settings SET updated_at = now(), value = jsonb_set(value, '{allocation}',
+              (value->'allocation') || jsonb_build_object('cleanupRequested', true, 'cleanupReason', 'namespace_removed'))
+            WHERE setting LIKE 'pg_index.%' AND value->'allocation'->'scope'->>'tenantId' = $1
+              AND value->'allocation'->>'phase' <> 'disposed'$q$ USING target::text;
+        END IF;
+        DELETE FROM gh_tenant_pilot_bootstraps WHERE tenant_id = target;
+        DELETE FROM gh_tenant_memberships WHERE tenant_id = target;
+        IF to_regclass('gh_marketplace_tenants') IS NOT NULL THEN
+          EXECUTE 'DELETE FROM gh_marketplace_tenants WHERE tenant_id = $1' USING target;
+        END IF;
+        DELETE FROM gh_tenants WHERE id = target;
+        EXECUTE format('DROP SCHEMA IF EXISTS %I CASCADE', ns);
+        IF ident IS NOT NULL THEN PERFORM gh_remove_person_identity(ident); END IF;
+        RETURN TRUE;
+      END $body$`);
+      // PUB-8: an identity goes once no tenant uses it: every row in a shared table with an identity_id column, then the identity.
+      await retryConcurrent(() => sql`CREATE OR REPLACE FUNCTION gh_remove_person_identity(ident UUID)
+        RETURNS BOOLEAN LANGUAGE plpgsql SECURITY INVOKER AS $body$
+      DECLARE tbl TEXT;
+      BEGIN
+        IF EXISTS (SELECT 1 FROM gh_tenant_memberships WHERE identity_id = ident)
+          OR EXISTS (SELECT 1 FROM gh_tenant_pilot_bootstraps WHERE identity_id = ident) THEN RETURN FALSE; END IF;
+        FOR tbl IN SELECT c.table_name::text FROM information_schema.columns c JOIN information_schema.tables t
+            ON t.table_schema = c.table_schema AND t.table_name = c.table_name AND t.table_type = 'BASE TABLE'
+          WHERE c.table_schema = current_schema() AND c.column_name = 'identity_id' AND c.table_name <> 'gh_tenant_identities'
+        LOOP
+          EXECUTE format('DELETE FROM %I WHERE identity_id::text = $1', tbl) USING ident::text;
+        END LOOP;
+        DELETE FROM gh_tenant_identities WHERE id = ident;
+        RETURN FOUND;
+      END $body$`);
+      // PUB-6: owner-requested deletion of ONE public person's data (setup page and "Delete my data"). Only a tenant created by
+      // the public sign-in (bootstrap key 'public-connect') with a single member can go here; the removal itself is the PUB-8 core.
+      await retryConcurrent(() => sql`CREATE OR REPLACE FUNCTION gh_forget_public_tenant(target UUID)
+        RETURNS BOOLEAN LANGUAGE plpgsql SECURITY INVOKER AS $body$
+      DECLARE ident UUID; others INTEGER;
+      BEGIN
+        PERFORM 1 FROM gh_tenants WHERE id = target FOR UPDATE;
         IF NOT FOUND THEN RETURN FALSE; END IF;
         SELECT identity_id INTO ident FROM gh_tenant_pilot_bootstraps
           WHERE tenant_id = target AND account_login = 'public-connect';
@@ -354,24 +430,7 @@ export function createTenantDirectory(sql) {
         SELECT count(*) INTO others FROM gh_tenant_memberships
           WHERE tenant_id = target AND identity_id <> ident;
         IF others > 0 THEN RAISE EXCEPTION 'Tenant has other members'; END IF;
-        DELETE FROM gh_tenant_optional_setup_states WHERE tenant_id = target;
-        DELETE FROM gh_tenant_optional_credentials WHERE tenant_id = target;
-        DELETE FROM gh_tenant_user_authorizations WHERE tenant_id = target;
-        DELETE FROM gh_tenant_oauth_flows WHERE tenant_id = target;
-        DELETE FROM gh_public_flows WHERE tenant_id = target;
-        DELETE FROM gh_tenant_pilot_allowlist WHERE tenant_id = target;
-        DELETE FROM gh_public_installations WHERE tenant_id = target;
-        DELETE FROM gh_public_usage_daily WHERE tenant_id = target;
-        DELETE FROM gh_public_usage_hourly WHERE tenant_id = target;
-        DELETE FROM gh_tenant_pilot_bootstraps WHERE tenant_id = target;
-        DELETE FROM gh_tenant_memberships WHERE tenant_id = target;
-        DELETE FROM gh_tenants WHERE id = target;
-        EXECUTE format('DROP SCHEMA IF EXISTS %I CASCADE', ns);
-        IF NOT EXISTS (SELECT 1 FROM gh_tenant_memberships WHERE identity_id = ident)
-          AND NOT EXISTS (SELECT 1 FROM gh_tenant_pilot_bootstraps WHERE identity_id = ident) THEN
-          DELETE FROM gh_tenant_identities WHERE id = ident;
-        END IF;
-        RETURN TRUE;
+        RETURN gh_remove_person_tenant(target);
       END $body$`);
       await sql`CREATE INDEX IF NOT EXISTS gh_public_flows_expires
         ON gh_public_flows (expires_at)`;

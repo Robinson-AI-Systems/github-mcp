@@ -27,6 +27,7 @@ Where the archive disagrees with this table or [OWNER-DECISION-2026-10-27.md](OW
 | Public sign-in: changes on by default (read-only optional); per-person time zone (UTC default); people can delete their own data | 2026-10-23 | Owner decisions | archive: 2026-10-23 entries, [PUB-6](pr-cards/PUB-6.md) |
 | Sign-in is GitHub once, one Approve page, no cookies, "My connection" page | 2026-10-23 | Prior flow broke repeatedly | archive: sign-in rebuild entry |
 | The Hub owns discovery/connection to this product; Hub routes are not this product's completion gate | 2026-10-23 | Standalone completion | archive: 2026-10-19 entry |
+| CAP-6 gated families: runner, larger-runner, merge-queue and Copilot tools are offered only where GitHub shows the feature; their spending tools are `strictSpend` (always ask, owner included; an unworkable cost refuses; a metered cost GitHub does not publish is shown as COST UNKNOWN) | 2026-11-01 | Owner approval of gated expansion item 9 ("shows the price and needs confirmation") | [CAP-6](pr-cards/CAP-6.md) |
 | Real-device checks live in OWNER-CHECKLIST and never block development or merges | 2026-10-22 | Owner request | [OWNER-CHECKLIST](OWNER-CHECKLIST.md) |
 | Instructions stay short (AGENTS.md simplified); per-PR status goes in `docs/status/` notes | 2026-10-22 | Long ledger caused merge conflicts and drag | [status README](status/README.md) |
 | Maximum legitimate GitHub authority plan (CAP-1..CAP-5) approved | 2026-10-21 | Owner-requested capability expansion | [MAXIMUM-AUTHORITY](designs/MAXIMUM-AUTHORITY.md) |

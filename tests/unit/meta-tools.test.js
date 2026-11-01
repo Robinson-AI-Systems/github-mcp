@@ -239,7 +239,8 @@ describe('listing', () => {
     const existing = ['github_search_tools', 'github_describe_tool', 'github_call', 'github_batch', 'github_whoami', 'github_get_result', 'github_workflow_pr_status', 'github_workflow_open_pr', 'github_workflow_merge_when_green', 'github_workflow_merge_stack'];
     expect(compact.filter(name => existing.includes(name))).toEqual(existing);
     expect(COMPACT_DEVELOPER_TOOLS.every(name => compact.includes(name))).toBe(true);
-    expect(toolsForListing(registry, 'full', 'catalog')).toHaveLength(registry.tools.length);
+    expect(toolsForListing(registry, 'full', 'catalog')).toHaveLength(registry.tools.length - 1); // github_tenant_remove is operator-only
+    expect(toolsForListing(registry, 'full', 'catalog', { client_id: 'c', default_account: 'o', accounts: ['o'], mode: 'preview', profile: 'full', listing: 'catalog', operator: true })).toHaveLength(registry.tools.length);
     expect(toolsForListing(registry, 'read_only', 'catalog')).toEqual(toolsForProfile(registry, 'read_only'));
     const low=toolsForListing(registry,'read_only','compact').map(x=>x.name);
     expect(low).toContain('github_workflow_pr_status');
