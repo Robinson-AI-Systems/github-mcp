@@ -71,7 +71,7 @@ async function setup({docker = fakeDocker(), freeMemoryBytes = 12 * GIB} = {}) {
   };
   const agent = new HostAgent({dir, exec: docker.exec, fetchImpl: agentFetch, now: w.ctx.now, sleep: async () => {}, log: () => {}});
   agent.capacity = async () => ({cpus: 8, memoryBytes: 16 * GIB, freeMemoryBytes, freeDiskBytes: 200e9, docker: '27.3.1', compose: '2.29.7', agent: 'fleet-agent/1', platform: 'linux', allocations: Object.keys(agent.state?.allocations ?? {})});
-  const drain = async () => { await agent.checkInOnce(); await Promise.all([...agent.work.values()]); };
+  const drain = async () => { await agent.checkInOnce(); await agent.settle(); };
   w.ctx.relaySleep = async () => { await drain(); };
   return {w, root, scope, store, agent, drain, docker};
 }

@@ -41,7 +41,7 @@ export class HostAgent {
   constructor({dir = join(homedir(), '.config', 'ras-playground'), exec = defaultExec, fetchImpl = fetch, now = Date.now, sleep = sleepMs, log = m => process.stdout.write(m + '\n')} = {}) {
     Object.assign(this, {dir, exec, fetchImpl, now, sleep, log});
     this.statePath = join(dir, 'agent.json');
-    this.work = new Map();
+    this.work = new Map(); this.inflight = new Set();
   }
   async load() { try { this.state = JSON.parse(await readFile(this.statePath, 'utf8')); } catch (e) { if (e.code !== 'ENOENT') throw e; this.state = null; } return this.state; }
   async save() { await mkdir(this.dir, {recursive: true, mode: 0o700}); await writeFile(this.statePath, JSON.stringify(this.state, null, 1), {mode: 0o600}); }
@@ -107,6 +107,7 @@ export class HostAgent {
       const prior = order.kind === 'relay' ? Promise.resolve() : this.work.get(lane) ?? Promise.resolve();
       const job = prior.then(() => this.handle(order)).then(result => this.report(order, result)).catch(e => this.log('Order ' + order.kind + ' failed: ' + e.message));
       if (order.kind !== 'relay') this.work.set(lane, job);
+      this.inflight.add(job); job.finally(() => this.inflight.delete(job));
     }
     return {status: res.body.status, pollAfterMs: res.body.pollAfterMs ?? 0, orders: (res.body.orders ?? []).length};
   }
@@ -222,6 +223,8 @@ export class HostAgent {
     } while (forever);
     return {stopped: true};
   }
+  // Wait for every order this agent has started (used on shutdown and in tests).
+  async settle() { while (this.inflight.size) await Promise.allSettled([...this.inflight]); }
   async leave() { await this.load(); const r = await this.terminate(); await rm(this.statePath, {force: true}); return r; }
 }
 
