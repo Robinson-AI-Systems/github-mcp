@@ -74,6 +74,8 @@ describe('owner-operated Docker runtime contract',()=>{
   expect(create).not.toContain('/var/run/docker.sock');
   expect((await local.install(plan)).alreadyInstalled).toBe(true);
   expect(await local.canary(plan)).toMatchObject({canaryPassed:true,controllerAdmission:false});
+  const browserExec=sim.calls.find(a=>a[0]==='exec'&&a.some(v=>String(v).includes('chromium.launch')));
+  expect(browserExec).toContain('PLAYWRIGHT_BROWSERS_PATH=/opt/playwright');
   expect((await local.remove(plan))).toEqual({
    disposed:true,containerAbsent:true,volumeAbsent:true,networkAbsent:true
   });

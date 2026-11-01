@@ -95,7 +95,7 @@ export function createLocalRuntime({docker=dockerRun}={}){
     '-w','/app',plan.container,'node','--input-type=module','-e',
     "import {spawn,spawnSync} from 'node:child_process';import {setTimeout as delay} from 'node:timers/promises';const child=spawn('/bin/sh',['/app/workers/coding-workspace/test-database'],{detached:true,stdio:'ignore',env:{...process.env,HOME:'/workspace/home'}});let passed=false;try{for(let i=0;i<80;i++){if(spawnSync('pg_isready',['-h','127.0.0.1','-p','5432'],{stdio:'ignore'}).status===0){passed=true;break;}await delay(100);}if(!passed)process.exitCode=2;}finally{try{process.kill(-child.pid,'SIGTERM')}catch(e){if(e.code!=='ESRCH')throw e}let stopped=false;for(let i=0;i<80;i++){if(spawnSync('pg_isready',['-h','127.0.0.1','-p','5432'],{stdio:'ignore'}).status!==0){stopped=true;break;}await delay(100);}if(!stopped)process.exitCode=5;}if(passed&&process.exitCode!==5)console.log('postgres15-started-stopped');"
   ]), 'PostgreSQL');
-  const chromium=exactOutput(await docker(['exec','--user','1000:1000','-w','/app',plan.container,
+  const chromium=exactOutput(await docker(['exec','--user','1000:1000','--env','PLAYWRIGHT_BROWSERS_PATH=/opt/playwright','-w','/app',plan.container,
    'node','--input-type=module','-e',"import {chromium} from 'playwright';const b=await chromium.launch({headless:true});const p=await b.newPage();await p.goto('data:text/html,<title>Device Canary</title>');if(await p.title()!=='Device Canary')process.exit(4);await b.close();console.log('chromium-ok');"]), 'Chromium');
   if(!node.includes('node24-uid1000')||!postgres.includes('postgres15-started-stopped')||!chromium.includes('chromium-ok'))throw fail('The local image did not pass its runtime canary.');
   const after=await evidence(plan);
