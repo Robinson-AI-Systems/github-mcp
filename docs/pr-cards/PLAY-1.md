@@ -57,3 +57,10 @@ The recovered text-preview refusal was measured at361ms event-loop delay versus 
 PR480 merged the integrated source atafeee1ad and the checked release is independently READY, with matching primary Git worker and sealed attachment capability. Exact-head ci/policy/native/coding image gates passed, including actual Chromium entry/app/API/WebSocket, anonymous denial, shared edits, UID1000, daemon namespace termination and four-volume absence. Live provisioning currently refuses before change because protected provider setup is missing; actual quota/isolation support remains independently unverified. Safe Git write/readback and exact owned close passed live. Whole live Playground acceptance remains unpassed.
 
 Follow-through: support fresh signed exact-volume cleanup evidence when project-scoped credentials cannot inspect host volumes, retaining independent project Compose/container absence and all bound ownership checks. Add outgoing heartbeat/current authority/activity-persistence behavioral coverage and retain one acceptance queue. This addresses an observed project-scope contract gap without broad host access or a new owner approval ritual.
+
+## 2026-11-01 — Heartbeat outage grace and background clones (owner-approved)
+
+A transient control-plane failure no longer terminates a runtime: signed denials still stop it at once, while an
+unreachable control plane blocks new commands after the last lease expires and gives running commands a bounded grace
+(`CODING_AUTHORITY_GRACE_MS`, default 5 min, max 15). Large native clones continue in the background past the 45 s
+watchdog. Details and tests: [status note](../status/2026-11-01-runtime-reliability.md). Live acceptance still open.

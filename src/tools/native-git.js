@@ -49,7 +49,8 @@ const open = defineGithubWrite({
    throw error;
   });
   try {const result=await callNativeWorker(c, { action: 'open', binding, job: {id,host,idleTimeoutMs:(a.leaseMinutes ?? 240)*60000}, requestKey, allowWrite: true, network: true, options: { branch: a.branch, depth: a.depth, authorName: a.authorName, authorEmail: a.authorEmail, ttlMs: (a.leaseMinutes ?? 240) * 60000 } });let playground={phase:'git_only',reason:'provider_setup_required'};
-   if(result.state==='ready'&&a.runtime==='none')playground={phase:'git_only',reason:'runtime_not_requested',next:'Provision later with github_playground_workspace operation provision and a size if commands are needed.'};
+   if(result.state==='opening')playground={phase:'git_only',reason:'clone_in_progress',next:'When the clone is ready, provision a runtime with github_playground_workspace operation provision if commands are needed.'};
+   else if(result.state==='ready'&&a.runtime==='none')playground={phase:'git_only',reason:'runtime_not_requested',next:'Provision later with github_playground_workspace operation provision and a size if commands are needed.'};
    else if(result.state==='ready'&&c.env.PLAYGROUND_DOKPLOY_ORIGIN&&!passRefusal({tool:{name:'github_playground_workspace',area:'playground',writes:true,inputSchema:{properties:{repo:{}}}},args:{owner:t.owner,repo:t.repo},connection:c.connection})){try{const allocated=await enqueueAllocation(c,await nativeRecord(c,id),{size:a.runtime});playground={phase:allocated.phase,workspace_id:id,runtime_size:allocated.size??null,next:'Allocation manager will provision and attach this workspace; read Playground allocation for progress.'};}catch{playground={phase:'git_only',reason:'allocation_recovery_required',next:'Git work is preserved; inspect Playground allocation with this same workspace ID.'};}}
    return {workspace_id:id,result,playground};}
   catch(error) {if(error.nativeNoOperationStarted){await c.db.finishJob(id,nativeConnection(c),{state:'failed',detail:'Worker resource admission declined before clone.'});throw error;}return { workspace_id: id, result: { state: 'uncertain' } }; }
@@ -59,7 +60,7 @@ const open = defineGithubWrite({
   try { return { workspace_id: response.workspace_id, playground:response.playground, ...await callNativeWorker(c, { action: 'inspect', binding: record.binding, job: record.job, workspace_id: record.worker }) }; }
   catch { return { workspace_id: response.workspace_id, state: 'uncertain', next: 'Use github_git_workspace_read status; do not open another clone to retry this intent.' }; }
  },
- verify: ({ after }) => after.state === 'ready', present: ({ after, response }) => after ?? response
+ verify: ({ after }) => ['ready', 'opening'].includes(after.state), present: ({ after, response }) => after?.state === 'opening' ? { ...after, next: 'Large repository: the clone continues on the worker. Read github_git_workspace_read operation status until state is ready (or failed); do not open another clone.' } : after ?? response
 });
 const read = defineRead({
  name: 'github_git_workspace_read', area: 'git', audience: ['B', 'O', 'Op'], byteWindow: true,

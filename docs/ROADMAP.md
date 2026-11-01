@@ -222,11 +222,12 @@ as this entry ([card](pr-cards/FLEET-1.md)). Proposed next outcomes, not in the 
 
 Issues found by the 2026-11-01 audit, for scheduling:
 
-- **Heartbeat fragility (PLAY-1):** any heartbeat failure, including a transient Vercel/Neon error, makes the runtime stop
+- **Resolved 2026-11-01 (FLEET-3 PR):** heartbeat outages now get a bounded grace; large clones run in the background.
+- ~~**Heartbeat fragility (PLAY-1):**~~ any heartbeat failure, including a transient Vercel/Neon error, makes the runtime stop
   itself (the lifecycle route answers 401 to any exception). Proposed: distinguish "authority denied" (stop) from
   "authority unreachable" (pause new commands, keep running ones until the 60 s lease actually expires), without ever
   extending a lease.
-- **Native clone watchdog:** the 45 s Git watchdog includes clone, so big repositories come back `uncertain`; proposed
+- ~~**Native clone watchdog:**~~ the 45 s Git watchdog includes clone, so big repositories come back `uncertain`; proposed
   longer, separately bounded clone/fetch budget.
 - **PLAY-2 enrollment index:** each pairing attempt adds an ID to a per-tenant index that is never pruned; past 32 IDs
   (abandoned codes included) the list read throws and My connection breaks for that tenant. Fix tracked as its own PR.

@@ -166,3 +166,27 @@ it('uses atomic expected-head leases while refusing non-fast-forward changes unl
  await expect(run('reset', { ref: base, hard: 'false' })).rejects.toThrow(/booleans/);
  await expect(run('push', { branch: 'main', hard: true })).rejects.toThrow(/not supported/);
 });
+describe('large clones continue in the background', () => {
+ it('reports opening, refuses work and close until ready, then works normally', async () => {
+  const slow = new NativeGitWorker({ root: join(dir, 'worker'), authorize: async () => true, allowLocalFixtures: true, cloneWaitMs: 0 });
+  const opened = await slow.create(binding, { requestKey: 'open-background', fixtureRemote: bare });
+  if (opened.state === 'opening') {
+   expect(opened.next).toMatch(/background/);
+   await expect(slow.execute(opened.workspace_id, binding, { operation: 'status', args: {}, requestKey: 'early' })).rejects.toThrow(/still running/);
+   await expect(slow.close(opened.workspace_id, binding)).rejects.toThrow(/still running/);
+  }
+  let state;for (let i = 0; i < 200; i++) { state = (await slow.inspect(opened.workspace_id, binding)).state; if (state !== 'opening') break; await new Promise(r => setTimeout(r, 25)); }
+  expect(state).toBe('ready');
+  expect((await slow.execute(opened.workspace_id, binding, { operation: 'status', args: {}, requestKey: 'after' })).status).not.toBe('failed');
+  expect((await slow.close(opened.workspace_id, binding)).disposed).toBe(true);
+ });
+ it('marks a failed background clone failed, and an interrupted one failed after restart', async () => {
+  const bad = new NativeGitWorker({ root: join(dir, 'worker'), authorize: async () => true, allowLocalFixtures: true, cloneWaitMs: 5000 });
+  const failed = await bad.create(binding, { requestKey: 'open-missing', fixtureRemote: join(dir, 'missing.git') });
+  expect(failed.state).toBe('failed');
+  const orphan = join(dir, 'worker', 'git_' + 'e'.repeat(32));await mkdir(orphan, { recursive: true });
+  await writeFile(join(orphan, 'workspace.json'), JSON.stringify({ binding: 'x', state: 'opening', generation: 0, expiresAt: Date.now() + 60000 }));
+  expect((await bad.recoverInterruptedClones()).failed).toBe(1);
+  expect(JSON.parse(await readFile(join(orphan, 'workspace.json'), 'utf8')).state).toBe('failed');
+ });
+});

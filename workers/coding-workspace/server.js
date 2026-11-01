@@ -54,6 +54,6 @@ if(process.argv[1]&&import.meta.url===pathToFileURL(resolve(process.argv[1])).hr
  const runtime=await new CodingRuntime({root:process.env.CODING_STORAGE_ROOT,binding:process.env.CODING_WORKSPACE_BINDING,idleMs:Number(process.env.CODING_IDLE_TIMEOUT_MS??14400000),authorityRequired:!!process.env.CODING_LIFECYCLE_URL}).init();
  const server=codingServer({runtime,key:process.env.CODING_CONTROL_PUBLIC_KEY,ports:previewPorts(process.env.CODING_PREVIEW_PORTS,Number(process.env.PORT??3000)),controlPort:Number(process.env.PORT??3000),onExpired:()=>terminate('idle_timeout'),previewOrigin:process.env.CODING_PUBLIC_ORIGIN,controlOrigin:process.env.CODING_CONTROL_ORIGIN});server.listen(Number(process.env.PORT??3000),'0.0.0.0');
  const terminate=async reason=>{const watchdog=setTimeout(()=>process.exit(0),5000);watchdog.unref();try{await runtime.shutdown(reason);}finally{server.close(()=>process.exit(0));}};
- if(process.env.CODING_LIFECYCLE_URL){const stop=watchAuthority({runtime,key:process.env.CODING_CONTROL_PUBLIC_KEY,url:process.env.CODING_LIFECYCLE_URL,onLost:terminate});server.on('close',stop);}
+ if(process.env.CODING_LIFECYCLE_URL){const stop=watchAuthority({runtime,key:process.env.CODING_CONTROL_PUBLIC_KEY,url:process.env.CODING_LIFECYCLE_URL,onLost:terminate,graceMs:Number(process.env.CODING_AUTHORITY_GRACE_MS??300000)});server.on('close',stop);}
  for(const signal of ['SIGTERM','SIGINT'])process.once(signal,()=>{void terminate('runtime_stopped');});
 }

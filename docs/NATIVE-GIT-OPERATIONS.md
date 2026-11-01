@@ -15,7 +15,8 @@ readiness from a configured URL. Future scale-out (several workers, device-hoste
    `leaseMinutes` idle timeout (1–1440, default 240 = four hours) and optional `runtime` (`auto`, `none`, `small`,
    `medium`, `large`; see [right-sized runtimes](PLAYGROUND-OPERATIONS.md#right-sized-runtimes)). Before cloning, the MCP
    asks the primary worker for capabilities and refuses unless it reports resource-aware admission with room. It returns a
-   connection-bound `workspace_id`, generation, HEAD and expiry.
+   connection-bound `workspace_id`, generation, HEAD and expiry — or `state: "opening"` for a large repository whose
+   clone continues in the background; read `status` until it is `ready`.
    - Reuse the same `requestKey` only to recover the original intent; a replay returns the historical receipt plus
      `current_workspace` availability (`done=false` when disposed). A genuinely new workspace needs a fresh `requestKey`.
      Clone keys stay stable across the ten-minute key buckets. Legacy bucketed receipts are recovered only after checking
@@ -83,7 +84,8 @@ new intent. Error messages are bounded and redacted, including worker paths.
 
 | Limit | Value | Where |
 |---|---|---|
-| Git command watchdog | 45 s (includes clone; a very large clone can come back `uncertain`) | `workers/native-git/engine.js` |
+| Git command watchdog | 45 s per command | `workers/native-git/engine.js` |
+| Clone | waits up to 30 s inside the request, then continues in the background (`state: "opening"`) with its own watchdog, default 15 minutes (`NATIVE_GIT_CLONE_TIMEOUT_MS`, 45 s–60 min). Read status until `ready` or `failed`; work and close are refused while it runs; a worker restart marks an unfinished clone `failed` | engine |
 | Command output kept | 2 MiB | engine |
 | File read window | 32 KiB per window; whole file ≤ 20 MiB | engine, `safe-files.js` |
 | Signed request validity | MCP signs for 60 s; worker accepts ≤ 90 s | `src/native-git/client.js`, `protocol.js` |
@@ -136,6 +138,7 @@ autoscaling pool.
 | `NATIVE_GIT_WORKER_KEY` | both | Legacy shared-key fixtures only |
 | `NATIVE_GIT_CONTROL_PUBLIC_KEY` | worker | Pinned MCP verification key |
 | `NATIVE_GIT_STORAGE_ROOT`, `PORT` (3000) | worker | Data root and port |
+| `NATIVE_GIT_CLONE_TIMEOUT_MS` (900000) | worker | Background clone watchdog, clamped to 45 s–60 min |
 | `NATIVE_GIT_MEMORY_LIMIT` (2g), `NATIVE_GIT_CPUS` (2.0) | worker compose | Whole-container ceilings shared by every workspace |
 | `NATIVE_GIT_MIN_AVAILABLE_MEMORY_MB` (32), `NATIVE_GIT_MIN_AVAILABLE_DISK_MB` (64), `NATIVE_GIT_MAX_LOOP_DELAY_MS` (250) | worker | Admission floors |
 | `NATIVE_GIT_SNAPSHOT_KEY` | operator CLI | 32-byte base64 snapshot key (environment only) |

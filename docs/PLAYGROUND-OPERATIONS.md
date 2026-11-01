@@ -29,7 +29,7 @@ hypervisor VMs.
 Set inside each allocation by the plan (never by hand): `CODING_WORKSPACE_BINDING`, `CODING_CONTROL_PUBLIC_KEY`,
 `CODING_IDLE_TIMEOUT_MS` (= the Git workspace's idle window, default 14,400,000 ms), `CODING_LIFECYCLE_URL`,
 `CODING_EGRESS_PROXY` (must be `http://ingress:3128`), `CODING_PUBLIC_ORIGIN`, `CODING_CONTROL_ORIGIN`,
-`CODING_STORAGE_ROOT`, `CODING_PREVIEW_PORTS` (default 3001, 4173, 5173, 8000, 8080; 3000 and 5432 always excluded), the
+`CODING_STORAGE_ROOT`, `CODING_AUTHORITY_GRACE_MS` (300000), `CODING_PREVIEW_PORTS` (default 3001, 4173, 5173, 8000, 8080; 3000 and 5432 always excluded), the
 broker's `NATIVE_GIT_SINGLE_*` values, and the gateway's `EGRESS_BLOCKED_HOSTS`/`EGRESS_BLOCKED_ADDRESSES`. The manager
 container gets `PLAYGROUND_SWEEP_URL` and a derived `PLAYGROUND_SWEEP_KEY`.
 
@@ -72,8 +72,11 @@ requested → (waiting_resources) → creating → created → exposing → expo
   mount evidence match.
 - **Run:** the controller signs a 60 s claim and calls the gateway; the executor checks binding/purpose/expiry.
 - **Heartbeat:** every 30 s the runtime sends a signed heartbeat (executor → broker → `/api/playground/lifecycle`); the
-  controller re-checks grant, pass, job and network and answers with a 60 s lease. **Any heartbeat failure — including a
-  transient Vercel/Neon error — stops the runtime** (`restart: no`); files are preserved and `resume` brings it back.
+  controller re-checks grant, pass, job and network and answers with a 60 s lease. A **signed denial** (revoked grant,
+  expired job, lost membership) stops the runtime at once. If the control plane is **unreachable** (network or
+  Vercel/Neon trouble) the runtime retries every 10 s; no new command starts once the last lease expires, but commands
+  already running keep going for a bounded grace (`CODING_AUTHORITY_GRACE_MS`, default 5 minutes, at most 15) before
+  the whole runtime stops (`restart: no`; files are preserved and `resume` brings it back). The lease is never extended.
 - **Cleanup:** revoked/expired authority, idle expiry or `dispose` → stop, verify every container exited, delete the
   compose with its four volumes, read back absence, then close the exact source Git workspace. A delete acknowledgement
   alone is never proof.
