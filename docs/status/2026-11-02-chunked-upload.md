@@ -10,6 +10,7 @@
   conflicting chunks, resume after a cut chunk, digest mismatches, refused-then-successful apply, git bundle, time
   window; nine write-contract checks for the upload tool through every door; fake-GitHub tests for `no_ci`.
   Not verified: Vercel's live proxy with the chunked command (needs a release).
+- **Merged:** PR #548 (head `8b060f89`, `ci` and `release-policy` green), merge commit `c5ca2e9a`.
 - **Release needs:** control plane (daily release); native worker redeploy (until then begin offers the one-request
   command only); runtime image rebuild for runtime-attached workspaces (same fallback until then).
 - **Next:** live acceptance after release: the 20 MB archive with the chunked command through the domain, an apply refused
