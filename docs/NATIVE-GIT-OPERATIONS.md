@@ -101,20 +101,21 @@ large uploads over slow links. The worker itself allows each upload request 5 mi
 ## Direct downloads
 
 To get the whole workspace (or its uncommitted work) at once, ask for a one-time address instead of reading files one
-by one (`github_git_workspace_download`, card [GIT-DOWNLOAD-1](pr-cards/GIT-DOWNLOAD-1.md)). The bytes come straight from
-the worker, never through Vercel, and no GitHub credential is involved.
+by one (`github_git_workspace_download`, card [GIT-DOWNLOAD-1](pr-cards/GIT-DOWNLOAD-1.md)). For a repository you have
+not opened yet, `github_repo_download {repo, mode}` does open-or-reuse plus the download in one call. No GitHub credential
+is involved. Addresses are on this service's own domain (see [One domain](#one-domain-for-every-transfer)).
 
 ```text
 # Git mode: a real clone of the workspace's local branches and tags (or only ref)
 github_git_workspace_download {workspace_id, mode:"git", requestKey:"<fresh>"}            → progress.command
-git clone "<url>" repo
+git -c http.followRedirects=false clone "<url>" repo
 # …or bring one branch into an existing clone
 github_git_workspace_download {workspace_id, mode:"git", ref:"main", requestKey:"<fresh>"}
 git fetch "<url>" main:refs/remotes/workspace/main
 
 # Archive mode: a .tar.gz of a branch/tag/commit (default HEAD), or of the current files with ref "worktree"
 github_git_workspace_download {workspace_id, mode:"archive", ref:"worktree", requestKey:"<fresh>"}
-curl -fsSL "<url>" -o repo.tar.gz && mkdir -p repo && tar -xzf repo.tar.gz -C repo
+curl -fsS "<url>" -o repo.tar.gz && mkdir -p repo && tar -xzf repo.tar.gz -C repo
 ```
 
 - The command is in the result's always-visible `progress` (compact clients drop `result`). It works for one clone or
@@ -127,9 +128,30 @@ curl -fsSL "<url>" -o repo.tar.gz && mkdir -p repo && tar -xzf repo.tar.gz -C re
 - Archive mode with a ref equals `git archive --format=tar` of that commit, gzipped. `ref:"worktree"` holds tracked and
   untracked-but-not-ignored files including uncommitted edits, never `.git`; in-tree symbolic links stay links, and a
   link pointing outside the repository (or a folder that is a link) refuses the download with its path.
-- Dedicated Playground broker workspaces are not supported. Operator: the worker must report
+- Workspaces attached to a Playground runtime are served from the runtime's copy (the authoritative one after attach);
+  the runtime must run an image with the transfer ingress routes, otherwise the tool refuses plainly and suggests
+  `github_repo_download` with `fresh: true`. Own-computer runtimes cannot be reached. Operator: the worker must report
   `direct_download: "one-time-v1"`; snapshots live under `$NATIVE_GIT_STORAGE_ROOT/.downloads` and are removed once
   served, by the 60-second sweep, or when the workspace closes. Same origin and port as `/v1/workspace`.
+
+## One domain for every transfer
+
+SINGLE-DOMAIN-1 ([card](pr-cards/SINGLE-DOMAIN-1.md)). Every one-time upload/download address is
+`https://<PUBLIC_BASE_URL host>/v1/transfer/<d|u>/<route>/<tag>/<capability>`, so an AI sandbox with a network allowlist
+needs only this service's own domain, for every repository and transfer. Routing Middleware (`middleware.js`) checks
+the HMAC `<tag>` binding kind + destination + capability, verifies the capability like the worker does, forwards only
+transfer headers (no cookies or authorization) and rewrites to the configured worker or a runtime broker of the exact
+Playground host shape on a configured ingress address. Vercel's proxy streams the bytes; `skipMiddlewareRequestBody`
+keeps bodies out of the middleware. Commands never follow redirects.
+
+- If the sandbox cannot reach the domain (host not allowed, proxy 403, DNS error), the person adds that one domain to
+  the AI's network allowlist once (for Claude: the Capabilities / network access allowed-domains setting). Each result's
+  `if_blocked` says this with the exact host.
+- Limits: Vercel's proxied-request wait is 120 seconds for the worker to start answering; downloads stream for as long as
+  bytes flow. Uploads above about 4 MB through the domain are unverified until the live check (Routing Middleware lists a
+  4 MB body limit; skipped bodies are documented as reaching the rewrite target). If the domain answers HTTP 413, use the
+  upload result's `direct_command` (the worker's own host).
+- `NATIVE_GIT_TRANSFER_RELAY=off` (protected setting) returns the worker-host addresses instead.
 
 ## Branch switching and parallel agents
 
