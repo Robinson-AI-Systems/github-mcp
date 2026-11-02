@@ -2973,6 +2973,23 @@
       "pr": [
         542
       ]
+    },
+    {
+      "id": "VER-1",
+      "title": "Agents can see the live release (github_whoami server_release, serverInfo version)",
+      "batch": "FIN",
+      "design": "docs/pr-cards/VER-1.md",
+      "dependencies": [],
+      "card": "docs/pr-cards/VER-1.md",
+      "status": "MERGED",
+      "migration": "none",
+      "budget": 100,
+      "units": [
+        "VER-1"
+      ],
+      "readiness": "READY",
+      "ownerInputs": [],
+      "pr": []
     }
   ],
   "gatewayBoundary": {
