@@ -18,7 +18,7 @@ const definition = { tool: native.tools.find(t => t.name === 'github_git_workspa
 const arrange = (gh, outcome) => { gh.nativeOutcome = outcome; gh.when('GET /repos/{owner}/{repo}').reply(200, { full_name: 'example-org/hello', default_branch: 'main' }); };
 const WORKSPACE = 'job_0123456789abcdef';
 const ENV = { ...process.env, http_proxy: '', HTTP_PROXY: '', https_proxy: '', HTTPS_PROXY: '', ALL_PROXY: '', all_proxy: '', NO_PROXY: '*', no_proxy: '*', GIT_TERMINAL_PROMPT: '0', GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: '/dev/null' };
-const local = (w, url) => url.replace('https://native-worker.example.test', w.nativeFixture.origin);
+const local = (w, url) => w.transferLocal(url);
 const workspaceRepo = w => join(w.nativeFixture.root, w.nativeFixture.workerId, 'repo');
 async function world() {
  const w = await makeWorld({ profile: 'full', mode: 'production', gates: [] }); arrange(w.gh, 'ok'); cleanups.push(await prepareNativeWorld(w, { existing: true })); return w;
@@ -38,10 +38,13 @@ it('git flow through every door: one-time clone URL with no credential in progre
   const begun = parse(await door.call(w, { workspace_id: WORKSPACE, mode: 'git', requestKey: 'clone-' + door.name }));
   expect(begun).toMatchObject({ status: 'applied', confirmed: true, result: { state: 'awaiting', mode: 'git', head, branch: 'main', single_use: true } });
   const url = new URL(begun.result.url);
-  expect(url.origin).toBe('https://native-worker.example.test');
-  expect(begun.result.command).toBe(`git clone "${begun.result.url}" repo`);
+  expect(url.origin).toBe('https://mcp.example.test'); expect(url.pathname).toMatch(/^\/v1\/transfer\/[du]\/w\/[A-Za-z0-9_-]{32}\//);
+  expect(begun.result.command).toBe(`git -c http.followRedirects=false clone "${begun.result.url}" repo`);
   // Compact clients drop `result`; the always-visible progress must carry the one-time command.
   expect(begun.progress).toMatchObject({ download_id: begun.result.download_id, command: begun.result.command, head, single_use: true });
+  // The allowlist note names this service's own domain, inside the bounded always-visible digest.
+  expect(begun.progress.if_blocked).toMatch(/cannot reach mcp\.example\.test .*add that one domain to your AI's network allowlist/); expect(begun.progress.if_blocked).toMatch(/Same domain for every repository/);
+  expect(Buffer.byteLength(JSON.stringify(begun.progress))).toBeLessThanOrEqual(1200);
   const claim = verifyDownloadCapability(url.pathname.split('/').pop(), w.nativeFixture.key, w.ctx.now());
   expect(Object.keys(claim).sort()).toEqual(['binding', 'downloadId', 'expiresAt', 'maxBytes', 'mode', 'nonce', 'purpose', 'version', 'workspace_id']);
   expect(claim).toMatchObject({ purpose: DOWNLOAD_PURPOSE, maxBytes: 200 * 1048576 });
@@ -63,7 +66,7 @@ it('archive flow: ref "worktree" includes uncommitted files and no .git; a commi
  await writeFile(join(repo, 'draft.md'), 'not committed\n');
  const begun = parse(await definition.handler({ workspace_id: WORKSPACE, mode: 'archive', ref: 'worktree', requestKey: 'wt' }, w.ctx));
  expect(begun).toMatchObject({ status: 'applied', result: { source: 'worktree', files: 2 } });
- expect(begun.result.command).toMatch(/^curl -fsSL ".+" -o repo\.tar\.gz && mkdir -p repo && tar -xzf repo\.tar\.gz -C repo$/);
+ expect(begun.result.command).toMatch(/^curl -fsS ".+" -o repo\.tar\.gz && mkdir -p repo && tar -xzf repo\.tar\.gz -C repo$/);
  expect(begun.progress.command).toBe(begun.result.command);
  const res = await fetch(local(w, begun.result.url)); expect(res.status).toBe(200);
  const names = execFileSync('tar', ['-tzf', '-'], { input: Buffer.from(await res.arrayBuffer()), encoding: 'utf8' }).split('\n').filter(Boolean).sort();

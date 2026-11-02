@@ -75,7 +75,7 @@ merged cards. Do not infer completed acceptance from a checked box; read the led
 - [x] Summaries, `fields`, `detail`, text caps, handles (24 h, same connection only), annotations, structured output.
 - [x] Catalog and compact listing; meta-tools dispatch into the wrapped handlers, so every guard applies (write-contract
   through `github_call`).
-- [x] Budgets enforced in CI: compact <5,000 tokens, everyday catalog <22,000, descriptions ≤160 characters, schemas
+- [x] Budgets enforced in CI: compact <6,000 tokens (5,000 until SINGLE-DOMAIN-1, 2026-11-02), everyday catalog <22,000, descriptions ≤160 characters, schemas
   <1,500 tokens, default results ≤8 KB or a handle.
 
 ## Batch D — Repositories, code, branches and tags (`designs/BATCH-D.md`)

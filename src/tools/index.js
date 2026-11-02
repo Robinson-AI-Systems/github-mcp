@@ -156,7 +156,7 @@ for (const tool of baseRegistry.tools) {
 
 // C-3: standalone compact connector exposes everyday code/PR/CI tools directly. The
 // complete catalog, lazy RTC/Hub protocol and every tool's actual authorization stay unchanged.
-// Keep this set bounded by the existing 5,000-token compact tools/list budget.
+// Keep this set bounded by the compact tools/list budget (scripts/check-budgets.mjs).
 export const COMPACT_DEVELOPER_TOOLS = Object.freeze([
   'github_repo_get',
   'github_content_get',
@@ -170,7 +170,12 @@ export const COMPACT_DEVELOPER_TOOLS = Object.freeze([
   'github_pr_create',
   'github_actions_get_run_logs_summary',
   'github_check_get_ci_state',
-  'github_review_list_threads'
+  'github_review_list_threads',
+  // SINGLE-DOMAIN-1 (owner request 2026-11-02): the whole-repository download in one call, and the
+  // workspace download/upload it builds on, are in the default list.
+  'github_repo_download',
+  'github_git_workspace_download',
+  'github_git_workspace_upload'
 ]);
 const directNames = new Set(COMPACT_DEVELOPER_TOOLS);
 if (directNames.size !== COMPACT_DEVELOPER_TOOLS.length ||
@@ -183,6 +188,11 @@ const conciseReadSchema = (schema) => schema?.properties
   ? { ...schema, properties: Object.fromEntries(Object.entries(schema.properties).map(([key, spec]) =>
     [key, Object.fromEntries(Object.entries(spec).filter(([field]) => field !== 'description'))])) }
   : schema;
+// SINGLE-DOMAIN-1: these listed write tools show argument names and types only (their guidance and
+// describe_tool carry the detail); the write-safety arguments keep their descriptions.
+const CONCISE_WRITE_LISTING = new Set(['github_repo_download', 'github_git_workspace_download', 'github_git_workspace_upload']);
+const conciseWriteSchema = (schema) => ({ ...schema, properties: Object.fromEntries(Object.entries(schema.properties).map(([key, spec]) =>
+  [key, ['dryRun', 'confirm', 'requestKey'].includes(key) ? spec : Object.fromEntries(Object.entries(spec).filter(([field]) => field !== 'description'))])) });
 export const registry = {
   ...baseRegistry,
   tools: baseRegistry.tools.map(tool => {
@@ -190,6 +200,7 @@ export const registry = {
     if (!compact) return tool;
     return Object.freeze({ ...tool, compact: true,
       ...(tool.writes !== true && tool.inputSchema?.properties
-        ? { compactSchema: conciseReadSchema(tool.inputSchema) } : {}) });
+        ? { compactSchema: conciseReadSchema(tool.inputSchema) }
+        : CONCISE_WRITE_LISTING.has(tool.name) && tool.inputSchema?.properties ? { compactSchema: conciseWriteSchema(tool.inputSchema) } : {}) });
   })
 };

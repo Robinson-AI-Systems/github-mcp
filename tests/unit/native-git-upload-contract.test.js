@@ -29,7 +29,7 @@ function tarGz(files) {
  }
  return gzipSync(Buffer.concat([...blocks, Buffer.alloc(1024)]));
 }
-const local = (w, url) => url.replace('https://native-worker.example.test', w.nativeFixture.origin);
+const local = (w, url) => w.transferLocal(url);
 async function receivedArchive(w) {
  const f = w.nativeFixture, worker = new NativeGitWorker({ root: f.root, authorize: async () => true, allowLocalFixtures: true, now: w.ctx.now });
  const expiresAt = w.ctx.now() + 600000, nonce = 'cd'.repeat(16), maxBytes = 1048576;
@@ -54,10 +54,13 @@ it('archive flow through every door: one-time URL with no credential, curl-style
   const begun = parse(await door.call(w, { workspace_id: WORKSPACE, operation: 'begin', mode: 'archive', maxMegabytes: 2, requestKey: 'begin-' + door.name }));
   expect(begun).toMatchObject({ status: 'applied', confirmed: true, result: { state: 'awaiting', mode: 'archive', single_use: true, max_bytes: 2 * 1048576 } });
   const url = new URL(begun.result.url);
-  expect(url.origin).toBe('https://native-worker.example.test');
+  expect(url.origin).toBe('https://mcp.example.test'); expect(url.pathname).toMatch(/^\/v1\/transfer\/[du]\/w\/[A-Za-z0-9_-]{32}\//);
   expect(begun.result.command).toContain('curl --fail --upload-file');
   // Compact clients drop `result`; the always-visible progress must carry the one-time command.
   expect(begun.progress).toMatchObject({ upload_id: begun.result.upload_id, command: begun.result.command, single_use: true });
+  expect(begun.progress.if_blocked).toContain('mcp.example.test'); expect(Buffer.byteLength(JSON.stringify(begun.progress))).toBeLessThanOrEqual(1200);
+  // Labelled second option on the worker's own host, in the full result.
+  expect(begun.result.direct_command).toContain('https://native-worker.example.test/v1/upload/'); expect(begun.result.direct_note).toMatch(/413/);
   const claim = verifyUploadCapability(url.pathname.split('/').pop(), w.nativeFixture.key, w.ctx.now());
   expect(Object.keys(claim).sort()).toEqual(['binding', 'expiresAt', 'maxBytes', 'mode', 'nonce', 'purpose', 'uploadId', 'version', 'workspace_id']);
   expect(claim.expiresAt - w.ctx.now()).toBeLessThanOrEqual(600000);
@@ -82,7 +85,7 @@ it('git flow: a real git push to the returned address, then a fast-forward apply
  execFileSync('git', ['clone', '--quiet', f.seed, agent], { env: ENV });
  await writeFile(join(agent, 'image.bin'), Buffer.from([0, 1, 2, 255, 254])); git('add', 'image.bin'); git('commit', '-m', 'image');
  const begun = parse(await definition.handler({ workspace_id: WORKSPACE, operation: 'begin', mode: 'git', requestKey: 'git-begin' }, w.ctx));
- expect(begun.result.command).toMatch(/^git push ".+" HEAD:refs\/heads\/upload$/);
+ expect(begun.result.command).toMatch(/^git -c http\.followRedirects=false push ".+" HEAD:refs\/heads\/upload$/);
  const pushed = await spawnAsync('git', ['push', local(w, begun.result.url), 'HEAD:refs/heads/upload'], { cwd: agent, env: ENV });
  expect(pushed.status, pushed.stderr).toBe(0);
  const applied = parse(await definition.handler({ workspace_id: WORKSPACE, operation: 'apply', upload_id: begun.result.upload_id, expectedGeneration: 0, requestKey: 'git-apply' }, w.ctx));

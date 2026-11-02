@@ -9,6 +9,7 @@ import {setTimeout as pause} from 'node:timers/promises';
 import { nativeGitServer } from '../../workers/native-git/server.js';
 import { NativeGitWorker } from '../../workers/native-git/engine.js';
 import { nativeConnection } from '../../src/native-git/client.js';
+import { startTransferRelay } from './transfer-relay.js';
 const KEY = 'FAKE-local-native-contract-worker-key';
 export async function prepareNativeWorld(w, { existing = false } = {}) {
  const dir = await mkdtemp(join(tmpdir(), 'native-contract-')); const seed = join(dir, 'seed'); const root = join(dir, 'storage');
@@ -43,6 +44,10 @@ export async function prepareNativeWorld(w, { existing = false } = {}) {
   }
   return fetch(origin + '/v1/workspace', init);
  };
- w.gh.fetch = multiplex; w.ctx = { ...w.ctx, fetch: multiplex, env: { ...w.ctx.env, NATIVE_GIT_WORKER_URL: 'https://native-worker.example.test/', NATIVE_GIT_WORKER_KEY: KEY } };
- return async () => { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); await rm(dir, { recursive: true, force: true }); };
+ w.gh.fetch = multiplex; w.ctx = { ...w.ctx, fetch: multiplex, env: { ...w.ctx.env, NATIVE_GIT_WORKER_URL: 'https://native-worker.example.test/', NATIVE_GIT_WORKER_KEY: KEY, PUBLIC_BASE_URL: 'https://mcp.example.test' } };
+ // SINGLE-DOMAIN-1: one-time addresses are issued on PUBLIC_BASE_URL; this runs the real middleware in front of the worker.
+ const relay = await startTransferRelay({ env: () => w.ctx.env, now: w.ctx.now, destinations: { 'https://native-worker.example.test': origin } });
+ w.transferRelay = relay;
+ w.transferLocal = url => relay.local(url).replace('https://native-worker.example.test', origin);
+ return async () => { await relay.close(); server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); await rm(dir, { recursive: true, force: true }); };
 }

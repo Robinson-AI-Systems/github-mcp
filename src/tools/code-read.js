@@ -161,7 +161,7 @@ export const contentGetArchiveLink = defineRead({
   description: 'A short-lived download link for a tarball or zipball of a ref (the link itself, not the file).',
   properties: { owner: OWNER, repo: REPO, ref: { ...REF, description: 'Branch, tag or commit (default: the default branch)' }, format: { type: 'string', enum: ['tarball', 'zipball'], description: 'Default tarball' } },
   required: ['repo'],
-  guidance: 'A clean public archive link is provided when safe. Signed or unverified redirect addresses are withheld from all result modes; the result then gives the two calls that fetch the same files through github_git_workspace_download.',
+  guidance: 'A clean public archive link is provided when safe. Signed or unverified redirect addresses are withheld from all result modes; the result then gives the one call (github_repo_download) that fetches the same files through a one-time address on this service\'s own domain.',
   handler: (args, ctx) => plain(async () => {
     const { owner, octokit } = await readerFor(args, ctx);
     const ref = args.ref ?? (await octokit.request('GET /repos/{owner}/{repo}', { owner, repo: args.repo })).data.default_branch;
@@ -173,10 +173,9 @@ export const contentGetArchiveLink = defineRead({
     // A private repository's archive link carries a temporary key, so it is withheld. The native worker serves the same
     // files through a one-time address that holds no GitHub credential: point the agent there in exact calls.
     const instead = safe.url ? {} : { instead: {
-      note: 'To get the files anyway: clone into a native workspace without a runtime, then ask it for a one-time .tar.gz (or git clone) address. No GitHub key is in that address.',
+      note: 'To get the files anyway, make this one call: it returns a one-time .tar.gz (or git clone) command on this service\'s own domain. No GitHub key is in that address.',
       steps: [
-        { tool: 'github_git_workspace_open', arguments: { owner, repo: args.repo, runtime: 'none' } },
-        { tool: 'github_git_workspace_download', arguments: { workspace_id: '<workspace_id from step 1>', mode: 'archive', ref } }
+        { tool: 'github_repo_download', arguments: { owner, repo: args.repo, mode: 'archive', ref } }
       ] } };
     return { ref, format: args.format ?? 'tarball', ...safe, ...instead, expires: safe.url ? 'within about one minute' : null };
   })
