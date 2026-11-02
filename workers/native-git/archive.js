@@ -3,7 +3,8 @@
 // checked before use: absolute paths, "..", ".git", backslashes, drive letters and control
 // characters are refused, as are links, devices, FIFOs, encrypted or unknown entries, too many
 // entries, oversize files and archives that expand far beyond their own size (zip bombs).
-import { open, stat } from 'node:fs/promises';
+import { open, rm, stat } from 'node:fs/promises';
+import { randomBytes } from 'node:crypto';
 import { createReadStream, createWriteStream } from 'node:fs';
 import { Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
@@ -47,8 +48,10 @@ export async function detectFormat(file) {
 async function gunzipBounded(source, target, limit) {
   let total = 0;
   const counter = new Transform({ transform(chunk, _encoding, done) { total += chunk.length; if (total > limit) done(refuse(`it would expand beyond ${Math.round(limit / MiB)} MiB`)); else done(null, chunk); } });
+  // Only a decompression error means damaged data; a storage error (full disk, an existing file) is
+  // reported as what it is, never as "damaged" (CHUNK-UPLOAD-1: a stale expansion was once misread so).
   try { await pipeline(createReadStream(source), zlib.createGunzip(), counter, createWriteStream(target, { flags: 'wx', mode: 0o600 })); }
-  catch (error) { throw error instanceof TypeError ? error : refuse('the gzip data is damaged'); }
+  catch (error) { await rm(target, { force: true }).catch(() => {}); if (error instanceof TypeError) throw error; if (/^Z_/.test(error?.code ?? '')) throw refuse('the gzip data is damaged'); throw new Error('The archive could not be expanded on the worker (storage); nothing was applied. Retry the apply.'); }
   return total;
 }
 
@@ -160,13 +163,16 @@ async function zipEntries(handle, size, limits) {
 export async function openArchive(file, workDir, limits = ARCHIVE_LIMITS) {
   const format = await detectFormat(file);
   const compressedBytes = (await stat(file)).size;
-  let path = file;
+  let path = file, scratch = null;
+  // CHUNK-UPLOAD-1: each open expands into its own scratch file, removed on close or failure, so a
+  // refused apply leaves the quarantined upload exactly as received and a corrected apply still works.
+  const drop = async () => { if (scratch) await rm(scratch, { force: true }).catch(() => {}); };
   if (format === 'tar.gz') {
-    path = workDir + '/expanded.tar';
+    path = scratch = `${workDir}/expanded-${randomBytes(8).toString('hex')}.tar`;
     const expanded = await gunzipBounded(file, path, limits.totalBytes + (limits.entries + 2) * 1536);
-    if (expanded > limits.ratioFloorBytes && expanded > limits.ratio * compressedBytes) throw refuse(`it expands more than ${limits.ratio} times (zip bomb)`);
+    if (expanded > limits.ratioFloorBytes && expanded > limits.ratio * compressedBytes) { await drop(); throw refuse(`it expands more than ${limits.ratio} times (zip bomb)`); }
   }
-  const handle = await open(path, 'r');
+  let handle; try { handle = await open(path, 'r'); } catch (error) { await drop(); throw error; }
   try {
     const size = (await handle.stat()).size;
     const raw = format === 'zip' ? await zipEntries(handle, size, limits) : await tarEntries(handle, size, limits);
@@ -188,6 +194,7 @@ export async function openArchive(file, workDir, limits = ARCHIVE_LIMITS) {
       const parts = f.path.split('/');
       for (let i = 1; i < parts.length; i++) if (seen.get(parts.slice(0, i).join('/')) === 'file') throw refuse(`${shown(f.path)} is inside a path that is also a file`);
     }
-    return { format, files, directories: [...seen.values()].filter(t => t === 'dir').length, close: () => handle.close() };
-  } catch (error) { await handle.close(); throw error; }
+    let closed = false;
+    return { format, files, directories: [...seen.values()].filter(t => t === 'dir').length, close: async () => { if (closed) return; closed = true; await handle.close(); await drop(); } };
+  } catch (error) { await handle.close(); await drop(); throw error; }
 }

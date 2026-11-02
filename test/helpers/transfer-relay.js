@@ -21,6 +21,8 @@ export async function startTransferRelay({ env, now = Date.now, publicOrigin = '
   if (!local) { req.resume(); res.writeHead(502); return res.end(); }
   const upstream = httpRequest(local + destination.pathname + destination.search, { method: req.method, headers: forwarded }, reply => { res.writeHead(reply.statusCode, reply.headers); reply.pipe(res); });
   upstream.on('error', () => { if (!res.headersSent) res.writeHead(502); res.end(); });
+  // A client that drops mid-body drops the proxied request too (as a real proxy does).
+  req.on('close', () => { if (!req.complete) upstream.destroy(); });
   req.pipe(upstream);
  });
  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));

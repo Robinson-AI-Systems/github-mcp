@@ -55,15 +55,16 @@ async function openWorkspace(c, t, { branch, depth, authorName, authorEmail, lea
 // An attached workspace's copy is the runtime broker's (every native call already goes there).
 const ATTACHED_FALLBACK = 'Use github_repo_download with fresh: true for a Git-only copy from GitHub (push the runtime\'s work first), or move files with github_playground_execute.';
 async function transferReady(c, job) {
- if (!job.brokerOrigin) return;
+ if (!job.brokerOrigin) return null;
  if (parseDeviceOrigin(job.brokerOrigin)) throw safe('This workspace runs on your own computer, which one-time transfers cannot reach. ' + ATTACHED_FALLBACK, 'native_transfer_unavailable', { status: 422 });
  let ready = false;
  try {
   const answer = await transportFetch(c)(new URL('/v1/ingress', job.brokerOrigin).href, { method: 'GET', redirect: 'error', signal: AbortSignal.timeout(8000) });
   const text = answer.ok ? (await answer.text()).slice(0, 4096) : '';
-  ready = JSON.parse(text || '{}')?.transfer === 'broker-v1';
+  ready = JSON.parse(text || '{}'); if (ready?.transfer !== 'broker-v1') ready = false;
  } catch { ready = false; }
  if (!ready) throw safe('This workspace\'s runtime uses an older runtime image that cannot serve one-time transfers. ' + ATTACHED_FALLBACK, 'native_transfer_unavailable', { status: 422 });
+ return ready;
 }
 // One-time address: on this service's own domain when PUBLIC_BASE_URL is configured, else the worker's host.
 // A dedicated broker verifies only the Ed25519 control-plane key, never a shared worker secret.
@@ -292,18 +293,39 @@ const list = defineRead({
 // or provider credential. The address is returned once (it is not stored in the change log).
 const uploadRefusal = reason => Object.assign(new TypeError(String(reason ?? 'The upload was refused.').replace(/[\x00-\x1f\x7f]/g, ' ').slice(0, 600)), { safeMessage: true, safeCode: 'native_upload_refused', status: 422 });
 // Clients never follow redirects from a one-time address (git -c http.followRedirects=false; curl without -L).
-const UPLOAD_COMMAND = { git: url => `git -c http.followRedirects=false push "${url}" HEAD:refs/heads/upload`, archive: url => `curl --fail --upload-file files.tar.gz "${url}"` };
-async function beginUpload(c, t, a, requestKey) {
+// The one-request archive upload sends its own SHA-256, so damaged bytes are refused on receipt (CHUNK-UPLOAD-1).
+const UPLOAD_COMMAND = { git: url => `git -c http.followRedirects=false push "${url}" HEAD:refs/heads/upload`, archive: url => `curl --fail -H "X-Content-SHA256: $(sha256sum files.tar.gz|cut -c1-64)" --upload-file files.tar.gz "${url}"` };
+export const UPLOAD_COMMAND_SINGLE_WITH_DIGEST = UPLOAD_COMMAND.archive;
+// CHUNK-UPLOAD-1: resumable upload in requests of at most 4 MiB, with plain shell tools only (split, curl,
+// wc, sha256sum; git bundle in git mode). Rerunning it resumes: stored chunks answer as duplicates. The
+// worker checks every offset, then the whole size and SHA-256 at finish, before anything is quarantined.
+export const CHUNK_THRESHOLD_BYTES = 8 * 1048576;
+// Kept terse on purpose: the command must fit the always-visible 1200-byte digest with the URL in it.
+const chunkLoop = (url, file) => `U="${url}";F=${file};split -b4m -a4 $F .u.&&o=0&&for c in .u.????;do curl -fsS --retry 4 -o/dev/null -T $c "$U/chunk?offset=$o"||break;o=$((o+$(wc -c<$c)));done;rm -f .u.????;curl -sS -XPOST "$U/finish?size=$(($(wc -c<$F)))&sha256=$(sha256sum $F|cut -c1-64)"`;
+export const CHUNKED_UPLOAD_COMMAND = {
+ archive: url => chunkLoop(url, 'files.tar.gz'),
+ git: (url, base) => `git bundle create .u.b HEAD${base ? ' --not ' + base : ''}&&${chunkLoop(url, '.u.b')};rm -f .u.b`
+};
+const CHUNK_NOTE = { archive: 'command sends files.tar.gz in 4 MiB requests and resumes when run again (stored chunks are skipped); it prints the finish result. single_command is one request, fine below about 8 MB.',
+ git: 'command bundles your commits since the workspace HEAD (git bundle) and sends them in 4 MiB requests; it resumes when run again. single_command is a git push, fine below about 8 MB.' };
+/** The commands an upload result shows: resumable chunks when the worker supports them, else the one request. */
+function uploadCommands(mode, url, response) {
+ if (!response?.chunks) return { command: UPLOAD_COMMAND[mode](url) };
+ return { command: CHUNKED_UPLOAD_COMMAND[mode](url, response.base ?? null), single_command: UPLOAD_COMMAND[mode](url), chunk_note: CHUNK_NOTE[mode] + ' On macOS use shasum -a 256 for sha256sum. Progress: curl -sS "<url>/status".' };
+}
+async function beginUpload(c, t, a, requestKey, chunks = false) {
  const uploadId = randomBytes(16).toString('hex'), nonce = randomBytes(16).toString('hex');
  const maxBytes = (a.maxMegabytes ?? 50) * 1048576, expiresAt = (c.now ?? Date.now)() + UPLOAD_TTL_MS;
  const begun = await invoke(c, t, { action: 'upload_begin', options: { uploadId, mode: a.mode, maxBytes, expiresAt, nonce }, requestKey, allowWrite: true });
  const claim = JSON.stringify({ purpose: UPLOAD_PURPOSE, version: 1, workspace_id: t.record.worker, binding: nativeBindingHash(t.record.binding), mode: a.mode, maxBytes, expiresAt, uploadId, nonce });
- return { ...begun, ...oneTimeAddress(c, t.record.job, 'u', claim, signNativeUploadClaim(claim, claimEnv(c, t.record.job))) };
+ return { ...begun, ...(chunks ? { chunks: true } : {}), ...oneTimeAddress(c, t.record.job, 'u', claim, signNativeUploadClaim(claim, claimEnv(c, t.record.job))) };
 }
+// Returns whether resumable chunks work end to end: the worker (or runtime broker) and, for a runtime, its ingress.
 async function uploadPreflight(c, record) {
- await transferReady(c, record.job);
+ const ingress = await transferReady(c, record.job);
  const cap = await callNativeWorker(c, { action: 'capabilities', job: record.job });
  if (cap.direct_upload !== 'quarantine-v1') throw safe('The native Git worker must be updated before direct uploads work. Use write_file (about 1 MB per call) meanwhile.', 'native_worker_update_required');
+ return cap.upload_chunks === 'chunks-v1' && (ingress === null || ingress?.upload_chunks === 'v1');
 }
 const upload = defineGithubWrite({
  name: 'github_git_workspace_upload', area: 'git', audience: ['B', 'O', 'Op'],
@@ -324,7 +346,7 @@ const upload = defineGithubWrite({
   if (wrong.length) throw Object.assign(new TypeError(`${wrong.join(', ')} ${wrong.length > 1 ? 'belong' : 'belongs'} to operation apply (after the upload has run), not begin. Call begin with mode only, run the returned command, then call apply with upload_id${wrong.some(k => k !== 'upload_id') ? ' and ' + wrong.filter(k => k !== 'upload_id').join(', ') : ''}.`), { safeMessage: true, safeCode: 'invalid_upload_arguments' });
   if (a.operation === 'begin' && !a.mode) throw Object.assign(new TypeError('begin requires mode: git (one git push) or archive (one .tar.gz/.tar/.zip upload).'), { safeMessage: true, safeCode: 'invalid_upload_arguments' });
   if (a.operation === 'apply' && (a.upload_id === undefined || a.expectedGeneration === undefined)) throw Object.assign(new TypeError('apply requires upload_id from begin and the current expectedGeneration.'), { safeMessage: true, safeCode: 'invalid_upload_arguments' });
-  if (a.operation === 'begin') await uploadPreflight(c, t.record);
+  if (a.operation === 'begin') t.chunks = await uploadPreflight(c, t.record);
   if (a.operation === 'apply' && (a.deletePaths || a.mirror) && (await workerFeatures(c, t)).upload_apply !== 'delete-v1') throw Object.assign(new TypeError('The native Git worker must be updated before deletePaths or mirror work on apply. Nothing was applied. Meanwhile, apply without them and delete with github_git_workspace_run remove_file.'), { safeMessage: true, safeCode: 'native_worker_update_required' });
   return await invoke(c, t, { action: 'inspect' }); },
  classify: () => ({}), price: () => 0,
@@ -337,7 +359,7 @@ const upload = defineGithubWrite({
    if (result.status === 'refused') throw Object.assign(uploadRefusal(result.reason), { outcomeDetails: { outcome: 'refused', operation: 'upload apply', next_generation: a.expectedGeneration } });
    return result;
   }
-  return beginUpload(c, t, a, requestKey);
+  return beginUpload(c, t, a, requestKey, t.chunks === true);
  },
  readAfter: async ({ args: a, ctx: c, target: t, response }) => a.operation === 'begin'
   ? { ...await invoke(c, t, { action: 'upload_status', options: { uploadId: String(response.upload_id ?? '').slice(4) } }), address_shown_once: true }
@@ -348,16 +370,19 @@ const upload = defineGithubWrite({
  // Compact clients drop large `result` objects; the one-time command (which carries the URL) and the
  // apply summary must stay visible or the feature is unusable there.
  essentials: shaped => shaped?.command
-  ? fitDigest({ upload_id: shaped.upload_id, command: shaped.command, single_use: true, if_blocked: shaped.if_blocked, next: shaped.next, ...(shaped.direct_command ? { direct_command: shaped.direct_command } : {}) }, ['direct_command', 'next', 'upload_id', 'single_use'])
+  ? fitDigest({ upload_id: shaped.upload_id, command: shaped.command, single_use: true, if_blocked: shaped.single_command ? blockedNote(shaped.url, { short: true }) : shaped.if_blocked, next: shaped.next, ...(shaped.direct_command ? { direct_command: shaped.direct_command } : {}) }, ['direct_command', 'next', 'single_use', 'upload_id'])
   : (shaped && 'generation' in shaped) || shaped?.workspace
    ? { applied: true, mode: shaped.mode, target: shaped.target, files_added: shaped.files_added, files_changed: shaped.files_changed, files_deleted: shaped.files_deleted, bytes: shaped.bytes, workspace: shaped.workspace, next_generation: shaped.next_generation, next: shaped.next }
    : shaped?.next ? { next: shaped.next } : null,
  present: ({ args: a, after, response }) => {
   if (a.operation === 'apply') { const { status: _status, stdout: _o, stderr: _e, ...summary } = after?.operation ?? response ?? {}; return { ...summary, workspace: after?.workspace ? { generation: after.workspace.generation, branch: after.workspace.branch, head: after.workspace.head } : undefined, next_generation: after?.workspace?.generation ?? null, next: 'Review with github_git_workspace_read (status or changed_files), then add (all: true), commit and push with github_git_workspace_run, or do all three with github_repo_change and this workspace_id.' }; }
   if (typeof response?.url !== 'string') return { ...after, next: 'The upload address is shown only once. Begin a new upload with a fresh requestKey if you no longer have it.' };
-  return { ...after, url: response.url, command: UPLOAD_COMMAND[a.mode](response.url), single_use: true, if_blocked: blockedNote(response.url),
-   ...(response.direct ? { direct_command: UPLOAD_COMMAND[a.mode](response.direct), direct_note: 'Second option only if this service\'s domain refuses the upload as too large (HTTP 413): the same one-time link on the worker\'s own host, which the sandbox may need to allow too. Whichever runs first uses the link.' } : {}),
-   next: `Run within 10 minutes (works once), then call apply with upload_id ${after.upload_id} and the current expectedGeneration. Do not publish the URL; it holds no GitHub credential.` };
+  const commands = uploadCommands(a.mode, response.url, response);
+  return { ...after, url: response.url, ...commands, single_use: true, if_blocked: blockedNote(response.url),
+   ...(response.direct ? { direct_command: uploadCommands(a.mode, response.direct, response).command, direct_note: 'Second option only if this service\'s domain refuses the upload (HTTP 413 or repeated 502): the same one-time link on the worker\'s own host, which the sandbox may need to allow too.' } : {}),
+   next: commands.single_command
+    ? `Start within 10 minutes (one upload; a started chunked upload may finish for 20 more), then call apply with upload_id ${after.upload_id} and the current expectedGeneration. Do not publish the URL; it holds no GitHub credential.`
+    : `Run within 10 minutes (works once), then call apply with upload_id ${after.upload_id} and the current expectedGeneration. Do not publish the URL; it holds no GitHub credential.` };
  }
 });
 // GIT-DOWNLOAD-1: the mirror of upload. begin snapshots the workspace on the worker and returns a
@@ -477,7 +502,7 @@ const repoDownload = defineGithubWrite({
 });
 export const tools = [open.tool, read.tool, run.tool, close.tool, list.tool, upload.tool, download.tool, repoDownload.tool];
 // NATIVE-ERGO-1: shared with github_repo_change (src/tools/repo-change.js); not tools themselves.
-export const nativeInternals = Object.freeze({ configured, safe, admitClone, openWorkspace, reusableWorkspace, beginUpload, uploadPreflight, UPLOAD_COMMAND, blockedNote, workerFeatures });
+export const nativeInternals = Object.freeze({ configured, safe, admitClone, openWorkspace, reusableWorkspace, beginUpload, uploadPreflight, UPLOAD_COMMAND, uploadCommands, blockedNote, workerFeatures });
 async function openWithCurrentState(args,ctx) {
  const result=await open.handler(args,ctx), value=result.structuredContent;
  if (!value?.replayed || !value.result?.workspace_id) return result;

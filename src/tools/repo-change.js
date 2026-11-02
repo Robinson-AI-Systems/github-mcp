@@ -18,7 +18,7 @@ import { fitDigest } from '../native-git/relay.js';
 import { nativeInternals } from './native-git.js';
 
 const NAME = 'github_repo_change';
-const { configured, safe, admitClone, openWorkspace, reusableWorkspace, beginUpload, uploadPreflight, UPLOAD_COMMAND, blockedNote } = nativeInternals;
+const { configured, safe, admitClone, openWorkspace, reusableWorkspace, beginUpload, uploadPreflight, uploadCommands, blockedNote } = nativeInternals;
 const SHA = /^[a-f0-9]{40,64}$/;
 const BRANCH = { type: 'string', minLength: 1, maxLength: 200 };
 const PATH = { type: 'string', minLength: 1, maxLength: 4096 };
@@ -181,10 +181,10 @@ function machine(c, t, a, key, before) {
 
     // 3. A one-time upload link, when asked (the change itself comes on the next call).
     if (a.upload) {
-      await uploadPreflight(c, record);
-      const begun = await beginUpload(c, { ...t, record }, { mode: a.upload, maxMegabytes: a.maxMegabytes }, stepKey(key, id, 'upload_begin'));
+      const chunks = await uploadPreflight(c, record);
+      const begun = await beginUpload(c, { ...t, record }, { mode: a.upload, maxMegabytes: a.maxMegabytes }, stepKey(key, id, 'upload_begin'), chunks);
       await remember({ stage: 'awaiting_upload', upload_id: begun.upload_id });
-      return { stage: 'awaiting_upload', workspace_id: id, branch: a.branch, base: before.base, upload_id: begun.upload_id, url: begun.url, direct: begun.direct ?? null, progress: [...progress, 'upload link issued'] };
+      return { stage: 'awaiting_upload', workspace_id: id, branch: a.branch, base: before.base, upload_id: begun.upload_id, url: begun.url, direct: begun.direct ?? null, ...(begun.chunks ? { chunks: true, upload_base: begun.base ?? null } : {}), progress: [...progress, 'upload link issued'] };
     }
 
     // 4. The change: an applied upload, written files, deletions.
@@ -283,7 +283,8 @@ function presentChange(a, after, response) {
   if (v.stage === 'awaiting_upload') {
     if (typeof response?.url !== 'string') return { ...out, upload_id: v.upload_id, next: 'The upload link is shown only once. Call again with a new requestKey for a new link.' };
     const mode = a.upload;
-    return { ...out, upload_id: v.upload_id, command: UPLOAD_COMMAND[mode](response.url), single_use: true, if_blocked: blockedNote(response.url), ...(response.direct ? { direct_command: UPLOAD_COMMAND[mode](response.direct) } : {}),
+    const shape = { chunks: response.chunks, base: response.upload_base };
+    return { ...out, upload_id: v.upload_id, ...uploadCommands(mode, response.url, shape), single_use: true, if_blocked: blockedNote(response.url), ...(response.direct ? { direct_command: uploadCommands(mode, response.direct, shape).command } : {}),
       next: `Run the command within 10 minutes (it works once)${mode === 'git' ? ' from a clone whose commits build on the workspace branch' : ''}, then call github_repo_change again with workspace_id ${v.workspace_id}, upload_id ${v.upload_id}, branch ${v.branch}, message${mode === 'archive' ? ' (and deletePaths for removed files)' : ''} and pr if wanted. Do not publish the URL.` };
   }
   if (v.stage === 'pushed') return { ...out, next: v.pr?.number ? 'Watch CI with github_check_get_ci_state, then merge with github_workflow_merge_when_green.' : v.pr ? v.pr.next : 'Open a PR with pr (call again with the same branch), or github_workflow_open_pr.' };

@@ -6,16 +6,16 @@
 // verifies it: fast-forward only for Git, safe names/types/sizes for archives, and the
 // repository's content protection on every new byte. No GitHub credential is ever involved.
 import { spawn } from 'node:child_process';
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { createWriteStream } from 'node:fs';
-import { lstat, mkdir, open, readFile, readdir, realpath, rm, statfs, writeFile } from 'node:fs/promises';
+import { link, lstat, mkdir, open, readFile, readdir, realpath, rename, rm, statfs, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { createGunzip } from 'node:zlib';
 import { activeProtectionReport, containsCredential } from '../../src/github/content-protection.js';
 import { value } from '../../src/native-git/commands.js';
-import { UPLOAD_MAX_BYTES, UPLOAD_TTL_MS, verifyUploadCapability } from '../../src/native-git/protocol.js';
+import { UPLOAD_CHUNK_GRACE_MS, UPLOAD_CHUNK_MAX_BYTES, UPLOAD_MAX_BYTES, UPLOAD_TTL_MS, verifyUploadCapability } from '../../src/native-git/protocol.js';
 import { ARCHIVE_LIMITS, entryPath, openArchive } from './archive.js';
 import { bindingHash, gitEnvironment, gitPrefix, hash, json, save } from './engine.js';
 import { readWorkspaceFile, writeWorkspaceFile, removeWorkspaceFile, workspaceEntry } from './safe-files.js';
@@ -33,7 +33,7 @@ export const uploadPaths = (root, workspaceId, uploadId) => {
 const quarantineConfig = maxBytes => `[core]\n\thooksPath = /dev/null\n\tfsmonitor = false\n\tlogAllRefUpdates = false\n[receive]\n\tfsckObjects = true\n\tdenyDeletes = true\n\tdenyNonFastForwards = true\n\tmaxInputSize = ${maxBytes}\n\tadvertisePushOptions = false\n\tshallowUpdate = false\n\tautogc = false\n[transfer]\n\tfsckObjects = true\n[gc]\n\tauto = 0\n`;
 const STATE_HELP = {
   awaiting: 'Nothing has arrived yet. Run the git push or curl command with the upload URL first (it works once, within 10 minutes), then apply.',
-  receiving: 'The upload is still arriving. Wait for git push or curl to finish, then apply.',
+  receiving: 'The upload is still arriving (or its chunks were never finished). Wait for the command to finish, or send the missing chunks and finish, then apply.',
   applied: 'This upload was already applied. Begin a new upload for more files.',
   failed: 'This upload did not complete (too large, damaged or refused by Git). Begin a new upload.'
 };
@@ -42,6 +42,7 @@ const refusal = message => Object.assign(new TypeError(message), { refusal: true
 function view(uploadId, record, now) {
   return { upload_id: 'upl_' + uploadId, mode: record.mode, state: record.state === 'awaiting' && record.expiresAt <= now ? 'expired' : record.state,
     max_bytes: record.maxBytes, expires_at: record.expiresAt, ...(record.receivedBytes !== undefined ? { received_bytes: record.receivedBytes } : {}),
+    ...(record.sha256 ? { sha256: record.sha256 } : {}), ...(record.chunked ? { chunked: true } : {}), ...(record.mode === 'git' && record.base !== undefined ? { base: record.base } : {}),
     ...(record.refs ? { branches: record.refs.map(r => ({ name: r.name.replace(/^refs\/heads\//, ''), head: r.head })) } : {}) };
 }
 async function owned(worker, id, binding, uploadId, write) {
@@ -78,6 +79,9 @@ export async function beginUpload(worker, id, binding, { uploadId, mode, maxByte
     // Read-only view of the workspace's objects so the client sends only new objects.
     await mkdir(join(repo, 'objects', 'info'), { recursive: true });
     await writeFile(join(repo, 'objects', 'info', 'alternates'), join(w.repo, '.git', 'objects') + '\n', { mode: 0o600 });
+    // CHUNK-UPLOAD-1: the workspace HEAD a chunked git bundle may leave out (null for an empty repository).
+    const head = await worker.git(w.repo, ['rev-parse', '--verify', '--quiet', 'HEAD'], { allowedCodes: [0, 1, 128] });
+    fresh.base = head.code === 0 ? head.stdout.trim() : null;
   }
   await save(p.record, fresh);
   return view(uploadId, fresh, now);
@@ -107,14 +111,15 @@ function counted(limit, onOver) {
 
 export async function uploadHttp(req, res, { root, key, now = Date.now, monitor } = {}) {
   const url = new URL(req.url, 'http://worker.invalid');
-  const match = /^\/v1\/upload\/([A-Za-z0-9_-]{1,2048}\.[A-Za-z0-9_-]{1,200})(\/info\/refs|\/git-receive-pack)?$/.exec(url.pathname);
+  const match = /^\/v1\/upload\/([A-Za-z0-9_-]{1,2048}\.[A-Za-z0-9_-]{1,200})(\/info\/refs|\/git-receive-pack|\/chunk|\/status|\/finish)?$/.exec(url.pathname);
   if (!match) { req.resume(); return reply(res, 404, 'Not found.'); }
+  const step = CHUNK_STEPS[match[2] ?? ''];
   let claim;
-  try { claim = verifyUploadCapability(match[1], key, now()); }
+  try { claim = verifyUploadCapability(match[1], key, now(), { graceMs: step ? UPLOAD_CHUNK_GRACE_MS : 0 }); }
   catch (error) { req.resume(); return reply(res, 403, /expired/.test(error.message) ? 'This upload address has expired. Begin a new upload.' : 'This upload address is not valid. Begin a new upload.'); }
   const route = match[2] ?? '';
   const git = claim.mode === 'git';
-  const allowed = git ? (route === '/info/refs' && req.method === 'GET' && url.search === '?service=git-receive-pack') || (route === '/git-receive-pack' && req.method === 'POST')
+  const allowed = step ? req.method === step : git ? (route === '/info/refs' && req.method === 'GET' && url.search === '?service=git-receive-pack') || (route === '/git-receive-pack' && req.method === 'POST')
     : route === '' && url.search === '' && ['PUT', 'POST'].includes(req.method);
   if (!allowed) { req.resume(); return reply(res, git ? 403 : 405, git ? 'This address only accepts git push.' : 'This address only accepts one archive upload (curl --upload-file).'); }
   const p = uploadPaths(root, claim.workspace_id, claim.uploadId);
@@ -126,11 +131,14 @@ export async function uploadHttp(req, res, { root, key, now = Date.now, monitor 
     stored = await json(p.record);
     if (meta.binding !== claim.binding || meta.state !== 'ready' || meta.expiresAt <= now() || ['binding', 'mode', 'maxBytes', 'expiresAt', 'nonce'].some(k => stored[k] !== claim[k])) throw new Error('mismatch');
   } catch { req.resume(); return reply(res, 404, 'This upload is no longer available. Begin a new upload.'); }
+  if (step) return chunkStep(req, res, { route, url, claim, p, root, monitor, now });
   const used = async () => { try { await lstat(p.claimed); return true; } catch { return false; } };
   if (stored.state !== 'awaiting' || await used()) { req.resume(); return reply(res, 410, 'This upload address was already used. Begin a new upload.'); }
   const declared = req.headers['content-length'] === undefined ? null : Number(req.headers['content-length']);
   if (declared !== null && (!Number.isSafeInteger(declared) || declared < 0)) { req.resume(); return reply(res, 400, 'Invalid request length.'); }
   const limit = claim.maxBytes + (git ? GIT_COMMAND_OVERHEAD : 0);
+  const clientDigest = typeof req.headers['x-content-sha256'] === 'string' ? req.headers['x-content-sha256'].trim().toLowerCase() : null;
+  if (clientDigest !== null && !/^[a-f0-9]{64}$/.test(clientDigest)) { req.resume(); return reply(res, 400, 'X-Content-SHA256 must be the 64-character hex SHA-256 of the file (sha256sum).'); }
   if (declared !== null && declared > limit) { req.resume(); return reply(res, 413, `The upload is larger than its ${Math.ceil(claim.maxBytes / MiB)} MiB limit. Begin a new upload with a larger maxMegabytes (up to ${UPLOAD_MAX_BYTES / MiB}).`); }
   const repo = join(p.data, 'repo.git');
   if (route === '/info/refs') {
@@ -160,9 +168,14 @@ export async function uploadHttp(req, res, { root, key, now = Date.now, monitor 
       try { await pipeline(req, counter.stream, tap, createWriteStream(join(p.data, 'archive.upload'), { flags: 'wx', mode: 0o600 })); }
       catch { return await fail(over ? 413 : 400, over ? tooLarge : 'The upload did not finish; nothing was kept. Begin a new upload.'); }
       if (!counter.total()) return await fail(400, 'The upload was empty. Begin a new upload.');
-      await save(p.record, { ...stored, state: 'received', claimedAt: now(), receivedBytes: counter.total(), sha256: digest.digest('hex') });
+      // CHUNK-UPLOAD-1: integrity at receive time, not at apply: a body shorter or longer than its own
+      // Content-Length, or bytes whose SHA-256 differs from the client's X-Content-SHA256, are discarded.
+      const sha256 = digest.digest('hex');
+      if (declared !== null && counter.total() !== declared) return await fail(400, `Only ${counter.total()} of ${declared} bytes arrived; nothing was kept. Begin a new upload (the chunked command resumes instead of restarting).`);
+      if (clientDigest && clientDigest !== sha256) return await fail(422, `The ${counter.total()} bytes received have SHA-256 ${sha256}, not the ${clientDigest} that was sent; nothing was kept. Begin a new upload.`);
+      await save(p.record, { ...stored, state: 'received', claimedAt: now(), receivedBytes: counter.total(), sha256 });
       res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
-      return res.end(JSON.stringify({ received: true, bytes: counter.total(), next: 'Call github_git_workspace_upload operation apply with this upload_id and the current expectedGeneration.' }) + '\n');
+      return res.end(JSON.stringify({ received: true, bytes: counter.total(), sha256, next: 'Call github_git_workspace_upload operation apply with this upload_id and the current expectedGeneration.' }) + '\n');
     }
     let over = false;
     const counter = counted(limit, () => { over = true; });
@@ -187,6 +200,168 @@ export async function uploadHttp(req, res, { root, key, now = Date.now, monitor 
     return res.end(Buffer.concat(out));
   } catch { return await fail(500, 'The upload did not finish; nothing was kept. Begin a new upload.'); }
   finally { clearTimeout(deadline); }
+}
+
+// ---- CHUNK-UPLOAD-1: resumable uploads in small requests on the same one-time capability.
+// PUT <url>/chunk?offset=N stores one chunk (at most 8 MiB) as its own part file, named by offset,
+// length and SHA-256: a retried identical chunk is a no-op, different bytes at a stored range or an
+// overlapping range are refused. GET <url>/status lists the byte ranges present, so an interrupted
+// upload resumes. POST <url>/finish?size=N&sha256=H checks the parts tile [0, N) exactly, re-hashes
+// every part, assembles the file and compares the whole-file SHA-256 before anything is quarantined.
+// The first chunk claims the address for chunks (a one-request upload is then refused, and the
+// reverse). Chunks may keep arriving for UPLOAD_CHUNK_GRACE_MS after the ten-minute window only for an
+// upload whose first chunk arrived inside it. In git mode the assembled file is a git bundle, fetched
+// into the same fsck-checking quarantine repository a git push would use.
+const CHUNK_STEPS = { '/chunk': 'PUT', '/status': 'GET', '/finish': 'POST' };
+const PART = /^(\d{1,12})-(\d{1,9})-([a-f0-9]{64})\.part$/;
+export const UPLOAD_PARTS_MAX = 4096;
+const LOCK_STALE_MS = 300000;
+const sendJson = (res, status, body) => { if (res.headersSent) { res.destroy(); return; } res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(body) + '\n'); };
+async function claimKind(p) { try { return (await readFile(p.claimed, 'utf8')) === 'chunks' ? 'chunks' : 'single'; } catch (error) { if (error.code === 'ENOENT') return null; throw error; } }
+async function withUploadLock(p, fn) {
+  const path = p.data + '.lock';
+  for (let i = 0; ; i++) {
+    try { await (await open(path, 'wx', 0o600)).close(); break; } catch (error) {
+      if (error.code !== 'EEXIST') throw error;
+      const info = await lstat(path).catch(() => null);
+      if (info && Date.now() - info.mtimeMs > LOCK_STALE_MS) { await rm(path, { force: true }); continue; }
+      if (i >= 400) throw Object.assign(new Error('busy'), { busy: true });
+      await new Promise(resolve => setTimeout(resolve, 25));
+    }
+  }
+  try { return await fn(); } finally { await rm(path, { force: true }); }
+}
+async function listParts(p) {
+  const names = await readdir(join(p.data, 'parts')).catch(error => error.code === 'ENOENT' ? [] : Promise.reject(error));
+  return names.map(name => PART.exec(name)).filter(Boolean).map(m => ({ name: m[0], offset: Number(m[1]), bytes: Number(m[2]), sha256: m[3] })).sort((a, b) => a.offset - b.offset || a.bytes - b.bytes);
+}
+function present(parts) {
+  const out = [];
+  for (const x of parts) { const last = out.at(-1); if (last && x.offset <= last[1]) last[1] = Math.max(last[1], x.offset + x.bytes); else out.push([x.offset, x.offset + x.bytes]); }
+  return out;
+}
+
+async function chunkStep(req, res, ctx) {
+  const { route, claim, p, now } = ctx;
+  try {
+    const kind = await claimKind(p);
+    if (route === '/status') { req.resume(); return sendJson(res, 200, await chunkStatus(p, claim, kind, now)); }
+    if (kind === 'single') { req.resume(); return reply(res, 410, 'This upload address was already used for a one-request upload. Begin a new upload.'); }
+    if (claim.expiresAt <= now() && kind !== 'chunks') { req.resume(); return reply(res, 403, 'This upload address has expired. Begin a new upload.'); }
+    return route === '/chunk' ? await receiveChunk(req, res, ctx, kind) : await finishChunks(req, res, ctx);
+  } catch (error) {
+    req.resume();
+    if (error?.busy) return reply(res, 503, 'The upload is busy with another request; retry this one shortly.', { 'Retry-After': '1' });
+    return reply(res, 500, 'The chunk step did not finish; the chunks already stored are kept. Read status and retry.');
+  }
+}
+
+async function chunkStatus(p, claim, kind, now) {
+  const stored = await json(p.record), parts = stored.state === 'receiving' && kind === 'chunks' ? await listParts(p) : [];
+  const ranges = present(parts);
+  return { upload_id: 'upl_' + claim.uploadId, mode: claim.mode, state: stored.state === 'awaiting' && claim.expiresAt <= now() ? 'expired' : stored.state, chunked: kind === 'chunks', max_bytes: claim.maxBytes,
+    chunks: parts.length, bytes_present: parts.reduce((n, x) => n + x.bytes, 0), present: ranges.slice(0, 100), ...(ranges.length > 100 ? { present_truncated: true } : {}),
+    ...(stored.receivedBytes !== undefined ? { received_bytes: stored.receivedBytes } : {}), ...(stored.sha256 ? { sha256: stored.sha256 } : {}),
+    accepts_chunks_until: kind === 'chunks' ? claim.expiresAt + UPLOAD_CHUNK_GRACE_MS : claim.expiresAt };
+}
+
+async function receiveChunk(req, res, { url, claim, p, root, monitor, now }, kind) {
+  const m = /^\?offset=(\d{1,12})$/.exec(url.search), offset = m ? Number(m[1]) : NaN;
+  if (!Number.isSafeInteger(offset)) { req.resume(); return reply(res, 400, 'A chunk needs ?offset=<byte offset of its first byte>.'); }
+  if (offset >= claim.maxBytes) { req.resume(); return reply(res, 413, `Offset ${offset} is beyond this upload's ${Math.ceil(claim.maxBytes / MiB)} MiB limit. Begin a new upload with a larger maxMegabytes (up to ${UPLOAD_MAX_BYTES / MiB}).`); }
+  const declared = req.headers['content-length'] === undefined ? null : Number(req.headers['content-length']);
+  if (declared !== null && (!Number.isSafeInteger(declared) || declared < 0)) { req.resume(); return reply(res, 400, 'Invalid request length.'); }
+  const limit = Math.min(UPLOAD_CHUNK_MAX_BYTES, claim.maxBytes - offset);
+  const tooBig = declared !== null && declared > limit;
+  if (tooBig) { req.resume(); return reply(res, 413, declared > UPLOAD_CHUNK_MAX_BYTES ? `A chunk may be at most ${UPLOAD_CHUNK_MAX_BYTES / MiB} MiB; split the file with split -b 4m.` : `This chunk would pass the upload's ${Math.ceil(claim.maxBytes / MiB)} MiB limit. Begin a new upload with a larger maxMegabytes.`); }
+  const clientDigest = typeof req.headers['x-content-sha256'] === 'string' ? req.headers['x-content-sha256'].trim().toLowerCase() : null;
+  if (clientDigest !== null && !/^[a-f0-9]{64}$/.test(clientDigest)) { req.resume(); return reply(res, 400, 'X-Content-SHA256 must be the 64-character hex SHA-256 of the chunk.'); }
+  const stored = await json(p.record);
+  if (!['awaiting', 'receiving'].includes(stored.state)) { req.resume(); return reply(res, 410, stored.state === 'received' ? 'This upload was already finished; call apply.' : 'This upload is closed. Begin a new upload.'); }
+  if (!await admitted(root, monitor, 2 * UPLOAD_CHUNK_MAX_BYTES)) { req.resume(); return reply(res, 503, 'The worker is short of storage or memory; this chunk was not stored. Retry it shortly.', { 'Retry-After': '2' }); }
+  if (kind === null) {
+    // Atomic claim: link() fails if a one-request upload (or another first chunk) claimed it first.
+    const marker = p.claimed + '.' + randomBytes(6).toString('hex');
+    await writeFile(marker, 'chunks', { mode: 0o600, flag: 'wx' });
+    try { await link(marker, p.claimed); } catch (error) { if (error.code !== 'EEXIST') throw error; } finally { await rm(marker, { force: true }); }
+    if (await claimKind(p) !== 'chunks') { req.resume(); return reply(res, 410, 'This upload address was already used for a one-request upload. Begin a new upload.'); }
+    await withUploadLock(p, async () => { const current = await json(p.record); if (current.state === 'awaiting') await save(p.record, { ...current, state: 'receiving', chunked: true, claimedAt: now() }); });
+  }
+  const dir = join(p.data, 'parts'); await mkdir(dir, { recursive: true, mode: 0o700 });
+  const incoming = join(dir, 'incoming-' + randomBytes(8).toString('hex'));
+  let over = false; const counter = counted(limit, () => { over = true; }), digest = createHash('sha256');
+  const tap = new Transform({ transform(chunk, _e, done) { digest.update(chunk); done(null, chunk); } });
+  const deadline = setTimeout(() => req.destroy(), REQUEST_LIMIT_MS); deadline.unref();
+  try { await pipeline(req, counter.stream, tap, createWriteStream(incoming, { flags: 'wx', mode: 0o600 })); }
+  catch { await rm(incoming, { force: true }); return reply(res, over ? 413 : 400, over ? `A chunk may be at most ${limit === UPLOAD_CHUNK_MAX_BYTES ? UPLOAD_CHUNK_MAX_BYTES / MiB + ' MiB' : 'what is left of the upload limit'}; this one was not stored.` : 'This chunk did not arrive in full and was not stored; send it again (the other chunks are kept).'); }
+  finally { clearTimeout(deadline); }
+  const bytes = counter.total(), sha256 = digest.digest('hex');
+  const discard = async (status, message) => { await rm(incoming, { force: true }); return reply(res, status, message); };
+  if (!bytes) return discard(400, 'The chunk was empty and was not stored.');
+  if (declared !== null && bytes !== declared) return discard(400, `Only ${bytes} of ${declared} bytes of this chunk arrived; it was not stored. Send it again.`);
+  if (clientDigest && clientDigest !== sha256) return discard(422, 'This chunk arrived with different bytes than its X-Content-SHA256; it was not stored. Send it again.');
+  return withUploadLock(p, async () => {
+    const current = await json(p.record);
+    if (current.state !== 'receiving') return discard(410, current.state === 'received' ? 'This upload was already finished; call apply.' : 'This upload is closed. Begin a new upload.');
+    const parts = await listParts(p);
+    const same = parts.find(x => x.offset === offset && x.bytes === bytes);
+    if (same) { await rm(incoming, { force: true }); return same.sha256 === sha256 ? sendJson(res, 200, { received: true, offset, bytes, sha256, already_stored: true, next_offset: offset + bytes }) : reply(res, 409, `Different bytes were already stored at offset ${offset}; nothing was changed. Begin a new upload if the file changed.`); }
+    const clash = parts.find(x => x.offset < offset + bytes && offset < x.offset + x.bytes);
+    if (clash) return discard(409, `Bytes ${offset}-${offset + bytes - 1} overlap a stored chunk at ${clash.offset}-${clash.offset + clash.bytes - 1}; send chunks at the same offsets as before (split -b 4m).`);
+    if (parts.length >= UPLOAD_PARTS_MAX) return discard(413, `More than ${UPLOAD_PARTS_MAX} chunks; use larger chunks (split -b 4m).`);
+    await rename(incoming, join(dir, `${offset}-${bytes}-${sha256}.part`));
+    return sendJson(res, 200, { received: true, offset, bytes, sha256, next_offset: offset + bytes });
+  });
+}
+
+async function finishChunks(req, res, { url, claim, p, root, now }) {
+  req.resume();
+  const m = /^\?size=(\d{1,12})&sha256=([a-f0-9]{64})$/.exec(url.search);
+  if (!m) return reply(res, 400, 'finish needs ?size=<total bytes>&sha256=<hex SHA-256 of the whole file> (sha256sum).');
+  const size = Number(m[1]), expected = m[2], git = claim.mode === 'git';
+  if (!Number.isSafeInteger(size) || size < 1 || size > claim.maxBytes) return reply(res, 413, `size must be between 1 and this upload's ${claim.maxBytes} byte limit.`);
+  return withUploadLock(p, async () => {
+    const stored = await json(p.record);
+    if (stored.state === 'received' && stored.chunked) return stored.receivedBytes === size && stored.sha256 === expected
+      ? sendJson(res, 200, { received: true, bytes: size, sha256: expected, already_finished: true, next: 'Call github_git_workspace_upload operation apply with this upload_id and the current expectedGeneration.' })
+      : reply(res, 409, 'This upload was already finished with a different size or SHA-256. Begin a new upload for a different file.');
+    if (stored.state === 'awaiting') return reply(res, 409, 'No chunk has arrived yet. Send the chunks with PUT <url>/chunk?offset=N first.');
+    if (stored.state !== 'receiving' || !stored.chunked) return reply(res, 410, 'This upload is closed. Begin a new upload.');
+    const fail = async (status, message) => { await save(p.record, { ...stored, state: 'failed', failedAt: now() }).catch(() => {}); await rm(p.data, { recursive: true, force: true }).catch(() => {}); return reply(res, status, message); };
+    const parts = await listParts(p); let at = 0; const missing = [];
+    for (const x of parts) { if (x.offset > at) missing.push([at, x.offset]); at = Math.max(at, x.offset + x.bytes); }
+    if (at > size) return fail(400, `Chunks reach byte ${at}, past the stated size ${size}; nothing was kept. Begin a new upload.`);
+    if (at < size) missing.push([at, size]);
+    if (missing.length) return sendJson(res, 409, { finished: false, missing: missing.slice(0, 20), next: 'Send the missing byte ranges with PUT <url>/chunk?offset=<start> (or rerun the chunked command; stored chunks are skipped as duplicates), then finish again.' });
+    const target = join(p.data, git ? 'upload.bundle' : 'archive.upload');
+    const whole = createHash('sha256'); const out = await open(target, 'wx', 0o600);
+    try {
+      for (const x of parts) {
+        const bytes = await readFile(join(p.data, 'parts', x.name));
+        if (bytes.length !== x.bytes || createHash('sha256').update(bytes).digest('hex') !== x.sha256) { await out.close(); return fail(500, 'A stored chunk did not read back intact; nothing was kept. Begin a new upload.'); }
+        whole.update(bytes); let done = 0; while (done < bytes.length) done += (await out.write(bytes, done)).bytesWritten;
+      }
+      await out.sync();
+    } finally { await out.close().catch(() => {}); }
+    const sha256 = whole.digest('hex');
+    if (sha256 !== expected) return fail(422, `The ${size} bytes received have SHA-256 ${sha256}, not the ${expected} that was sent; nothing was kept. Check that size and sha256 are of the same file you split, then begin a new upload.`);
+    let refs;
+    if (git) {
+      const repo = join(p.data, 'repo.git');
+      // Branches in the bundle, or its HEAD (`git bundle create f HEAD`) as branch "upload".
+      const heads = await runGit(root, repo, ['bundle', 'list-heads', target], { timeoutMs: 30000 }).catch(() => ({ code: 1 }));
+      const names = heads.code === 0 ? heads.stdout.toString('utf8').split('\n').map(line => line.split(' ')[1]).filter(Boolean) : [];
+      const spec = names.some(n => n.startsWith('refs/heads/')) ? '+refs/heads/*:refs/heads/*' : names.includes('HEAD') ? '+HEAD:refs/heads/upload' : null;
+      const fetched = spec ? await runGit(root, repo, ['-c', 'protocol.file.allow=always', '-c', 'fetch.fsckObjects=true', 'fetch', '--quiet', '--no-tags', '--no-write-fetch-head', '--no-recurse-submodules', '--', target, spec], { timeoutMs: 240000 }).catch(() => ({ code: 1 })) : { code: 1 };
+      const listed = fetched.code === 0 ? await runGit(root, repo, ['for-each-ref', '--count=51', '--format=%(refname)%00%(objectname)', 'refs/heads/'], { timeoutMs: 30000 }) : null;
+      refs = listed?.code === 0 ? listed.stdout.toString('utf8').split('\n').filter(Boolean).map(line => { const [name, head] = line.split('\0'); return { name, head }; }) : [];
+      if (!refs.length || refs.length > 50) return fail(422, 'The git bundle was refused: damaged, no branch in it, more than 50 branches, or it needs commits the workspace does not have (create it with --not <base> from the begin result). Begin a new upload.');
+      await rm(target, { force: true });
+    }
+    await save(p.record, { ...stored, state: 'received', receivedBytes: size, sha256, chunked: true, finishedAt: now(), ...(refs ? { refs } : {}) });
+    await rm(join(p.data, 'parts'), { recursive: true, force: true });
+    return sendJson(res, 200, { received: true, bytes: size, sha256, chunks: parts.length, ...(refs ? { branches: refs.map(r => r.name.slice(11)) } : {}), next: 'Call github_git_workspace_upload operation apply with this upload_id and the current expectedGeneration.' });
+  });
 }
 
 function runGit(root, cwd, args, { timeoutMs = 45000, input, maxOutputBytes = 8 * MiB } = {}) {
@@ -419,7 +594,7 @@ export async function pruneUploads(root, now = Date.now()) {
       // Ten minutes beyond the apply window, so a running apply is never cut short.
       if (!stored || !(now > stored.expiresAt + UPLOAD_RETENTION_MS + 600000)) continue;
       const p = uploadPaths(root, id, match[1]);
-      await rm(p.data, { recursive: true, force: true }); await rm(p.claimed, { force: true }); await rm(p.record, { force: true }); removed++;
+      await rm(p.data, { recursive: true, force: true }); await rm(p.data + '.lock', { force: true }); await rm(p.claimed, { force: true }); await rm(p.record, { force: true }); removed++;
     }
   }
   return { removed };

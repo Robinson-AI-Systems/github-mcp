@@ -7,8 +7,9 @@ import {egressServer} from './egress.js';
 const valid=path=>typeof path==='string'&&path.startsWith('/')&&!path.startsWith('//')&&path.length<=8192&&!/[\x00-\x20\x7f]/.test(path);
 // SINGLE-DOMAIN-1: one-time download/upload addresses (signed claims the broker verifies) go to the
 // broker too, with the broker's own five-minute transfer window instead of the 60-second API window.
-const TRANSFER=/^\/v1\/(?:download|upload)\/[A-Za-z0-9_.-]{1,2300}(?:\/info\/refs\?service=git-(?:upload|receive)-pack|\/git-(?:upload|receive)-pack)?$/;
-export const INGRESS_CAPABILITIES=Object.freeze({service:'robinson-playground-ingress',transfer:'broker-v1'});
+// CHUNK-UPLOAD-1: plus the resumable upload steps (/chunk?offset=, /status, /finish?size=&sha256=).
+const TRANSFER=/^\/v1\/(?:download\/[A-Za-z0-9_.-]{1,2300}(?:\/info\/refs\?service=git-upload-pack|\/git-upload-pack)?|upload\/[A-Za-z0-9_.-]{1,2300}(?:\/info\/refs\?service=git-receive-pack|\/git-receive-pack|\/chunk\?offset=\d{1,12}|\/status|\/finish\?size=\d{1,12}&sha256=[a-f0-9]{64})?)$/;
+export const INGRESS_CAPABILITIES=Object.freeze({service:'robinson-playground-ingress',transfer:'broker-v1',upload_chunks:'v1'});
 export function ingressServer({coding={hostname:'coding',port:3000},broker={hostname:'broker',port:3000}}={}){
  const server=createServer({requestTimeout:330000,headersTimeout:10000,maxHeaderSize:16384},(req,res)=>{
   if(!valid(req.url)||req.method==='CONNECT'){res.writeHead(400);return res.end();}

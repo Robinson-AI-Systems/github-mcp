@@ -20,7 +20,7 @@ import { createHmac, hkdfSync, timingSafeEqual } from 'node:crypto';
 import { readEncryptionKey } from '../core/crypto.js';
 import { publicOrigin } from '../core/http.js';
 import { nativeWorkerPublicKey } from './signing.js';
-import { workerUrl, verifyDownloadCapability, verifyUploadCapability, DOWNLOAD_SESSION_MS } from './protocol.js';
+import { workerUrl, verifyDownloadCapability, verifyUploadCapability, DOWNLOAD_SESSION_MS, UPLOAD_CHUNK_GRACE_MS } from './protocol.js';
 
 export const TRANSFER_PREFIX = '/v1/transfer/';
 const KIND = { d: { path: '/v1/download/', pack: '/git-upload-pack', service: 'git-upload-pack', methods: ['GET', 'POST'] },
@@ -28,7 +28,10 @@ const KIND = { d: { path: '/v1/download/', pack: '/git-upload-pack', service: 'g
 const BROKER_HOST = /^ras-pg-[a-f0-9]{32}-(\d{1,3}-\d{1,3}-\d{1,3}-\d{1,3})\.sslip\.io$/;
 // Only what a Git smart-HTTP client or curl needs. Everything else (Cookie, Authorization,
 // Proxy-Authorization, x-robinson-*, forwarding headers) is dropped before the proxy hop.
-export const FORWARDED_HEADERS = Object.freeze(['accept', 'accept-encoding', 'content-encoding', 'content-length', 'content-type', 'git-protocol', 'user-agent']);
+// x-content-sha256 lets a one-request upload be checked against the client's own digest on receipt.
+export const FORWARDED_HEADERS = Object.freeze(['accept', 'accept-encoding', 'content-encoding', 'content-length', 'content-type', 'git-protocol', 'user-agent', 'x-content-sha256']);
+// CHUNK-UPLOAD-1: the resumable upload steps (each request stays small) and their only allowed query.
+const CHUNK_STEPS = { '/chunk': { method: 'PUT', query: /^\?offset=\d{1,12}$/ }, '/status': { method: 'GET', query: /^$/ }, '/finish': { method: 'POST', query: /^\?size=\d{1,12}&sha256=[a-f0-9]{64}$/ } };
 
 function macKey(env) { return Buffer.from(hkdfSync('sha256', readEncryptionKey(env), Buffer.from('robinson-native-git/v1'), Buffer.from('transfer-relay-mac'), 32)); }
 const mac = (env, kind, origin, capability) => createHmac('sha256', macKey(env)).update(JSON.stringify(['robinson-native-relay/v1', kind, origin, capability])).digest('base64url').slice(0, 32);
@@ -87,12 +90,12 @@ const capabilityKey = (env, route) => route.startsWith('b.') || !env.NATIVE_GIT_
  */
 export function planTransferRelay(request, env = process.env, now = Date.now()) {
  let url; try { url = new URL(request.url); } catch { return refuse(404, 'Not found.'); }
- const m = /^\/v1\/transfer\/(d|u)\/(w|p|b\.[a-z0-9.-]{1,200})\/([A-Za-z0-9_-]{32})\/([A-Za-z0-9_-]{1,2048}\.[A-Za-z0-9_-]{1,200})(\/info\/refs|\/git-upload-pack|\/git-receive-pack)?$/.exec(url.pathname);
+ const m = /^\/v1\/transfer\/(d|u)\/(w|p|b\.[a-z0-9.-]{1,200})\/([A-Za-z0-9_-]{32})\/([A-Za-z0-9_-]{1,2048}\.[A-Za-z0-9_-]{1,200})(\/info\/refs|\/git-upload-pack|\/git-receive-pack|\/chunk|\/status|\/finish)?$/.exec(url.pathname);
  if (!m) return refuse(404, 'Not found.');
- const [, kind, route, tag, capability, suffix = ''] = m, spec = KIND[kind];
- if (suffix && suffix !== '/info/refs' && suffix !== spec.pack) return refuse(404, 'Not found.');
- if (!spec.methods.includes(request.method)) return refuse(405, 'This address only serves one-time Git or file transfers.');
- const query = suffix === '/info/refs' ? `?service=${spec.service}` : '';
+ const [, kind, route, tag, capability, suffix = ''] = m, spec = KIND[kind], step = kind === 'u' ? CHUNK_STEPS[suffix] : undefined;
+ if (suffix && suffix !== '/info/refs' && suffix !== spec.pack && !step) return refuse(404, 'Not found.');
+ if (step ? request.method !== step.method : !spec.methods.includes(request.method)) return refuse(405, 'This address only serves one-time Git or file transfers.');
+ const query = step ? (step.query.test(url.search) ? url.search : null) : suffix === '/info/refs' ? `?service=${spec.service}` : '';
  if (url.search !== query) return refuse(404, 'Not found.');
  const destination = resolveRoute(env, route);
  if (!destination) return refuse(404, 'This transfer address is not valid here. Ask for a new one.');
@@ -100,7 +103,7 @@ export function planTransferRelay(request, env = process.env, now = Date.now()) 
  if (!timingSafeEqual(Buffer.from(tag), Buffer.from(expected))) return refuse(403, 'This transfer address is not valid. Ask for a new one.');
  try {
   const key = capabilityKey(env, route);
-  if (kind === 'd') verifyDownloadCapability(capability, key, now, { graceMs: DOWNLOAD_SESSION_MS }); else verifyUploadCapability(capability, key, now);
+  if (kind === 'd') verifyDownloadCapability(capability, key, now, { graceMs: DOWNLOAD_SESSION_MS }); else verifyUploadCapability(capability, key, now, { graceMs: step ? UPLOAD_CHUNK_GRACE_MS : 0 });
  } catch (error) { return refuse(403, /expired/.test(error?.message) ? 'This transfer address has expired. Ask for a new one.' : 'This transfer address is not valid. Ask for a new one.'); }
  const source = request.headers instanceof Headers ? request.headers : new Headers(request.headers ?? {});
  const headers = new Headers();
@@ -109,8 +112,9 @@ export function planTransferRelay(request, env = process.env, now = Date.now()) 
 }
 
 /** The plain-English note for a person whose AI sandbox cannot reach the transfer host. */
-export function blockedNote(url) {
+export function blockedNote(url, { short = false } = {}) {
  let host = 'this service'; try { host = new URL(url).hostname; } catch { /* keep generic */ }
+ if (short) return `If the sandbox cannot reach ${host} (proxy 403, DNS error), add that one domain to its network allowlist (Claude: Capabilities / network access), then begin again.`;
  return `If this fails because the sandbox cannot reach ${host} (host not allowed, proxy 403, DNS error), add that one domain to your AI's network allowlist (for Claude: the Capabilities / network access allowed-domains setting), then ask for a new link. Same domain for every repository and transfer; nothing is lost.`;
 }
 
