@@ -64,6 +64,18 @@ describe('specific rules', () => {
     expect(x.what).toContain('example-org');
     expect(x.cause).toContain('cannot see it');
   });
+  it('a missing branch or ref is reported as missing, not as an access problem', () => {
+    for (const [status, data] of [[404, { message: 'Branch not found' }], [404, { message: 'No commit found for the ref feature-x' }], [422, { message: 'No commit found for the ref feature-x' }], [422, { message: 'Reference does not exist' }]]) {
+      const x = d(status, data, {}, { account: 'example-org' });
+      expect(x.kind).toBe('ref_not_found');
+      expect(x.cause).not.toContain('cannot see it');
+      expect(x.todo).not.toMatch(/App is installed/);
+    }
+    expect(d(404, { message: 'No commit found for the ref feature-x' }).what).toContain('"feature-x"');
+    const viaUrl = describeGithubError(Object.assign(new Error('Not Found'), { status: 404, response: { data: { message: 'Not Found' } }, request: { url: 'https://api.github.com/repos/o/r/branches/new%2Fwork' } }));
+    expect(viaUrl.kind).toBe('ref_not_found'); expect(viaUrl.what).toContain('"new/work"');
+    expect(d(404, { message: 'Not Found' }).kind).toBe('not_found');
+  });
   it('409 variants: empty repository, conflict, sha mismatch', () => {
     expect(d(409, { message: 'Git Repository is empty.' }).kind).toBe('empty_repository');
     expect(d(409, { message: 'Merge conflict' }).kind).toBe('conflict');
