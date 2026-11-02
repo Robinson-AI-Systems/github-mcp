@@ -2,7 +2,7 @@ import { redact } from './util.js';
 // Reviews and review threads (E-3). Reads: reviews, threads (GraphQL, with resolved/outdated), inline comments. Text written by
 // people without push access carries its author association so the dispatcher marks it untrusted.
 import { createHash } from 'node:crypto';
-import { listAll, graphql } from '../github/client.js';
+import { listAll, graphql, pinRepositoryQuery, repositoryVariables } from '../github/client.js';
 import { defineRead } from './define-read.js';
 import { plain, readerFor } from './github-read.js';
 
@@ -16,13 +16,13 @@ const commentText = body => ({
   body_sha256: createHash('sha256').update(String(body ?? '')).digest('hex'),
   ...(String(body ?? '').length > 1500 ? { body_truncated: true } : {})
 });
-const THREADS_QUERY = `query($owner: String!, $repo: String!, $number: Int!, $after: String, $first: Int!) {
+const THREADS_QUERY = pinRepositoryQuery(`query($owner: String!, $repo: String!, $number: Int!, $after: String, $first: Int!) {
   repository(owner: $owner, name: $repo) { pullRequest(number: $number) { reviewThreads(first: $first, after: $after) { totalCount pageInfo { hasNextPage endCursor } nodes {
     id isResolved isOutdated path line startLine originalLine originalStartLine diffSide
     root: comments(first: 1) { nodes { id body authorAssociation originalCommit { oid } } }
     comments(last: 1) { totalCount nodes { author { login } body authorAssociation url } }
   } } } }
-}`;
+}`, repositoryVariables('repo'));
 
 export const reviewList = defineRead({
   name: 'github_review_list', area: 'review', audience: ['B', 'Op'], summaryType: 'review',

@@ -1,5 +1,5 @@
 // Shared typed native Git surface; no provider or operating-system access.
-import { containsCredential } from '../github/content-protection.js';
+import { containsCredential, credentialLocations } from '../github/content-protection.js';
 export const READ_OPERATIONS = ['protection_check', 'operation_result', 'status', 'log', 'show', 'diff', 'changed_files', 'blame', 'refs', 'conflicts', 'read_file', 'remote_refs', 'stash_list', 'worktree_list', 'bisect_log'];
 // NATIVE-ERGO-1: operations/options a worker understands only once it reports native_options 'ergonomic-v1'.
 export const NATIVE_OPTIONS_VERSION = 'ergonomic-v1';
@@ -73,7 +73,7 @@ export function allowedOptions(operation) { return OPTIONS[operation] ? [...OPTI
 export function gitCommand(operation, input = {}) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw new TypeError('Native options must be an object.');
   if (containsCredential(JSON.stringify(input))) throw new TypeError('Credential-shaped native input belongs in protected setup, not tool arguments.');
-  if (operation === 'write_file' && typeof input.base64 === 'string' && containsCredential(Buffer.from(input.base64, 'base64').toString('utf8'))) throw new TypeError('Credential-shaped file input belongs in protected setup, not tool arguments.');
+  if (operation === 'write_file' && typeof input.base64 === 'string') { const text = Buffer.from(input.base64, 'base64').toString('utf8'); if (containsCredential(text)) throw new TypeError(`Credential-shaped file input belongs in protected setup, not tool arguments (matched at ${credentialLocations(text)}; github_content_protection_check explains the rule).`); }
   const allowed = OPTIONS[operation];
   if (!allowed) throw new TypeError('Unsupported typed native Git operation; use the documented local alternative.');
   const unknown = Object.keys(input).filter(key => key !== 'worktree' && !allowed.includes(key));

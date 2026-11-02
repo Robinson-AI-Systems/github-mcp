@@ -11,6 +11,8 @@ const receipt=(data,error=false)=>({structuredContent:data,
 const refused=(why)=>receipt({done:false,status:'refused',reason:why},true);
 const clock=(ctx)=>typeof ctx.now==='function'?ctx.now():Date.now();
 const within=(ctx,start)=>clock(ctx)-start<46000;
+// Also a refusal's body, so its status and reason can be told apart from an uncertain write.
+const anyBody=(response)=>response?.structuredContent?completeDispatchResult(response):null;
 const readBody=(response)=>{
   if(response?.isError||!response?.structuredContent)return null;
   return completeDispatchResult(response);
@@ -154,6 +156,31 @@ const mergeAutomationTool={
   inputSchema:{type:'object',properties:{owner:OWNER,repo:REPO,number:NUMBER},required:['repo','number'],additionalProperties:false},
   annotations:{readOnlyHint:true,destructiveHint:false,idempotentHint:true,openWorldHint:true}
 };
+// The essentials of a PR, for the agent's next step (owner feedback 2026-11-02: "the pull request result is short on detail").
+function prEssentials(pr,args={}){
+  const pick=(v)=>v===undefined?null:v;
+  return {number:pr.number,html_url:pick(pr.html_url),state:pick(pr.state),draft:pick(pr.draft),
+    head:pick(typeof pr.head==='string'?pr.head:pr.head?.ref??args.head?.split(':').pop()),head_sha:pick(pr.head_sha??pr.head?.sha),
+    base:pick(typeof pr.base==='string'?pr.base:pr.base?.ref??args.base),
+    ...(pr.mergeable_state!==undefined?{mergeable_state:pr.mergeable_state}:{}),...(pr.mergeable!==undefined?{mergeable:pr.mergeable}:{})};
+}
+// A preview (no confirm) is not a failure: nothing was sent, so there is nothing uncertain to warn about (owner feedback 2026-11-02).
+function notOpened(response){
+  const status=response?.status??'unknown';
+  if(status==='preview'||status==='needs_confirmation')
+    return receipt({done:false,status:'preview',guarded_tool:'github_pr_create',underlying_status:status,
+      ...(typeof response?.preview==='string'?{preview:response.preview}:{}),
+      ...(typeof response?.needsConfirmation==='boolean'?{needsConfirmation:response.needsConfirmation}:{}),
+      ...(typeof response?.prompt==='string'?{prompt:response.prompt}:{}),
+      ...(typeof response?.because==='string'?{because:response.because}:{}),
+      next:'Nothing was sent. Call again with the same arguments and confirm: true to open the pull request.'});
+  if(status==='refused'||status==='failed')
+    return receipt({done:false,status,guarded_tool:'github_pr_create',
+      ...(typeof response?.because==='string'?{because:response.because}:{}),...(typeof response?.error==='string'?{error:response.error}:{}),
+      next:'No pull request was opened. Fix what the refusal names, then call again.'});
+  return receipt({done:false,status:'not_applied',guarded_tool:'github_pr_create',underlying_status:status,
+    next:'The guarded writer did not confirm a PR. Read its result or current GitHub state; do not retry an uncertain write with a new request key.'});
+}
 async function openPr(args,ctx){
   if(!['everyday','full'].includes(ctx.connection?.profile))
     return refused('Opening PRs requires the everyday or full connection profile.');
@@ -166,7 +193,7 @@ async function openPr(args,ctx){
   // Without labels there is no second durable action to coordinate, so do not
   // duplicate that entire preflight in this outer workflow.
   if(!requested.length){
-    const response=readBody(await call(ctx,'github_pr_create',{
+    const response=anyBody(await call(ctx,'github_pr_create',{
       ...s,head:args.head,...(args.base?{base:args.base}:{}),
       title:args.title,body:args.body??'',draft:args.draft===true,
       confirm:args.confirm===true,dryRun:args.dryRun===true,
@@ -196,14 +223,10 @@ async function openPr(args,ctx){
           next:'Existing open PR independently verified from the current head; inspect CI when ready.'});
       }
       return receipt({done:true,status:result.replayed?'existing':'pr_opened',
-        number:result.number,head_sha:result.head_sha??result.head?.sha??null,
-        base:result.base?.ref??result.base??args.base??null,
-        html_url:result.html_url??null,guarded_tool:'github_pr_create',
-        next:'PR creation or existing PR verified by the guarded writer; inspect CI when ready.'});
+        ...prEssentials(result,args),guarded_tool:'github_pr_create',
+        next:'PR opened (or the existing one verified). Wait for its checks with github_check_wait (pr: '+result.number+').'});
     }
-    return receipt({done:false,status:'not_applied',guarded_tool:'github_pr_create',
-      underlying_status:response?.status??'unknown',
-      next:'The guarded writer did not confirm a PR. Read its result or current GitHub state; do not retry an uncertain write with a new request key.'});
+    return notOpened(response);
   }
   let repo;
   try{repo=readBody(await call(ctx,'github_repo_get',s));}
@@ -254,10 +277,10 @@ async function openPr(args,ctx){
     ...s,head:args.head,base,title:args.title,body:args.body??'',draft:args.draft===true,
     confirm:args.confirm===true,dryRun:args.dryRun===true,
     ...(args.requestKey?{requestKey:args.requestKey+':create'}:{})});
-  const applied=readBody(result);
-  return receipt({done:false,status:applied?.status==='applied'?'pr_opened':'not_applied',
-    underlying_status:applied?.status??'unknown',guarded_tool:'github_pr_create',
-    ...(applied?.number?{number:applied.number}:{}),
+  const applied=anyBody(result);
+  if(applied?.status!=='applied')return notOpened(applied);
+  return receipt({done:false,status:'pr_opened',guarded_tool:'github_pr_create',
+    ...(Number.isInteger(applied?.result?.number)?prEssentials(applied.result,args):applied?.number?{number:applied.number}:{}),
     next:'Re-run with the same fields to verify the PR and apply requested labels, if any.'});
 }
 const openTool={

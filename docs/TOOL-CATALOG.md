@@ -3,6 +3,8 @@
 > **Current authority and parity remediation (2026-10-28):** [requirements](OWNER-DECISION-2026-10-27.md), [delivery plan](designs/AUTHORITY-PARITY-2026-10-28.md). Full owner writes disclose/execute/journal/verify in one call; explicit delegated restrictions remain. Older dated statements about owner caps, production ceremony and mandatory merge gates are superseded. Source delivery and live acceptance remain separate.
 # Tool catalog
 
+**CONN-FB-1 connector feedback (2026-11-02):** new default-list read `github_check_wait({repo, pr | ref, owner?, timeoutSeconds? ≤45, expectedHeadSha?})` waits inside one call for the exact-head required checks and returns `finished` (`overall` green/red; red stops early) or `still_running` with `resume.arguments` (also `head_moved` when the PR head changed). `github_workflow_merge_when_green` takes `waitForChecks: true` (waits only when running checks are the sole blocker; never merges while they run). Extra places limited to named repositories now run this server's own pinned GraphQL documents (review threads in `github_pr_get`/`github_review_list_threads`, the `createCommitOnBranch` of `github_content_push_files`/`github_content_edit_files`) for those repositories only, with the same branch-rules check as the REST path; any other GraphQL text stays refused there. Unreadable review threads say why and still block merges. Dependency versions and `{` assigned to `pgpass`-style keys (npm lockfiles) are no longer database passwords; native `write_file` refusals name the line and rule. `meta.github_rate` lists only the acting account (others only when blocked). Unknown-argument errors list the valid arguments. `github_commit_list` on a missing branch, and the push/PR writers' own missing-branch refusals, report `ref_not_found`. `github_workflow_open_pr` without confirm returns `status: preview` (no uncertain-write note) and an opened PR reports number, URL, state, draft, head/base, head SHA and mergeability. `github_actions_get_run_logs_summary` accepts `pr` or `ref` instead of `runId` and adds `lines_before_failure` when the only error is "Process completed with exit code N"; `github_actions_get_job_log` accepts `text_offset`/`log_hash`/`max_chars`/`tail_lines` and returns a ready `continue` call. `github_content_get` reads 200 lines from `startLine` alone and points folders at `github_content_get_tree`; `github_batch` returns `call_alone` instead of cutting a whole-text result; `github_pr_list` items say `merged`.
+
 **VER-1 visible release (2026-11-02):** `github_whoami` returns `server_release` (`version` `<package>+<commit12>`, the deployed `commit`, its GitHub `source` link, and how to read recent changes on the `live` branch); the MCP `initialize` serverInfo `version` carries the same `+<commit12>`, so an agent can tell whether a fix it needs is live.
 
 **ERR-REF-1 missing branch wording (2026-11-02):** every tool's GitHub error explanation reports a missing branch or ref (404 "Branch not found"/"No commit found for the ref", 422 "Reference does not exist", or a plain 404 on a branch/ref URL) as kind `ref_not_found` naming the branch, with "list branches or create it first", instead of the access/App-installation wording a generic 404 keeps.
@@ -27,7 +29,7 @@ Restricted preview RTC successful replies revalidate service pass and scratch ow
 
 Every tool this server will have, by area — the product scope. The implementing model builds exactly these; anything
 else goes in `docs/ROADMAP.md` and the PR report, and universal tools (last section) provide guarded access only where their actual credential, classification and request support permits. Endpoint-level completeness remains unproven; see [MAXIMUM-AUTHORITY](designs/MAXIMUM-AUTHORITY.md). Counts are checked by `python3 scripts/count-catalog.py` (run by `npm run check` and CI since A-1, #1). When a
-tool merges, its Card cell gains `built #<PR>`. Built so far: **510 cataloged tools** (every row below is in the registry, `src/tools/index.js`; `scripts/count-catalog.py` and `scripts/check-writes.mjs` fail the build if a tool and its row disagree)
+tool merges, its Card cell gains `built #<PR>`. Built so far: **511 cataloged tools** (every row below is in the registry, `src/tools/index.js`; `scripts/count-catalog.py` and `scripts/check-writes.mjs` fail the build if a tool and its row disagree)
 and holds the two A-5 tools, the B-3 protected-list reader the two B-2 production-switch tools and the B-4 spend-limit tool. Since B-5 every result of these tools is shaped (`src/tools/util.js`) and failures are explained by `src/tools/errors.js`. Since B-6 a connection sees only the tools its profile allows (`tools/list` and by-name calls). Every write tool below is built with `defineGithubWrite` (B-1, #16, `src/tools/define-github-write.js`) and pass the nine write-contract checks (`test/helpers/write-contract.js`); the two B-2 tools are the first (`src/tools/server.js`).
 
 **Safety metadata and scoped behavior:** `—` reads only; `P` supports optional dryRun; `D` describes destructive effects; `Prod`/`Prod*` describe production scope; `A`/`A*` describe access changes; `M` describes notifications; `$`/`$*` describe billing. `C` retains the restricted-profile confirmation declaration checked against source. On a full ordinary owner connection these marks are disclosure, not automatic confirmation or refusal. Explicitly restricted profiles/passes retain their chosen mode, access and spend limits. GitHub applies provider rules; journal/replay/readback and credential isolation apply to everyone.
@@ -283,12 +285,13 @@ Card(s): G-1.
 | `github_actions_list_pending_deployments` | Runs waiting for an environment approval | — | N | I | Op | R | G-1 built #39 |
 | `github_actions_review_pending_deployment` | Approve or reject a waiting deployment | C·Prod* | N | U | Op | F | G-1 built #41 |
 
-## Checks, statuses, artifacts and caches (`github_check_*, github_status_*, github_artifact_*, github_cache_*`) — 10
+## Checks, statuses, artifacts and caches (`github_check_*, github_status_*, github_artifact_*, github_cache_*`) — 11
 
 Card(s): G-2.
 
 | Tool | What it does | Safety | Origin | Cred | Audience | Profile | Card |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| `github_check_wait` | Wait (≤45 s per call) for the required checks at a PR head or commit to finish; green/red as soon as decided, else `still_running` with `resume` arguments | — | N | I | B,Op | R | CONN-FB-1 |
 | `github_check_get_ci_state` | CI state at a commit or PR head: every check run and status, which are required by rules, overall green/red/pending | — | N | I | B,Op | R | G-2 built #42 |
 | `github_check_get_run` | One check run with output summary and annotations | — | C | I | B | R | G-2 built #42 |
 | `github_check_create_run` | Create a check run on a commit (GitHub App only) | P | C | I | B | E | G-2 built #43 |
@@ -930,7 +933,7 @@ Metered actions with no published per-use price (larger runners, Copilot agent a
 
 ## Totals
 
-**Totals:** 510 tools: 504 hand-built + 6 universal (`github_api_*`, `github_graphql_*`), plus guided settings for every
+**Totals:** 511 tools: 505 hand-built + 6 universal (`github_api_*`, `github_graphql_*`), plus guided settings for every
 dashboard-only owner setting. By profile (lowest profile that has the tool): read_only 161, everyday adds 85
 (everyday lists 246), full adds 118 (full lists 406; `github_tenant_remove` only on the owner's own direct connection, so everyone else sees 403). In compact mode (`docs/designs/BATCH-C.md`) an agent
 loads only about 25 tools up front (meta-tools, whoami, universal search, workflows) and reaches the rest through
@@ -948,7 +951,7 @@ loads only about 25 tools up front (meta-tools, whoami, universal search, workfl
 | Labels and milestones | 7 |
 | Discussions, projects and search | 11 |
 | Actions: workflows, runs, jobs and logs | 13 |
-| Checks, statuses, artifacts and caches | 10 |
+| Checks, statuses, artifacts and caches | 11 |
 | Secrets and variables | 7 |
 | Environments and deployments | 10 |
 | Releases | 7 |
@@ -983,7 +986,7 @@ loads only about 25 tools up front (meta-tools, whoami, universal search, workfl
 | Code quality and GitHub help | 4 |
 | Robinson Playground commands | 5 |
 | CAP-6 gated families: merge queue, Copilot coding agent, feature check | 5 |
-| **Total** | **510** |
+| **Total** | **511** |
 
 <!-- #108: experimental RTC HTTPS reader bridges only server/meta read tools using existing guarded dispatch; RTC 1 certification is not claimed. -->
 

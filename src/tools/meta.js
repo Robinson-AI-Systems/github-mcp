@@ -6,6 +6,7 @@ import { createHash } from 'node:crypto';
 import { areaOf, describeTool, kindOf, marksOf, searchTools } from '../core/meta.js';
 import { listedDescription, toolsForProfile, toolsForListing } from '../core/registry.js';
 import {OptionalConsentRequired} from '../tenancy/optional-challenge.js';
+import { KEEP_WHOLE } from '../core/result-envelope.js';
 
 const readOnly = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false };
 const visible = (ctx) => toolsForProfile(ctx.registry, ctx.connection.profile, ctx.connection);
@@ -80,14 +81,21 @@ async function batchHandler(args, ctx) {
     const wave = await Promise.all(calls.slice(offset, offset + 3).map(async (call) => {
       const r = await ctx.callTool(call.name, call.args ?? {});
       if (r._meta?.['mcp/www_authenticate']) throw new OptionalConsentRequired(r);
-      return r.isError
-        ? { name: call.name, ok: false, error: r.content?.[0]?.text ?? 'The call failed.' }
-        : { name: call.name, ok: true, result: r.structuredContent ?? null };
+      if (r.isError) return { name: call.name, ok: false, error: r.content?.[0]?.text ?? 'The call failed.' };
+      // A whole file or an explicit window (fullText, startLine, byte range) is the caller's choice to receive large text; a
+      // batch reply is capped like any other result, so such text would be cut. Say how to get it whole instead of cutting it
+      // (owner feedback 2026-11-02: "github_batch truncates bodies to 4000 characters and fullText overflows").
+      if (r[KEEP_WHOLE] && JSON.stringify(r.structuredContent ?? null).length > BATCH_ITEM_CHARS)
+        return { name: call.name, ok: true, omitted: 'too_large_for_batch', characters: JSON.stringify(r.structuredContent).length,
+          call_alone: { name: call.name, args: call.args ?? {} }, note: 'This whole-text result is too large to share a batch reply. Call that tool on its own (directly or with github_call) to receive it whole.' };
+      return { name: call.name, ok: true, result: r.structuredContent ?? null };
     }));
     results.push(...wave);
   }
-  return { count: results.length, results };
+  const cut = results.some((x) => x.omitted || x.result?.kept_result);
+  return { count: results.length, results, ...(cut ? { note: 'Long text in a batch is cut at about 4,000 characters per field. A cut result carries kept_result.handle: read the rest with github_get_result, or call that tool on its own for whole text.' } : {}) };
 }
+const BATCH_ITEM_CHARS = 3500;
 
 const CALL_ITEM = { type: 'object', properties: { name: { type: 'string', maxLength: 80 }, args: { type: 'object', additionalProperties: true } }, required: ['name'], additionalProperties: false };
 
