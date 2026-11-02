@@ -28,7 +28,7 @@ readiness from a configured URL. Future scale-out (several workers, device-hoste
    `protection_check` with `options.path` reports matching scanner rules and the file hash without the matched values,
    including uncommitted files that GitHub has never seen.
 3. **Run** — `github_git_workspace_run` with the current `expectedGeneration`, one typed operation and its options:
-   binary write/remove (`write_file` ≤ ~1 MiB per call; for more, use [direct uploads](#direct-uploads)), staging/restore (`paths` 1–100), commit/amend (message ≤ 10,000
+   binary write/remove (`write_file` ≤ ~1 MiB per call; for more, use [direct uploads](#direct-uploads); to get everything out, [direct downloads](#direct-downloads)), staging/restore (`paths` 1–100), commit/amend (message ≤ 10,000
    characters, multiple paragraphs allowed), branch create/delete/rename/switch, tags, fetch/pull/push,
    merge/rebase/cherry-pick/revert with continue/abort, reset/clean, stash, detached worktrees (`options.worktree`) and manual
    bisect. Conflicts return the real unresolved paths; resolve, add, then continue or commit.
@@ -97,6 +97,39 @@ its entrypoint `respondingTimeouts.readTimeout` (60 s by default in Traefik v3) 
 7 Mbit/s for a 50 MiB upload. Raise it on the Dokploy Traefik configuration (for example to `300s`) only if agents need
 large uploads over slow links. The worker itself allows each upload request 5 minutes and stores quarantines under
 `$NATIVE_GIT_STORAGE_ROOT/.uploads` (counted by the normal disk admission; never on the 64 MB `/tmp`).
+
+## Direct downloads
+
+To get the whole workspace (or its uncommitted work) at once, ask for a one-time address instead of reading files one
+by one (`github_git_workspace_download`, card [GIT-DOWNLOAD-1](pr-cards/GIT-DOWNLOAD-1.md)). The bytes come straight from
+the worker, never through Vercel, and no GitHub credential is involved.
+
+```text
+# Git mode: a real clone of the workspace's local branches and tags (or only ref)
+github_git_workspace_download {workspace_id, mode:"git", requestKey:"<fresh>"}            → progress.command
+git clone "<url>" repo
+# …or bring one branch into an existing clone
+github_git_workspace_download {workspace_id, mode:"git", ref:"main", requestKey:"<fresh>"}
+git fetch "<url>" main:refs/remotes/workspace/main
+
+# Archive mode: a .tar.gz of a branch/tag/commit (default HEAD), or of the current files with ref "worktree"
+github_git_workspace_download {workspace_id, mode:"archive", ref:"worktree", requestKey:"<fresh>"}
+curl -fsSL "<url>" -o repo.tar.gz && mkdir -p repo && tar -xzf repo.tar.gz -C repo
+```
+
+- The command is in the result's always-visible `progress` (compact clients drop `result`). It works for one clone or
+  fetch session (its few requests within 5 minutes) or one archive download, started within 10 minutes; reuse gets
+  HTTP 410, an expired or altered address 403. A replay does not repeat it. Do not publish it.
+- The snapshot is taken when you call the tool; later workspace changes are not included. The workspace itself is never
+  changed. `maxMegabytes` (1–500, default 200) caps what is sent; a clone or download over the cap stops and fails.
+- Git mode serves only the snapshot's refs (no filters, no unadvertised objects; pushing to the address is refused).
+  The clone's `origin` is the expired address — send changes back with [direct uploads](#direct-uploads).
+- Archive mode with a ref equals `git archive --format=tar` of that commit, gzipped. `ref:"worktree"` holds tracked and
+  untracked-but-not-ignored files including uncommitted edits, never `.git`; in-tree symbolic links stay links, and a
+  link pointing outside the repository (or a folder that is a link) refuses the download with its path.
+- Dedicated Playground broker workspaces are not supported. Operator: the worker must report
+  `direct_download: "one-time-v1"`; snapshots live under `$NATIVE_GIT_STORAGE_ROOT/.downloads` and are removed once
+  served, by the 60-second sweep, or when the workspace closes. Same origin and port as `/v1/workspace`.
 
 ## Branch switching and parallel agents
 

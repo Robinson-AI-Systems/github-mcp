@@ -35,6 +35,7 @@ export async function prepareNativeWorld(w, { existing = false } = {}) {
   w.nativeRequests ??= []; w.nativeRequests.push(payload.action);
   if (w.gh.nativeOutcome === 'mismatch') {
    if (payload.action === 'upload_status') return new Response(JSON.stringify({ upload_id: 'upl_' + '0'.repeat(32), state: 'expired', mode: 'archive', idle_timeout_ms:payload.idleTimeoutMs, last_activity_at:w.ctx.now(), expires_at:w.ctx.now()+payload.idleTimeoutMs }));
+   if (payload.action === 'download_status') return new Response(JSON.stringify({ download_id: 'dl_' + '0'.repeat(32), state: 'expired', mode: 'archive', idle_timeout_ms:payload.idleTimeoutMs, last_activity_at:w.ctx.now(), expires_at:w.ctx.now()+payload.idleTimeoutMs }));
    if (payload.action === 'upload_apply') return new Response(JSON.stringify({ status: 'unconfirmed', generation: 0, idle_timeout_ms:payload.idleTimeoutMs, last_activity_at:w.ctx.now(), expires_at:w.ctx.now()+payload.idleTimeoutMs }));
    if (payload.action === 'run') return new Response(JSON.stringify({ status: 'unconfirmed', generation: 0, idle_timeout_ms:payload.idleTimeoutMs, last_activity_at:w.ctx.now(), expires_at:w.ctx.now()+payload.idleTimeoutMs }));
    if (payload.action === 'close') return new Response(JSON.stringify({ disposed: false }));

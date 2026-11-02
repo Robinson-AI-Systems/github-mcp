@@ -1,13 +1,13 @@
 import {passRefusal} from '../rtc/pass-scope.js';
 import {enqueueAllocation,disposeAllocation} from '../playground/allocations.js';
 import {RUNTIME_CHOICES} from '../playground/sizing.js';
-import { nativeWorkerPublicKey, signNativeUploadClaim } from '../native-git/signing.js';
+import { nativeWorkerPublicKey, signNativeUploadClaim, signNativeDownloadClaim } from '../native-git/signing.js';
 import { randomBytes } from 'node:crypto';
 import { defineRead } from './define-read.js';
 import { defineGithubWrite, explainGithubError } from './define-github-write.js';
 import { TenantCapacityError } from '../tenancy/runtime-limits.js';
 import { READ_OPERATIONS, WRITE_OPERATIONS, gitCommand, switchBranch, branchName, nativeOperationHelp } from '../native-git/commands.js';
-import { nativeWorkspaceId, workerUrl, workerKey, nativeWorkerHost, nativeWorkerRoute, nativeBindingHash, UPLOAD_PURPOSE, UPLOAD_TTL_MS } from '../native-git/protocol.js';
+import { nativeWorkspaceId, workerUrl, workerKey, nativeWorkerHost, nativeWorkerRoute, nativeBindingHash, UPLOAD_PURPOSE, UPLOAD_TTL_MS, DOWNLOAD_PURPOSE, DOWNLOAD_TTL_MS } from '../native-git/protocol.js';
 import { nativeConnection, nativeOpenRequestKey, nativeRecord, authorizeNativeRepo, callNativeWorker } from '../native-git/client.js';
 
 const OWNER = { type: 'string', minLength: 1, maxLength: 39, pattern: '^[A-Za-z0-9-]+$' };
@@ -68,7 +68,7 @@ const read = defineRead({
  properties: { workspace_id: WORKSPACE, operation: { type: 'string', enum: ['capabilities', ...READ_OPERATIONS] }, options: OPTIONS, byteOffset: { type: 'integer', minimum: 0 }, byteLength: { type: 'integer', minimum: 1, maximum: 32768 } }, required: ['operation'],
  handler: async (a, c) => { if (a.operation === 'capabilities') {
   let worker; try { worker = await callNativeWorker(c, { action: 'capabilities' }); } catch { worker = { ready: false, setup_required: true }; }
-  return { bulk_upload: { tool: 'github_git_workspace_upload', next: 'For more than about 1 MB of files: one-time git push or curl upload URL straight to this worker, then apply.' }, playground: {tools:['github_playground_execute','github_playground_read','github_playground_cancel'],next:'Search/describe/call these agent tools for commands, builds and tests in an attached isolated runtime. This Git worker remains typed Git only.'}, operation_help: a.options?.name ? nativeOperationHelp(a.options.name) : { next: 'Call capabilities with options.name set to an operation for exact options and an example.' }, worker, read_operations: READ_OPERATIONS, write_operations: WRITE_OPERATIONS, setup: 'https://github.com/Robinson-AI-Systems/github-mcp/blob/main/docs/NATIVE-GIT-OPERATIONS.md', unsupported: [
+  return { bulk_upload: { tool: 'github_git_workspace_upload', next: 'For more than about 1 MB of files: one-time git push or curl upload URL straight to this worker, then apply.' }, bulk_download: { tool: 'github_git_workspace_download', next: 'For the whole workspace or many files: one-time git clone or curl .tar.gz URL straight from this worker.' }, playground: {tools:['github_playground_execute','github_playground_read','github_playground_cancel'],next:'Search/describe/call these agent tools for commands, builds and tests in an attached isolated runtime. This Git worker remains typed Git only.'}, operation_help: a.options?.name ? nativeOperationHelp(a.options.name) : { next: 'Call capabilities with options.name set to an operation for exact options and an example.' }, worker, read_operations: READ_OPERATIONS, write_operations: WRITE_OPERATIONS, setup: 'https://github.com/Robinson-AI-Systems/github-mcp/blob/main/docs/NATIVE-GIT-OPERATIONS.md', unsupported: [
     { feature: 'LFS', guidance: 'Install git-lfs locally, run git lfs install in your trusted local clone, and use git lfs pull/push with your own GitHub authorization.' },
     { feature: 'submodules', guidance: 'Use a trusted isolated local clone, review .gitmodules origins, then git submodule update --init --recursive with separate repository permissions.' },
     { feature: 'executable hooks/filters, signing, custom remotes and arbitrary shell/bisect run in the Git worker', guidance: 'For commands/builds/tests, use github_playground_execute in an attached isolated Robinson Playground runtime. This Git worker stays typed Git; advanced credentialed Git configuration still uses the documented trusted local alternative.' }
@@ -192,7 +192,51 @@ const upload = defineGithubWrite({
    next: `Run the command within 10 minutes (it works once), then call github_git_workspace_upload operation apply with upload_id ${after.upload_id} and the current expectedGeneration. Do not publish the URL; it holds no GitHub credential.` };
  }
 });
-export const tools = [open.tool, read.tool, run.tool, close.tool, list.tool, upload.tool];
+// GIT-DOWNLOAD-1: the mirror of upload. begin snapshots the workspace on the worker and returns a
+// signed, ten-minute address for one read-only clone session or one archive download — never a
+// GitHub or provider credential. The address is returned once (it is not stored in the change log).
+const DOWNLOAD_COMMAND = { git: url => `git clone "${url}" repo`, archive: url => `curl -fsSL "${url}" -o repo.tar.gz && mkdir -p repo && tar -xzf repo.tar.gz -C repo` };
+const downloadRefusal = reason => Object.assign(new TypeError(String(reason ?? 'The download was refused.').replace(/[\x00-\x1f\x7f]/g, ' ').slice(0, 600)), { safeMessage: true, safeCode: 'native_download_refused', status: 422 });
+const download = defineGithubWrite({
+ name: 'github_git_workspace_download', area: 'git', audience: ['B', 'O', 'Op'],
+ description: 'Get a whole native workspace at once: returns a one-time git clone URL, or a curl URL for a .tar.gz of a ref or the current worktree.',
+ guidance: 'Instead of reading many files one at a time. mode git returns `git clone "<url>" repo` (local branches and tags, or only ref); mode archive returns a curl command for a .tar.gz of ref (branch, tag or commit; default HEAD) or of ref "worktree" (tracked plus untracked, not ignored, files; never .git). The URL works for one clone session or one download within 10 minutes and holds no GitHub credential. The clone\'s origin is that one-time URL: send changes back with github_git_workspace_upload. Do not publish the URL.',
+ properties: { workspace_id: WORKSPACE, mode: { type: 'string', enum: ['git', 'archive'], description: 'git = one git clone/fetch session; archive = one .tar.gz download.' },
+  ref: { ...TEXT, description: 'Branch, tag or commit to serve (default: git all local branches and tags; archive HEAD). archive also accepts "worktree" for uncommitted files.' },
+  maxMegabytes: { type: 'integer', minimum: 1, maximum: 500, description: 'Size cap in MiB for what is sent (default 200).' } },
+ required: ['workspace_id', 'mode'], declarations,
+ explain: error => error?.safeMessage ? error.message : 'The native download could not be confirmed. Inspect workspace state and the same intent receipt before retrying.',
+ classifyError: error => [400, 401, 404, 409, 422, 429].includes(error?.status) ? 'rejected' : 'uncertain',
+ target, read: async (a, c, t) => { configured(c);
+  if (a.mode === 'git' && a.ref === 'worktree') throw Object.assign(new TypeError('ref "worktree" is for mode archive; a git clone carries commits only. Commit first, or use mode archive.'), { safeMessage: true, safeCode: 'invalid_download_arguments' });
+  if (t.record.job.brokerOrigin) throw Object.assign(new TypeError('This workspace is attached to a dedicated Playground runtime; package files there with github_playground_execute instead.'), { safeMessage: true, safeCode: 'native_download_unavailable' });
+  const cap = await callNativeWorker(c, { action: 'capabilities', job: t.record.job });
+  if (cap.direct_download !== 'one-time-v1') throw Object.assign(new TypeError('The native Git worker must be updated before direct downloads work. Use github_git_workspace_read read_file meanwhile.'), { safeMessage: true, safeCode: 'native_worker_update_required' });
+  return await invoke(c, t, { action: 'inspect' }); },
+ classify: () => ({}), price: () => 0,
+ summarize: ({ args: a, target: t }) => `Prepare a one-time ${a.mode} download of ${a.ref ?? (a.mode === 'git' ? 'all local branches and tags' : 'HEAD')} from the native workspace for ${t.owner}/${t.repo} (read-only; the workspace is not changed)`,
+ apply: async ({ args: a, ctx: c, target: t, requestKey }) => {
+  const downloadId = randomBytes(16).toString('hex'), nonce = randomBytes(16).toString('hex');
+  const maxBytes = (a.maxMegabytes ?? 200) * 1048576, expiresAt = (c.now ?? Date.now)() + DOWNLOAD_TTL_MS;
+  const begun = await invoke(c, t, { action: 'download_begin', options: { downloadId, mode: a.mode, maxBytes, expiresAt, nonce, ...(a.ref !== undefined ? { ref: a.ref } : {}) }, requestKey, allowWrite: true });
+  if (begun.status === 'refused') throw downloadRefusal(begun.reason);
+  const claim = JSON.stringify({ purpose: DOWNLOAD_PURPOSE, version: 1, workspace_id: t.record.worker, binding: nativeBindingHash(t.record.binding), mode: a.mode, maxBytes, expiresAt, downloadId, nonce });
+  const url = `${new URL(nativeWorkerRoute(c.env, t.record.job)).origin}/v1/download/${Buffer.from(claim).toString('base64url')}.${signNativeDownloadClaim(claim, c.env)}`;
+  return { ...begun, url };
+ },
+ readAfter: async ({ ctx: c, target: t, response }) => ({ ...await invoke(c, t, { action: 'download_status', options: { downloadId: String(response.download_id ?? '').slice(3) } }), address_shown_once: true }),
+ verify: ({ args: a, after, response }) => after.state === 'awaiting' && after.download_id === response.download_id && after.mode === a.mode && typeof response.url === 'string',
+ // Compact clients drop large `result` objects; the one-time command (which carries the URL) must stay visible.
+ essentials: shaped => shaped?.command ? { download_id: shaped.download_id, command: shaped.command, head: shaped.head ?? null, single_use: true, next: 'Run within 10 minutes; it works once. Do not publish the URL.' } : shaped?.next ? { next: shaped.next } : null,
+ present: ({ args: a, after, response }) => {
+  if (typeof response?.url !== 'string') return { ...after, next: 'The download address is shown only once. Begin a new download with a fresh requestKey if you no longer have it.' };
+  return { ...after, url: response.url, command: DOWNLOAD_COMMAND[a.mode](response.url), single_use: true,
+   next: a.mode === 'git'
+    ? 'Run the command within 10 minutes (one clone or fetch session). The clone\'s origin is the one-time URL; send changes back with github_git_workspace_upload. Do not publish the URL; it holds no GitHub credential.'
+    : 'Run the command within 10 minutes (it works once). The archive has no .git folder. Do not publish the URL; it holds no GitHub credential.' };
+ }
+});
+export const tools = [open.tool, read.tool, run.tool, close.tool, list.tool, upload.tool, download.tool];
 async function openWithCurrentState(args,ctx) {
  const result=await open.handler(args,ctx), value=result.structuredContent;
  if (!value?.replayed || !value.result?.workspace_id) return result;
@@ -206,4 +250,4 @@ async function openWithCurrentState(args,ctx) {
  const body={...value,done:value.done&&current.available,historical:true,current_workspace:current,...(!current.available?{warning:current.next}: {})};
  return {...result,structuredContent:body,content:[{type:'text',text:JSON.stringify(body)}]};
 }
-export const handlers = Object.fromEntries([open, read, run, close, list, upload].map(t => [t.tool.name, t===open?openWithCurrentState:t.handler]));
+export const handlers = Object.fromEntries([open, read, run, close, list, upload, download].map(t => [t.tool.name, t===open?openWithCurrentState:t.handler]));

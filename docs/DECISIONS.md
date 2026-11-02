@@ -75,3 +75,13 @@ purpose-separated (`robinson-native-upload/v1`), single-use, ten-minute capabili
 that grants only quarantine writes; an authenticated apply checks and applies it (fast-forward only for Git; safe
 names/types/sizes for archives; content protection on every new byte). The URL is returned once, like Playground's
 one-time preview entry, and is not stored in the change log. Design: [GIT-UPLOAD-1](pr-cards/GIT-UPLOAD-1.md).
+
+## 2026-11-01 — Direct downloads from native workspaces (GIT-DOWNLOAD-1)
+
+Chris asked on 2026-11-01 to "finish the remaining work" after an outside agent reported it had to pull 100+ files one at
+a time ("A 'fetch this ref as a tarball straight to disk' tool … would close that gap"). Built as the mirror of
+GIT-UPLOAD-1 on the same mechanism: an authenticated begin snapshots the workspace on the native Git worker, and the
+control plane signs a purpose-separated (`robinson-native-download/v1`), ten-minute, one-session capability for it that
+grants only a read-only `git clone`/`git fetch` (advertised refs only) or one `.tar.gz` download (a ref, or the current
+worktree without `.git`). No GitHub credential; the URL is returned once and not stored in the change log. Outgoing
+bytes are the person's own workspace content, so they are not secret-scanned. Design: [GIT-DOWNLOAD-1](pr-cards/GIT-DOWNLOAD-1.md).

@@ -38,3 +38,8 @@ test('packaged image includes the direct upload route and its archive checks', a
  assert.equal(typeof uploadHttp, 'function'); assert.equal(typeof applyUpload, 'function');
  assert.equal(entryPath('./a/b.png'), 'a/b.png'); assert.throws(() => entryPath('../x')); assert.throws(() => entryPath('a/.git/config'));
 });
+
+test('packaged image includes the direct download route', async () => {
+ const { downloadHttp, beginDownload } = await import('./download.js'); const { workspaceEntry } = await import('./safe-files.js');
+ assert.equal(typeof downloadHttp, 'function'); assert.equal(typeof beginDownload, 'function'); assert.equal(typeof workspaceEntry, 'function');
+});

@@ -268,11 +268,11 @@ export class NativeGitWorker {
   async close(id, binding) {
     if (!ID.test(id ?? '')) throw new TypeError('Invalid workspace ID.');
     await this.access(binding, true);
-    try { await realpath(join(this.root,id)); } catch(error) { if(error.code!=='ENOENT')throw error;await rm(join(this.root,'.attachments',id),{recursive:true,force:true});await rm(join(this.root,'.uploads',id),{recursive:true,force:true});return {disposed:true,alreadyAbsent:true}; }
+    try { await realpath(join(this.root,id)); } catch(error) { if(error.code!=='ENOENT')throw error;await rm(join(this.root,'.attachments',id),{recursive:true,force:true});await rm(join(this.root,'.uploads',id),{recursive:true,force:true});await rm(join(this.root,'.downloads',id),{recursive:true,force:true});return {disposed:true,alreadyAbsent:true}; }
     const w = await this.workspace(id, binding, true, true);
     if (CLONING.has(w.dir)) throw new TypeError('The clone is still running; wait for ready or failed before closing. No files deleted.');
     let lock; try { lock = await open(join(w.dir, 'mutation.lock'), 'wx', 0o600); } catch { throw new TypeError('Workspace is busy; no files deleted.'); }
-    try { await rm(w.dir, { recursive: true, force: true });await rm(join(this.root,'.attachments',id),{recursive:true,force:true});await rm(join(this.root,'.uploads',id),{recursive:true,force:true}); return { disposed: true }; } finally { await lock.close(); }
+    try { await rm(w.dir, { recursive: true, force: true });await rm(join(this.root,'.attachments',id),{recursive:true,force:true});await rm(join(this.root,'.uploads',id),{recursive:true,force:true});await rm(join(this.root,'.downloads',id),{recursive:true,force:true}); return { disposed: true }; } finally { await lock.close(); }
   }
   async prune({ skip = new Set(), limit = 100 } = {}) {
     let removed = 0;
@@ -284,7 +284,7 @@ export class NativeGitWorker {
         const meta = await json(join(dir, 'workspace.json'));
         if (!Number.isFinite(meta.expiresAt) || meta.expiresAt > this.now()) continue;
         lock = await open(join(dir, 'mutation.lock'), 'wx', 0o600);
-        await rm(dir, { recursive: true, force: true });await rm(join(this.root,'.attachments',id),{recursive:true,force:true});await rm(join(this.root,'.uploads',id),{recursive:true,force:true}); removed++;
+        await rm(dir, { recursive: true, force: true });await rm(join(this.root,'.attachments',id),{recursive:true,force:true});await rm(join(this.root,'.uploads',id),{recursive:true,force:true});await rm(join(this.root,'.downloads',id),{recursive:true,force:true}); removed++;
       } catch (e) { if (!['EEXIST', 'ENOENT'].includes(e.code)) throw e; }
       finally { if (lock) await lock.close(); }
     }

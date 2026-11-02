@@ -30,6 +30,17 @@ export function signNativeUploadClaim(body, env = process.env) {
  return sign(null, Buffer.from(body), signingKey(env)).toString('base64url');
 }
 
+// GIT-DOWNLOAD-1: one-time download address claim; same rules, its own purpose.
+export function signNativeDownloadClaim(body, env = process.env) {
+ const claim = JSON.parse(body);
+ if (!claim || claim.purpose !== 'robinson-native-download/v1' || Object.hasOwn(claim, 'credential') || Object.hasOwn(claim, 'action') || Object.hasOwn(claim, 'uploadId')) throw new TypeError('Invalid download claim.');
+ if (env.NATIVE_GIT_WORKER_KEY) {
+  if (env.NATIVE_GIT_WORKER_KEY.startsWith('ed25519:')) throw new TypeError('A public verifier is not a shared signing secret. Use the control-plane signing key.');
+  return signWorkerBody(body, env.NATIVE_GIT_WORKER_KEY);
+ }
+ return sign(null, Buffer.from(body), signingKey(env)).toString('base64url');
+}
+
 // Purpose-separated claims; a coding container receives only the public verifier.
 export function signCodingWorkerBody(body,env=process.env){
  const claim=JSON.parse(body);if(claim.purpose!=='robinson-coding/v1'||Object.hasOwn(claim,'credential'))throw new TypeError('Invalid coding lease.');

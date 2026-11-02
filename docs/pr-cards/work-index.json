@@ -2870,6 +2870,27 @@
       ]
     },
     {
+      "id": "GIT-DOWNLOAD-1",
+      "title": "Direct bulk downloads from native Git workspaces (one-time git clone or archive URL)",
+      "batch": "FIN",
+      "design": "docs/pr-cards/GIT-DOWNLOAD-1.md",
+      "dependencies": [
+        "GIT-UPLOAD-1"
+      ],
+      "card": "docs/pr-cards/GIT-DOWNLOAD-1.md",
+      "status": "MERGED",
+      "migration": "none",
+      "budget": 800,
+      "units": [
+        "GIT-DOWNLOAD-1"
+      ],
+      "readiness": "READY",
+      "ownerInputs": [],
+      "pr": [
+        536
+      ]
+    },
+    {
       "id": "VIS-1",
       "title": "Larger results visible to structured-only clients (8 KB budget; explicit file windows whole)",
       "batch": "FIN",
