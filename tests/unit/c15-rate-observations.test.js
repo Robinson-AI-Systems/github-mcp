@@ -98,7 +98,7 @@ describe('C-15 shared canonical dispatcher final response',()=>{
     expect(r.structuredContent).toMatchObject({result:'parent',meta:{github_rate:{items:[{remaining:7,source:'fresh'}]}}});
     expect(JSON.parse(r.content[0].text)).toEqual(r.structuredContent);
   });
-  it('keeps rate meta in the full payload that RTC restores after large-text deduplication',async()=>{
+  it('keeps rate meta in both copies of a large read (now whole within the 8 KB budget, VIS-1)',async()=>{
     const registry={tools:[{name:'github_testing_large',area:'test',annotations:{readOnlyHint:true},
       inputSchema:{type:'object',additionalProperties:false}}],handlers:{
         github_testing_large:async(_,ctx)=>{
@@ -108,7 +108,8 @@ describe('C-15 shared canonical dispatcher final response',()=>{
         }
       }};
     const r=await dispatch({registry,name:'github_testing_large',args:{},connection,db:{}});
-    expect(r.structuredContent).toMatchObject({full_payload_location:'content[0].text',
+    expect(r.structuredContent).not.toHaveProperty('full_payload_location');
+    expect(r.structuredContent).toMatchObject({body:'text'.repeat(600),
       meta:{github_rate:{items:[{remaining:5,source:'fresh'}]}}});
     expect(JSON.parse(r.content[0].text)).toMatchObject({body:'text'.repeat(600),
       meta:{github_rate:{items:[{remaining:5}]}}});

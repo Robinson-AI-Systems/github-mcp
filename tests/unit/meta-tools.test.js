@@ -46,7 +46,7 @@ describe('github_search_tools', () => {
 });
 
 describe('github_describe_tool', () => {
-  it('keeps a large schema once in text and preserves a compact describe summary', async () => {
+  it('shows a mid-size schema to structured-only clients and the same JSON in text (VIS-1)', async () => {
     const w = await world();
     const props = Object.fromEntries(Array.from({ length: 14 }, (_, i) =>
       ['option_' + i, { type: 'string', description: 'Detailed option semantics '.repeat(5) }]));
@@ -56,11 +56,9 @@ describe('github_describe_tool', () => {
       [candidate.tool.name]: candidate.handler } }]);
     const response = await w.run('github_describe_tool', { name: candidate.tool.name }, reg);
     expect(response.isError).not.toBe(true);
-    expect(response.structuredContent).not.toHaveProperty('arguments');
-    expect(response.structuredContent.full_payload_location).toBe('content[0].text');
+    expect(response.structuredContent.arguments.properties).toHaveProperty('option_13');
+    expect(response.structuredContent).not.toHaveProperty('full_payload_location');
     expect(data(response).arguments.properties).toHaveProperty('option_13');
-    expect(Buffer.byteLength(JSON.stringify(response))).toBeLessThan(
-      Buffer.byteLength(JSON.stringify({ ...response, structuredContent: data(response) })) * 0.75);
   });
   it('gives the arguments and safety of a read and of a change', async () => {
     const w = await world();
