@@ -2857,7 +2857,7 @@
         "PAR-2"
       ],
       "card": "docs/pr-cards/GIT-UPLOAD-1.md",
-      "status": "IN_PROGRESS",
+      "status": "MERGED",
       "migration": "none",
       "budget": 800,
       "units": [
@@ -2865,7 +2865,9 @@
       ],
       "readiness": "READY",
       "ownerInputs": [],
-      "pr": []
+      "pr": [
+        531
+      ]
     }
   ],
   "gatewayBoundary": {

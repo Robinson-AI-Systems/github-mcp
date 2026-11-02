@@ -1061,3 +1061,5 @@ Attach fix (2026-11-01): attaching reads the full source state without renewing 
 Attach recovery (2026-11-01): a re-prepared transfer uses a new ID; a stale partial copy on the runtime triggers a fresh attempt. No tool changes.
 
 Close/attach robustness (2026-11-01): close readback retries a briefly busy worker; attach waits briefly for a just-provisioned runtime. No tool changes.
+
+Upload essentials (2026-11-01): `github_git_workspace_upload` begin/apply results carry a small always-visible `progress` (the one-time command; the apply summary) so compact clients can use the feature.

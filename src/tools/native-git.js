@@ -178,6 +178,13 @@ const upload = defineGithubWrite({
  verify: ({ args: a, after, response }) => a.operation === 'begin'
   ? after.state === 'awaiting' && after.upload_id === response.upload_id && after.mode === a.mode && typeof response.url === 'string'
   : after.operation.status === 'applied' && after.workspace.generation === after.operation.generation && after.workspace.head === after.operation.head,
+ // Compact clients drop large `result` objects; the one-time command (which carries the URL) and the
+ // apply summary must stay visible or the feature is unusable there.
+ essentials: shaped => shaped?.command
+  ? { upload_id: shaped.upload_id, command: shaped.command, single_use: true, next: shaped.next }
+  : (shaped && 'generation' in shaped) || shaped?.workspace
+   ? { applied: true, mode: shaped.mode, target: shaped.target, files_added: shaped.files_added, files_changed: shaped.files_changed, bytes: shaped.bytes, workspace: shaped.workspace, next: shaped.next }
+   : shaped?.next ? { next: shaped.next } : null,
  present: ({ args: a, after, response }) => {
   if (a.operation === 'apply') { const { status: _status, stdout: _o, stderr: _e, ...summary } = after?.operation ?? response ?? {}; return { ...summary, workspace: after?.workspace ? { generation: after.workspace.generation, branch: after.workspace.branch, head: after.workspace.head } : undefined, next: 'Review with github_git_workspace_read (status/diff), then add, commit and push with github_git_workspace_run.' }; }
   if (typeof response?.url !== 'string') return { ...after, next: 'The upload address is shown only once. Begin a new upload with a fresh requestKey if you no longer have it.' };
