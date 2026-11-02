@@ -14,3 +14,16 @@
   redeploy optional.
 - **Next:** live acceptance: `github_repo_download` from a Claude sandbox that allows only the service domain (git and
   archive), an upload over 4 MB, and a runtime-attached download after the image rebuild.
+
+**Live acceptance (2026-11-02 ~13:20 UTC, release `03432d6c`, worker redeployed, runtime image rebuilt):** run from an
+agent sandbox whose network allowlist reaches `github.robinsonaisystems.com` but not the worker or runtime hosts, against
+`robinson-ai-scratch/upload-probe`:
+- `github_repo_download` archive: `curl` through the domain, HTTP 200, a valid .tar.gz; the same link again answered
+  410, and a tampered link 403. (One earlier attempt answered 502 while the worker was being redeployed.)
+- `github_repo_download` git: `git clone` through the domain in 1.3 s, exact HEAD `92d4a1f`; it reused the open workspace.
+- Upload over 4 MB: an 8,391,044-byte archive `curl --upload-file` through the domain, HTTP 200 in 3.0 s; apply added
+  all 8 files (8,388,608 bytes). Vercel did not apply a 4 MB limit to this proxied body, so `direct_command` was not needed.
+- Runtime-attached workspace (small, attached): the archive download routed through the domain to the runtime broker,
+  HTTP 200, 4 files.
+Untested: multi-hundred-MB repositories and the 120-second first-byte window. Transfers now count toward Vercel data
+transfer.
