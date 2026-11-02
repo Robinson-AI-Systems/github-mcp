@@ -209,7 +209,7 @@ const download = defineGithubWrite({
  classifyError: error => [400, 401, 404, 409, 422, 429].includes(error?.status) ? 'rejected' : 'uncertain',
  target, read: async (a, c, t) => { configured(c);
   if (a.mode === 'git' && a.ref === 'worktree') throw Object.assign(new TypeError('ref "worktree" is for mode archive; a git clone carries commits only. Commit first, or use mode archive.'), { safeMessage: true, safeCode: 'invalid_download_arguments' });
-  if (t.record.job.brokerOrigin) throw Object.assign(new TypeError('This workspace is attached to a dedicated Playground runtime; package files there with github_playground_execute instead.'), { safeMessage: true, safeCode: 'native_download_unavailable' });
+  if (t.record.job.brokerOrigin) throw Object.assign(new TypeError('This workspace is attached to a dedicated Playground runtime; package files there with github_playground_execute, or open a second workspace with runtime: "none" and download from that one.'), { safeMessage: true, safeCode: 'native_download_unavailable' });
   const cap = await callNativeWorker(c, { action: 'capabilities', job: t.record.job });
   if (cap.direct_download !== 'one-time-v1') throw Object.assign(new TypeError('The native Git worker must be updated before direct downloads work. Use github_git_workspace_read read_file meanwhile.'), { safeMessage: true, safeCode: 'native_worker_update_required' });
   return await invoke(c, t, { action: 'inspect' }); },

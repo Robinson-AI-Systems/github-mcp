@@ -204,6 +204,8 @@ describe('content reads (D-2)', () => {
       } else {
         expect(body).toMatchObject({ url: null, sensitive_redirect_omitted: true });
         if (!extra.fields) expect(body.github_web_url).toBe('https://github.com/example-org/hello');
+        if (!extra.fields) expect(body.instead.steps.map(s => s.tool)).toEqual(['github_git_workspace_open', 'github_git_workspace_download']);
+        if (!extra.fields) expect(body.instead.steps[1].arguments).toMatchObject({ mode: 'archive', ref: 'main' });
         else expect(body.github_web_url).toBeUndefined();
         expect(JSON.stringify(result)).not.toContain(secret);
       }
