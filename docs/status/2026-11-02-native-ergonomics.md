@@ -1,7 +1,8 @@
 # 2026-11-02 — One-call change and native Git ergonomics (NATIVE-ERGO-1)
 
 Owner feedback (fac-ultra build, native-workspace items 1, 2, 4, 5, 6, 10, 13, 14, 16, 21). Card:
-[NATIVE-ERGO-1](../pr-cards/NATIVE-ERGO-1.md).
+[NATIVE-ERGO-1](../pr-cards/NATIVE-ERGO-1.md). Merged as PR #546 (head b7ef39d, merge fffd2a3) with `ci` and
+`release-policy` green at the exact head. Source merged only: not released, deployed or live-accepted yet.
 
 - **New** `github_repo_change` (default list): files/deletions or an upload → branch → one commit → push with lease and
   readback → optional PR via `github_workflow_open_pr`. Same call again resumes; never commits twice. `expectedHead`
