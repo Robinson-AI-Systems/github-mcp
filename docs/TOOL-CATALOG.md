@@ -1001,7 +1001,7 @@ B-5 provider permission hints: only explicit read/write/admin entries are eligib
 
 ## 2026-10-28 replacement contract update
 
-Large text, lists and object payloads have one full JSON copy in `content[0].text`; compact structured metadata declares `full_payload_location` and `omitted_fields`. Navigation and small status/identity fields remain structured. Nested dispatch and schema-declared outputs retain complete structured data; RTC reconstructs the full canonical payload before its own size checks. Small replies retain compatibility.
+Large text, lists and object payloads have one full JSON copy in `content[0].text`; compact structured metadata declares `full_payload_location` and `omitted_fields`. Since 2026-11-01 (VIS-1) `structuredContent` keeps whole fields up to an 8 KB budget (smallest first), so clients that show only structured results see ordinary file reads, logs and lists; only fields that overflow the budget are omitted. An explicitly requested whole file (`fullText: true`) or line/byte window is never compacted. Navigation and small status/identity fields remain structured. Nested dispatch and schema-declared outputs retain complete structured data; RTC reconstructs the full canonical payload before its own size checks. Small replies retain compatibility.
 
 `github_content_get` accepts `fullText`, immutable `blobSha` continuation and `branch` as an alias for `ref`. PR reads/writes accept `pull_number` as an alias for canonical `number`; conflicting values fail before provider requests. `github_security_scan_guidance` supplies repo-specific native/official-engine setup and a Robinson repository scanner workflow without claiming installation or equivalent detection.
 

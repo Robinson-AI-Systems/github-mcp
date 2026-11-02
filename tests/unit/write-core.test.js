@@ -226,7 +226,7 @@ describe('failures and retries', () => {
     expect(unverified).toMatchObject({ status: 'replayed', done: false }); expect(unverified.warning).toMatch(/already sent/);
     // The compact envelope keeps the bounded progress digest.
     const big = await def.handler({}, w.ctx);
-    const compact = deduplicateLargeEnvelope(big);
+    const compact = deduplicateLargeEnvelope(big, { budget: 600 }); // a result past the budget
     expect(compact.structuredContent.omitted_fields).toContain('result');
     expect(compact.structuredContent.progress).toEqual({ phase: 'three' });
     expect(() => defineWrite({ name: 'github_x_bad2', description: 'd', declarations: { production: 'never' }, target: () => ({}), read: async () => null, classify: () => ({}),

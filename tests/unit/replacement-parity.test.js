@@ -15,15 +15,15 @@ const call = (w, name, args) => dispatch(w)({ registry, name, args,
   connection: w.connection, db: w.db });
 
 describe('replacement verification regressions', () => {
-  it('returns all 61,421 source characters in one explicitly full call, one payload copy', async () => {
+  it('returns all 61,421 source characters in one explicitly full call, visible to structured-only clients (VIS-1)', async () => {
     const w = await makeWorld({ profile: 'read_only' });
     w.gh.when('GET /repos/{owner}/{repo}/contents/{path}').reply(200, file);
     const reply = await call(w, 'github_content_get', { repo: 'hello', path: file.path, ref: sha, fullText: true });
     expect(reply.isError).not.toBe(true);
     expect(value(reply).content).toBe(text);
     expect(value(reply)).not.toHaveProperty('kept_result');
-    expect(reply.structuredContent).not.toHaveProperty('content');
-    expect(reply.structuredContent.full_payload_location).toBe('content[0].text');
+    expect(reply.structuredContent.content).toBe(text);
+    expect(reply.structuredContent).not.toHaveProperty('full_payload_location');
     expect(w.gh.calls).toHaveLength(1);
     const narrow = value(await call(w, 'github_content_get', { repo: 'hello', path: file.path, ref: sha, fullText: true, fields: ['content'] }));
     expect(narrow.content).toBe(text);

@@ -206,7 +206,7 @@ it('a compact client still sees the run essentials when the large result is dedu
   const tool = playground.runToolDefinition(deps, {pollMs: 1});
   const dispatchDoor = doorsFor(tool).find(d => d.name === 'dispatch');
   const raw = await dispatchDoor.call(w, {...args, argv: ['sh', '-c', 'echo ' + 'y'.repeat(300)], requestKey: 'compact'});
-  const compact = deduplicateLargeEnvelope(raw);
+  const compact = deduplicateLargeEnvelope(raw, {budget: 600}); // a result past the budget
   expect(compact.structuredContent.omitted_fields).toContain('result');
   expect(compact.structuredContent.progress).toMatchObject({phase: 'done', finished: true, exit_code: 0, outcome: 'succeeded', execution_state: 'finished'});
   expect(compact.structuredContent.progress.log_end.endsWith('TAIL')).toBe(true);
