@@ -108,8 +108,17 @@ const close = defineGithubWrite({
  read: async (_a, c, t) => { try { return await invoke(c, t, { action: 'inspect', renewLease: false }); } catch (e) { if (e.status === 404) return { disposed: true }; throw e; } }, classify: () => ({}), summarize: ({ target: t }) => `Dispose native workspace for ${t.owner}/${t.repo}; uncommitted local work is deleted.`,
  apply: async ({ ctx: c, target: t, before }) => { const allocation=await disposeAllocation(c,t.record);if(allocation.disposed!==true)throw Object.assign(new TypeError('Playground cleanup is pending; native files were preserved.'),{safeMessage:true});if (before.disposed) return { disposed: true }; const result = await invoke(c, {...t,record:{...t.record,job:{...t.record.job,brokerOrigin:undefined,allocationBinding:undefined}}}, { action: 'close', allowWrite: true }); return result; },
  readAfter: async ({ args: a, ctx: c, target: t }) => {
-  try { await invoke(c, t, { action: 'inspect', renewLease: false }); return { state: 'pending' }; }
-  catch (error) { if (error.status !== 404) throw error; }
+  // The worker may briefly refuse under load right after a close; retry the readback
+  // (it is read-only) before calling the outcome uncertain. 404 = the workspace is gone.
+  for (let attempt = 0; ; attempt++) {
+   try { await invoke(c, t, { action: 'inspect', renewLease: false }); return { state: 'pending' }; }
+   catch (error) {
+    if (error.status === 404) break;
+    const transient = error.nativeCode === 'native_busy' || error.nativeCode === 'native_transport' || [429, 502, 503, 504].includes(error.status);
+    if (!transient || attempt >= 3) throw error;
+    await (c.sleep ?? (ms => new Promise(r => setTimeout(r, ms))))(500 * 2 ** attempt);
+   }
+  }
   return await c.db.finishJob(a.workspace_id, nativeConnection(c), { state: 'ready', detail: 'Native workspace disposed.' }) ?? c.db.getJob(a.workspace_id, nativeConnection(c));
  }, verify: ({ after }) => after?.state === 'ready' && after.detail === 'Native workspace disposed.', present: ({ after }) => ({ disposed: after?.state === 'ready' && after.detail === 'Native workspace disposed.' })
 });
