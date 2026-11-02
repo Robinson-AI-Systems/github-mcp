@@ -41,3 +41,9 @@ argument was left out (it uses the PR base or default branch) to fit.
 
 No new credential, permission, write path or owner setting. The place limit is unchanged: only the repositories the
 person listed are reachable, now by the same rule for REST and for this server's pinned GraphQL documents.
+
+## Follow-up 2026-11-03 (live retest)
+
+`github_check_wait` also answers `no_ci` with `reason: none_ran` when workflows exist but no check suite has run on a
+commit older than 10 minutes and no check is required (manual-only workflows). A missing required check keeps it waiting.
+Found live on `robinson-ai-scratch/upload-probe`; tests in `tests/unit/conn-fb-1.test.js`.
