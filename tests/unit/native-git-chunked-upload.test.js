@@ -12,7 +12,7 @@ import { nativeGitServer } from '../../workers/native-git/server.js';
 import { NativeGitWorker } from '../../workers/native-git/engine.js';
 import { signWorkerBody, nativeBindingHash, UPLOAD_PURPOSE, UPLOAD_CHUNK_GRACE_MS } from '../../src/native-git/protocol.js';
 import { transferUrl, planTransferRelay } from '../../src/native-git/relay.js';
-import { CHUNKED_UPLOAD_COMMAND, UPLOAD_COMMAND_SINGLE_WITH_DIGEST } from '../../src/tools/native-git.js';
+import { CHUNKED_UPLOAD_COMMAND, UPLOAD_COMMAND_SINGLE_WITH_DIGEST, nativeInternals } from '../../src/tools/native-git.js';
 import { defaultScannerSettings } from '../../src/github/scanner-policy.js';
 import { startTransferRelay } from '../../test/helpers/transfer-relay.js';
 
@@ -223,5 +223,15 @@ describe('relay: chunk steps only with their method and exact query', () => {
   expect(plan(publicUrl + '/chunk', 'PUT')).toMatchObject({ ok: false, status: 404 });
   expect(plan(publicUrl + '/finish?size=10', 'POST')).toMatchObject({ ok: false, status: 404 });
   expect(plan(publicUrl.replace('/transfer/u/', '/transfer/d/') + '/chunk?offset=0', 'PUT')).toMatchObject({ ok: false });
+ });
+});
+
+describe('commands offered', () => {
+ it('offers the one-request command alone when the worker or runtime ingress cannot take chunks', () => {
+  const url = 'https://mcp.example.test/v1/transfer/u/w/' + 'a'.repeat(32) + '/x.y';
+  expect(nativeInternals.uploadCommands('archive', url, {})).toEqual({ command: UPLOAD_COMMAND_SINGLE_WITH_DIGEST(url) });
+  const both = nativeInternals.uploadCommands('git', url, { chunks: true, base: 'b'.repeat(40) });
+  expect(both.command).toBe(CHUNKED_UPLOAD_COMMAND.git(url, 'b'.repeat(40))); expect(both.single_command).toMatch(/^git -c http\.followRedirects=false push/);
+  expect(both.command).toContain('--not ' + 'b'.repeat(16) + '&&');
  });
 });

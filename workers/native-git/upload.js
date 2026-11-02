@@ -175,7 +175,7 @@ export async function uploadHttp(req, res, { root, key, now = Date.now, monitor 
       if (clientDigest && clientDigest !== sha256) return await fail(422, `The ${counter.total()} bytes received have SHA-256 ${sha256}, not the ${clientDigest} that was sent; nothing was kept. Begin a new upload.`);
       await save(p.record, { ...stored, state: 'received', claimedAt: now(), receivedBytes: counter.total(), sha256 });
       res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
-      return res.end(JSON.stringify({ received: true, bytes: counter.total(), sha256, next: 'Call github_git_workspace_upload operation apply with this upload_id and the current expectedGeneration.' }) + '\n');
+      return res.end(JSON.stringify({ received: true, upload_id: 'upl_' + claim.uploadId, bytes: counter.total(), sha256, next: 'Call github_git_workspace_upload operation apply with this upload_id and the current expectedGeneration.' }) + '\n');
     }
     let over = false;
     const counter = counted(limit, () => { over = true; });
@@ -323,7 +323,7 @@ async function finishChunks(req, res, { url, claim, p, root, now }) {
   return withUploadLock(p, async () => {
     const stored = await json(p.record);
     if (stored.state === 'received' && stored.chunked) return stored.receivedBytes === size && stored.sha256 === expected
-      ? sendJson(res, 200, { received: true, bytes: size, sha256: expected, already_finished: true, next: 'Call github_git_workspace_upload operation apply with this upload_id and the current expectedGeneration.' })
+      ? sendJson(res, 200, { received: true, upload_id: 'upl_' + claim.uploadId, bytes: size, sha256: expected, already_finished: true, next: 'Call github_git_workspace_upload operation apply with this upload_id and the current expectedGeneration.' })
       : reply(res, 409, 'This upload was already finished with a different size or SHA-256. Begin a new upload for a different file.');
     if (stored.state === 'awaiting') return reply(res, 409, 'No chunk has arrived yet. Send the chunks with PUT <url>/chunk?offset=N first.');
     if (stored.state !== 'receiving' || !stored.chunked) return reply(res, 410, 'This upload is closed. Begin a new upload.');
@@ -360,7 +360,7 @@ async function finishChunks(req, res, { url, claim, p, root, now }) {
     }
     await save(p.record, { ...stored, state: 'received', receivedBytes: size, sha256, chunked: true, finishedAt: now(), ...(refs ? { refs } : {}) });
     await rm(join(p.data, 'parts'), { recursive: true, force: true });
-    return sendJson(res, 200, { received: true, bytes: size, sha256, chunks: parts.length, ...(refs ? { branches: refs.map(r => r.name.slice(11)) } : {}), next: 'Call github_git_workspace_upload operation apply with this upload_id and the current expectedGeneration.' });
+    return sendJson(res, 200, { received: true, upload_id: 'upl_' + claim.uploadId, bytes: size, sha256, chunks: parts.length, ...(refs ? { branches: refs.map(r => r.name.slice(11)) } : {}), next: 'Call github_git_workspace_upload operation apply with this upload_id and the current expectedGeneration.' });
   });
 }
 

@@ -51,6 +51,19 @@ export const checkGetCiState = defineRead({
 const WAIT_MAX_SECONDS = 45;
 const WAIT_DEFAULT_SECONDS = 40;
 const WAIT_POLL_MS = 6000;
+// A repository with no workflows, no check suite on the commit and no required checks runs no CI at
+// all: say so instead of "still running" forever, once the commit is old enough for CI to have started.
+const NO_CI_AFTER_MS = 120000;
+async function runsNoCi(octokit, p, headSha, now, committedAt) {
+  try {
+    const [workflows, suites, commit] = await Promise.all([
+      octokit.request('GET /repos/{owner}/{repo}/actions/workflows', { ...p, per_page: 1 }),
+      octokit.request('GET /repos/{owner}/{repo}/commits/{ref}/check-suites', { ...p, ref: headSha, per_page: 1 }),
+      committedAt ? null : octokit.request('GET /repos/{owner}/{repo}/commits/{ref}', { ...p, ref: headSha })]);
+    const date = Date.parse(committedAt ?? commit?.data?.commit?.committer?.date ?? '');
+    return workflows.data?.total_count === 0 && suites.data?.total_count === 0 && Number.isFinite(date) && now - date > NO_CI_AFTER_MS;
+  } catch { return false; }
+}
 const overallOf = (state) => state.green === true ? 'green' : state.green === null ? 'unknown' : state.checks.some((c) => c.state === 'failure') ? 'red' : 'pending';
 export const checkWait = defineRead({
   name: 'github_check_wait', area: 'check', audience: ['B', 'Op'],
@@ -68,7 +81,7 @@ export const checkWait = defineRead({
     const sleep = ctx.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
     const start = now();
     const deadline = start + (args.timeoutSeconds ?? WAIT_DEFAULT_SECONDS) * 1000;
-    let headSha; let baseBranch;
+    let headSha; let baseBranch; let committedAt = null;
     if (args.pr) {
       const pr = (await octokit.request('GET /repos/{owner}/{repo}/pulls/{pull_number}', { ...p, pull_number: args.pr })).data;
       headSha = pr.head.sha; baseBranch = pr.base.ref;
@@ -78,12 +91,15 @@ export const checkWait = defineRead({
       const [repo, commit] = await Promise.all([
         octokit.request('GET /repos/{owner}/{repo}', p),
         octokit.request('GET /repos/{owner}/{repo}/commits/{ref}', { ...p, ref: args.ref })]);
-      headSha = commit.data.sha; baseBranch = repo.data.default_branch;
+      headSha = commit.data.sha; baseBranch = repo.data.default_branch; committedAt = commit.data.commit?.committer?.date;
     }
     let state; let polls = 0;
     for (;;) {
       state = await ciState(octokit, { owner, repo: args.repo, baseBranch, headSha });
       polls += 1;
+      if (polls === 1 && !state.checks.length && await runsNoCi(octokit, p, headSha, now(), committedAt))
+        return { status: 'no_ci', done: true, overall: 'no_ci', head_sha: headSha, base_branch: baseBranch, waited_seconds: Math.round((now() - start) / 1000), polls, basis: state.basis, checks: [],
+          next: 'This repository runs no automated checks (no workflows, no check suites, no required checks); there is nothing to wait for.' };
       const overall = overallOf(state);
       if (overall !== 'pending' || now() + WAIT_POLL_MS > deadline) break;
       await sleep(Math.min(WAIT_POLL_MS, Math.max(0, deadline - now())));

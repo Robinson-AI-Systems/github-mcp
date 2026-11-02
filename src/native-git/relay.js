@@ -114,7 +114,7 @@ export function planTransferRelay(request, env = process.env, now = Date.now()) 
 /** The plain-English note for a person whose AI sandbox cannot reach the transfer host. */
 export function blockedNote(url, { short = false } = {}) {
  let host = 'this service'; try { host = new URL(url).hostname; } catch { /* keep generic */ }
- if (short) return `If the sandbox cannot reach ${host} (proxy 403, DNS error), add that one domain to its network allowlist (Claude: Capabilities / network access), then begin again.`;
+ if (short) return `If ${host} is unreachable (proxy 403, DNS), allow that one domain in the sandbox network allowlist, then begin again.`;
  return `If this fails because the sandbox cannot reach ${host} (host not allowed, proxy 403, DNS error), add that one domain to your AI's network allowlist (for Claude: the Capabilities / network access allowed-domains setting), then ask for a new link. Same domain for every repository and transfer; nothing is lost.`;
 }
 
