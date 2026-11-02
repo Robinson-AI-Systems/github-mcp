@@ -91,3 +91,7 @@ the worker (other worker routes keep their 15-second body deadline). Dedicated P
 First live begin (release 26643443): the result, which holds the one-time command, was dropped by a compact client
 (`omitted_fields: ["result"]`), making the feature unusable there. Begin/apply now add a bounded `progress` with the
 command or the apply summary. Test: `native-git-upload-contract.test.js` (fails without the change).
+
+## 2026-11-02 — Live acceptance
+
+Archive and git uploads from an outside machine, single-use refusal and checked apply all passed live; evidence in `docs/status/2026-11-01-direct-upload.md`.
