@@ -134,5 +134,6 @@ describe('the tools built before this card', () => {
     const r = await createDispatch({}).call(null, { registry: realRegistry, name: 'github_whoami', args: {}, connection: conn(), db });
     expect(r.isError).toBeUndefined();
     expect(r.structuredContent).not.toHaveProperty('kept_result');
+    expect(r.structuredContent.server_release).toHaveProperty('version');
   });
 });
