@@ -2868,6 +2868,25 @@
       "pr": [
         531
       ]
+    },
+    {
+      "id": "GIT-DOWNLOAD-1",
+      "title": "Direct bulk downloads from native Git workspaces (one-time git clone or archive URL)",
+      "batch": "FIN",
+      "design": "docs/pr-cards/GIT-DOWNLOAD-1.md",
+      "dependencies": [
+        "GIT-UPLOAD-1"
+      ],
+      "card": "docs/pr-cards/GIT-DOWNLOAD-1.md",
+      "status": "IN_REVIEW",
+      "migration": "none",
+      "budget": 800,
+      "units": [
+        "GIT-DOWNLOAD-1"
+      ],
+      "readiness": "READY",
+      "ownerInputs": [],
+      "pr": []
     }
   ],
   "gatewayBoundary": {

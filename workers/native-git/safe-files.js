@@ -1,6 +1,6 @@
 // Directory handles pin every path component across concurrent worktree edits.
 // This closes the lstat/open race once an untrusted command container shares files.
-import {open,mkdir,rm} from 'node:fs/promises';
+import {open,mkdir,rm,lstat,readlink} from 'node:fs/promises';
 import {constants} from 'node:fs';
 const directory=constants.O_RDONLY|constants.O_DIRECTORY|constants.O_NOFOLLOW;
 async function parent(repo,path,create=false){
@@ -15,3 +15,18 @@ export async function writeWorkspaceFile(repo,path,bytes){
  const p=await parent(repo,path,true);let file;try{file=await open(p.path,constants.O_WRONLY|constants.O_CREAT|constants.O_NOFOLLOW|constants.O_NONBLOCK,0o600);if(!(await file.stat()).isFile())throw new TypeError('Only regular workspace files can be written.');await file.truncate(0);await file.writeFile(bytes);await file.sync();}finally{await file?.close();await p.handle.close();}
 }
 export async function removeWorkspaceFile(repo,path){const p=await parent(repo,path);try{await rm(p.path);}finally{await p.handle.close();}}
+// GIT-DOWNLOAD-1: describe one worktree entry without following any link. A path whose folders
+// pass through a symbolic link throws (ELOOP/ENOTDIR); a final link is reported, never opened.
+// For a regular file the caller receives an open O_NOFOLLOW handle and must close it.
+export async function workspaceEntry(repo,path){
+ let p;try{p=await parent(repo,path);}catch(e){if(e.code==='ENOENT')return {type:'missing'};throw e;}
+ try{
+  let info;try{info=await lstat(p.path);}catch(e){if(e.code==='ENOENT')return {type:'missing'};throw e;}
+  if(info.isSymbolicLink())return {type:'symlink',target:await readlink(p.path)};
+  if(info.isDirectory())return {type:'dir'};
+  if(!info.isFile())return {type:'other'};
+  const file=await open(p.path,constants.O_RDONLY|constants.O_NOFOLLOW|constants.O_NONBLOCK);
+  const stat=await file.stat();if(!stat.isFile()){await file.close();return {type:'other'};}
+  return {type:'file',file,size:stat.size,mode:stat.mode,mtime:Math.floor(stat.mtimeMs/1000)};
+ }finally{await p.handle.close();}
+}
