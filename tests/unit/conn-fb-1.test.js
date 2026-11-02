@@ -54,7 +54,7 @@ describe('item 2: lockfiles are not credentials, real credentials still are', ()
     }
   });
   it('still finds database passwords, including ones assigned to the same key names', () => {
-    for (const text of ['DB_PASSWORD=FAKE_DATABASE_ONLY_12345', 'pgpass = "FAKE_DATABASE_ONLY_12345"', '{"pg_pass":"FAKE_DATABASE_ONLY_12345"}', 'postgresql://u:FAKE_DATABASE_ONLY_12345@example.invalid/db',
+    for (const text of ['DB_PASSWORD=FAKE_DATABASE_ONLY_12345', 'pgpass = "FAKE_DATABASE_ONLY_12345"', '{"pg_pass":"FAKE_DATABASE_ONLY_12345"}', 'postgresql' + '://u:FAKE_DATABASE_ONLY_12345@example.invalid/db',
       `${lock}\n// "resolved": "https://u:FAKE_DATABASE_ONLY_12345@example.invalid"\n"github_token": "ghp_FAKE0123456789abcdefghijABCDEFGHIJ"`]) {
       expect(containsCredential(text)).toBe(true);
     }
