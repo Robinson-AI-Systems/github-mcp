@@ -12,10 +12,10 @@ import { nativeWorkspaceId } from '../../src/native-git/protocol.js';
 import { containsCredential, redact, activeProtectionReport, withProtectionContext, withRepositoryProtection } from '../../src/github/content-protection.js';
 
 const ID = /^git_[a-f0-9]{32}$/;
-const hash = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
-const json = async path => JSON.parse(await readFile(path, 'utf8'));
-const bindingHash = binding => hash(['authority', 'connection', 'owner', 'repo'].map(k => value(binding?.[k])));
-async function save(path, data) {
+export const hash = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
+export const json = async path => JSON.parse(await readFile(path, 'utf8'));
+export const bindingHash = binding => hash(['authority', 'connection', 'owner', 'repo'].map(k => value(binding?.[k])));
+export async function save(path, data) {
   const temp = path + '.' + randomBytes(8).toString('hex');
   const handle = await open(temp, 'wx', 0o600);
   try { await handle.writeFile(JSON.stringify(data)); await handle.sync(); } finally { await handle.close(); }
@@ -29,6 +29,11 @@ const CLONING = new Set();
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 export const cloningWorkspaces = () => new Set(CLONING);
 
+// Fixed environment and configuration for every Git process (no system/global config,
+// hooks, fsmonitor, credential helpers, redirects or non-HTTPS transports).
+export const gitEnvironment = root => ({ PATH: process.env.PATH, HOME: root, LANG: 'C.UTF-8', GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: '/dev/null', GIT_TERMINAL_PROMPT: '0', GIT_EDITOR: 'true', GIT_SEQUENCE_EDITOR: 'true', GIT_ATTR_NOSYSTEM: '1', GIT_LFS_SKIP_SMUDGE: '1', GIT_LITERAL_PATHSPECS: '1', GIT_OPTIONAL_LOCKS: '0' });
+export const gitPrefix = () => ['--no-pager', '-c', 'core.hooksPath=/dev/null', '-c', 'core.fsmonitor=false', '-c', 'credential.helper=', '-c', 'http.followRedirects=false', '-c', 'protocol.allow=never', '-c', 'protocol.https.allow=always', '-c', 'submodule.recurse=false', '-c', 'gc.auto=0', '-c', 'commit.gpgSign=false', '-c', 'tag.gpgSign=false', '-c', 'core.attributesFile=/dev/null', '-c', 'core.fsync=committed', '-c', 'pack.threads=1', '-c', 'pack.windowMemory=64m'];
+
 export class NativeGitWorker {
   constructor({ root, authorize, credential, allowLocalFixtures = false, timeoutMs = 45000, cloneTimeoutMs = 900000, cloneWaitMs = 30000, maxOutputBytes = 2 * 1024 * 1024, now = Date.now, scannerPolicy={settings:defaultScannerSettings(),revision:0} } = {}) {
     if (!isAbsolute(root ?? '') || typeof authorize !== 'function') throw new TypeError('Isolated absolute storage and an authorization callback are required.');
@@ -38,21 +43,22 @@ export class NativeGitWorker {
     bindingHash(binding);
     if (await this.authorize(binding, { write }) !== true) throw new TypeError('Current workspace authorization is not valid.');
   }
-  async git(cwd, args, { token, remote, allowedCodes = [0], timeoutMs = this.timeoutMs } = {}) {
-    const env = { PATH: process.env.PATH, HOME: this.root, LANG: 'C.UTF-8', GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: '/dev/null', GIT_TERMINAL_PROMPT: '0', GIT_EDITOR: 'true', GIT_SEQUENCE_EDITOR: 'true', GIT_ATTR_NOSYSTEM: '1', GIT_LFS_SKIP_SMUDGE: '1', GIT_LITERAL_PATHSPECS: '1', GIT_OPTIONAL_LOCKS: '0' };
+  async git(cwd, args, { token, remote, allowedCodes = [0], timeoutMs = this.timeoutMs, input, maxOutputBytes = this.maxOutputBytes } = {}) {
+    const env = gitEnvironment(this.root);
     let encoded;
     if (token) {
       encoded = Buffer.from('x-access-token:' + token).toString('base64');
       Object.assign(env, { GIT_CONFIG_COUNT: '1', GIT_CONFIG_KEY_0: `http.${remote}.extraheader`, GIT_CONFIG_VALUE_0: 'Authorization: Basic ' + encoded });
     }
-    const prefix = ['--no-pager', '-c', 'core.hooksPath=/dev/null', '-c', 'core.fsmonitor=false', '-c', 'credential.helper=', '-c', 'http.followRedirects=false', '-c', 'protocol.allow=never', '-c', 'protocol.https.allow=always', '-c', 'submodule.recurse=false', '-c', 'gc.auto=0', '-c', 'commit.gpgSign=false', '-c', 'tag.gpgSign=false', '-c', 'core.attributesFile=/dev/null', '-c', 'core.fsync=committed', '-c', 'pack.threads=1', '-c', 'pack.windowMemory=64m'];
+    const prefix = gitPrefix();
     if (this.allowLocalFixtures) prefix.push('-c', 'protocol.file.allow=always');
     const result = await new Promise((accept, reject) => {
-      const child = spawn('git', [...prefix, ...args], { cwd, env, stdio: ['ignore', 'pipe', 'pipe'], detached: true });
+      const child = spawn('git', [...prefix, ...args], { cwd, env, stdio: [input ? 'pipe' : 'ignore', 'pipe', 'pipe'], detached: true });
+      if (input) { child.stdin.on('error', () => {}); child.stdin.end(input); }
       const out = [], err = []; let bytes = 0, problem;
       const kill = reason => { problem ??= reason; try { process.kill(-child.pid, 'SIGKILL'); } catch { /* ended */ } };
       const timer = setTimeout(() => kill('Git timed out; inspect the workspace and remote before another intent.'), timeoutMs);
-      const collect = target => chunk => { bytes += chunk.length; if (bytes > this.maxOutputBytes) kill('Complete output exceeds the worker limit; narrow the query or use byte windows.'); else target.push(chunk); };
+      const collect = target => chunk => { bytes += chunk.length; if (bytes > maxOutputBytes) kill('Complete output exceeds the worker limit; narrow the query or use byte windows.'); else target.push(chunk); };
       child.stdout.on('data', collect(out)); child.stderr.on('data', collect(err));
       child.on('error', error => { clearTimeout(timer); reject(error); });
       child.on('close', code => { clearTimeout(timer); problem ? reject(new Error(problem)) : accept({ untrusted: true, code, stdout: Buffer.concat(out).toString('utf8'), stderr: Buffer.concat(err).toString('utf8') }); });
@@ -262,11 +268,11 @@ export class NativeGitWorker {
   async close(id, binding) {
     if (!ID.test(id ?? '')) throw new TypeError('Invalid workspace ID.');
     await this.access(binding, true);
-    try { await realpath(join(this.root,id)); } catch(error) { if(error.code!=='ENOENT')throw error;await rm(join(this.root,'.attachments',id),{recursive:true,force:true});return {disposed:true,alreadyAbsent:true}; }
+    try { await realpath(join(this.root,id)); } catch(error) { if(error.code!=='ENOENT')throw error;await rm(join(this.root,'.attachments',id),{recursive:true,force:true});await rm(join(this.root,'.uploads',id),{recursive:true,force:true});return {disposed:true,alreadyAbsent:true}; }
     const w = await this.workspace(id, binding, true, true);
     if (CLONING.has(w.dir)) throw new TypeError('The clone is still running; wait for ready or failed before closing. No files deleted.');
     let lock; try { lock = await open(join(w.dir, 'mutation.lock'), 'wx', 0o600); } catch { throw new TypeError('Workspace is busy; no files deleted.'); }
-    try { await rm(w.dir, { recursive: true, force: true });await rm(join(this.root,'.attachments',id),{recursive:true,force:true}); return { disposed: true }; } finally { await lock.close(); }
+    try { await rm(w.dir, { recursive: true, force: true });await rm(join(this.root,'.attachments',id),{recursive:true,force:true});await rm(join(this.root,'.uploads',id),{recursive:true,force:true}); return { disposed: true }; } finally { await lock.close(); }
   }
   async prune({ skip = new Set(), limit = 100 } = {}) {
     let removed = 0;
@@ -278,7 +284,7 @@ export class NativeGitWorker {
         const meta = await json(join(dir, 'workspace.json'));
         if (!Number.isFinite(meta.expiresAt) || meta.expiresAt > this.now()) continue;
         lock = await open(join(dir, 'mutation.lock'), 'wx', 0o600);
-        await rm(dir, { recursive: true, force: true });await rm(join(this.root,'.attachments',id),{recursive:true,force:true}); removed++;
+        await rm(dir, { recursive: true, force: true });await rm(join(this.root,'.attachments',id),{recursive:true,force:true});await rm(join(this.root,'.uploads',id),{recursive:true,force:true}); removed++;
       } catch (e) { if (!['EEXIST', 'ENOENT'].includes(e.code)) throw e; }
       finally { if (lock) await lock.close(); }
     }

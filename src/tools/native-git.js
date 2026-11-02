@@ -1,13 +1,13 @@
 import {passRefusal} from '../rtc/pass-scope.js';
 import {enqueueAllocation,disposeAllocation} from '../playground/allocations.js';
 import {RUNTIME_CHOICES} from '../playground/sizing.js';
-import { nativeWorkerPublicKey } from '../native-git/signing.js';
+import { nativeWorkerPublicKey, signNativeUploadClaim } from '../native-git/signing.js';
 import { randomBytes } from 'node:crypto';
 import { defineRead } from './define-read.js';
 import { defineGithubWrite, explainGithubError } from './define-github-write.js';
 import { TenantCapacityError } from '../tenancy/runtime-limits.js';
 import { READ_OPERATIONS, WRITE_OPERATIONS, gitCommand, switchBranch, branchName, nativeOperationHelp } from '../native-git/commands.js';
-import { nativeWorkspaceId, workerUrl, workerKey, nativeWorkerHost } from '../native-git/protocol.js';
+import { nativeWorkspaceId, workerUrl, workerKey, nativeWorkerHost, nativeWorkerRoute, nativeBindingHash, UPLOAD_PURPOSE, UPLOAD_TTL_MS } from '../native-git/protocol.js';
 import { nativeConnection, nativeOpenRequestKey, nativeRecord, authorizeNativeRepo, callNativeWorker } from '../native-git/client.js';
 
 const OWNER = { type: 'string', minLength: 1, maxLength: 39, pattern: '^[A-Za-z0-9-]+$' };
@@ -68,7 +68,7 @@ const read = defineRead({
  properties: { workspace_id: WORKSPACE, operation: { type: 'string', enum: ['capabilities', ...READ_OPERATIONS] }, options: OPTIONS, byteOffset: { type: 'integer', minimum: 0 }, byteLength: { type: 'integer', minimum: 1, maximum: 32768 } }, required: ['operation'],
  handler: async (a, c) => { if (a.operation === 'capabilities') {
   let worker; try { worker = await callNativeWorker(c, { action: 'capabilities' }); } catch { worker = { ready: false, setup_required: true }; }
-  return { playground: {tools:['github_playground_execute','github_playground_read','github_playground_cancel'],next:'Search/describe/call these agent tools for commands, builds and tests in an attached isolated runtime. This Git worker remains typed Git only.'}, operation_help: a.options?.name ? nativeOperationHelp(a.options.name) : { next: 'Call capabilities with options.name set to an operation for exact options and an example.' }, worker, read_operations: READ_OPERATIONS, write_operations: WRITE_OPERATIONS, setup: 'https://github.com/Robinson-AI-Systems/github-mcp/blob/main/docs/NATIVE-GIT-OPERATIONS.md', unsupported: [
+  return { bulk_upload: { tool: 'github_git_workspace_upload', next: 'For more than about 1 MB of files: one-time git push or curl upload URL straight to this worker, then apply.' }, playground: {tools:['github_playground_execute','github_playground_read','github_playground_cancel'],next:'Search/describe/call these agent tools for commands, builds and tests in an attached isolated runtime. This Git worker remains typed Git only.'}, operation_help: a.options?.name ? nativeOperationHelp(a.options.name) : { next: 'Call capabilities with options.name set to an operation for exact options and an example.' }, worker, read_operations: READ_OPERATIONS, write_operations: WRITE_OPERATIONS, setup: 'https://github.com/Robinson-AI-Systems/github-mcp/blob/main/docs/NATIVE-GIT-OPERATIONS.md', unsupported: [
     { feature: 'LFS', guidance: 'Install git-lfs locally, run git lfs install in your trusted local clone, and use git lfs pull/push with your own GitHub authorization.' },
     { feature: 'submodules', guidance: 'Use a trusted isolated local clone, review .gitmodules origins, then git submodule update --init --recursive with separate repository permissions.' },
     { feature: 'executable hooks/filters, signing, custom remotes and arbitrary shell/bisect run in the Git worker', guidance: 'For commands/builds/tests, use github_playground_execute in an attached isolated Robinson Playground runtime. This Git worker stays typed Git; advanced credentialed Git configuration still uses the documented trusted local alternative.' }
@@ -131,7 +131,61 @@ const list = defineRead({
   return { items, checked: rows.length, unavailable, next_cursor: next, complete: next === null && unavailable === 0, note: 'Unavailable repository names are withheld. Follow next_cursor even when a page has no accessible items; omissions never prove absence.' };
  }
 });
-export const tools = [open.tool, read.tool, run.tool, close.tool, list.tool];
+// GIT-UPLOAD-1: bulk bytes go straight to the worker. The returned address carries a signed,
+// single-use, ten-minute capability for one quarantine area of this workspace — never a GitHub
+// or provider credential. The address is returned once (it is not stored in the change log).
+const uploadRefusal = reason => Object.assign(new TypeError(String(reason ?? 'The upload was refused.').replace(/[\x00-\x1f\x7f]/g, ' ').slice(0, 600)), { safeMessage: true, safeCode: 'native_upload_refused', status: 422 });
+const UPLOAD_COMMAND = { git: url => `git push "${url}" HEAD:refs/heads/upload`, archive: url => `curl --fail --upload-file files.tar.gz "${url}"` };
+const upload = defineGithubWrite({
+ name: 'github_git_workspace_upload', area: 'git', audience: ['B', 'O', 'Op'],
+ description: 'Move many or large files into a native workspace: begin returns a one-time git push or curl upload URL; apply checks what arrived and adds it.',
+ guidance: 'For more than about 1 MB of files. begin (mode git or archive, fresh requestKey) returns a private URL that works once within 10 minutes: git mode runs `git push "<url>" HEAD:refs/heads/upload` from your own clone (commits must build on the workspace HEAD); archive mode runs `curl --fail --upload-file files.tar.gz "<url>"` (.tar.gz, .tar or .zip). Then apply with upload_id and the current expectedGeneration: git fast-forwards the workspace branch; archive extracts under optional path. Links, .git paths, oversize files and credential-shaped content are refused. Commit and push with github_git_workspace_run. Do not publish the URL.',
+ properties: { workspace_id: WORKSPACE, operation: { type: 'string', enum: ['begin', 'apply'] }, mode: { type: 'string', enum: ['git', 'archive'], description: 'begin: git = receive one git push; archive = receive one .tar.gz/.tar/.zip file.' },
+  maxMegabytes: { type: 'integer', minimum: 1, maximum: 100, description: 'begin: upload size cap in MiB (default 50).' }, upload_id: { type: 'string', pattern: '^upl_[a-f0-9]{32}$' },
+  expectedGeneration: { type: 'integer', minimum: 0 }, ref: { ...TEXT, description: 'apply (git): pushed branch to apply when several were pushed.' }, path: { type: 'string', minLength: 1, maxLength: 1024, description: 'apply (archive): workspace subfolder to extract into (default the repository root).' } },
+ required: ['workspace_id', 'operation'], declarations,
+ explain: error => error?.safeMessage ? error.message : 'The native upload could not be confirmed. Inspect workspace state and the same intent receipt before retrying.',
+ classifyError: error => [400, 401, 404, 409, 422, 429].includes(error?.status) ? 'rejected' : 'uncertain',
+ target, read: async (a, c, t) => { configured(c);
+  const wrong = (a.operation === 'begin' ? ['upload_id', 'expectedGeneration', 'ref', 'path'] : ['mode', 'maxMegabytes']).filter(k => a[k] !== undefined);
+  if (wrong.length) throw Object.assign(new TypeError(`${wrong.join(', ')} ${wrong.length > 1 ? 'are' : 'is'} not used by operation ${a.operation}.`), { safeMessage: true, safeCode: 'invalid_upload_arguments' });
+  if (a.operation === 'begin' && !a.mode) throw Object.assign(new TypeError('begin requires mode: git (one git push) or archive (one .tar.gz/.tar/.zip upload).'), { safeMessage: true, safeCode: 'invalid_upload_arguments' });
+  if (a.operation === 'apply' && (a.upload_id === undefined || a.expectedGeneration === undefined)) throw Object.assign(new TypeError('apply requires upload_id from begin and the current expectedGeneration.'), { safeMessage: true, safeCode: 'invalid_upload_arguments' });
+  if (a.operation === 'begin') {
+   if (t.record.job.brokerOrigin) throw Object.assign(new TypeError('This workspace is attached to a dedicated Playground runtime; copy files there with github_playground_execute, or use write_file.'), { safeMessage: true, safeCode: 'native_upload_unavailable' });
+   const cap = await callNativeWorker(c, { action: 'capabilities', job: t.record.job });
+   if (cap.direct_upload !== 'quarantine-v1') throw Object.assign(new TypeError('The native Git worker must be updated before direct uploads work. Use write_file (about 1 MB per call) meanwhile.'), { safeMessage: true, safeCode: 'native_worker_update_required' });
+  }
+  return await invoke(c, t, { action: 'inspect' }); },
+ classify: () => ({}), price: () => 0,
+ summarize: ({ args: a, target: t }) => a.operation === 'begin' ? `Open a one-time ${a.mode ?? ''} upload into the native workspace for ${t.owner}/${t.repo} (quarantined until applied)` : `Apply quarantined upload ${a.upload_id} to the native workspace for ${t.owner}/${t.repo} at generation ${a.expectedGeneration}`,
+ apply: async ({ args: a, ctx: c, target: t, requestKey }) => {
+  if (a.operation === 'apply') {
+   const result = await invoke(c, t, { action: 'upload_apply', options: { uploadId: a.upload_id.slice(4), ...(a.ref !== undefined ? { ref: a.ref } : {}), ...(a.path !== undefined ? { path: a.path } : {}) }, requestKey, expectedGeneration: a.expectedGeneration, allowWrite: true });
+   if (result.status === 'refused') throw uploadRefusal(result.reason);
+   return result;
+  }
+  const uploadId = randomBytes(16).toString('hex'), nonce = randomBytes(16).toString('hex');
+  const maxBytes = (a.maxMegabytes ?? 50) * 1048576, expiresAt = (c.now ?? Date.now)() + UPLOAD_TTL_MS;
+  const begun = await invoke(c, t, { action: 'upload_begin', options: { uploadId, mode: a.mode, maxBytes, expiresAt, nonce }, requestKey, allowWrite: true });
+  const claim = JSON.stringify({ purpose: UPLOAD_PURPOSE, version: 1, workspace_id: t.record.worker, binding: nativeBindingHash(t.record.binding), mode: a.mode, maxBytes, expiresAt, uploadId, nonce });
+  const url = `${new URL(nativeWorkerRoute(c.env, t.record.job)).origin}/v1/upload/${Buffer.from(claim).toString('base64url')}.${signNativeUploadClaim(claim, c.env)}`;
+  return { ...begun, url };
+ },
+ readAfter: async ({ args: a, ctx: c, target: t, response }) => a.operation === 'begin'
+  ? { ...await invoke(c, t, { action: 'upload_status', options: { uploadId: String(response.upload_id ?? '').slice(4) } }), address_shown_once: true }
+  : { operation: response, workspace: await invoke(c, t, { action: 'inspect' }) },
+ verify: ({ args: a, after, response }) => a.operation === 'begin'
+  ? after.state === 'awaiting' && after.upload_id === response.upload_id && after.mode === a.mode && typeof response.url === 'string'
+  : after.operation.status === 'applied' && after.workspace.generation === after.operation.generation && after.workspace.head === after.operation.head,
+ present: ({ args: a, after, response }) => {
+  if (a.operation === 'apply') { const { status: _status, stdout: _o, stderr: _e, ...summary } = after?.operation ?? response ?? {}; return { ...summary, workspace: after?.workspace ? { generation: after.workspace.generation, branch: after.workspace.branch, head: after.workspace.head } : undefined, next: 'Review with github_git_workspace_read (status/diff), then add, commit and push with github_git_workspace_run.' }; }
+  if (typeof response?.url !== 'string') return { ...after, next: 'The upload address is shown only once. Begin a new upload with a fresh requestKey if you no longer have it.' };
+  return { ...after, url: response.url, command: UPLOAD_COMMAND[a.mode](response.url), single_use: true,
+   next: `Run the command within 10 minutes (it works once), then call github_git_workspace_upload operation apply with upload_id ${after.upload_id} and the current expectedGeneration. Do not publish the URL; it holds no GitHub credential.` };
+ }
+});
+export const tools = [open.tool, read.tool, run.tool, close.tool, list.tool, upload.tool];
 async function openWithCurrentState(args,ctx) {
  const result=await open.handler(args,ctx), value=result.structuredContent;
  if (!value?.replayed || !value.result?.workspace_id) return result;
@@ -145,4 +199,4 @@ async function openWithCurrentState(args,ctx) {
  const body={...value,done:value.done&&current.available,historical:true,current_workspace:current,...(!current.available?{warning:current.next}: {})};
  return {...result,structuredContent:body,content:[{type:'text',text:JSON.stringify(body)}]};
 }
-export const handlers = Object.fromEntries([open, read, run, close, list].map(t => [t.tool.name, t===open?openWithCurrentState:t.handler]));
+export const handlers = Object.fromEntries([open, read, run, close, list, upload].map(t => [t.tool.name, t===open?openWithCurrentState:t.handler]));

@@ -23,7 +23,7 @@ Restricted preview RTC successful replies revalidate service pass and scratch ow
 
 Every tool this server will have, by area — the product scope. The implementing model builds exactly these; anything
 else goes in `docs/ROADMAP.md` and the PR report, and universal tools (last section) provide guarded access only where their actual credential, classification and request support permits. Endpoint-level completeness remains unproven; see [MAXIMUM-AUTHORITY](designs/MAXIMUM-AUTHORITY.md). Counts are checked by `python3 scripts/count-catalog.py` (run by `npm run check` and CI since A-1, #1). When a
-tool merges, its Card cell gains `built #<PR>`. Built so far: **506 cataloged tools** (every row below is in the registry, `src/tools/index.js`; `scripts/count-catalog.py` and `scripts/check-writes.mjs` fail the build if a tool and its row disagree)
+tool merges, its Card cell gains `built #<PR>`. Built so far: **507 cataloged tools** (every row below is in the registry, `src/tools/index.js`; `scripts/count-catalog.py` and `scripts/check-writes.mjs` fail the build if a tool and its row disagree)
 and holds the two A-5 tools, the B-3 protected-list reader the two B-2 production-switch tools and the B-4 spend-limit tool. Since B-5 every result of these tools is shaped (`src/tools/util.js`) and failures are explained by `src/tools/errors.js`. Since B-6 a connection sees only the tools its profile allows (`tools/list` and by-name calls). Every write tool below is built with `defineGithubWrite` (B-1, #16, `src/tools/define-github-write.js`) and pass the nine write-contract checks (`test/helpers/write-contract.js`); the two B-2 tools are the first (`src/tools/server.js`).
 
 **Safety metadata and scoped behavior:** `—` reads only; `P` supports optional dryRun; `D` describes destructive effects; `Prod`/`Prod*` describe production scope; `A`/`A*` describe access changes; `M` describes notifications; `$`/`$*` describe billing. `C` retains the restricted-profile confirmation declaration checked against source. On a full ordinary owner connection these marks are disclosure, not automatic confirmation or refusal. Explicitly restricted profiles/passes retain their chosen mode, access and spend limits. GitHub applies provider rules; journal/replay/readback and credential isolation apply to everyone.
@@ -116,7 +116,7 @@ Agent-facing runtime operations through the existing search/describe/call contra
 | `github_playground_workspace` | Provision (optional `size` small/medium/large), attach, resume, privately preview or dispose the exact owned allocation with independent readback | P | N | I | B,O,Op | F | PLAY-1 |
 | `github_playground_run` | One command at a branch/tag/SHA in a fresh right-sized runtime: open, provision, run, return exit code and log tail, dispose; resumable by requestKey | P·Prod* | N | I | B,O,Op | F | FLEET-2 |
 
-## Files, commits and git data (`github_content_*, github_commit_*, github_git_*`) — 23
+## Files, commits and git data (`github_content_*, github_commit_*, github_git_*`) — 24
 
 Card(s): D-2.
 
@@ -127,6 +127,7 @@ Card(s): D-2.
 | `github_git_workspace_run` | Typed native Git; branch name/branch aliases, switch ref alias, independent branch readback and verified push | P·D·Prod* | N | I | B,O,Op | F | PAR-2 |
 | `github_git_workspace_close` | Dispose only the owned local workspace, verify absence and retain immutable disposal replay | P·D·Prod* | N | I | B,O,Op | F | PAR-2 |
 | `github_git_workspace_list` | Page current connection workspaces with fresh repository access checks and explicit omissions/cursor | — | N | I | B,O,Op | R | PAR-2 |
+| `github_git_workspace_upload` | Bulk files straight to the worker: begin returns a one-time, 10-minute `git push` or `curl --upload-file` URL (no GitHub credential); apply fast-forwards or extracts after safety and secret checks | P | N | — | B,O,Op | F | GIT-UPLOAD-1 |
 | `github_content_get` | A file or directory at any ref; compact text by default (a cut-short file says plainly how to read it whole with `fullText`, up to 1 MB, or by `startLine`/`endLine` windows of up to 500 lines returned whole with a `next_start_line` cursor), byte-exact base64 via `byteOffset`/`byteLength` (up to 32 KiB per explicit call) and a retained handle for overflow | — | F | I | B,Op | R | D-2 built #30 |
 | `github_content_protection_check` | Explain matching rules and locations without values; provide a safe false-positive report and exact local-Git retrieval guidance | — | N | I | B,O,Op | R | PAR-2 |
 | `github_content_get_tree` | Recursive tree with blob SHA/mode, glob and pinned offset continuation beyond 500 entries | — | C | I | B | R | D-2 built #30 |
@@ -922,9 +923,9 @@ Metered actions with no published per-use price (larger runners, Copilot agent a
 
 ## Totals
 
-**Totals:** 506 tools: 500 hand-built + 6 universal (`github_api_*`, `github_graphql_*`), plus guided settings for every
+**Totals:** 507 tools: 501 hand-built + 6 universal (`github_api_*`, `github_graphql_*`), plus guided settings for every
 dashboard-only owner setting. By profile (lowest profile that has the tool): read_only 161, everyday adds 85
-(everyday lists 246), full adds 116 (full lists 404; `github_tenant_remove` only on the owner's own direct connection, so everyone else sees 403). In compact mode (`docs/designs/BATCH-C.md`) an agent
+(everyday lists 246), full adds 117 (full lists 405; `github_tenant_remove` only on the owner's own direct connection, so everyone else sees 403). In compact mode (`docs/designs/BATCH-C.md`) an agent
 loads only about 25 tools up front (meta-tools, whoami, universal search, workflows) and reaches the rest through
 `github_search_tools` / `github_call`.
 
@@ -932,7 +933,7 @@ loads only about 25 tools up front (meta-tools, whoami, universal search, workfl
 | --- | --- |
 | Server about itself | 27 |
 | Repositories | 22 |
-| Files, commits and git data | 23 |
+| Files, commits and git data | 24 |
 | Branches and tags | 9 |
 | Pull requests | 15 |
 | Reviews and review threads | 10 |
@@ -975,7 +976,7 @@ loads only about 25 tools up front (meta-tools, whoami, universal search, workfl
 | Code quality and GitHub help | 4 |
 | Robinson Playground commands | 5 |
 | CAP-6 gated families: merge queue, Copilot coding agent, feature check | 5 |
-| **Total** | **506** |
+| **Total** | **507** |
 
 <!-- #108: experimental RTC HTTPS reader bridges only server/meta read tools using existing guarded dispatch; RTC 1 certification is not claimed. -->
 
@@ -1027,6 +1028,8 @@ Playground availability: `github_playground_read` operation `availability` retur
 Playground project-scoped cleanup: `github_playground_workspace` disposal can verify exact four-volume absence from a fresh signed operator observation when host-volume inspection returns401/403; independent owned-project Compose/container absence is still required. No caller proof, static assertion, delete acknowledgement, foreign/incomplete volume set or widened host permission can substitute. See docs/PLAYGROUND-OPERATIONS.md. PR480's integrated source is built/released; whole live allocation acceptance remains unpassed.
 
 Runtime sizing (2026-11-01): `github_git_workspace_open.runtime` and `github_playground_workspace.size` pick a Playground size class — small (2 CPU / 2 GiB), medium (4 / 4) or large (8 / 8, the original size) — for the whole allocation, never above the protected `PLAYGROUND_CPU_CPUS`/`PLAYGROUND_MEMORY_BYTES` ceilings or fresh host headroom. `auto` uses protected `PLAYGROUND_DEFAULT_SIZE` (unset = medium since 2026-11-01, after a live medium build passed the full unit suite; set `large` for the original size). `runtime: "none"` opens a Git-only workspace and queues no allocation. An allocation keeps its recorded size; see [Playground operations](PLAYGROUND-OPERATIONS.md#right-sized-runtimes).
+
+Direct uploads (2026-11-01, GIT-UPLOAD-1): `github_git_workspace_upload` operation `begin` (mode `git` or `archive`, `maxMegabytes` 1–100, default 50) returns a private URL on the native worker that accepts exactly one `git push` (into a separate quarantine repository) or one `curl --upload-file` of a .tar.gz/.tar/.zip, valid 10 minutes, carrying a signed single-use capability and never a GitHub credential; the URL is shown once and not kept in the change log. Operation `apply` (`upload_id`, `expectedGeneration`, optional `ref`/`path`) fast-forwards the workspace branch or extracts files, refusing non-fast-forwards, links, `.git`/traversal paths, oversize files, zip bombs and credential-shaped content, then bumps the generation. Commit/push stay with `github_git_workspace_run`. See [native operations](NATIVE-GIT-OPERATIONS.md#direct-uploads).
 
 Background clones (2026-11-01): `github_git_workspace_open` returns `state: "opening"` when a large repository's clone outlasts 30 s; the clone continues on the worker (default 15-minute watchdog). Read `github_git_workspace_read` operation `status` until `ready` or `failed`; run and close are refused until then. See [native operations](NATIVE-GIT-OPERATIONS.md).
 Own machines first (2026-11-01, FLEET-3): `github_git_workspace_open` reports `playground.placement` (`device` = one of the person's own ready computers or servers, tried first; `operator_pool` = shared Dokploy pool) or `reason: no_runtime_host` when neither exists. `github_playground_workspace` provision places a new allocation the same way. Interactive `preview` is not available on own machines yet. See [Playground operations](PLAYGROUND-OPERATIONS.md#placement-peoples-own-machines-first).

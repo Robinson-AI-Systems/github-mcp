@@ -11,7 +11,7 @@ export function workerKey(key) {
  return key;
 }
 export const signWorkerBody = (body, key) => createHmac('sha256', workerKey(key)).update(body).digest('hex');
-export function verifyWorkerBody(body, signature, key, now = Date.now()) {
+function verifySignature(body, signature, key) {
  workerKey(key);
  if (key.startsWith('ed25519:')) {
   if (typeof signature !== 'string' || !/^ed25519:[A-Za-z0-9_-]{86}$/.test(signature)) throw new TypeError('Invalid worker authorization.');
@@ -22,10 +22,38 @@ export function verifyWorkerBody(body, signature, key, now = Date.now()) {
   if (typeof signature !== 'string' || !/^[a-f0-9]{64}$/.test(signature)) throw new TypeError('Invalid worker authorization.');
   if (!timingSafeEqual(Buffer.from(signature, 'hex'), Buffer.from(signWorkerBody(body, key), 'hex'))) throw new TypeError('Invalid worker authorization.');
  }
+}
+export function verifyWorkerBody(body, signature, key, now = Date.now()) {
+ verifySignature(body, signature, key);
  const data = JSON.parse(body);
  if (![2, WORKER_PROTOCOL].includes(data.version) || !Number.isSafeInteger(data.expiresAt) || data.expiresAt <= now || data.expiresAt > now + 90000) throw new TypeError('Expired or invalid worker lease.');
- if (!['capabilities', 'open', 'inspect', 'read', 'run', 'close', 'attachment_export', 'attachment_import'].includes(data.action)) throw new TypeError('Unsupported worker action.');
+ // Purpose-separated claims (uploads, previews, coding) are never request leases.
+ if (Object.hasOwn(data, 'purpose')) throw new TypeError('Unsupported worker action.');
+ if (!['capabilities', 'open', 'inspect', 'read', 'run', 'close', 'attachment_export', 'attachment_import', 'upload_begin', 'upload_status', 'upload_apply'].includes(data.action)) throw new TypeError('Unsupported worker action.');
  return data;
+}
+
+// GIT-UPLOAD-1: a one-time upload address carries this signed claim, never a GitHub credential.
+// It is accepted only by the worker's /v1/upload route and grants writes to one quarantine area.
+export const UPLOAD_PURPOSE = 'robinson-native-upload/v1';
+export const UPLOAD_TTL_MS = 600000;
+export const UPLOAD_MAX_BYTES = 100 * 1024 * 1024;
+const UPLOAD_FIELDS = ['binding', 'expiresAt', 'maxBytes', 'mode', 'nonce', 'purpose', 'uploadId', 'version', 'workspace_id'];
+export const nativeBindingHash = binding => createHash('sha256').update(JSON.stringify(['authority', 'connection', 'owner', 'repo'].map(k => binding?.[k]))).digest('hex');
+export function verifyUploadCapability(token, key, now = Date.now()) {
+ if (typeof token !== 'string' || token.length > 2048 || !/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(token)) throw new TypeError('Invalid upload address.');
+ const [encoded, signature] = token.split('.');
+ const body = Buffer.from(encoded, 'base64url').toString('utf8');
+ if (Buffer.from(body, 'utf8').toString('base64url') !== encoded) throw new TypeError('Invalid upload address.');
+ verifySignature(body, key.startsWith('ed25519:') ? 'ed25519:' + signature : signature, key);
+ let claim; try { claim = JSON.parse(body); } catch { throw new TypeError('Invalid upload address.'); }
+ if (!claim || typeof claim !== 'object' || Array.isArray(claim) || JSON.stringify(Object.keys(claim).sort()) !== JSON.stringify(UPLOAD_FIELDS)) throw new TypeError('Invalid upload address.');
+ if (claim.purpose !== UPLOAD_PURPOSE || claim.version !== 1 || !['git', 'archive'].includes(claim.mode)) throw new TypeError('Invalid upload address.');
+ if (!/^git_[a-f0-9]{32}$/.test(claim.workspace_id) || !/^[a-f0-9]{64}$/.test(claim.binding) || !/^[a-f0-9]{32}$/.test(claim.uploadId) || !/^[a-f0-9]{32}$/.test(claim.nonce)) throw new TypeError('Invalid upload address.');
+ if (!Number.isSafeInteger(claim.maxBytes) || claim.maxBytes < 1 || claim.maxBytes > UPLOAD_MAX_BYTES) throw new TypeError('Invalid upload address.');
+ // Small allowance for clock difference between the control plane and the worker.
+ if (!Number.isSafeInteger(claim.expiresAt) || claim.expiresAt <= now || claim.expiresAt > now + UPLOAD_TTL_MS + 30000) throw new TypeError('This upload address has expired. Begin a new upload.');
+ return claim;
 }
 export function workerUrl(env) {
  const raw = env?.NATIVE_GIT_WORKER_URL;

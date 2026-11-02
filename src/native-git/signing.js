@@ -18,6 +18,18 @@ export function signNativeWorkerBody(body, env = process.env) {
  return 'ed25519:' + sign(null, Buffer.from(body), signingKey(env)).toString('base64url');
 }
 
+// GIT-UPLOAD-1: one-time upload address claim. It never carries a credential or a
+// worker action; the worker accepts it only on its quarantine upload route.
+export function signNativeUploadClaim(body, env = process.env) {
+ const claim = JSON.parse(body);
+ if (!claim || claim.purpose !== 'robinson-native-upload/v1' || Object.hasOwn(claim, 'credential') || Object.hasOwn(claim, 'action')) throw new TypeError('Invalid upload claim.');
+ if (env.NATIVE_GIT_WORKER_KEY) {
+  if (env.NATIVE_GIT_WORKER_KEY.startsWith('ed25519:')) throw new TypeError('A public verifier is not a shared signing secret. Use the control-plane signing key.');
+  return signWorkerBody(body, env.NATIVE_GIT_WORKER_KEY);
+ }
+ return sign(null, Buffer.from(body), signingKey(env)).toString('base64url');
+}
+
 // Purpose-separated claims; a coding container receives only the public verifier.
 export function signCodingWorkerBody(body,env=process.env){
  const claim=JSON.parse(body);if(claim.purpose!=='robinson-coding/v1'||Object.hasOwn(claim,'credential'))throw new TypeError('Invalid coding lease.');
