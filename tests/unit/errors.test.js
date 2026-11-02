@@ -155,3 +155,10 @@ describe('actual permissionless-header refusal regression',()=>{
     expect(out).toMatchObject({kind:'secondary_rate_limit',retryable:true});expect(out.todo).toContain('60 seconds');
   });
 });
+
+it('an account outside the connection points collaborators to adding a place or asking the owner to install', () => {
+  const x = describeGithubError(new GithubClientError('outside_scope', '"someone-else" is not one of the GitHub accounts this connection may use (me).'));
+  expect(x.todo).toMatch(/Add a place/);
+  expect(x.todo).toMatch(/\/connection\)/);
+  expect(x.todo).toMatch(/ask its owner to install the GitHub App/);
+});

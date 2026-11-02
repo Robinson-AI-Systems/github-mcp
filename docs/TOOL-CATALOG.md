@@ -1063,3 +1063,5 @@ Attach recovery (2026-11-01): a re-prepared transfer uses a new ID; a stale part
 Close/attach robustness (2026-11-01): close readback retries a briefly busy worker; attach waits briefly for a just-provisioned runtime. No tool changes.
 
 Upload essentials (2026-11-01): `github_git_workspace_upload` begin/apply results carry a small always-visible `progress` (the one-time command; the apply summary) so compact clients can use the feature.
+
+Collaborator hint (2026-11-01): an account outside the connection now says how to add a collaborated repository as an extra place on the connection page, or to ask its owner to install the GitHub App.
