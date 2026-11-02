@@ -12,7 +12,7 @@ import { explainGithubError } from './errors.js';
 import { githubFor, requestKey as intentKey } from '../github/client.js';
 import { isOwnerConnection } from '../core/authority.js';
 import { containsCredential } from '../github/content-protection.js';
-import { nativeRecord, authorizeNativeRepo, callNativeWorker } from '../native-git/client.js';
+import { nativeRecord, authorizeNativeRepo, callNativeWorker, nativeConnection } from '../native-git/client.js';
 import { definiteFailure, porcelainPaths } from '../native-git/outcomes.js';
 import { fitDigest } from '../native-git/relay.js';
 import { nativeInternals } from './native-git.js';
@@ -62,7 +62,8 @@ async function remoteHead(c, owner, repo, branch) {
   try { const found = await gh.request('GET /repos/{owner}/{repo}/git/ref/{ref}', { owner, repo, ref: `heads/${branch}` }); return found.data?.ref === `refs/heads/${branch}` && SHA.test(found.data?.object?.sha ?? '') ? found.data.object.sha : null; }
   catch (error) { if (error?.status === 404) return null; throw new TypeError(explainGithubError(error)); }
 }
-const stateKey = key => 'repo_change.' + createHash('sha256').update(key).digest('hex').slice(0, 40);
+// Per connection and intent: another connection's same requestKey never sees this state.
+const stateKey = (c, key) => 'repo_change.' + createHash('sha256').update(JSON.stringify([nativeConnection(c), key])).digest('hex').slice(0, 40);
 const stepKey = (key, workspace, step) => 'rmcp_rc_' + createHash('sha256').update(JSON.stringify([key, workspace, step])).digest('hex').slice(0, 48);
 const short = sha => typeof sha === 'string' ? sha.slice(0, 7) : null;
 
@@ -75,7 +76,7 @@ async function preflight(a, c, t) {
   const [branchHead, baseHead] = await Promise.all([remoteHead(c, t.owner, t.repo, a.branch), base === a.branch ? null : remoteHead(c, t.owner, t.repo, base)]);
   if (!branchHead && !baseHead) throw safe(`Neither ${a.branch} nor the base ${base} exists on GitHub. Give an existing base branch.`, 'invalid_change_arguments');
   // A retry of this same intent after it pushed sees its own commit; that is not "moved".
-  const prior = await c.db.getSetting(stateKey(intentKey(c, NAME, a))).catch(() => null);
+  const prior = await c.db.getSetting(stateKey(c, intentKey(c, NAME, a))).catch(() => null);
   if (a.expectedHead !== undefined && (branchHead ?? '') !== a.expectedHead && !a.allowMoved && !(prior?.commit && prior.commit === branchHead))
     throw safe(`The branch ${a.branch} moved: GitHub has ${branchHead ?? 'no such branch'}, you expected ${a.expectedHead || 'no branch'}. Nothing was changed. Review it, then call again with expectedHead ${branchHead ?? '""'}, or allowMoved: true to build on the current head.`, 'branch_moved');
   if (a.workspace_id) { const record = await nativeRecord(c, a.workspace_id); if (`${record.row.owner}/${record.row.repo}`.toLowerCase() !== `${t.owner}/${t.repo}`.toLowerCase()) throw safe('workspace_id belongs to another repository.', 'invalid_change_arguments'); }
@@ -114,7 +115,7 @@ function machine(c, t, a, key, before) {
     return false;
   };
   return (async () => {
-    const mapKey = stateKey(key);
+    const mapKey = stateKey(c, key);
     const saved = await c.db.getSetting(mapKey) ?? {};
     const remember = async patch => { Object.assign(saved, patch); await c.db.setSetting(mapKey, saved); };
     if (saved.stage === 'awaiting_upload') return { stage: 'awaiting_upload', workspace_id: saved.workspace_id, branch: a.branch, base: before.base, upload_id: saved.upload_id, progress: ['upload link already issued'], next: 'The upload link is shown once. If you no longer have it, call again with a new requestKey for a new link.' };

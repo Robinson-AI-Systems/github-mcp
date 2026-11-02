@@ -245,19 +245,20 @@ export class NativeGitWorker {
         if (!['file', 'symlink'].includes(entry.type)) throw new TypeError(`${JSON.stringify(p.slice(0, 200))} ${entry.type === 'missing' ? 'does not exist' : 'is not a file'} in the workspace. Nothing was removed.`);
       }
       await save(receipt, { intent, state: 'sending' });
-      let result;
+      // Set just before anything in the workspace or on GitHub can change; a check that throws before it changed nothing.
+      let result, started = false;
       try {
         if (operation === 'write_file') {
           if (typeof args.base64 !== 'string' || args.base64.length > 1400000 || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(args.base64)) throw new TypeError('Supply canonical base64 of at most 1 MiB.');
           const bytes = Buffer.from(args.base64, 'base64'); if (containsCredential(bytes.toString('utf8'))) throw new TypeError('Credential-shaped file input belongs in protected setup, not tool arguments.');
-          await writeWorkspaceFile(w.repo,args.path,bytes);
+          started = true; await writeWorkspaceFile(w.repo,args.path,bytes);
           if (!(await readWorkspaceFile(w.repo,args.path)).equals(bytes)) throw new Error('File readback differed.');
           result = { code: 0, file_hash: createHash('sha256').update(bytes).digest('hex') };
-        } else if (operation === 'remove_file') { const list = args.paths ?? [args.path]; for (const p of list) await removeWorkspaceFile(w.repo, p); result = { code: 0, removed: list.length }; }
+        } else if (operation === 'remove_file') { const list = args.paths ?? [args.path]; started = true; for (const p of list) await removeWorkspaceFile(w.repo, p); result = { code: 0, removed: list.length }; }
         else if (operation.startsWith('worktree_')) {
           if (!/^[a-zA-Z0-9_-]{1,60}$/.test(args.name ?? '')) throw new TypeError('Worktree name must be a simple local identifier.');
           const path = join(w.dir, 'worktrees', args.name); await mkdir(dirname(path), { recursive: true });
-          result = await this.git(w.repo, operation === 'worktree_add' ? ['worktree', 'add', '--detach', '--', path, ref(args.ref ?? 'HEAD')] : ['worktree', 'remove', '--', path]);
+          started = true; result = await this.git(w.repo, operation === 'worktree_add' ? ['worktree', 'add', '--detach', '--', path, ref(args.ref ?? 'HEAD')] : ['worktree', 'remove', '--', path]);
         } else {
           const network = ['fetch', 'pull', 'push'].includes(operation);
           const token = network && !this.allowLocalFixtures ? await this.credential?.(binding, { write: operation === 'push' }) : null;
@@ -269,7 +270,7 @@ export class NativeGitWorker {
               if (args.tag && expectedRemote !== args.expectedHead) throw new TypeError('Updating an existing tag requires explicit force and its expected-head lease.');
               if (!args.tag && (await this.git(w.repo, ['merge-base', '--is-ancestor', args.expectedHead, expectedRemote], { allowedCodes: [0,1,128] })).code !== 0) throw new TypeError('Non-fast-forward push refused: fetch the expected remote commit or select explicit force with a lease.');
             } } }
-          result = await this.git(w.repo, gitCommand(operation, args), { token, remote: current.remote, allowedCodes: [0, 1, 128] });
+          started = true; result = await this.git(w.repo, gitCommand(operation, args), { token, remote: current.remote, allowedCodes: [0, 1, 128] });
           if (operation === 'push' && result.code === 0) { const actual = (await this.remoteRefs(w, token, destination))[destination] ?? null; result.remote_verified = actual === expectedRemote; result.remote_head = actual; }
         }
         current.generation += 1; await save(join(w.dir, 'workspace.json'), current);
@@ -277,7 +278,7 @@ export class NativeGitWorker {
         result = { ...result, ...state, next_generation: state.generation, status: result.code === 0 ? result.remote_verified === false ? 'unconfirmed' : 'applied' : state.conflicts.length ? 'conflict' : 'rejected' };
       } catch (error) {
         // A TypeError is a check that refused before anything changed (the generation did not move).
-        result = error instanceof TypeError ? { status: 'refused', error: error.message, no_change: true, generation: current.generation, next_generation: current.generation }
+        result = error instanceof TypeError && !started ? { status: 'refused', error: error.message, no_change: true, generation: current.generation, next_generation: current.generation }
           : { status: 'uncertain', error: 'Native operation did not finish with verified state; inspect before another intent.' };
       }
       await save(receipt, { intent, result, finished_at: this.now() }); return result;
