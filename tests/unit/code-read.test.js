@@ -309,6 +309,17 @@ describe('W-3 bounded exact-head file context',()=>{
     expect(body.read_all.arguments).toMatchObject({path:'docs/a.md',fullText:true});expect(body.read_all.note).toMatch(/fullText: true/);
     expect(body.continuation.arguments.byteLength).toBe(32768);
   });
+  it('keeps an explicitly requested whole file or line window visible to clients that show only structured results',async()=>{
+    const text=Array.from({length:1000},(_,i)=>'line '+(i+1)+' '+'x'.repeat(30)).join('\n');
+    for(const extra of [{fullText:true},{startLine:1,endLine:400}]){
+      const w=await world();
+      w.gh.when('GET /repos/{owner}/{repo}/contents/{path}').reply(200,fileBody({content:b64(text),size:text.length}));
+      const {result}=await run(w,'github_content_get',{...R,path:'docs/a.md',ref:'a'.repeat(40),...extra});
+      expect(result.structuredContent.full_payload_location).toBeUndefined();
+      expect(result.structuredContent.content.startsWith('line 1 ')).toBe(true);
+      expect(Buffer.byteLength(result.structuredContent.content)).toBeGreaterThan(8192);
+    }
+  });
   it('refuses half, reversed or oversized ranges before calling GitHub',async()=>{
     const w=await world();
     for(const range of [{startLine:2},{startLine:3,endLine:2},{startLine:1,endLine:501}])

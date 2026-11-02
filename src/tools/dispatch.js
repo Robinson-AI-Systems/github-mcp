@@ -11,7 +11,7 @@ import { randomBytes } from 'node:crypto';
 import { validateArgs } from '../core/validate.js';
 import {RetainedResultNotFound} from '../core/result-errors.js';
 import { capText, describeBody, fitToBudget, projectFields } from '../core/result-rules.js';
-import { deduplicateLargeEnvelope } from '../core/result-envelope.js';
+import { deduplicateLargeEnvelope, KEEP_WHOLE } from '../core/result-envelope.js';
 import { summarize } from './summaries.js';
 import { isToolVisible } from '../core/registry.js';
 import { passRefusal } from '../rtc/pass-scope.js';
@@ -93,7 +93,8 @@ async function readReply({ tool, args, raw, connection, db, mode }) {
       : { note: 'This result was cut and could not be kept. Ask for less (fields, a smaller page) or a narrower search.', ...(capped.cut.length ? { text_cut: capped.cut.slice(0, 10) } : {}) };
   }
   const body = Array.isArray(fit.value) ? { items: fit.value, ...notes } : isObject(fit.value) ? { ...fit.value, ...notes } : fit.value;
-  return { content: [{ type: 'text', text: JSON.stringify(body) }], structuredContent: body };
+  // An explicitly requested whole file or window stays whole in structuredContent too: many clients show only that channel.
+  return { content: [{ type: 'text', text: JSON.stringify(body) }], structuredContent: body, ...(fullFile || lineWindow || byteWindow ? { [KEEP_WHOLE]: true } : {}) };
 }
 
 // PUB-5 B: a real change is one that was applied, or whose result is not certain (unconfirmed, uncertain). Previews and refusals are not.

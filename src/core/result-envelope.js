@@ -11,22 +11,25 @@ const bytes = (value) => Buffer.byteLength(JSON.stringify(value));
 // write's result, so a compact client still sees phase, outcome and next step.
 const NAVIGATION = new Set(['kept_result', 'continuation', 'page_info', 'meta', 'progress']);
 
-export function deduplicateLargeEnvelope(reply, { threshold = 1600 } = {}) {
-  if (!reply || reply.isError || !reply.structuredContent ||
+/** Marks a reply the caller explicitly asked to receive whole (a full-file or line/byte window read): never compacted. */
+export const KEEP_WHOLE = Symbol.for('robinson.result.keepWhole');
+
+export function deduplicateLargeEnvelope(reply, { threshold = 1600, budget = 8192 } = {}) {
+  if (!reply || reply.isError || reply[KEEP_WHOLE] || !reply.structuredContent ||
       typeof reply.structuredContent !== 'object' || Array.isArray(reply.structuredContent) ||
       reply.content?.length !== 1 || reply.content[0]?.type !== 'text') return reply;
   const body = reply.structuredContent;
   const full = JSON.stringify(body);
   if (Buffer.byteLength(full) < threshold || reply.content[0].text !== full) return reply;
+  // Many clients show only structuredContent, so keep whole fields there up to a budget (the
+  // repo's 8 KB result rule) — smallest first — and leave only what does not fit to the text copy.
   const fields = {};
   const omitted = [];
-  for (const [key, value] of Object.entries(body)) {
-    if (!NAVIGATION.has(key) && (typeof value === 'string' ? Buffer.byteLength(value) > 200
-      : value !== null && typeof value === 'object' && bytes(value) > 600)) {
-      omitted.push(key);
-    } else {
-      fields[key] = value;
-    }
+  const entries = Object.entries(body).map(([key, value]) => [key, value, bytes(value ?? null)]);
+  let used = 0;
+  for (const [key, value, size] of entries) if (NAVIGATION.has(key) || size <= 200) { fields[key] = value; used += size; }
+  for (const [key, value, size] of entries.filter(([key, , size]) => !(NAVIGATION.has(key) || size <= 200)).sort((x, y) => x[2] - y[2])) {
+    if (used + size <= budget) { fields[key] = value; used += size; } else omitted.push(key);
   }
   if (!omitted.length) return reply;
   return { ...reply, structuredContent: { ...fields,
