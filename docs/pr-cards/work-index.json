@@ -2975,6 +2975,23 @@
       ]
     },
     {
+      "id": "VER-1",
+      "title": "Agents can see the live release (github_whoami server_release, serverInfo version)",
+      "batch": "FIN",
+      "design": "docs/pr-cards/VER-1.md",
+      "dependencies": [],
+      "card": "docs/pr-cards/VER-1.md",
+      "status": "MERGED",
+      "migration": "none",
+      "budget": 100,
+      "units": [
+        "VER-1"
+      ],
+      "readiness": "READY",
+      "ownerInputs": [],
+      "pr": []
+    },
+    {
       "id": "NATIVE-ERGO-1",
       "title": "github_repo_change commits and pushes (and opens the PR) in one call; native Git accepts the options agents pass; conflicts and refusals are definite outcomes",
       "batch": "FIN",

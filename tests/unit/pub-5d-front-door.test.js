@@ -2,7 +2,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import handler from '../../api/index.js';
-import { BRAND, VERSION, brandFooter, serverInfo } from '../../src/brand/brand.js';
+import { BRAND, VERSION, brandFooter, serverInfo, serverRelease } from '../../src/brand/brand.js';
 import { renderHome } from '../../src/brand/home-page.js';
 import { call, request } from '../../test/helpers/http-harness.js';
 
@@ -26,6 +26,14 @@ describe('the registry file server.json', () => {
     expect(serverInfo(ORIGIN).version).toBe(pkg.version);
     expect(serverInfo(ORIGIN).title).toBe('Robinson MCP for GitHub');
     expect(BRAND.product).toBe('Robinson MCP for GitHub');
+  });
+  it('tells agents which release they are talking to (deployed commit)', () => {
+    const sha = 'a'.repeat(40);
+    expect(serverRelease({ VERCEL_GIT_COMMIT_SHA: sha })).toMatchObject({ version: pkg.version + '+' + 'a'.repeat(12), commit: sha,
+      source: 'https://github.com/Robinson-AI-Systems/github-mcp/commit/' + sha });
+    expect(serverRelease({ VERCEL_GIT_COMMIT_SHA: sha }).what_changed).toMatch(/ref live/);
+    expect(serverRelease({ VERCEL_GIT_COMMIT_SHA: 'not-a-sha' })).toMatchObject({ version: pkg.version, commit: null });
+    expect(serverRelease({})).toMatchObject({ version: pkg.version, commit: null });
   });
 });
 
