@@ -24,3 +24,15 @@ no credential-shaped text in any result.
 **Not done / next:** merged source ≠ deployed. The worker image must be rebuilt and redeployed on Dokploy (capabilities
 then report `direct_download: "one-time-v1"`) and the MCP released before live use; then a live acceptance from an
 outside machine (download → `git clone` / `curl` → compare HEAD) belongs in `docs/developer-evidence.json`.
+
+**Live acceptance (2026-11-02 06:21 UTC, release `7f57eaf6`, worker redeployed):** from a GitHub-hosted runner in the
+private scratch repository (outside this network), against a fresh `runtime: "none"` workspace of
+`robinson-ai-scratch/upload-probe` at `92d4a1f`:
+- archive mode: `curl … | tar` in 0.39 s, 4 files, no `.git`; the same URL a second time answered 410;
+- git mode: `git clone` in 0.86 s, cloned HEAD `92d4a1f` exactly; a later request to the URL answered 403.
+Untested: a workspace attached to a Playground runtime (refused by design; the message now names the `runtime: "none"`
+route) and multi-hundred-megabyte repositories.
+
+**Follow-up (ARCHIVE-ROUTE, same day):** `github_content_get_archive_link` still withholds GitHub's private-repo link
+(it carries a temporary key). When it does, the result now includes `instead.steps`: open with `runtime: "none"`, then
+`github_git_workspace_download` mode archive at the same ref.

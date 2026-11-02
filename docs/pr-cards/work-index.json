@@ -2899,7 +2899,7 @@
         "GIT-UPLOAD-1"
       ],
       "card": "docs/pr-cards/VIS-1.md",
-      "status": "IN_PROGRESS",
+      "status": "MERGED",
       "migration": "none",
       "budget": 300,
       "units": [
@@ -2907,7 +2907,9 @@
       ],
       "readiness": "READY",
       "ownerInputs": [],
-      "pr": []
+      "pr": [
+        535
+      ]
     }
   ],
   "gatewayBoundary": {
