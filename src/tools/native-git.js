@@ -6,7 +6,8 @@ import { randomBytes } from 'node:crypto';
 import { defineRead } from './define-read.js';
 import { defineGithubWrite, explainGithubError } from './define-github-write.js';
 import { TenantCapacityError } from '../tenancy/runtime-limits.js';
-import { READ_OPERATIONS, WRITE_OPERATIONS, gitCommand, switchBranch, branchName, nativeOperationHelp } from '../native-git/commands.js';
+import { READ_OPERATIONS, WRITE_OPERATIONS, gitCommand, switchBranch, branchName, nativeOperationHelp, normalizeNativeOptions, needsErgonomicWorker, olderWorkerOptions, NATIVE_OPTIONS_VERSION } from '../native-git/commands.js';
+import { DEFINITE_FAILURES, definiteFailure, nextStep, porcelainPaths } from '../native-git/outcomes.js';
 import { nativeWorkspaceId, workerUrl, workerKey, nativeWorkerHost, nativeWorkerRoute, nativeBindingHash, UPLOAD_PURPOSE, UPLOAD_TTL_MS, DOWNLOAD_PURPOSE, DOWNLOAD_TTL_MS } from '../native-git/protocol.js';
 import { nativeConnection, nativeOpenRequestKey, nativeRecord, authorizeNativeRepo, callNativeWorker } from '../native-git/client.js';
 import { transferUrl, blockedNote, fitDigest } from '../native-git/relay.js';
@@ -18,7 +19,7 @@ const WORKSPACE = { type: 'string', pattern: '^job_[a-f0-9]{16}$' };
 const TEXT = { type: 'string', minLength: 1, maxLength: 256 };
 const BOOL = { type: 'boolean' };
 const OPTIONS = { type: 'object', additionalProperties: false, properties: {
- intentKey: { type: 'string', minLength: 1, maxLength: 128 }, worktree: { type: 'string', pattern: '^[a-zA-Z0-9_-]{1,60}$' }, ref: TEXT, branch: { ...TEXT, description: 'Branch name; branch_create/rename/delete accept name as alias; switch also accepts ref.' }, name: TEXT, path: { type: 'string', maxLength: 4096 }, paths: { type: 'array', minItems: 1, maxItems: 100, items: { type: 'string', minLength: 1, maxLength: 4096 } },
+ intentKey: { type: 'string', minLength: 1, maxLength: 128 }, all: BOOL, create: BOOL, from: TEXT, nameOnly: BOOL, prune: BOOL, tags: BOOL, noFastForward: BOOL, fastForwardOnly: BOOL, remote: TEXT, branches: { type: 'array', minItems: 1, maxItems: 20, items: TEXT }, worktree: { type: 'string', pattern: '^[a-zA-Z0-9_-]{1,60}$' }, ref: TEXT, branch: { ...TEXT, description: 'Branch name; branch_create/rename/delete accept name as alias; switch also accepts ref.' }, name: TEXT, path: { type: 'string', maxLength: 4096 }, paths: { type: 'array', minItems: 1, maxItems: 100, items: { type: 'string', minLength: 1, maxLength: 4096 } },
  message: { type: 'string', minLength: 1, maxLength: 10000 }, base64: { type: 'string', maxLength: 1400000 },
  expectedHead: { type: 'string', pattern: '^([a-f0-9]{40,64})?$' }, expectedFileHash: { type: 'string', pattern: '^[a-f0-9]{64}$' },
  force: BOOL, delete: BOOL, tag: BOOL, hard: BOOL, staged: BOOL, amend: BOOL, good: TEXT, bad: TEXT,
@@ -104,27 +105,81 @@ const open = defineGithubWrite({
 const read = defineRead({
  name: 'github_git_workspace_read', area: 'git', audience: ['B', 'O', 'Op'], byteWindow: true,
  description: 'Read native Git status, history, diffs, conflicts, refs or exact file byte windows from this connection’s workspace.',
- properties: { workspace_id: WORKSPACE, operation: { type: 'string', enum: ['capabilities', ...READ_OPERATIONS] }, options: OPTIONS, byteOffset: { type: 'integer', minimum: 0 }, byteLength: { type: 'integer', minimum: 1, maximum: 32768 } }, required: ['operation'],
- handler: async (a, c) => { if (a.operation === 'capabilities') {
+ properties: { workspace_id: WORKSPACE, operation: { type: 'string', enum: ['capabilities', ...READ_OPERATIONS] }, options: OPTIONS, byteOffset: { type: 'integer', minimum: 0 }, byteLength: { type: 'integer', minimum: 1, maximum: 32768 },
+  owner: OWNER, repo: REPO, path: OPTIONS.properties.path, paths: OPTIONS.properties.paths, ref: TEXT }, required: ['operation'],
+ handler: async (input, c) => { const a = { ...input }; for (const key of ['path', 'paths', 'ref']) if (a[key] !== undefined) { if (a.options?.[key] !== undefined && JSON.stringify(a.options[key]) !== JSON.stringify(a[key])) throw new TypeError(`${key} was given both at the top level and in options; give it once.`); a.options = { ...(a.options ?? {}), [key]: a[key] }; delete a[key]; }
+  if (a.operation === 'capabilities') {
   let worker; try { worker = await callNativeWorker(c, { action: 'capabilities' }); } catch { worker = { ready: false, setup_required: true }; }
   return { bulk_upload: { tool: 'github_git_workspace_upload', next: 'For more than about 1 MB of files: one-time git push or curl upload URL straight to this worker, then apply.' }, bulk_download: { tool: 'github_git_workspace_download', next: 'For the whole workspace or many files: one-time git clone or curl .tar.gz URL straight from this worker.' }, playground: {tools:['github_playground_execute','github_playground_read','github_playground_cancel'],next:'Search/describe/call these agent tools for commands, builds and tests in an attached isolated runtime. This Git worker remains typed Git only.'}, operation_help: a.options?.name ? nativeOperationHelp(a.options.name) : { next: 'Call capabilities with options.name set to an operation for exact options and an example.' }, worker, read_operations: READ_OPERATIONS, write_operations: WRITE_OPERATIONS, setup: 'https://github.com/Robinson-AI-Systems/github-mcp/blob/main/docs/NATIVE-GIT-OPERATIONS.md', unsupported: [
     { feature: 'LFS', guidance: 'Install git-lfs locally, run git lfs install in your trusted local clone, and use git lfs pull/push with your own GitHub authorization.' },
     { feature: 'submodules', guidance: 'Use a trusted isolated local clone, review .gitmodules origins, then git submodule update --init --recursive with separate repository permissions.' },
     { feature: 'executable hooks/filters, signing, custom remotes and arbitrary shell/bisect run in the Git worker', guidance: 'For commands/builds/tests, use github_playground_execute in an attached isolated Robinson Playground runtime. This Git worker stays typed Git; advanced credentialed Git configuration still uses the documented trusted local alternative.' }
    ], cost: 'The initial worker is a running container on the configured host, not scale-to-zero. Compute, persistent storage and transfer depend on that host; no zero-idle-cost claim. Portable encrypted snapshots support moving to an owned host.' };
- } if (a.operation === 'read_file' && a.byteLength === undefined) throw new TypeError('Exact file reads require byteLength (1–32768), optional byteOffset, and options.path; use the returned file_hash as options.expectedFileHash for continuation.'); const r = await nativeRecord(c, a.workspace_id); return callNativeWorker(c, { binding: r.binding, job: r.job, workspace_id: r.worker, action: a.operation === 'status' ? 'inspect' : 'read', operation: a.operation, options: { ...(a.options ?? {}), ...(a.byteOffset !== undefined ? { byteOffset: a.byteOffset } : {}), ...(a.byteLength !== undefined ? { byteLength: a.byteLength } : {}) }, network: a.operation === 'remote_refs' }); }
+ } if (a.operation === 'read_file' && a.byteLength === undefined) throw new TypeError('Exact file reads require byteLength (1–32768), optional byteOffset, and options.path; use the returned file_hash as options.expectedFileHash for continuation.'); const r = await nativeRecord(c, a.workspace_id);
+  for (const [key, expected] of [['owner', r.row.owner], ['repo', r.row.repo]]) if (a[key] !== undefined && a[key].toLowerCase() !== expected.toLowerCase()) throw new TypeError(`This workspace belongs to ${r.row.owner}/${r.row.repo}, not the ${key} you gave.`);
+  if (needsErgonomicWorker(a.operation, normalizeNativeOptions(a.operation, a.options ?? {})) && (await callNativeWorker(c, { action: 'capabilities', job: r.job }).catch(() => ({}))).native_options !== NATIVE_OPTIONS_VERSION)
+   throw new TypeError(`The native Git worker serving this workspace must be updated for ${a.operation === 'changed_files' ? 'changed_files' : 'these options'}. Meanwhile use status (uncommitted changes) or diff with options.ref.`);
+  return callNativeWorker(c, { binding: r.binding, job: r.job, workspace_id: r.worker, action: a.operation === 'status' ? 'inspect' : 'read', operation: a.operation, options: { ...(a.options ?? {}), ...(a.byteOffset !== undefined ? { byteOffset: a.byteOffset } : {}), ...(a.byteLength !== undefined ? { byteLength: a.byteLength } : {}) }, network: a.operation === 'remote_refs' }); }
 });
+// NATIVE-ERGO-1: what a stale expectedGeneration or another definite worker refusal needs: the
+// current generation, read once after the refusal (nothing was changed by the refused call).
+async function generationHelp(c, t, error, operation) {
+ if (!error?.safeMessage || ![400, 422].includes(error.status)) return error;
+ let generation = null; try { generation = (await invoke(c, t, { action: 'inspect', renewLease: false })).generation ?? null; } catch { generation = null; }
+ const stale = /generation changed|Stale expectedGeneration/i.test(error.message);
+ const message = stale ? `Stale expectedGeneration: nothing was changed.${Number.isSafeInteger(generation) ? ` The workspace is at generation ${generation}; send expectedGeneration ${generation} with a new requestKey.` : ' Read status for the current generation, then send it with a new requestKey.'}`
+  : `${error.message}${Number.isSafeInteger(generation) ? ` Next expectedGeneration: ${generation}.` : ''}`;
+ return Object.assign(new TypeError(message.slice(0, 900)), { safeMessage: true, status: error.status, safeCode: stale ? 'stale_generation' : error.safeCode,
+  outcomeDetails: { outcome: stale ? 'stale_generation' : 'refused', operation, ...(Number.isSafeInteger(generation) ? { next_generation: generation } : {}) } });
+}
+const workerFeatures = async (c, t) => { try { return await callNativeWorker(c, { action: 'capabilities', job: t.record.job }); } catch { return {}; } };
+// Canonical options for this worker: aliases folded; an older worker gets the same intent in the shape it knows.
+async function runOptions(c, t, a, before) {
+ let options = normalizeNativeOptions(a.operation, a.options ?? {});
+ const needs = needsErgonomicWorker(a.operation, options);
+ if (!needs && !(a.operation === 'fetch' && options.branches)) return { options, worker: null };
+ const cap = await workerFeatures(c, t);
+ if (cap.native_options === NATIVE_OPTIONS_VERSION) return { options, worker: cap.native_options };
+ if (a.operation === 'add' && options.all) {
+  const paths = porcelainPaths(before?.status ?? '');
+  if (!paths.length) throw safe('There is nothing to add: the workspace has no changes.', 'invalid_native_arguments');
+  if (paths.length > 100) throw safe(`The native Git worker must be updated before add all works for more than 100 changed paths (${paths.length} here). Meanwhile, add them in groups of up to 100 with options.paths.`, 'native_worker_update_required');
+  return { options: { paths }, worker: null, expanded: paths.length };
+ }
+ if (!needs) return { options: olderWorkerOptions(a.operation, options), worker: null };
+ const meanwhile = { remove_file: 'remove one path per call with options.path', switch: 'branch_create, then switch', changed_files: 'use diff with options.ref', merge: 'merge with options.ref only', fetch: 'fetch without prune/tags', diff: 'diff without nameOnly' }[a.operation] ?? 'use the basic options';
+ throw safe(`The native Git worker serving this workspace must be updated for these ${a.operation} options. Nothing was sent. Meanwhile: ${meanwhile}.`, 'native_worker_update_required');
+}
+const RUN_SHORTCUTS = ['path', 'paths', 'branch', 'ref', 'message', 'all'];
 const run = defineGithubWrite({
  name: 'github_git_workspace_run', area: 'git', audience: ['B', 'O', 'Op'],
  description: 'Run typed native Git operations. Read capabilities with options.name set to the operation for exact required arguments and examples.',
- properties: { workspace_id: WORKSPACE, operation: { type: 'string', enum: WRITE_OPERATIONS }, expectedGeneration: { type: 'integer', minimum: 0 }, options: OPTIONS }, required: ['workspace_id', 'operation', 'expectedGeneration'], declarations: { ...declarations, production: 'when-target' },
+ guidance: 'options carries the operation\'s arguments; path, paths, branch, ref, message and all are also accepted at the top level. add with all: true (or paths ["."]) stages every change; remove_file takes paths; fetch takes branch/branches; merge takes ref or branch; switch with create: true makes a new branch. Every reply has next_generation for the next call; quiet: true keeps the reply short. A conflict or refusal is a definite result with a next step.',
+ properties: { workspace_id: WORKSPACE, operation: { type: 'string', enum: WRITE_OPERATIONS }, expectedGeneration: { type: 'integer', minimum: 0 }, options: OPTIONS,
+  quiet: { ...BOOL, description: 'Short reply: outcome, branch, head, next_generation and counts, without Git output or full status.' },
+  owner: OWNER, repo: REPO, path: OPTIONS.properties.path, paths: OPTIONS.properties.paths, branch: OPTIONS.properties.branch, ref: TEXT, message: OPTIONS.properties.message, all: BOOL },
+ required: ['workspace_id', 'operation', 'expectedGeneration'], declarations: { ...declarations, production: 'when-target' },
  explain: error => error?.safeMessage ? error.message : 'Native Git operation could not be confirmed. Inspect workspace state and the same intent receipt before retrying.',
- classifyError: error => [401,409,429].includes(error?.status) ? 'rejected' : 'uncertain',
- target, read: async (a, c, t) => { configured(c); try { gitCommand(a.operation, a.options ?? {}); } catch (error) { throw Object.assign(new TypeError(`Native ${a.operation} arguments: ${error.message}`), { safeMessage: true,safeCode:'invalid_native_arguments' }); } try { return await invoke(c, t, { action: 'inspect', options: { worktree: a.options?.worktree } }); } catch (error) { if (error.safeMessage) error.message = `Native ${a.operation} preflight: ${error.message}`.slice(0,300); throw error; } },
+ // The worker answers 400/404/422 only for checks that refused before any change (a definite no).
+ classifyError: error => [400,401,404,409,422,429].includes(error?.status) ? 'rejected' : 'uncertain',
+ target, read: async (a, c, t) => { configured(c);
+  for (const [key, expected] of [['owner', t.owner], ['repo', t.repo]]) if (a[key] !== undefined && a[key].toLowerCase() !== expected.toLowerCase()) throw safe(`This workspace belongs to ${t.owner}/${t.repo}, not the ${key} you gave. Use that workspace's own repository, or open a workspace for the other one.`, 'invalid_native_arguments');
+  try { gitCommand(a.operation, a.options ?? {}); } catch (error) { throw Object.assign(new TypeError(`Native ${a.operation} arguments: ${error.message}`), { safeMessage: true,safeCode:'invalid_native_arguments' }); }
+  let state; try { state = await invoke(c, t, { action: 'inspect', options: { worktree: a.options?.worktree } }); } catch (error) { if (error.safeMessage) error.message = `Native ${a.operation} preflight: ${error.message}`.slice(0,300); throw error; }
+  // A stale expectedGeneration is not refused here: the same call again must still replay its first result.
+  const shaped = await runOptions(c, t, a, state);
+  return { ...state, send: shaped }; },
  classify: ({ args: a }) => a.operation === 'push' ? { production: 'push changes exact GitHub remote refs; GitHub permissions and repository rules apply' } : {},
  price: () => 0, // Git ref transport itself does not buy seats/compute; disclose repository-automation costs separately.
- summarize: ({ args: a, target: t }) => `Native Git ${a.operation} in ${t.owner}/${t.repo} at workspace generation ${a.expectedGeneration}${a.operation === 'push' ? '; future GitHub automation costs may be unknown' : ''}`,
- apply: ({ args: a, ctx: c, target: t, requestKey }) => invoke(c, t, { action: 'run', operation: a.operation, options: a.options ?? {}, requestKey, expectedGeneration: a.expectedGeneration, allowWrite: true, network: ['fetch', 'pull', 'push'].includes(a.operation) }),
+ summarize: ({ args: a, target: t, before }) => `Native Git ${a.operation} in ${t.owner}/${t.repo} at workspace generation ${a.expectedGeneration}${before?.send?.expanded ? ` (${before.send.expanded} changed paths)` : ''}${a.operation === 'push' ? '; future GitHub automation costs may be unknown' : ''}`,
+ apply: async ({ args: a, ctx: c, target: t, requestKey, before }) => {
+  const options = before?.send?.options ?? normalizeNativeOptions(a.operation, a.options ?? {});
+  let result;
+  try { result = await invoke(c, t, { action: 'run', operation: a.operation, options, requestKey, expectedGeneration: a.expectedGeneration, allowWrite: true, network: ['fetch', 'pull', 'push'].includes(a.operation) }); }
+  catch (error) { throw await generationHelp(c, t, error, a.operation); }
+  if (DEFINITE_FAILURES.has(result?.status)) throw definiteFailure(a.operation, result, options);
+  return result;
+ },
  readAfter: async ({ args: a, ctx: c, target: t, response }) => {
   const after = {operation:response,workspace:await invoke(c,t,{action:'inspect',options:{worktree:a.options?.worktree}})};
   if (['branch_create','branch_rename','branch_delete'].includes(a.operation)) {
@@ -135,9 +190,41 @@ const run = defineGithubWrite({
   }
   return after;
  },
- verify: ({ args: a, after }) => after.operation.status === 'applied' && after.workspace.generation === after.operation.generation && (a.operation !== 'push' || after.operation.remote_verified === true) && (a.operation !== 'switch' || after.workspace.branch === switchBranch(a.options ?? {})) && (!['branch_create','branch_rename','branch_delete'].includes(a.operation) || after.reference.exists === (a.operation !== 'branch_delete')),
- present: ({ after, response }) => after ?? response
+ // A conflict is a definite outcome: the operation ran and stopped with the listed files (read back).
+ verify: ({ args: a, after }) => {
+  const op = after.operation, ws = after.workspace;
+  if (op.status === 'conflict') return ws.generation === op.generation && ws.conflicts?.length > 0;
+  return op.status === 'applied' && ws.generation === op.generation && (a.operation !== 'push' || op.remote_verified === true) && (a.operation !== 'switch' || ws.branch === switchBranch(normalizeNativeOptions('switch', a.options ?? {}))) && (!['branch_create','branch_rename','branch_delete'].includes(a.operation) || after.reference.exists === (a.operation !== 'branch_delete'));
+ },
+ essentials: shaped => shaped?.outcome ? { outcome: shaped.outcome, next_generation: shaped.next_generation ?? null, branch: shaped.branch ?? null, head: shaped.head ?? null, ...(shaped.conflicts?.length ? { conflicts: shaped.conflicts.slice(0, 10) } : {}), ...(shaped.next ? { next: String(shaped.next).slice(0, 400) } : {}) } : null,
+ present: ({ args: a, after, response }) => {
+  if (!after) return response;
+  const op = after.operation ?? {}, ws = after.workspace ?? {};
+  const outcome = op.status === 'conflict' ? 'conflict' : op.status === 'applied' ? 'applied' : op.status ?? 'unknown';
+  const summary = { outcome, next_generation: ws.generation ?? op.next_generation ?? null, branch: ws.branch ?? null, head: ws.head ?? null,
+   changed_paths: porcelainPaths(ws.status).length, ...(ws.conflicts?.length ? { conflicts: ws.conflicts } : {}), ...(ws.in_progress?.length ? { in_progress: ws.in_progress } : {}),
+   ...(op.remote_verified !== undefined ? { remote_verified: op.remote_verified, remote_head: op.remote_head ?? null } : {}), ...(op.removed ? { removed: op.removed } : {}), ...(after.reference ? { reference: after.reference } : {}),
+   ...(outcome === 'conflict' ? { next: nextStep(a.operation, { ...op, conflicts: ws.conflicts }, a.options ?? {}) } : {}) };
+  return a.quiet ? { operation: a.operation, ...summary } : { ...after, ...summary };
+ }
 });
+// Top-level shortcuts (path, paths, branch, ref, message, all) are folded into options; owner/repo are checked against the workspace.
+const runHandler = run.handler;
+const foldRunArgs = args => {
+ if (!args || typeof args !== 'object' || Array.isArray(args)) return { args };
+ const folded = { ...args }, options = { ...(args.options ?? {}) };
+ for (const key of RUN_SHORTCUTS) if (folded[key] !== undefined) {
+  if (options[key] !== undefined && JSON.stringify(options[key]) !== JSON.stringify(folded[key])) return { error: `${key} was given both at the top level and in options with different values; give it once (inside options).` };
+  options[key] = folded[key]; delete folded[key];
+ }
+ if (Object.keys(options).length || args.options !== undefined) folded.options = options;
+ return { args: folded };
+};
+const runWithShortcuts = (args, ctx) => {
+ const { args: folded, error } = foldRunArgs(args);
+ if (error) { const body = { done: false, status: 'refused', reason_code: 'invalid_request', retryable: false, no_change_sent: true, error }; return { isError: true, content: [{ type: 'text', text: JSON.stringify(body) }], structuredContent: body }; }
+ return runHandler(folded, ctx);
+};
 // The runtime-attached copy lives on the dedicated broker; once that runtime is deleted, the
 // workspace is closed and read back on the source Git worker (never the deleted broker).
 const sourceTarget = t => ({ ...t, record: { ...t.record, job: { ...t.record.job, brokerOrigin: undefined, allocationBinding: undefined } } });
@@ -206,40 +293,51 @@ const list = defineRead({
 const uploadRefusal = reason => Object.assign(new TypeError(String(reason ?? 'The upload was refused.').replace(/[\x00-\x1f\x7f]/g, ' ').slice(0, 600)), { safeMessage: true, safeCode: 'native_upload_refused', status: 422 });
 // Clients never follow redirects from a one-time address (git -c http.followRedirects=false; curl without -L).
 const UPLOAD_COMMAND = { git: url => `git -c http.followRedirects=false push "${url}" HEAD:refs/heads/upload`, archive: url => `curl --fail --upload-file files.tar.gz "${url}"` };
+async function beginUpload(c, t, a, requestKey) {
+ const uploadId = randomBytes(16).toString('hex'), nonce = randomBytes(16).toString('hex');
+ const maxBytes = (a.maxMegabytes ?? 50) * 1048576, expiresAt = (c.now ?? Date.now)() + UPLOAD_TTL_MS;
+ const begun = await invoke(c, t, { action: 'upload_begin', options: { uploadId, mode: a.mode, maxBytes, expiresAt, nonce }, requestKey, allowWrite: true });
+ const claim = JSON.stringify({ purpose: UPLOAD_PURPOSE, version: 1, workspace_id: t.record.worker, binding: nativeBindingHash(t.record.binding), mode: a.mode, maxBytes, expiresAt, uploadId, nonce });
+ return { ...begun, ...oneTimeAddress(c, t.record.job, 'u', claim, signNativeUploadClaim(claim, claimEnv(c, t.record.job))) };
+}
+async function uploadPreflight(c, record) {
+ await transferReady(c, record.job);
+ const cap = await callNativeWorker(c, { action: 'capabilities', job: record.job });
+ if (cap.direct_upload !== 'quarantine-v1') throw safe('The native Git worker must be updated before direct uploads work. Use write_file (about 1 MB per call) meanwhile.', 'native_worker_update_required');
+}
 const upload = defineGithubWrite({
  name: 'github_git_workspace_upload', area: 'git', audience: ['B', 'O', 'Op'],
  description: 'Move many or large files into a native workspace: begin returns a one-time git push or curl upload URL; apply checks what arrived and adds it.',
  guidance: 'For more than about 1 MB of files. begin (mode git or archive, fresh requestKey) returns a private URL on this service\'s own domain that works once within 10 minutes: git mode runs `git push "<url>" HEAD:refs/heads/upload` from your own clone (commits must build on the workspace HEAD); archive mode runs `curl --fail --upload-file files.tar.gz "<url>"` (.tar.gz, .tar or .zip). Works for workspaces attached to a Playground runtime too. Then apply with upload_id and the current expectedGeneration: git fast-forwards the workspace branch; archive extracts under optional path. Links, .git paths, oversize files and credential-shaped content are refused. Commit and push with github_git_workspace_run. If the sandbox cannot reach the domain, add that one domain to its network allowlist once (for Claude: the Capabilities / network access allowed-domains setting); it is the same for every repository. If that domain refuses a large upload as too large (HTTP 413), run direct_command instead (the worker\'s own host). Do not publish the URL.',
  properties: { workspace_id: WORKSPACE, operation: { type: 'string', enum: ['begin', 'apply'] }, mode: { type: 'string', enum: ['git', 'archive'], description: 'begin: git = receive one git push; archive = receive one .tar.gz/.tar/.zip file.' },
   maxMegabytes: { type: 'integer', minimum: 1, maximum: 100, description: 'begin: upload size cap in MiB (default 50).' }, upload_id: { type: 'string', pattern: '^upl_[a-f0-9]{32}$' },
-  expectedGeneration: { type: 'integer', minimum: 0 }, ref: { ...TEXT, description: 'apply (git): pushed branch to apply when several were pushed.' }, path: { type: 'string', minLength: 1, maxLength: 1024, description: 'apply (archive): workspace subfolder to extract into (default the repository root).' } },
+  expectedGeneration: { type: 'integer', minimum: 0 }, ref: { ...TEXT, description: 'apply (git): pushed branch to apply when several were pushed.' }, path: { type: 'string', minLength: 1, maxLength: 1024, description: 'apply (archive): workspace subfolder to extract into (default the repository root).' },
+  deletePaths: { type: 'array', minItems: 1, maxItems: 1000, items: { type: 'string', minLength: 1, maxLength: 4096 }, description: 'apply (archive): workspace files to delete in the same step.' },
+  mirror: { ...BOOL, description: 'apply (archive): also delete tracked files under path that the archive does not contain.' } },
  required: ['workspace_id', 'operation'], declarations,
  explain: error => error?.safeMessage ? error.message : 'The native upload could not be confirmed. Inspect workspace state and the same intent receipt before retrying.',
  classifyError: error => [400, 401, 404, 409, 422, 429].includes(error?.status) ? 'rejected' : 'uncertain',
  target, read: async (a, c, t) => { configured(c);
-  const wrong = (a.operation === 'begin' ? ['upload_id', 'expectedGeneration', 'ref', 'path'] : ['mode', 'maxMegabytes']).filter(k => a[k] !== undefined);
-  if (wrong.length) throw Object.assign(new TypeError(`${wrong.join(', ')} ${wrong.length > 1 ? 'are' : 'is'} not used by operation ${a.operation}.`), { safeMessage: true, safeCode: 'invalid_upload_arguments' });
+  // Harmless extras (expectedGeneration on begin, mode/maxMegabytes on apply) are ignored; arguments that
+  // only make sense in the other step are refused with that step named, so nothing is silently lost.
+  const wrong = (a.operation === 'begin' ? ['upload_id', 'ref', 'path', 'deletePaths', 'mirror'] : []).filter(k => a[k] !== undefined);
+  if (wrong.length) throw Object.assign(new TypeError(`${wrong.join(', ')} ${wrong.length > 1 ? 'belong' : 'belongs'} to operation apply (after the upload has run), not begin. Call begin with mode only, run the returned command, then call apply with upload_id${wrong.some(k => k !== 'upload_id') ? ' and ' + wrong.filter(k => k !== 'upload_id').join(', ') : ''}.`), { safeMessage: true, safeCode: 'invalid_upload_arguments' });
   if (a.operation === 'begin' && !a.mode) throw Object.assign(new TypeError('begin requires mode: git (one git push) or archive (one .tar.gz/.tar/.zip upload).'), { safeMessage: true, safeCode: 'invalid_upload_arguments' });
   if (a.operation === 'apply' && (a.upload_id === undefined || a.expectedGeneration === undefined)) throw Object.assign(new TypeError('apply requires upload_id from begin and the current expectedGeneration.'), { safeMessage: true, safeCode: 'invalid_upload_arguments' });
-  if (a.operation === 'begin') {
-   await transferReady(c, t.record.job);
-   const cap = await callNativeWorker(c, { action: 'capabilities', job: t.record.job });
-   if (cap.direct_upload !== 'quarantine-v1') throw Object.assign(new TypeError('The native Git worker must be updated before direct uploads work. Use write_file (about 1 MB per call) meanwhile.'), { safeMessage: true, safeCode: 'native_worker_update_required' });
-  }
+  if (a.operation === 'begin') await uploadPreflight(c, t.record);
+  if (a.operation === 'apply' && (a.deletePaths || a.mirror) && (await workerFeatures(c, t)).upload_apply !== 'delete-v1') throw Object.assign(new TypeError('The native Git worker must be updated before deletePaths or mirror work on apply. Nothing was applied. Meanwhile, apply without them and delete with github_git_workspace_run remove_file.'), { safeMessage: true, safeCode: 'native_worker_update_required' });
   return await invoke(c, t, { action: 'inspect' }); },
  classify: () => ({}), price: () => 0,
  summarize: ({ args: a, target: t }) => a.operation === 'begin' ? `Open a one-time ${a.mode ?? ''} upload into the native workspace for ${t.owner}/${t.repo} (quarantined until applied)` : `Apply quarantined upload ${a.upload_id} to the native workspace for ${t.owner}/${t.repo} at generation ${a.expectedGeneration}`,
  apply: async ({ args: a, ctx: c, target: t, requestKey }) => {
   if (a.operation === 'apply') {
-   const result = await invoke(c, t, { action: 'upload_apply', options: { uploadId: a.upload_id.slice(4), ...(a.ref !== undefined ? { ref: a.ref } : {}), ...(a.path !== undefined ? { path: a.path } : {}) }, requestKey, expectedGeneration: a.expectedGeneration, allowWrite: true });
-   if (result.status === 'refused') throw uploadRefusal(result.reason);
+   let result;
+   try { result = await invoke(c, t, { action: 'upload_apply', options: { uploadId: a.upload_id.slice(4), ...(a.ref !== undefined ? { ref: a.ref } : {}), ...(a.path !== undefined ? { path: a.path } : {}), ...(a.deletePaths ? { deletePaths: a.deletePaths } : {}), ...(a.mirror ? { mirror: true } : {}) }, requestKey, expectedGeneration: a.expectedGeneration, allowWrite: true }); }
+   catch (error) { throw await generationHelp(c, t, error, 'upload apply'); }
+   if (result.status === 'refused') throw Object.assign(uploadRefusal(result.reason), { outcomeDetails: { outcome: 'refused', operation: 'upload apply', next_generation: a.expectedGeneration } });
    return result;
   }
-  const uploadId = randomBytes(16).toString('hex'), nonce = randomBytes(16).toString('hex');
-  const maxBytes = (a.maxMegabytes ?? 50) * 1048576, expiresAt = (c.now ?? Date.now)() + UPLOAD_TTL_MS;
-  const begun = await invoke(c, t, { action: 'upload_begin', options: { uploadId, mode: a.mode, maxBytes, expiresAt, nonce }, requestKey, allowWrite: true });
-  const claim = JSON.stringify({ purpose: UPLOAD_PURPOSE, version: 1, workspace_id: t.record.worker, binding: nativeBindingHash(t.record.binding), mode: a.mode, maxBytes, expiresAt, uploadId, nonce });
-  return { ...begun, ...oneTimeAddress(c, t.record.job, 'u', claim, signNativeUploadClaim(claim, claimEnv(c, t.record.job))) };
+  return beginUpload(c, t, a, requestKey);
  },
  readAfter: async ({ args: a, ctx: c, target: t, response }) => a.operation === 'begin'
   ? { ...await invoke(c, t, { action: 'upload_status', options: { uploadId: String(response.upload_id ?? '').slice(4) } }), address_shown_once: true }
@@ -252,10 +350,10 @@ const upload = defineGithubWrite({
  essentials: shaped => shaped?.command
   ? fitDigest({ upload_id: shaped.upload_id, command: shaped.command, single_use: true, if_blocked: shaped.if_blocked, next: shaped.next, ...(shaped.direct_command ? { direct_command: shaped.direct_command } : {}) }, ['direct_command', 'next', 'upload_id', 'single_use'])
   : (shaped && 'generation' in shaped) || shaped?.workspace
-   ? { applied: true, mode: shaped.mode, target: shaped.target, files_added: shaped.files_added, files_changed: shaped.files_changed, bytes: shaped.bytes, workspace: shaped.workspace, next: shaped.next }
+   ? { applied: true, mode: shaped.mode, target: shaped.target, files_added: shaped.files_added, files_changed: shaped.files_changed, files_deleted: shaped.files_deleted, bytes: shaped.bytes, workspace: shaped.workspace, next_generation: shaped.next_generation, next: shaped.next }
    : shaped?.next ? { next: shaped.next } : null,
  present: ({ args: a, after, response }) => {
-  if (a.operation === 'apply') { const { status: _status, stdout: _o, stderr: _e, ...summary } = after?.operation ?? response ?? {}; return { ...summary, workspace: after?.workspace ? { generation: after.workspace.generation, branch: after.workspace.branch, head: after.workspace.head } : undefined, next: 'Review with github_git_workspace_read (status/diff), then add, commit and push with github_git_workspace_run.' }; }
+  if (a.operation === 'apply') { const { status: _status, stdout: _o, stderr: _e, ...summary } = after?.operation ?? response ?? {}; return { ...summary, workspace: after?.workspace ? { generation: after.workspace.generation, branch: after.workspace.branch, head: after.workspace.head } : undefined, next_generation: after?.workspace?.generation ?? null, next: 'Review with github_git_workspace_read (status or changed_files), then add (all: true), commit and push with github_git_workspace_run, or do all three with github_repo_change and this workspace_id.' }; }
   if (typeof response?.url !== 'string') return { ...after, next: 'The upload address is shown only once. Begin a new upload with a fresh requestKey if you no longer have it.' };
   return { ...after, url: response.url, command: UPLOAD_COMMAND[a.mode](response.url), single_use: true, if_blocked: blockedNote(response.url),
    ...(response.direct ? { direct_command: UPLOAD_COMMAND[a.mode](response.direct), direct_note: 'Second option only if this service\'s domain refuses the upload as too large (HTTP 413): the same one-time link on the worker\'s own host, which the sandbox may need to allow too. Whichever runs first uses the link.' } : {}),
@@ -378,6 +476,8 @@ const repoDownload = defineGithubWrite({
    : presentDownload({ ...a, mode: a.mode ?? 'git' }, after, response)
 });
 export const tools = [open.tool, read.tool, run.tool, close.tool, list.tool, upload.tool, download.tool, repoDownload.tool];
+// NATIVE-ERGO-1: shared with github_repo_change (src/tools/repo-change.js); not tools themselves.
+export const nativeInternals = Object.freeze({ configured, safe, admitClone, openWorkspace, reusableWorkspace, beginUpload, uploadPreflight, UPLOAD_COMMAND, blockedNote, workerFeatures });
 async function openWithCurrentState(args,ctx) {
  const result=await open.handler(args,ctx), value=result.structuredContent;
  if (!value?.replayed || !value.result?.workspace_id) return result;
@@ -391,4 +491,4 @@ async function openWithCurrentState(args,ctx) {
  const body={...value,done:value.done&&current.available,historical:true,current_workspace:current,...(!current.available?{warning:current.next}: {})};
  return {...result,structuredContent:body,content:[{type:'text',text:JSON.stringify(body)}]};
 }
-export const handlers = Object.fromEntries([open, read, run, close, list, upload, download, repoDownload].map(t => [t.tool.name, t===open?openWithCurrentState:t.handler]));
+export const handlers = Object.fromEntries([open, read, run, close, list, upload, download, repoDownload].map(t => [t.tool.name, t===open?openWithCurrentState:t===run?runWithShortcuts:t.handler]));

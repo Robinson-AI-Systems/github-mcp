@@ -2973,6 +2973,26 @@
       "pr": [
         542
       ]
+    },
+    {
+      "id": "NATIVE-ERGO-1",
+      "title": "github_repo_change commits and pushes (and opens the PR) in one call; native Git accepts the options agents pass; conflicts and refusals are definite outcomes",
+      "batch": "FIN",
+      "design": "docs/pr-cards/NATIVE-ERGO-1.md",
+      "dependencies": [
+        "SINGLE-DOMAIN-1",
+        "GIT-UPLOAD-1"
+      ],
+      "card": "docs/pr-cards/NATIVE-ERGO-1.md",
+      "status": "IN_PROGRESS",
+      "migration": "none",
+      "budget": 1200,
+      "units": [
+        "NATIVE-ERGO-1"
+      ],
+      "readiness": "READY",
+      "ownerInputs": [],
+      "pr": []
     }
   ],
   "gatewayBoundary": {

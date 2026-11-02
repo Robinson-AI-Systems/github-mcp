@@ -105,7 +105,7 @@ export async function callNativeWorker(ctx, { binding, action, workspace_id, ope
   // Worker reasons contain only controlled TypeErrors. Redact again at this boundary,
   // including absolute host paths; never reflect bodies, stderr or network exceptions.
   const reason = typeof data.reason === 'string'
-   ? redactExcerpt(data.reason).replace(/(?:\/[A-Za-z0-9_.-]+){2,}/g, '[host path]').replace(/[\x00-\x1f\x7f]/g, ' ').slice(0, 160) : '';
+   ? redactExcerpt(data.reason).replace(/(?:\/[A-Za-z0-9_.-]+){2,}/g, '[host path]').replace(/[\x00-\x1f\x7f]/g, ' ').slice(0, 220) : '';
   const error=failure(busy ? 'native_busy' : 'native_http', busy
    ? resource?`Native Git worker resource pressure: ${typeof data.reason==='string'?data.reason.replace(/[^a-z_]/g,'').slice(0,64):'unavailable'}. No operation was started. Retry after resources recover.`:'Native Git worker is busy. After the active operation finishes, inspect state and retry the same intent.'
    : `Native Git worker returned HTTP ${response.status}${reason ? ': ' + reason : '.'} Inspect state before a new intent.`, response.status);

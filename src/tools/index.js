@@ -13,6 +13,7 @@ import * as meta from './meta.js';
 import * as repos from './repos.js';
 import * as reposWrite from './repos-write.js';
 import * as nativeGit from './native-git.js';
+import * as repoChange from './repo-change.js';
 import * as playground from './playground.js';
 import * as codeRead from './code-read.js';
 import * as codeWrite from './code-write.js';
@@ -145,7 +146,7 @@ import * as featureFamilies from './feature-families.js';
 import { familyOf } from '../github/feature-gates.js';
 
 // Tool modules are added here as their cards land.
-const baseRegistry = mergeNamespaces([meta, server, tenantRemove, undo, diagnostics, launchReadiness, devRunsRead, devScratchWrite, devSeedWrite, devTestWrite, devCiWrite, devForwardWrite, devForwardRead, devIntegration, devCleanupWrite, repos, reposWrite, nativeGit, playground, codeRead, codeWrite, gitDataCommit, branches, pullsRead, issuesRead, issuesWrite, issuesRelationsWrite, issuesReactionsWrite, issuesTransferWrite, labels, milestones, labelsSync, searchGitHub, discussions, projectsRead, projectsWrite, projectsManage, projectsItems, moderation, orgPlanning, orgIssueDiscovery, runnersRead, runnersWrite, actionsLimits, advisories, securityScanningWrites, securityConfig, governanceRead, governanceWrite, protectionWrite, webhooksRead, webhooksActions, webhooksSave, accessRead, accessWrite, securityRead, securityScanFiles, securityAlertsWrite, securitySettingsRead, securitySettingsWrite, adminGuided, adminOverview, orgRead, orgGovernanceRead, orgScimWrite, orgSaml, appJwtRead, appJwtInstallGovernance, appJwtWrite, orgWrite, teamRoleRead, teamRoleWrite, billingRead, billingGuided, billingWrite, appsTokens, userAccount, usersPublic, codeQuality, docsSearch, socialWrite, notificationsGists, profiles, appReadiness, projectSetup, workflowHealth, workflowRelease, workflowFind, vulnerabilityAlerts, workflowPr, workflowMerge, workflowReview, workflowCi, workflowWriteBatch, pullsWrite, pullsMerge, pullsStacks, reviews, reviewsWrite, actionsRead, actionsWrite, actionsForkApproval, checksRead, asyncJobs, artifactsRead, repositorySnapshot, autofix, wiki, orgAdminExtras, accountExport, copilotSpaces, smallMaster, y9Copilot, y9CopilotRepos, y9Sponsors, y9Hosted, y9AgentTasks, mergeQueue, copilotAssign, featureFamilies, checksWrite, variables, secrets, environmentsRead, environmentsWrite, environmentsPolicies, deploymentsRead, deploymentsWrite, releasesRead, releasesWrite, releasesAssets, pagesRead, packagesRead, pagesWrite, packagesWrite, packagesRestore, universal, universalGraphql, enterprise, enterpriseWrite, enterprisePolicy, ipAllowlist, scannerSettings]);
+const baseRegistry = mergeNamespaces([meta, server, tenantRemove, undo, diagnostics, launchReadiness, devRunsRead, devScratchWrite, devSeedWrite, devTestWrite, devCiWrite, devForwardWrite, devForwardRead, devIntegration, devCleanupWrite, repos, reposWrite, nativeGit, repoChange, playground, codeRead, codeWrite, gitDataCommit, branches, pullsRead, issuesRead, issuesWrite, issuesRelationsWrite, issuesReactionsWrite, issuesTransferWrite, labels, milestones, labelsSync, searchGitHub, discussions, projectsRead, projectsWrite, projectsManage, projectsItems, moderation, orgPlanning, orgIssueDiscovery, runnersRead, runnersWrite, actionsLimits, advisories, securityScanningWrites, securityConfig, governanceRead, governanceWrite, protectionWrite, webhooksRead, webhooksActions, webhooksSave, accessRead, accessWrite, securityRead, securityScanFiles, securityAlertsWrite, securitySettingsRead, securitySettingsWrite, adminGuided, adminOverview, orgRead, orgGovernanceRead, orgScimWrite, orgSaml, appJwtRead, appJwtInstallGovernance, appJwtWrite, orgWrite, teamRoleRead, teamRoleWrite, billingRead, billingGuided, billingWrite, appsTokens, userAccount, usersPublic, codeQuality, docsSearch, socialWrite, notificationsGists, profiles, appReadiness, projectSetup, workflowHealth, workflowRelease, workflowFind, vulnerabilityAlerts, workflowPr, workflowMerge, workflowReview, workflowCi, workflowWriteBatch, pullsWrite, pullsMerge, pullsStacks, reviews, reviewsWrite, actionsRead, actionsWrite, actionsForkApproval, checksRead, asyncJobs, artifactsRead, repositorySnapshot, autofix, wiki, orgAdminExtras, accountExport, copilotSpaces, smallMaster, y9Copilot, y9CopilotRepos, y9Sponsors, y9Hosted, y9AgentTasks, mergeQueue, copilotAssign, featureFamilies, checksWrite, variables, secrets, environmentsRead, environmentsWrite, environmentsPolicies, deploymentsRead, deploymentsWrite, releasesRead, releasesWrite, releasesAssets, pagesRead, packagesRead, pagesWrite, packagesWrite, packagesRestore, universal, universalGraphql, enterprise, enterpriseWrite, enterprisePolicy, ipAllowlist, scannerSettings]);
 
 // CAP-6 (owner decision 2026-11-01): every tool in a gated family (runners, larger runners, merge queue, Copilot) that can
 // cost money asks everyone first, the owner included, and refuses when its cost cannot be worked out.
@@ -175,7 +176,9 @@ export const COMPACT_DEVELOPER_TOOLS = Object.freeze([
   // workspace download/upload it builds on, are in the default list.
   'github_repo_download',
   'github_git_workspace_download',
-  'github_git_workspace_upload'
+  'github_git_workspace_upload',
+  // NATIVE-ERGO-1 (owner feedback 2026-11-02): commit-and-push (and open the PR) in one call.
+  'github_repo_change'
 ]);
 const directNames = new Set(COMPACT_DEVELOPER_TOOLS);
 if (directNames.size !== COMPACT_DEVELOPER_TOOLS.length ||
@@ -193,6 +196,21 @@ const conciseReadSchema = (schema) => schema?.properties
 const CONCISE_WRITE_LISTING = new Set(['github_repo_download', 'github_git_workspace_download', 'github_git_workspace_upload']);
 const conciseWriteSchema = (schema) => ({ ...schema, properties: Object.fromEntries(Object.entries(schema.properties).map(([key, spec]) =>
   [key, ['dryRun', 'confirm', 'requestKey'].includes(key) ? spec : Object.fromEntries(Object.entries(spec).filter(([field]) => field !== 'description'))])) });
+// NATIVE-ERGO-1: github_repo_change lists names and shapes only (types and nested fields); its
+// limits, patterns and descriptions stay in the full schema (validation) and describe_tool/guidance.
+const leanSpec = (spec) => {
+  if (!spec || typeof spec !== 'object') return spec;
+  const out = {};
+  if (spec.type) out.type = spec.type;
+  if (spec.items) out.items = leanSpec(spec.items);
+  if (spec.properties) out.properties = Object.fromEntries(Object.entries(spec.properties).map(([key, value]) => [key, leanSpec(value)]));
+  return out;
+};
+const LEAN_WRITE_LISTING = new Set(['github_repo_change']);
+// Rarely used switches (fresh) are left to guidance/describe_tool; the full schema still accepts them.
+const LEAN_UNLISTED = new Set(['fresh']);
+const leanWriteSchema = ({ additionalProperties: _closed, ...schema }) => ({ ...schema, properties: Object.fromEntries(Object.entries(schema.properties).filter(([key]) => !LEAN_UNLISTED.has(key)).map(([key, spec]) =>
+  [key, ['dryRun', 'confirm', 'requestKey'].includes(key) ? spec : leanSpec(spec)])) });
 export const registry = {
   ...baseRegistry,
   tools: baseRegistry.tools.map(tool => {
@@ -201,6 +219,7 @@ export const registry = {
     return Object.freeze({ ...tool, compact: true,
       ...(tool.writes !== true && tool.inputSchema?.properties
         ? { compactSchema: conciseReadSchema(tool.inputSchema) }
-        : CONCISE_WRITE_LISTING.has(tool.name) && tool.inputSchema?.properties ? { compactSchema: conciseWriteSchema(tool.inputSchema) } : {}) });
+        : LEAN_WRITE_LISTING.has(tool.name) && tool.inputSchema?.properties ? { compactSchema: leanWriteSchema(tool.inputSchema) }
+          : CONCISE_WRITE_LISTING.has(tool.name) && tool.inputSchema?.properties ? { compactSchema: conciseWriteSchema(tool.inputSchema) } : {}) });
   })
 };

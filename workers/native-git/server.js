@@ -11,6 +11,7 @@ import { createServer } from 'node:http';
 import { redactExcerpt } from '../../src/github/content-protection.js';
 import { NativeGitWorker, READ_OPERATIONS, WRITE_OPERATIONS } from './engine.js';
 import { verifyWorkerBody, workerKey, nativeWorkspaceId, WORKER_PROTOCOL } from '../../src/native-git/protocol.js';
+import { NATIVE_OPTIONS_VERSION } from '../../src/native-git/commands.js';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import {createResourceMonitor,resourcePolicyFromEnv} from './resources.js';
@@ -39,7 +40,7 @@ export function nativeGitServer({ root, key, now = Date.now, allowLocalFixtures 
    const chunks = []; let bytes = 0;
    for await (const chunk of req) { bytes += chunk.length; if (bytes > 2 * 1024 * 1024) return send(413, { error: 'request_too_large' }); const admitted=monitor.body(bytes);if(!admitted.allowed){res.setHeader('Retry-After','2');return send(429,{error:'worker_resource_pressure',reason:admitted.reason,phase:'admission',no_operation_started:true});}chunks.push(chunk); }
    claim = verifyWorkerBody(Buffer.concat(chunks).toString('utf8'), req.headers['x-robinson-signature'], key, now());
-   if (claim.action === 'capabilities') return send(200, { ready: true, protocol: WORKER_PROTOCOL, native_git:gitVersion,max_concurrent:null,capacity_mode:'resource-aware',resource_policy:monitor.policy,admission:await monitor.check(),workspace_lease:'idle-v1',repository_attachment:'sealed-mounted-v1',direct_upload:'quarantine-v1',direct_download:'one-time-v1',...(singleWorkspaceId?{repository:await repositoryMounts(join(root,singleWorkspaceId,'repo'))}:{}) });
+   if (claim.action === 'capabilities') return send(200, { ready: true, protocol: WORKER_PROTOCOL, native_git:gitVersion,max_concurrent:null,capacity_mode:'resource-aware',resource_policy:monitor.policy,admission:await monitor.check(),workspace_lease:'idle-v1',repository_attachment:'sealed-mounted-v1',direct_upload:'quarantine-v1',direct_download:'one-time-v1',native_options:NATIVE_OPTIONS_VERSION,upload_apply:'delete-v1',...(singleWorkspaceId?{repository:await repositoryMounts(join(root,singleWorkspaceId,'repo'))}:{}) });
    if(!claim.scannerPolicy||!Number.isSafeInteger(claim.scannerPolicy.revision)||claim.scannerPolicy.revision<0)throw new TypeError('Protocol 2 requires the current repository scanner policy; update the control plane and worker together.');
    const policy=scannerSettings(claim.scannerPolicy?.settings??defaultScannerSettings());
    return await withRepositoryProtection(policy.additionalRules.filter(r=>!policy.disabledRules.includes(r.id)),async()=>{

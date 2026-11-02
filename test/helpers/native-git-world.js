@@ -29,6 +29,7 @@ export async function prepareNativeWorld(w, { existing = false } = {}) {
  const server = nativeGitServer({ resources, root, key: KEY, now: w.ctx.now, allowLocalFixtures: true, fixtureRemote: () => seed });
  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve)); const origin = `http://127.0.0.1:${server.address().port}`;
  if (w.nativeFixture) w.nativeFixture.origin = origin;
+ w.nativeSeed = seed;
  const providerFetch = w.gh.fetch;
  const multiplex = async (url, init) => {
   if (!String(url).startsWith('https://native-worker.example.test/')) return providerFetch(url, init);

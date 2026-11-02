@@ -2,6 +2,14 @@
 
 # ROADMAP — ideas not being built now
 
+## 2026-11-02 — "Run this for me" / short alias for one-time transfer links (owner list item 21)
+
+Owner's agent: upload and download links are long one-time URLs pasted into curl by hand. The service cannot run commands
+inside the agent's own sandbox, so "run this for me" has no safe design here. A short alias would need a new stored
+one-time mapping (short id → signed capability) with its own expiry, single use and abuse limits on the public domain.
+Not built in NATIVE-ERGO-1; `github_repo_change` removes most of the copying for single changes. Needs Chris's go-ahead
+as new scope.
+
 ## 2026-10-27 — Coding-agent MCP usability backlog (#427–#436)
 
 Owner approved the ten reported real-world improvements and requested implementation in priority order, with issues closed **only after their own acceptance tests pass and the implementing PR is merged**. Avoid one PR per issue where shared code and tests justify a bundle. **C-10 / #427 merged as PR #437 and verified closed** (exact 25 KB file bytes in no more than two calls, preserved compact defaults); **C-11 / #429 + #434 merged as PR #438 and issues closed** (canonical read aliases and direct manifest); **C-12 / #428 merged as PR #439 and issue closed** (single-copy large result envelopes); **C-13 / #430 + #436 merged as PR #440 and independently closed** (repository ZIP snapshots and universal selectors); **#435 remains OPEN** for its own credential-scoped rate metadata bundle; #430 shares the underlying retrieval service and can be grouped when safe. Other issues: **P0** #428 duplicate text/structuredContent payload and #429 parameter aliases; **P1** #430 repository snapshot archive handle, #431 guarded sequential write batch (separate mutation boundary), #432 failing CI diagnostics, #433 merge-arming introspection; **P2** #434 versioned manifest, #435 scoped rate-limit metadata, #436 universal field selectors. Respect user authority and genuine GitHub permissions while keeping compact summaries as defaults and complete, authenticated retrieval available on request. Close issues as part of merge closeout, with evidence; don't confuse branch code with verified completion.
