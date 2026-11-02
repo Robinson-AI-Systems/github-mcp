@@ -1,12 +1,14 @@
 > **Filed copy — Robinson-AI-Systems/github-mcp.** This repo's product is **GitHub Unleashed**, claimed accent **Arctic `#4DDFFF`**, app/product slug `github-unleashed` (claim filed 2026-11-02 in the Library registry).
 >
-> **Canonical claims record:** the Library registry — `designs/unleashed-claims-registry.md` (living design D-005) in Robinson-AI-Systems/library — is the one record of claimed Unleashed names, accents, and slugs. The accent table in §3 below is a v1.0 snapshot; if it and the registry ever disagree, the registry wins. This repo's mark: `docs/unleashed-github.png`.
+> **Canonical claims record:** the Library registry — `designs/unleashed-claims-registry.md` (living design D-005) in Robinson-AI-Systems/library — is the one record of claimed Unleashed names, accents, and slugs. The accent table in §3 below is a snapshot; if it and the registry ever disagree, the registry wins. This repo's mark: `docs/unleashed-github.png`.
 
-# Unleashed Brand Spec — v1.1 (2026-11-02)
+# Unleashed Brand Spec — v1.2 (2026-11-02)
 
-*v1.1: the Library claims registry (D-005) adopted as the canonical record of
-accent claims; §3 and §8 updated to name it. v1.0 was the original issue, the
-same day.*
+*v1.2: owner correction, same day — the master-gradient mark is the product
+line's own identity, never a product's mark; Vercel Unleashed takes the Sky
+accent like every other product (§1, §3). v1.1: the Library claims registry
+(D-005) adopted as the canonical record of accent claims; §3 and §8 updated
+to name it. v1.0 was the original issue, the same day.*
 
 **Scope:** every Robinson AI Systems product in the "Unleashed" line —
 provider-connector MCP servers that out-power the provider's official offering
@@ -29,6 +31,11 @@ breaks out of the provider's limits.
   Unleashed at a glance.
 - The **shard** is the variable. Its flat accent color identifies the product
   (see §3). Shape and exit angle never change.
+- **The master-gradient mark is the line's own identity.** The version with
+  the shard in the master gradient (emerald → teal, same as the ring) is the
+  mark of the Unleashed product line itself — used for the line as a whole
+  (e.g. the website's Unleashed section) and **never as any single product's
+  mark**. Every product, the flagship included, carries its own flat accent.
 - The mark contains **no letters and no part of any provider's logo** — ever
   (see §6).
 
@@ -56,22 +63,24 @@ color**, and never another product's accent.
 
 | Product | Accent | Hex |
 |---|---|---|
-| Vercel Unleashed (flagship) | Master gradient (emerald → teal, same as ring) | — |
+| Vercel Unleashed | Sky | `#5FA8FF` |
 | GitHub Unleashed | Arctic | `#4DDFFF` |
 | Dokploy Unleashed | Amber | `#FFB200` |
 | Neon Unleashed | Coral | `#FF5F5F` |
 | Workspace Unleashed | Violet | `#9A7BFF` |
 
 Extended palette for future products (claim in this order): Deep `#006E56`
-is reserved for the RAS parent brand and is **not** a product accent; next
-available accents: Magenta `#E35FD0`, Gold `#D9A441`, Sky `#5FA8FF`.
+is reserved for the RAS parent brand and is **not** a product accent; Sky
+`#5FA8FF` was claimed by Vercel Unleashed on 2026-11-02, so the next
+available accents are: Magenta `#E35FD0`, then Gold `#D9A441`.
 
 **The canonical claims record is the Library registry** — `designs/
 unleashed-claims-registry.md` (living design D-005) in
 Robinson-AI-Systems/library. The table above is a snapshot of that registry
-as of v1.0 (2026-11-02); if the two ever disagree, the registry wins. Copies
+as of v1.2 (2026-11-02); if the two ever disagree, the registry wins. Copies
 of this spec in product repos never carry a competing claims table — they
-point to the registry.
+point to the registry. The registry also carries the line's own entry:
+"Unleashed (product line)" — the master-gradient mark, slug `unleashed`.
 
 **New product rule (the claim procedure, binding):** (1) read the registry
 before choosing anything; (2) take the next unclaimed accent in the extended
@@ -134,8 +143,9 @@ recolored provider triangle — caught and replaced before it shipped anywhere.
   so every product's ring geometry is pixel-identical; export PNG at 1024,
   512, 192, and 64 px from the SVG, plus a 180 px Apple-touch derivative
   where a surface needs one.
-- File naming: `unleashed-<product>-<size>.png` / `.svg`; the flagship is
-  `unleashed-vercel-*` and `unleashed-master-*` is the no-product master.
+- File naming: `unleashed-<product>-<size>.png` / `.svg` for products;
+  `unleashed-master-*` is the product line's own mark (gradient shard),
+  never filed as a product's mark.
 - A product's OAuth/app logo, favicon, connector icon, and social avatar all
   use its own accent file from this set — no per-surface improvisation.
 
