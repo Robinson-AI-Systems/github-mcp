@@ -2962,7 +2962,7 @@
         "FLEET-6"
       ],
       "card": "docs/pr-cards/PG-STUCK-1.md",
-      "status": "IN_PROGRESS",
+      "status": "MERGED",
       "migration": "none",
       "budget": 900,
       "units": [
@@ -2970,7 +2970,9 @@
       ],
       "readiness": "READY",
       "ownerInputs": [],
-      "pr": []
+      "pr": [
+        542
+      ]
     }
   ],
   "gatewayBoundary": {
