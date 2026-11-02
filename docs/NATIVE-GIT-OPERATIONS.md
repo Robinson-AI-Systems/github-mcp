@@ -28,7 +28,7 @@ readiness from a configured URL. Future scale-out (several workers, device-hoste
    `protection_check` with `options.path` reports matching scanner rules and the file hash without the matched values,
    including uncommitted files that GitHub has never seen.
 3. **Run** — `github_git_workspace_run` with the current `expectedGeneration`, one typed operation and its options:
-   binary write/remove (`write_file` ≤ ~1 MiB per call), staging/restore (`paths` 1–100), commit/amend (message ≤ 10,000
+   binary write/remove (`write_file` ≤ ~1 MiB per call; for more, use [direct uploads](#direct-uploads)), staging/restore (`paths` 1–100), commit/amend (message ≤ 10,000
    characters, multiple paragraphs allowed), branch create/delete/rename/switch, tags, fetch/pull/push,
    merge/rebase/cherry-pick/revert with continue/abort, reset/clean, stash, detached worktrees (`options.worktree`) and manual
    bisect. Conflicts return the real unresolved paths; resolve, add, then continue or commit.
@@ -51,6 +51,52 @@ workspaces (up to 100 per sweep), skipping busy and operator-locked ones — pus
 **Profiles.** Open, run and close require the **Full** profile (Everyday cannot clone). Read-only and Everyday connections
 can read a workspace that already belongs to that same connection while repository access stays valid. For a separate
 read-only grant, use your own local `git clone`. No pass ever gains another connection's workspace, credentials or grants.
+
+## Direct uploads
+
+For more than about 1 MB of files, send them straight to the worker instead of through `write_file`
+(`github_git_workspace_upload`, card [GIT-UPLOAD-1](pr-cards/GIT-UPLOAD-1.md)). The bytes never pass through Vercel, and
+no GitHub credential is involved: the address carries a signed, single-use, ten-minute capability for one quarantine
+area of one workspace.
+
+```text
+# Git mode: from your own clone whose commits build on the workspace HEAD
+github_git_workspace_upload {workspace_id, operation:"begin", mode:"git", requestKey:"<fresh>"}   → url, upload_id
+git push "<url>" HEAD:refs/heads/upload
+github_git_workspace_upload {workspace_id, operation:"apply", upload_id, expectedGeneration:<current>}
+
+# Archive mode: a folder of files (.tar.gz, .tar or .zip)
+tar -czf files.tar.gz images/
+github_git_workspace_upload {workspace_id, operation:"begin", mode:"archive", maxMegabytes:20, requestKey:"<fresh>"}
+curl --fail --upload-file files.tar.gz "<url>"
+github_git_workspace_upload {workspace_id, operation:"apply", upload_id, expectedGeneration:<current>, path:"assets"}
+```
+
+Then review (`status`/`diff`), `add`, `commit` and `push` with `github_git_workspace_run` as usual.
+
+- **begin** returns the URL once (a replay does not repeat it; begin again with a fresh `requestKey`). It works for one
+  push session or one upload, within 10 minutes, up to `maxMegabytes` (1–100, default 50). A second use gets HTTP 410;
+  an expired or altered address gets 403. Do not publish it.
+- **Git mode** receives into a separate quarantine repository with full object checks; the workspace's branches, refs,
+  config and hooks are never written by the push. **apply** fast-forwards the current branch only when the pushed commit
+  descends from the workspace HEAD (otherwise: rebase onto that commit and push to a new upload), with no tracked
+  changes in the workspace. Several pushed branches → pass `ref`.
+- **Archive mode** extracts into the repository root or `path`. Refused before anything is written: absolute paths,
+  `..`, `.git` anywhere, symlinks, hard links, devices, files over 100 MiB, more than 10,000 entries or 256 MiB expanded,
+  more than 100× expansion, and destinations that go through a workspace symlink.
+- Both modes scan every new byte with the repository's content protection (Git mode also scans intermediate commits and
+  commit messages); credential-shaped content refuses the whole upload with its first location, never its value.
+- apply bumps `generation` and returns files added/changed/deleted/unchanged and bytes. Unused or unapplied uploads are
+  removed about 70 minutes after the address expired; closing the workspace removes them at once. Dedicated Playground
+  broker workspaces are not supported (copy files inside the runtime instead).
+
+**Operator notes.** The worker image must include this change (capabilities report `direct_upload: "quarantine-v1"`;
+until then begin refuses and points to `write_file`). The upload route is on the same public HTTPS origin and port as
+`/v1/workspace`; no new domain, port or setting. Traefik (Dokploy) does not buffer or cap request bodies by default, but
+its entrypoint `respondingTimeouts.readTimeout` (60 s by default in Traefik v3) bounds how long one upload may take: about
+7 Mbit/s for a 50 MiB upload. Raise it on the Dokploy Traefik configuration (for example to `300s`) only if agents need
+large uploads over slow links. The worker itself allows each upload request 5 minutes and stores quarantines under
+`$NATIVE_GIT_STORAGE_ROOT/.uploads` (counted by the normal disk admission; never on the 64 MB `/tmp`).
 
 ## Branch switching and parallel agents
 
@@ -91,6 +137,7 @@ new intent. Error messages are bounded and redacted, including worker paths.
 | Signed request validity | MCP signs for 60 s; worker accepts ≤ 90 s | `src/native-git/client.js`, `protocol.js` |
 | MCP → worker | 50 s fetch timeout; 3 MiB response cap | `src/native-git/client.js` |
 | Worker request body | 2 MiB (413 above); 15 s request timeout | `workers/native-git/server.js` |
+| Direct upload | one push or archive per address, ≤ 10 min, ≤ 100 MiB (+1 MiB Git commands); 5 min per request; apply: ≤ 100 MiB per file, 256 MiB total, 10,000 entries, 5,000 commits | `workers/native-git/upload.js`, `archive.js` |
 | Snapshot export | ≤ 100 MiB raw, ≤ 100,000 files, no symlinks/special files; encrypted import ≤ 150 MiB. Playground attachment uses the **lean** format when eligible (history fetched from GitHub; only local changes count) | `snapshot.js`, `lean.js` |
 
 ## API content-commit alternative

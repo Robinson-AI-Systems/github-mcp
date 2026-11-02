@@ -2847,6 +2847,25 @@
       "pr": [
         519
       ]
+    },
+    {
+      "id": "GIT-UPLOAD-1",
+      "title": "Direct bulk uploads into native Git workspaces (one-time git push or archive URL)",
+      "batch": "FIN",
+      "design": "docs/pr-cards/GIT-UPLOAD-1.md",
+      "dependencies": [
+        "PAR-2"
+      ],
+      "card": "docs/pr-cards/GIT-UPLOAD-1.md",
+      "status": "IN_PROGRESS",
+      "migration": "none",
+      "budget": 800,
+      "units": [
+        "GIT-UPLOAD-1"
+      ],
+      "readiness": "READY",
+      "ownerInputs": [],
+      "pr": []
     }
   ],
   "gatewayBoundary": {

@@ -14,12 +14,17 @@ import { verifyWorkerBody, workerKey, nativeWorkspaceId, WORKER_PROTOCOL } from 
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import {createResourceMonitor,resourcePolicyFromEnv} from './resources.js';
+import {uploadHttp,beginUpload,uploadStatus,applyUpload,pruneUploads} from './upload.js';
 
 export function nativeGitServer({ root, key, now = Date.now, allowLocalFixtures = false, fixtureRemote, resources, resourcePolicy = {}, singleWorkspaceId, singleBinding, authorityUrl, cloneTimeoutMs = 900000, cloneWaitMs = 30000 } = {}) {
  workerKey(key); const busy = new Set();
  const monitor=resources??createResourceMonitor({root,policy:resourcePolicy});
  const gitVersion=execFileSync('git',['--version'],{encoding:'utf8',timeout:2000}).trim();
- const server = createServer({ requestTimeout: 15000, headersTimeout: 10000, maxHeaderSize: 8192 }, async (req, res) => withProtectionContext(async () => {
+ // One-time upload bodies may take minutes; every other route keeps its own 15-second body deadline.
+ const server = createServer({ requestTimeout: 330000, headersTimeout: 10000, maxHeaderSize: 8192 }, async (req, res) => withProtectionContext(async () => {
+  // Never let an unexpected upload failure escape the handler (no paths or details leave it).
+  if (req.url?.startsWith('/v1/upload/')) return uploadHttp(req, res, { root, key, now, monitor }).catch(() => { if (res.headersSent) res.destroy(); else { res.statusCode = 500; res.setHeader('Content-Type', 'text/plain; charset=utf-8'); res.end('The upload did not finish. Begin a new upload.\n'); } });
+  const bodyDeadline = setTimeout(() => req.destroy(), 15000); bodyDeadline.unref(); req.once('end', () => clearTimeout(bodyDeadline)); res.once('close', () => clearTimeout(bodyDeadline));
   res.setHeader('Cache-Control', 'no-store'); res.setHeader('Content-Type', 'application/json');
   const send = (status, data) => { res.statusCode = status; res.end(JSON.stringify(data)); };
   if (req.method === 'GET' && req.url === '/health') return send(200, { service: 'robinson-native-git', protocol: WORKER_PROTOCOL });
@@ -32,7 +37,7 @@ export function nativeGitServer({ root, key, now = Date.now, allowLocalFixtures 
    const chunks = []; let bytes = 0;
    for await (const chunk of req) { bytes += chunk.length; if (bytes > 2 * 1024 * 1024) return send(413, { error: 'request_too_large' }); const admitted=monitor.body(bytes);if(!admitted.allowed){res.setHeader('Retry-After','2');return send(429,{error:'worker_resource_pressure',reason:admitted.reason,phase:'admission',no_operation_started:true});}chunks.push(chunk); }
    claim = verifyWorkerBody(Buffer.concat(chunks).toString('utf8'), req.headers['x-robinson-signature'], key, now());
-   if (claim.action === 'capabilities') return send(200, { ready: true, protocol: WORKER_PROTOCOL, native_git:gitVersion,max_concurrent:null,capacity_mode:'resource-aware',resource_policy:monitor.policy,admission:await monitor.check(),workspace_lease:'idle-v1',repository_attachment:'sealed-mounted-v1',...(singleWorkspaceId?{repository:await repositoryMounts(join(root,singleWorkspaceId,'repo'))}:{}) });
+   if (claim.action === 'capabilities') return send(200, { ready: true, protocol: WORKER_PROTOCOL, native_git:gitVersion,max_concurrent:null,capacity_mode:'resource-aware',resource_policy:monitor.policy,admission:await monitor.check(),workspace_lease:'idle-v1',repository_attachment:'sealed-mounted-v1',direct_upload:'quarantine-v1',...(singleWorkspaceId?{repository:await repositoryMounts(join(root,singleWorkspaceId,'repo'))}:{}) });
    if(!claim.scannerPolicy||!Number.isSafeInteger(claim.scannerPolicy.revision)||claim.scannerPolicy.revision<0)throw new TypeError('Protocol 2 requires the current repository scanner policy; update the control plane and worker together.');
    const policy=scannerSettings(claim.scannerPolicy?.settings??defaultScannerSettings());
    return await withRepositoryProtection(policy.additionalRules.filter(r=>!policy.disabledRules.includes(r.id)),async()=>{
@@ -42,7 +47,7 @@ export function nativeGitServer({ root, key, now = Date.now, allowLocalFixtures 
    if (busy.has(lockKey)) return send(409, { error: 'workspace_busy', next: 'Inspect after the current operation finishes; do not replay a mutation with a new intent.' });
    busy.add(lockKey); acquired = true;
    if(claim.action!=='close'&&!(claim.action==='inspect'&&claim.renewLease===false)){
-    const needsDisk=claim.action==='open'||claim.action==='run'&&!['remove_file','clean'].includes(claim.operation);
+    const needsDisk=['open','upload_begin','upload_apply'].includes(claim.action)||claim.action==='run'&&!['remove_file','clean'].includes(claim.operation);
     const admitted=await monitor.check({needsDisk});
     if(!admitted.allowed){res.setHeader('Retry-After','2');return send(429,{error:'worker_resource_pressure',reason:admitted.reason,phase:'admission',no_operation_started:true,next:'Measured worker resources are under pressure. Inspect state, then retry after resources recover.'});}
    }
@@ -50,7 +55,7 @@ export function nativeGitServer({ root, key, now = Date.now, allowLocalFixtures 
     authorize: async (binding, { write }) => JSON.stringify(binding) === expected && claim.expiresAt > now() && (!write || claim.allowWrite === true),
     credential: async () => { if (typeof claim.credential !== 'string' || !claim.credential) throw new TypeError('Missing short-lived network authorization.'); return claim.credential; }
    });
-   if (['open','run','close'].includes(claim.action) && claim.allowWrite !== true) throw new TypeError('Workspace mutation requires an authorized write lease.');
+   if (['open','run','close','upload_begin','upload_apply'].includes(claim.action) && claim.allowWrite !== true) throw new TypeError('Workspace mutation requires an authorized write lease.');
    const sliding = claim.version === 3 && !claim.action.startsWith('attachment_') && claim.action !== 'close' && !(claim.action === 'inspect' && claim.renewLease === false);
    if (sliding && (!Number.isSafeInteger(claim.idleTimeoutMs) || claim.idleTimeoutMs < 60000 || claim.idleTimeoutMs > 86400000)) throw new TypeError('Invalid workspace idle timeout.');
    if (sliding && claim.action === 'open' && claim.options?.ttlMs !== claim.idleTimeoutMs) throw new TypeError('Clone idle timeout must match its signed lease.');
@@ -62,6 +67,9 @@ export function nativeGitServer({ root, key, now = Date.now, allowLocalFixtures 
     case 'inspect': result = claim.renewLease===false&&!claim.options?.includeRepository ? await worker.inspectMetadata(claim.workspace_id, claim.binding) : await worker.inspect(claim.workspace_id, claim.binding, claim.options?.worktree); break;
     case 'read': case 'run': if (!(claim.action === 'read' ? READ_OPERATIONS : WRITE_OPERATIONS).includes(claim.operation)) throw new TypeError('Operation does not match its lease action.'); result = await worker.execute(claim.workspace_id, claim.binding, { operation: claim.operation, args: claim.options ?? {}, requestKey: claim.requestKey, expectedGeneration: claim.expectedGeneration }); break;
     case 'close': result = await worker.close(claim.workspace_id, claim.binding); break;
+    case 'upload_begin': result = await beginUpload(worker, claim.workspace_id, claim.binding, claim.options ?? {}); break;
+    case 'upload_status': result = await uploadStatus(worker, claim.workspace_id, claim.binding, claim.options ?? {}); break;
+    case 'upload_apply': result = await applyUpload(worker, claim.workspace_id, claim.binding, { ...(claim.options ?? {}), requestKey: claim.requestKey, expectedGeneration: claim.expectedGeneration }); break;
    }
    if (sliding) {
     const lease = await worker.touch(lockKey, claim.binding, claim.idleTimeoutMs, { admitted: true });
@@ -77,7 +85,7 @@ export function nativeGitServer({ root, key, now = Date.now, allowLocalFixtures 
  // No fixed connection/request ceiling: bounded bodies and measured memory admission remain.
  const maintenance = new NativeGitWorker({ root, authorize: async () => false, now });
  maintenance.recoverInterruptedClones().catch(() => process.stderr.write('Native Git clone recovery failed; inspect storage.\n'));
- const timer = setInterval(() => singleWorkspaceId?Promise.resolve():maintenance.prune({ skip: busy }).catch(() => process.stderr.write('Native Git cleanup failed; inspect storage permissions and capacity.\n')), 60000); timer.unref();
+ const timer = setInterval(() => singleWorkspaceId?Promise.resolve():maintenance.prune({ skip: busy }).then(()=>pruneUploads(root,now())).catch(() => process.stderr.write('Native Git cleanup failed; inspect storage permissions and capacity.\n')), 60000); timer.unref();
  server.on('close', () => {clearInterval(timer);monitor.close();});
  return server;
 }

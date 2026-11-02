@@ -65,3 +65,13 @@ Relabelling them "not in effect" in production would withdraw a live, approved p
 text there; anywhere `LEGAL_APPROVED` is not `yes` they say "DRAFT — not yet reviewed by a lawyer; not in effect." The lawyer
 review is the owner checklist row "Review draft legal pages with a lawyer before public opening", which the readiness gate
 reads. The new `/status` page has its own approval (`STATUS_PAGE_APPROVED=yes`), because the 2026-10-25 approval did not cover it.
+
+## 2026-11-01 — Direct uploads into native workspaces (GIT-UPLOAD-1)
+
+Chris, 2026-11-01 21:02 MDT: "Build 1 and 2 together now" — both the temporary "push here" Git address and the one-time
+folder upload link, on one mechanism. Bulk bytes go from the agent straight to the native Git worker (never through
+Vercel's ~4.5 MB function body limit, never with a GitHub credential). The address carries a control-plane-signed,
+purpose-separated (`robinson-native-upload/v1`), single-use, ten-minute capability bound to one upload of one workspace
+that grants only quarantine writes; an authenticated apply checks and applies it (fast-forward only for Git; safe
+names/types/sizes for archives; content protection on every new byte). The URL is returned once, like Playground's
+one-time preview entry, and is not stored in the change log. Design: [GIT-UPLOAD-1](pr-cards/GIT-UPLOAD-1.md).
