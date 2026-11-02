@@ -94,7 +94,13 @@ describe('git mode: a real git clone from the one-time URL', () => {
   expect(() => git(out, 'cat-file', '-e', git(repo(), 'rev-parse', 'main'))).toThrow();
   const narrow = await begin('git', { ref: 'topic' });
   const unadvertised = await spawnAsync('git', ['fetch', '--quiet', narrow.url, git(repo(), 'rev-parse', 'main')], { cwd: out, env: ENV });
-  expect(unadvertised.status).not.toBe(0); expect(unadvertised.stderr).toMatch(/not our ref|not valid|upload-pack/);
+  expect(unadvertised.status).not.toBe(0); expect(unadvertised.stderr).toMatch(/unadvertised object|not our ref/);
+  // The server itself refuses a raw want for an object outside the advertised refs.
+  const pkt = line => (line.length + 4).toString(16).padStart(4, '0') + line;
+  const raw = await begin('git', { ref: 'topic' });
+  expect((await fetch(raw.url + '/info/refs?service=git-upload-pack')).status).toBe(200);
+  const answer = await fetch(raw.url + '/git-upload-pack', { method: 'POST', headers: { 'content-type': 'application/x-git-upload-pack-request' }, body: pkt(`want ${git(repo(), 'rev-parse', 'main')}\n`) + '0000' + pkt('done\n') });
+  expect(await answer.text()).toMatch(/not our ref/);
   // Incremental fetch of main into the existing clone sends only new objects.
   await writeFile(join(repo(), 'new.txt'), 'new\n'); git(repo(), 'add', 'new.txt'); git(repo(), 'commit', '-m', 'workspace work');
   const main = await begin('git', { ref: 'main' });
