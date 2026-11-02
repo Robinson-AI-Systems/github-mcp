@@ -19,3 +19,17 @@ it('routes only fixed coding/broker targets, preserves private auth and refuses 
   expect(await raw('GET /ws HTTP/1.1\r\nHost: example.test\r\nCookie: FAKE_SESSION\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\n')).toContain('101 Switching');expect(seen).toContainEqual(['upgrade','/ws','FAKE_SESSION']);
  }finally{await close(gateway);await close(coding);await close(broker);}
 });
+
+it('SINGLE-DOMAIN-1: one-time download/upload paths reach the broker; everything else under /v1/ still does not, and the probe answers',async()=>{
+ const seen=[],coding=createServer((req,res)=>{seen.push(['coding',req.url]);res.end('coding');}),broker=createServer((req,res)=>{seen.push(['broker',req.url,req.headers.cookie]);let n=0;req.on('data',c=>{n+=c.length;});req.on('end',()=>res.end('broker '+n));});
+ const c=await listen(coding),b=await listen(broker),gateway=ingressServer({coding:c,broker:b}),g=await listen(gateway),url='http://127.0.0.1:'+g.port,cap='eyJh.c2ln';
+ try{
+  expect(await(await fetch(url+'/v1/ingress')).json()).toEqual({service:'robinson-playground-ingress',transfer:'broker-v1'});
+  expect(await(await fetch(url+'/v1/download/'+cap)).text()).toBe('broker 0');
+  expect(await(await fetch(url+'/v1/download/'+cap+'/info/refs?service=git-upload-pack')).text()).toBe('broker 0');
+  expect(await(await fetch(url+'/v1/upload/'+cap+'/git-receive-pack',{method:'POST',body:Buffer.alloc(3*1024*1024)})).text()).toBe('broker '+3*1024*1024);
+  expect(await(await fetch(url+'/v1/upload/'+cap,{method:'PUT',body:'abc'})).text()).toBe('broker 3');
+  for(const path of ['/v1/download/'+cap+'?x=1','/v1/coding','/v1/download/'+cap+'/extra/path','/v1/uploadx/'+cap])expect(await(await fetch(url+path)).text(),path).toBe('coding');
+  expect(seen.filter(s=>s[0]==='broker').map(s=>s[1])).toEqual(['/v1/download/'+cap,'/v1/download/'+cap+'/info/refs?service=git-upload-pack','/v1/upload/'+cap+'/git-receive-pack','/v1/upload/'+cap]);
+ }finally{await close(gateway);await close(coding);await close(broker);}
+});

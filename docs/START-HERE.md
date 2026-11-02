@@ -28,6 +28,7 @@ Notes:
 - If the sign-in page instead says "Sign in with GitHub" and then shows an **Approve** page, that is the public sign-in. Press **Approve** (tick Read-only if you want no changes). The code switches between the two pages with the `GITHUB_PUBLIC_CONNECT` setting (`src/oauth/routes.js:16-30`). Which one production uses today: unverified.
 - Adding the connector from the phone app itself: unverified. The owner reported it worked on 2026-10-24 (comment in `src/brand/home-page.js:30`), but Claude's help article says it is not supported.
 - Use a full browser (Chrome, Safari), not an app's built-in browser, for the sign-in and setup pages.
+- Whole-repository downloads and uploads: the AI gets a one-time `git clone`/download command on `github.robinsonaisystems.com`, the same domain for every repository. If Claude's sandbox refuses it (host not allowed, a proxy 403, a DNS error), add `github.robinsonaisystems.com` once to the allowed domains in Claude's Capabilities / network access setting, then ask again. Nothing is lost.
 - Disconnect or change permissions later at `/connection` (public sign-in only).
 
 ## For agents

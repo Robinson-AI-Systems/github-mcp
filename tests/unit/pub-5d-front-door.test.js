@@ -60,3 +60,10 @@ describe('the website pack', () => {
     expect(html).toContain('href="https://github.robinsonaisystems.com/"');
   });
 });
+
+it('SINGLE-DOMAIN-1: the home page tells people the one domain to allow for whole-repository transfers', () => {
+ const html = renderHome('https://mcp.example.test');
+ expect(html).toContain('id="whole-repository"');
+ expect(html).toMatch(/add <b>mcp\.example\.test<\/b> once to your AI's network allowlist/);
+ expect(html).toContain('Capabilities / network access allowed-domains');
+});

@@ -243,3 +243,10 @@ Issues found by the 2026-11-01 audit, for scheduling:
   page) would finish that rotation. Not built; needs Chris's say-so as new scope.
 - **Marketplace webhook secret** (`GITHUB_MARKETPLACE_WEBHOOK_SECRET`, not activated) has no overlap window; add one like the
   App webhook secret if the Marketplace listing is ever turned on.
+
+## 2026-11-02 — Candidate compound: upload, apply, commit and push in one call (from SINGLE-DOMAIN-1)
+
+The reverse of `github_repo_download`: one call that begins an upload, then (after the agent's push/curl) applies it,
+commits and pushes. It needs a second call anyway (the agent runs the command in between), so today it is
+`github_git_workspace_upload` begin → command → apply → `github_git_workspace_run` add/commit/push. Not built; needs
+Chris's go-ahead and a design for the two-step flow.

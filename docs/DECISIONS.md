@@ -7,6 +7,7 @@ Where the archive disagrees with this table or [OWNER-DECISION-2026-10-27.md](OW
 
 | Decision | Date | Reason (one line) | Detail |
 |---|---|---|---|
+| One-time transfers use this service's own domain via Routing Middleware; compact listing budget is 6,000 tokens | 2026-11-02 | Owner: sandboxes should need one allowed domain; transfer tools belong in the default list | [SINGLE-DOMAIN-1](pr-cards/SINGLE-DOMAIN-1.md) |
 | Backups and restore are optional future work, not a production gate | 2026-10-30 | Owner deferred them; data-preservation and cleanup safeguards stay binding | [note](status/2026-10-30-playground-provider-identity.md) |
 | Playground may run in protected best-effort resource mode without verified quotas | 2026-10-30 | Owner allows production use before resource monitoring exists; allocation/identity/grant/attachment checks and network readback still required | [note](status/2026-10-30-playground-best-effort.md) |
 | Execution fails closed on unverified converted Compose networks; public ingress goes through a separate gateway | 2026-10-30 | Provider adds shared networks to the executor; intended plan alone is not proof | [note](status/2026-10-30-playground-network-readback.md) |

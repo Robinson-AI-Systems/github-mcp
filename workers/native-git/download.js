@@ -314,7 +314,7 @@ export async function downloadHttp(req, res, { root, key, now = Date.now, monito
     const timer = setTimeout(kill, DOWNLOAD_SESSION_MS); timer.unref();
     const closed = new Promise(resolve => child.on('close', resolve));
     child.stdin.on('error', () => {}); child.stdin.end(input);
-    res.writeHead(200, { 'Content-Type': 'application/x-git-upload-pack-result', 'Cache-Control': 'no-store' });
+    res.writeHead(200, { 'Content-Type': 'application/x-git-upload-pack-result', 'Cache-Control': 'no-store' }); res.flushHeaders(); // a proxy in front (the single-domain relay) sees the reply start at once
     let sent = true;
     try { await pipeline(child.stdout, watch, counter.stream, res); } catch { sent = false; kill(); }
     const code = await closed; clearTimeout(timer);
@@ -339,7 +339,7 @@ async function serveArchive(req, res, { root, claim, stored, p, repo, finish }) 
   const kill = () => { try { process.kill(-child.pid, 'SIGKILL'); } catch { /* ended */ } };
   const timer = setTimeout(kill, DOWNLOAD_SESSION_MS); timer.unref();
   const closed = new Promise(resolve => child.on('close', resolve));
-  res.writeHead(200, headers);
+  res.writeHead(200, headers); res.flushHeaders();
   let sent = true;
   try { await pipeline(child.stdout, createGzip(), counter.stream, res); } catch { sent = false; kill(); }
   const code = await closed; clearTimeout(timer);

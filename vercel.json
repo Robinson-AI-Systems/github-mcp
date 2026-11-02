@@ -8,6 +8,22 @@
       "maxDuration": 60
     }
   },
+  "skipMiddlewareRequestBody": true,
+  "headers": [
+    {
+      "source": "/v1/transfer/(.*)",
+      "headers": [
+        {
+          "key": "x-vercel-enable-rewrite-caching",
+          "value": "0"
+        },
+        {
+          "key": "Cache-Control",
+          "value": "no-store"
+        }
+      ]
+    }
+  ],
   "rewrites": [
     {
       "source": "/",

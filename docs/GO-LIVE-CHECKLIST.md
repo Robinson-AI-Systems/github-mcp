@@ -49,6 +49,8 @@ After the Marketplace code is deployed: privately set `GITHUB_MARKETPLACE_WEBHOO
 
 Settings (names only): `NATIVE_GIT_WORKER_KEY`, `PLAYGROUND_DOKPLOY_ORIGIN`, `PLAYGROUND_DOKPLOY_API_KEY`, `PLAYGROUND_DOKPLOY_PROJECT_ID`, `PLAYGROUND_DOKPLOY_ENVIRONMENT_ID`, `PLAYGROUND_INGRESS_IPV4`. `PLAYGROUND_RESOURCE_MODE=best_effort` is in `vercel.json`. All enrolled per your 2026-10-29/30 notes (unverified from code). See [PLAYGROUND-OPERATIONS](PLAYGROUND-OPERATIONS.md). Backups: optional, not a go-live gate.
 
+Single domain (SINGLE-DOMAIN-1): transfers use `PUBLIC_BASE_URL` (already set). Optional switch `NATIVE_GIT_TRANSFER_RELAY=off` returns worker-host addresses. Runtime transfers need the runtime image rebuilt from a commit that includes SINGLE-DOMAIN-1 (new `ingress.js`); older runtimes get a plain fallback.
+
 ## 7. Appliance Desk and other repos (Agent can check)
 
 Run `github_workflow_app_readiness` for `appliance-desk` ([APP-NEEDS-APPLIANCE-DESK](APP-NEEDS-APPLIANCE-DESK.md)). Done 2026-10-09: `main` requires `ci` only. Not verified: force-push and deletion blocked, secret scanning, fork-PR approval, a `live` branch. Same ruleset wanted on `stripe-mcp`, `google-workspace-mcp`, `robinsons-toolkit-hub`, `vercel-mcp`, `neon-mcp`; not verified.

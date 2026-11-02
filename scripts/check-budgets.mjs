@@ -1,6 +1,6 @@
 // Adapted from Robinson-AI-Systems/stripe-mcp scripts/check-budgets.mjs @ e2f90e8; completed for C-2 (BATCH-C C7).
 // Budgets are tests: fails when a listed description is over 160 characters, a tool's schema is over 1,500 tokens, the compact
-// listing is over 5,000 tokens or the everyday catalog listing is over 22,000. Tokens are counted with a pinned tokenizer
+// listing is over 6,000 tokens or the everyday catalog listing is over 22,000. Tokens are counted with a pinned tokenizer
 // (gpt-tokenizer) on exactly what `tools/list` sends (`listedTool`). The counts are printed so CI shows the trend.
 import path from 'node:path';
 import { encode } from 'gpt-tokenizer';
@@ -9,7 +9,9 @@ import { toolListingPages } from '../src/core/tool-pages.js';
 
 export const DESCRIPTION_LIMIT = 160;
 export const SCHEMA_TOKEN_LIMIT = 1500;
-export const COMPACT_TOKEN_LIMIT = 5000;
+// Raised from 5,000 on 2026-11-02 (SINGLE-DOMAIN-1): the owner asked for the whole-repository download and
+// workspace transfer tools in the default list (docs/DECISIONS.md). Still about half the everyday catalog page.
+export const COMPACT_TOKEN_LIMIT = 6000;
 export const EVERYDAY_CATALOG_TOKEN_LIMIT = 22000;
 export const countTokens = (value) => encode(JSON.stringify(value)).length;
 
