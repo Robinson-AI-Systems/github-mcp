@@ -32,3 +32,9 @@ test('packaged image samples available process memory and writable filesystem wi
  try{assert.equal(monitor.body(1024).allowed,true);assert.deepEqual(await monitor.check(),{allowed:true});assert.equal(Object.hasOwn(monitor.policy,'maxConcurrent'),false);}
  finally{monitor.close();await rm(dir,{recursive:true,force:true});}
 });
+
+test('packaged image includes the direct upload route and its archive checks', async () => {
+ const { uploadHttp, applyUpload } = await import('./upload.js'); const { entryPath } = await import('./archive.js');
+ assert.equal(typeof uploadHttp, 'function'); assert.equal(typeof applyUpload, 'function');
+ assert.equal(entryPath('./a/b.png'), 'a/b.png'); assert.throws(() => entryPath('../x')); assert.throws(() => entryPath('a/.git/config'));
+});

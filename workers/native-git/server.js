@@ -22,7 +22,8 @@ export function nativeGitServer({ root, key, now = Date.now, allowLocalFixtures 
  const gitVersion=execFileSync('git',['--version'],{encoding:'utf8',timeout:2000}).trim();
  // One-time upload bodies may take minutes; every other route keeps its own 15-second body deadline.
  const server = createServer({ requestTimeout: 330000, headersTimeout: 10000, maxHeaderSize: 8192 }, async (req, res) => withProtectionContext(async () => {
-  if (req.url?.startsWith('/v1/upload/')) return uploadHttp(req, res, { root, key, now, monitor });
+  // Never let an unexpected upload failure escape the handler (no paths or details leave it).
+  if (req.url?.startsWith('/v1/upload/')) return uploadHttp(req, res, { root, key, now, monitor }).catch(() => { if (res.headersSent) res.destroy(); else { res.statusCode = 500; res.setHeader('Content-Type', 'text/plain; charset=utf-8'); res.end('The upload did not finish. Begin a new upload.\n'); } });
   const bodyDeadline = setTimeout(() => req.destroy(), 15000); bodyDeadline.unref(); req.once('end', () => clearTimeout(bodyDeadline)); res.once('close', () => clearTimeout(bodyDeadline));
   res.setHeader('Cache-Control', 'no-store'); res.setHeader('Content-Type', 'application/json');
   const send = (status, data) => { res.statusCode = status; res.end(JSON.stringify(data)); };

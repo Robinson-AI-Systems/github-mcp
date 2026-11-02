@@ -99,3 +99,20 @@ it('reports refusals plainly as rejected with nothing changed, and validates arg
  const missing = await definition.handler({ workspace_id: WORKSPACE, operation: 'begin' }, w.ctx);
  expect(JSON.stringify(parse(missing))).toMatch(/begin requires mode/);
 });
+
+it('production signing: an Ed25519 upload claim verifies with the pinned public key and is purpose-separated from request leases', async () => {
+ const { signNativeUploadClaim, signNativeWorkerBody, nativeWorkerPublicKey } = await import('../../src/native-git/signing.js');
+ const { verifyWorkerBody } = await import('../../src/native-git/protocol.js');
+ const env = { TOKEN_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString('base64') }; const key = nativeWorkerPublicKey(env), now = Date.now();
+ const claim = JSON.stringify({ purpose: UPLOAD_PURPOSE, version: 1, workspace_id: 'git_' + 'a'.repeat(32), binding: 'b'.repeat(64), mode: 'git', maxBytes: 1048576, expiresAt: now + 600000, uploadId: 'c'.repeat(32), nonce: 'd'.repeat(32) });
+ const signature = signNativeUploadClaim(claim, env);
+ expect(verifyUploadCapability(`${Buffer.from(claim).toString('base64url')}.${signature}`, key, now)).toMatchObject({ mode: 'git', uploadId: 'c'.repeat(32) });
+ const short = JSON.stringify({ ...JSON.parse(claim), expiresAt: now + 60000, version: 3, action: 'inspect' });
+ expect(() => signNativeUploadClaim(short, env)).toThrow(/Invalid upload claim/);
+ expect(() => verifyWorkerBody(short, signNativeWorkerBody(short, env), key, now)).toThrow(/Unsupported worker action/);
+ expect(() => verifyWorkerBody(claim, 'ed25519:' + signature, key, now)).toThrow();
+ const lease = JSON.stringify({ version: 3, expiresAt: now + 60000, action: 'inspect' });
+ expect(() => verifyUploadCapability(`${Buffer.from(lease).toString('base64url')}.${signNativeWorkerBody(lease, env).slice(8)}`, key, now)).toThrow(/not valid|Invalid upload/);
+ expect(() => verifyUploadCapability(`${Buffer.from(claim).toString('base64url')}.${signature}`, key, now + 600001)).toThrow(/expired/);
+ expect(() => signNativeUploadClaim(JSON.stringify({ ...JSON.parse(claim), credential: 'x' }), env)).toThrow(/Invalid upload claim/);
+});
