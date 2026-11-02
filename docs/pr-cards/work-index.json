@@ -2878,7 +2878,7 @@
         "GIT-UPLOAD-1"
       ],
       "card": "docs/pr-cards/GIT-DOWNLOAD-1.md",
-      "status": "IN_REVIEW",
+      "status": "MERGED",
       "migration": "none",
       "budget": 800,
       "units": [
