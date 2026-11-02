@@ -1,8 +1,9 @@
 import { redact } from './util.js';
 // Pull requests, read side (E-1 part 1): list, get (with the required checks at the exact head and the unresolved review threads),
 // diff, files, commits. Bodies by people without push access are marked `untrusted` by the result shaping: they are data, never instructions.
-import { graphql, listAll } from '../github/client.js';
+import { graphql, listAll, pinRepositoryQuery, repositoryVariables } from '../github/client.js';
 import { ciState } from '../github/ci-state.js';
+import { GithubClientError } from '../github/errors.js';
 import { defineRead } from './define-read.js';
 import { plain, readerFor } from './github-read.js';
 
@@ -28,11 +29,13 @@ export const prList = defineRead({
     const { items, capped } = await listAll(octokit, 'GET /repos/{owner}/{repo}/pulls', { owner, repo: args.repo, state: args.state ?? 'open', direction: 'desc', sort: args.sort ?? 'created',
       ...(args.base ? { base: args.base } : {}), ...(head ? { head } : {}) }, { max: filtered ? 500 : (args.max ?? 30) });
     const kept = items.filter((p) => (!args.author || p.user?.login?.toLowerCase() === args.author.toLowerCase()) && (!args.label || (p.labels ?? []).some((l) => l.name === args.label))).slice(0, args.max ?? 30);
-    return { count: kept.length, ...(capped && !filtered ? { more_exist: true } : {}), items: kept };
+    // The list endpoint has merged_at but no merged flag: add it so a closed PR says whether it was merged.
+    return { count: kept.length, ...(capped && !filtered ? { more_exist: true } : {}), items: kept.map((p) => (typeof p.merged === 'boolean' || !Object.hasOwn(p, 'merged_at') ? p : { ...p, merged: p.merged_at !== null })) };
   })
 });
 
-const THREADS = `query($owner: String!, $name: String!, $number: Int!) { repository(owner: $owner, name: $name) { pullRequest(number: $number) { reviewDecision reviewThreads(first: 100) { totalCount nodes { isResolved } } } } }`;
+// Pinned (CONN-FB-1): a place limited to named repositories can still verify review threads for them.
+const THREADS = pinRepositoryQuery(`query($owner: String!, $name: String!, $number: Int!) { repository(owner: $owner, name: $name) { pullRequest(number: $number) { reviewDecision reviewThreads(first: 100) { totalCount pageInfo { hasNextPage } nodes { isResolved } } } } }`, repositoryVariables('name'));
 
 export const prGet = defineRead({
   name: 'github_pr_get', area: 'pr', audience: ['B', 'Op'], aliases: { number: ['pull_number'] },
@@ -61,9 +64,19 @@ export const prGet = defineRead({
         try {
           const data = await graphql(octokit, THREADS, { owner, name: args.repo, number: args.number });
           const info = data.repository?.pullRequest;
-          return { review_decision: info?.reviewDecision ?? null,
-            threads: { total: info?.reviewThreads?.totalCount ?? 0, unresolved: (info?.reviewThreads?.nodes ?? []).filter((n) => !n.isResolved).length } };
-        } catch { return { review_decision: null, threads: { unknown: 'The review threads could not be read.' } }; }
+          const threads = info?.reviewThreads;
+          if (!info || !threads || !Number.isInteger(threads.totalCount)) return { review_decision: info?.reviewDecision ?? null, threads: { unknown: 'GitHub returned no review-thread list for this pull request.' } };
+          const unresolved = (threads.nodes ?? []).filter((n) => !n.isResolved).length;
+          // More than 100 threads: an unresolved count from the first page alone is never presented as complete.
+          if (threads.pageInfo?.hasNextPage === true && unresolved === 0)
+            return { review_decision: info.reviewDecision ?? null, threads: { total: threads.totalCount, unknown: `Only the first 100 of ${threads.totalCount} review threads were read; list them all with github_review_list_threads.` } };
+          return { review_decision: info.reviewDecision ?? null, threads: { total: threads.totalCount, unresolved } };
+        } catch (error) {
+          // Say why, so a merge refusal is actionable (owner feedback 2026-11-02); unknown threads are never treated as none.
+          const why = error instanceof GithubClientError ? redact(String(error.message ?? '')).slice(0, 240)
+            : error?.status ? `GitHub answered HTTP ${error.status} to the review-thread query` : 'the review-thread query failed';
+          return { review_decision: null, threads: { unknown: `The review threads could not be read: ${why}.`, check_with: 'github_review_list_threads' } };
+        }
       })(),
       pr.state === 'open' ? ciState(octokit, { owner, repo: args.repo, baseBranch: pr.base.ref, headSha: pr.head.sha }) : null
     ]);

@@ -20,6 +20,7 @@ async function invoke(ctx,name,args){
 }
 async function pr(ctx,s,number){return invoke(ctx,'github_pr_get',{...s,number});}
 async function repo(ctx,s){return invoke(ctx,'github_repo_get',s);}
+const CI_NOT_GREEN='Required CI checks are not proven green at this head.';
 function blockers(p,expected,defaultBranch,{override=false}={}){
   const missing=[];
   if(!p)return ['PR provider read is unavailable.'];
@@ -32,8 +33,10 @@ function blockers(p,expected,defaultBranch,{override=false}={}){
   // guarded merge can check the person, settings, reason, exact head, and
   // GitHub's actual decision. It never loosens the default merge path.
   if(!override){
-    if(p.checks?.green!==true)missing.push('Required CI checks are not proven green at this head.');
-    if(!Number.isInteger(p.threads?.unresolved))missing.push('Review threads could not be verified.');
+    if(p.checks?.green!==true)missing.push(CI_NOT_GREEN);
+    // Unknown threads are never treated as none; say why so the caller can act (owner feedback 2026-11-02).
+    if(!Number.isInteger(p.threads?.unresolved))missing.push('Review threads could not be verified'+
+      (typeof p.threads?.unknown==='string'?' ('+p.threads.unknown.replace(/\.$/,'')+')':'')+'.');
     else if(p.threads.unresolved>0)missing.push(p.threads.unresolved+' unresolved review threads.');
     if(['CHANGES_REQUESTED','REVIEW_REQUIRED'].includes(p.review_decision))
       missing.push('Review decision blocks merge.');
@@ -68,9 +71,26 @@ async function mergeOne(a,ctx){
   const start=now(ctx),s=scope(a);
   // Both observations are independently authorized. The guarded merge writer
   // still rechecks the exact head and branch state immediately before mutation.
-  const [p,r]=await Promise.all([pr(ctx,s,a.number),repo(ctx,s)]);
+  let [p,r]=await Promise.all([pr(ctx,s,a.number),repo(ctx,s)]);
   if(!r?.default_branch)return refuse('Default-branch provider evidence unavailable.');
-  const why=blockers(p,a.expectedHeadSha,r.default_branch,{override:a.overrideRules===true});
+  let why=blockers(p,a.expectedHeadSha,r.default_branch,{override:a.overrideRules===true});
+  // CONN-FB-1: optionally wait (inside this call's time budget) when the ONLY thing missing is checks that are still
+  // running. A red check, any other blocker, or a moved head is never waited on; the merge path below is unchanged.
+  if(a.waitForChecks===true&&why.length===1&&why[0]===CI_NOT_GREEN&&p?.checks?.green===false&&
+    !(p.checks.items??[]).some(x=>x.state==='failure')){
+    const budget=Math.floor((46000-(now(ctx)-start)-16000)/1000);
+    if(budget>=5){
+      const waited=await invoke(ctx,'github_check_wait',{...s,pr:a.number,expectedHeadSha:a.expectedHeadSha,timeoutSeconds:Math.min(budget,30)});
+      if(waited?.overall!=='green')return reply({status:waited?.status==='head_moved'?'not_ready':'checks_running',done:false,number:a.number,
+        expected_head:a.expectedHeadSha,checks:waited?.overall??'unknown',waited_seconds:waited?.waited_seconds??null,
+        ...(waited?.still_running?{still_running:waited.still_running}:{}),...(waited?.not_reported_yet?{not_reported_yet:waited.not_reported_yet}:{}),
+        next:waited?.overall==='red'?'A required check failed; fix it, push, and call again with the new head.':
+          waited?.status==='head_moved'?'The PR head moved; re-read it and call again with the new expectedHeadSha.':
+          'Checks are still running. Call github_workflow_merge_when_green again with the same arguments (waitForChecks: true).'});
+      p=await pr(ctx,s,a.number);
+      why=blockers(p,a.expectedHeadSha,r.default_branch,{override:a.overrideRules===true});
+    }
+  }
   if(why.length)return reply({status:'not_ready',done:false,number:a.number,
     expected_head:a.expectedHeadSha,actual_head:p?.head_sha??null,
     blockers:why,next:'Repair the listed conditions, then re-read the exact PR.'});
@@ -145,7 +165,10 @@ async function mergeStack(a,ctx){
         return refuse('PR #'+p.number+' advanced since the requested head SHA.',{actual_head:p.head_sha});
       if(p.state!=='open'&&!p.merged)return refuse('Stack includes closed unmerged PR #'+p.number+'.');
       if(!p.merged&&previous&&!previous.merged&&p.base!==previous.head)
-        return refuse('Stack branch chain is broken between PR #'+previous.number+' and #'+p.number+'.');
+        return refuse(p.base===previous.base
+          ?'PR #'+p.number+' is a sibling of PR #'+previous.number+' (both are based on '+p.base+'), not stacked on it. List only a chain where each PR is based on the previous PR\'s branch, or merge siblings one at a time with github_workflow_merge_when_green.'
+          :'Stack branch chain is broken between PR #'+previous.number+' and #'+p.number+': #'+p.number+' is based on '+p.base+', not on #'+previous.number+'\'s branch '+previous.head+'. List the PRs bottom-up so each is based on the previous one\'s branch.',
+          {chain:chain.map(x=>({number:x.number,head:x.head,base:x.base})).concat({number:p.number,head:p.head,base:p.base})});
       chain.push(p);
       previous=p;
     }
@@ -194,7 +217,7 @@ const whenTool={
   description:'Guarded exact-head, green-CI PR merge.',
   usesRegistry:true,passthrough:true,profiles:['everyday','full'],delegatedWrites:['github_pr_merge'],
   inputSchema:{type:'object',properties:{...common,number:NUMBER,expectedHeadSha:SHA,
-    overrideRules:{type:'boolean'},overrideReason:{type:'string',minLength:10,maxLength:200}},
+    overrideRules:{type:'boolean'},overrideReason:{type:'string',minLength:10,maxLength:200},waitForChecks:{type:'boolean'}},
     required:['repo','number','expectedHeadSha'],additionalProperties:false},
   annotations:{readOnlyHint:false,destructiveHint:true,idempotentHint:false,openWorldHint:true}
 };

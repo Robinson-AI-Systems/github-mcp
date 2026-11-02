@@ -56,7 +56,11 @@ function check(spec, value, path, depth) {
             continue;
           }
           // Do not expose a credential prefix by truncating an untrusted property name before redaction.
-          return key.length > 40 ? 'Unknown argument (long name omitted).' : `Unknown argument: ${key}.`;
+          // Name the valid arguments so a mis-shaped call can be fixed in one try (owner feedback 2026-11-02).
+          const valid = Object.keys(props).filter((k) => /^[A-Za-z0-9_]{1,40}$/.test(k)).slice(0, 25);
+          const where = path ? ` in ${path}` : '';
+          const list = valid.length ? ` Valid arguments${where}: ${valid.join(', ')}.` : ` ${path || 'This tool'} takes no arguments.`;
+          return (key.length > 40 ? `Unknown argument${where} (long name omitted).` : `Unknown argument${where}: ${key}.`) + list;
         }
         const problem = check(props[key], item, path ? `${path}.${key}` : key, depth + 1);
         if (problem) return problem;

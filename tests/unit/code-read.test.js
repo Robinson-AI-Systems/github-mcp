@@ -324,7 +324,8 @@ describe('W-3 bounded exact-head file context',()=>{
   });
   it('refuses half, reversed or oversized ranges before calling GitHub',async()=>{
     const w=await world();
-    for(const range of [{startLine:2},{startLine:3,endLine:2},{startLine:1,endLine:501}])
+    // startLine alone is a 200-line window since CONN-FB-1 (tested in conn-fb-1.test.js); reversed and oversized stay refused.
+    for(const range of [{startLine:3,endLine:2},{startLine:1,endLine:501},{startLine:10,endLine:510}])
       expect((await run(w,'github_content_get',{...R,path:'a.js',...range})).result.isError).toBe(true);
     expect(w.gh.calls).toEqual([]);
   });

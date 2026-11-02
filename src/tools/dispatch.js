@@ -61,7 +61,7 @@ async function readReply({ tool, args, raw, connection, db, mode }) {
   const fullFile = tool.name === 'github_content_get' && args?.fullText === true &&
     shaped?.type === 'file' && typeof value.content === 'string' && Buffer.byteLength(value.content) <= 1_000_000;
   // A requested line window (up to 500 lines) may be as large as a byte window; it is the caller's explicit choice.
-  const lineWindow = tool.name === 'github_content_get' && args?.startLine !== undefined && typeof value?.content === 'string' && Buffer.byteLength(value.content) <= 48000;
+  const lineWindow = tool.name === 'github_content_get' && (args?.startLine !== undefined || args?.endLine !== undefined) && typeof value?.content === 'string' && Buffer.byteLength(value.content) <= 48000;
   const boundedWindow=tool.boundedWindow===true&&Buffer.byteLength(JSON.stringify(value))<=8192;
   const capped = boundedWindow?{value,cut:[]}:capText(value, fullFile ? { textLimit: 1_000_000 } : (byteWindow || lineWindow) ? { textLimit: 48000 } : {});
   const fit = fitToBudget(capped.value, fullFile ? 2_000_000 : (byteWindow || lineWindow) ? 48000 : undefined);
@@ -100,6 +100,24 @@ async function readReply({ tool, args, raw, connection, db, mode }) {
 // PUB-5 B: a real change is one that was applied, or whose result is not certain (unconfirmed, uncertain). Previews and refusals are not.
 const COUNTED_STATUSES = new Set(['applied', 'unconfirmed', 'uncertain']);
 
+// CONN-FB-1 (owner feedback 2026-11-02: "the rate-limit block lists other accounts"): meta.github_rate shows only the
+// account(s) this call acts on (its owner arguments, else the connection's default account). Another account's row stays
+// only when it is blocked or throttled, because that can explain a failure. github_rate_status shows everything on request.
+function actingAccounts(input){
+  const names=new Set();const add=v=>{if(typeof v==='string'&&v)names.add(v.toLowerCase());};
+  const a=isObject(input.args)?input.args:{};
+  add(a.owner);if(isObject(a.args))add(a.args.owner);
+  if(Array.isArray(a.calls))for(const c of a.calls)if(isObject(c?.args))add(c.args.owner);
+  if(!names.size)add(input.connection?.default_account);
+  return names;
+}
+function actingRates(snapshot,input){
+  const acting=actingAccounts(input);
+  if(!acting.size)return snapshot;
+  const items=snapshot.items.filter(r=>acting.has(String(r.account).toLowerCase())||r.blocked_until||r.throttle);
+  return {...snapshot,items};
+}
+
 /** `usage` is optional: `{ beforeWrite(): Promise<null|{message, retryAfterSeconds}> (reserves a slot), afterWrite(): Promise<void> (confirms it), release?(): Promise<void> (hands it back) }`. Absent = no limits
  *  (every existing caller and the owner path behave exactly as before). It is asked before each real change and told after it. */
 /** `featureGates: true` (CAP-6, set by every production door) refuses a call to a runner, merge-queue or Copilot tool on an
@@ -114,7 +132,7 @@ export function createDispatch({ env = process.env, now = Date.now, fetch = glob
     try{
       let result=await run({...input,rateObservations},box);
       if(!topLevel)return result;
-      const rates=rateObservations.snapshot();
+      const rates=actingRates(rateObservations.snapshot(),input);
       if(rates.items.length){
         // The canonical *full* JSON must contain metadata before the
         // large-text envelope is deduplicated. RTC restores content[0].text.

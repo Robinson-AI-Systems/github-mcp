@@ -111,7 +111,7 @@ export async function ciState(octokit, { owner, repo, baseBranch, headSha }) {
     checks = [...names.map((context) => evaluate({ context, appId: null })), ...(statuses ?? []).filter((s) => !names.includes(s.context)).map((s) => ({ context: s.context, state: statusState(s.state), source: 'status' }))];
   }
   const problems = checks.filter((c) => c.state !== 'success').map((c) => `${c.context}: ${c.state}`);
-  if (!checks.length) problems.push('no checks have reported on this commit yet (CI may not have started)');
+  if (!checks.length) problems.push('no checks have reported on this commit yet; CI usually starts within a minute of a push (github_check_wait waits for it)');
   // Any read that failed means the answer is unknown, never green.
   return { green: errors.length ? null : problems.length === 0, known: errors.length === 0, basis, checks, problems, notes, errors,strict_up_to_date,policy_sources };
 }

@@ -19,7 +19,9 @@ const short = (sha) => String(sha ?? '').slice(0, 7);
 const target = (args, ctx) => ({ owner: ownerOf(args, ctx), repo: args.repo, scope: 'repo' });
 const getPr = (ctx, t, number) => missing(async () => (await (await octo(ctx, t.owner)).request('GET /repos/{owner}/{repo}/pulls/{pull_number}', { owner: t.owner, repo: t.repo, pull_number: number })).data);
 const prLabel = (t, number) => `pull request #${number} in ${slug(t.owner, t.repo)}`;
-const brief = (pr) => (pr ? { number: pr.number, title: pr.title, state: pr.state, draft: pr.draft, merged: pr.merged, head: pr.head?.ref, head_sha: pr.head?.sha, base: pr.base?.ref, html_url: pr.html_url } : null);
+// The essentials an agent needs next (owner feedback 2026-11-02); GitHub works out mergeability in the background, so null means "not yet known".
+const brief = (pr) => (pr ? { number: pr.number, title: pr.title, state: pr.state, draft: pr.draft, merged: pr.merged, head: pr.head?.ref, head_sha: pr.head?.sha, base: pr.base?.ref, base_sha: pr.base?.sha ?? null,
+  head_repo: pr.head?.repo?.full_name ?? null, mergeable: pr.mergeable ?? null, mergeable_state: pr.mergeable_state ?? null, html_url: pr.html_url } : null);
 
 /** Reads the pull request an operation is about; absent, merged or closed-when-it-must-be-open are plain refusals. */
 function needOpen(pr, number) {

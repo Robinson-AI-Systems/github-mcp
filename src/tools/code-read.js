@@ -37,16 +37,18 @@ export const contentGet = defineRead({
   properties: { owner: OWNER, repo: REPO, path: { type: 'string', maxLength: 1000, description: 'File or directory path; empty or / for the top level' }, ref: { ...REF, description: 'Branch, tag or commit (default: the default branch)' },
     blobSha: { type: 'string', pattern: '^[a-fA-F0-9]{40}$', description: 'Read this exact file blob for immutable continuation; do not combine with ref.' },
     fullText: { type: 'boolean', description: 'Return full text up to the contents API limit (1 MB), with no 4 KB preview cap.' },
-    startLine: { type: 'integer', minimum: 1 }, endLine: { type: 'integer', minimum: 1 },
+    startLine: { type: 'integer', minimum: 1 }, endLine: { type: 'integer', minimum: 1, description: 'Default startLine + 199; at most 500 lines per call' },
     byteOffset: { type: 'integer', minimum: 0, description: 'Start byte (zero-based). Returns exact base64 bytes, not characters.' },
     byteLength: { type: 'integer', minimum: 1, maximum: 32768, description: 'Read at most this many bytes (up to 32768); defaults to 32768 when byteOffset is given.' } },
   required: ['repo'],
-  handler: (args, ctx) => plain(async () => {
+  handler: (input, ctx) => plain(async () => {
+    // startLine alone reads 200 lines from there; endLine alone reads up to 200 lines ending there (owner feedback 2026-11-02).
+    const args = input.startLine !== undefined && input.endLine === undefined ? { ...input, endLine: input.startLine + 199 }
+      : input.endLine !== undefined && input.startLine === undefined ? { ...input, startLine: Math.max(1, input.endLine - 199) } : input;
     if (args.fullText === true && (args.startLine !== undefined || args.byteOffset !== undefined || args.byteLength !== undefined))
       throw new TypeError('fullText cannot be combined with line or byte ranges.');
-    if ((args.startLine === undefined) !== (args.endLine === undefined) ||
-        (args.startLine !== undefined && (args.endLine < args.startLine || args.endLine - args.startLine >= 500)))
-      throw new TypeError('Supply both startLine and endLine, covering at most 500 lines.');
+    if (args.startLine !== undefined && (args.endLine < args.startLine || args.endLine - args.startLine >= 500))
+      throw new TypeError('endLine must be at or after startLine, covering at most 500 lines.');
     if ((args.byteOffset !== undefined || args.byteLength !== undefined) &&
         (args.startLine !== undefined || args.endLine !== undefined))
       throw new TypeError('Byte ranges cannot be combined with line ranges.');
@@ -58,7 +60,8 @@ export const contentGet = defineRead({
       ? await octokit.request('GET /repos/{owner}/{repo}/git/blobs/{file_sha}', { owner, repo: args.repo, file_sha: args.blobSha })
       : await octokit.request('GET /repos/{owner}/{repo}/contents/{path}', query);
     const data = args.blobSha ? { ...raw, type: 'file', path } : raw;
-    if (Array.isArray(data)) return { path, type: 'dir', count: data.length, items: data.map((e) => ({ name: e.name, path: e.path, type: e.type, size: e.size })) };
+    if (Array.isArray(data)) return { path, type: 'dir', count: data.length, items: data.map((e) => ({ name: e.name, path: e.path, type: e.type, ...(e.type === 'dir' ? {} : { size: e.size }) })),
+      ...(data.some((e) => e.type === 'dir') ? { tree: { tool: 'github_content_get_tree', note: 'Folders have no size here; github_content_get_tree lists every file below them (recursive) with sizes, optionally by glob.' } } : {}) };
     if (data.type === 'symlink' || data.type === 'submodule') return { path: data.path, type: data.type, target: data.target ?? data.submodule_git_url ?? null, sha: data.sha };
     const base = { path: data.path, type: 'file', size: data.size, sha: data.sha, html_url: data.html_url };
     if (data.encoding !== 'base64' || typeof data.content !== 'string' || data.size > MAX_TEXT_BYTES) {

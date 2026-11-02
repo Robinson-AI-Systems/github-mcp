@@ -2953,6 +2953,25 @@
       ]
     },
     {
+      "id": "CONN-FB-1",
+      "title": "Connector feedback from the fac-ultra build: wait for CI, lockfiles, limited places, clearer results",
+      "batch": "FIN",
+      "design": "docs/pr-cards/CONN-FB-1.md",
+      "dependencies": [
+        "ERR-REF-1"
+      ],
+      "card": "docs/pr-cards/CONN-FB-1.md",
+      "status": "IN_PROGRESS",
+      "migration": "none",
+      "budget": 1400,
+      "units": [
+        "CONN-FB-1"
+      ],
+      "readiness": "READY",
+      "ownerInputs": [],
+      "pr": []
+    },
+    {
       "id": "PG-STUCK-1",
       "title": "Stuck Playground runtimes are replaced; retries and status reads do not keep them alive; close resumes on the same key",
       "batch": "FIN",
