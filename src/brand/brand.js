@@ -33,5 +33,13 @@ export const serverIcons = (origin) => [
   { src: `${origin}${ICON_PATH}`, mimeType: 'image/png', sizes: ['256x256'] },
   { src: `${origin}/brand/icon-64.png`, mimeType: 'image/png', sizes: ['64x64'] }
 ];
-export const serverInfo = (origin) => ({ name: 'robinson-github-mcp', title: BRAND.product, version: VERSION,
+/** The release an agent is talking to: the deployed commit (Vercel provides it), so agents can tell whether a fix is live. */
+export function serverRelease(env = process.env) {
+  const sha = /^[0-9a-f]{40}$/.test(String(env.VERCEL_GIT_COMMIT_SHA ?? '')) ? String(env.VERCEL_GIT_COMMIT_SHA) : null;
+  return sha
+    ? { version: `${VERSION}+${sha.slice(0, 12)}`, commit: sha, source: `https://github.com/Robinson-AI-Systems/github-mcp/commit/${sha}`,
+        what_changed: 'Merged changes up to this commit are live. Read the live branch history (github_commit_list owner Robinson-AI-Systems repo github-mcp ref live) to see recent changes.' }
+    : { version: VERSION, commit: null, note: 'This server did not report its release commit.' };
+}
+export const serverInfo = (origin) => ({ name: 'robinson-github-mcp', title: BRAND.product, version: serverRelease().version,
   websiteUrl: BRAND.website, description: 'Operate GitHub accounts safely from your AI assistant.', ...(origin ? { icons: serverIcons(origin) } : {}) });
