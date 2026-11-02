@@ -191,22 +191,25 @@ const conciseReadSchema = (schema) => schema?.properties
   ? { ...schema, properties: Object.fromEntries(Object.entries(schema.properties).map(([key, spec]) =>
     [key, Object.fromEntries(Object.entries(spec).filter(([field]) => field !== 'description'))])) }
   : schema;
-// SINGLE-DOMAIN-1: these listed write tools show argument names and types only (their guidance and
-// describe_tool carry the detail); the write-safety arguments keep their descriptions.
-const CONCISE_WRITE_LISTING = new Set(['github_repo_download', 'github_git_workspace_download', 'github_git_workspace_upload']);
+// NATIVE-ERGO-1: the two content commit tools list arguments without descriptions (describe_tool carries them) to keep
+// the compact page within its 6,000-token budget; write-safety arguments keep their descriptions.
+const CONCISE_WRITE_LISTING = new Set(['github_content_push_files', 'github_content_commit_git_data']);
+// Write-safety arguments keep their descriptions in every listing.
+const KEEP_DESCRIBED = new Set(['dryRun', 'confirm', 'requestKey', 'overrideRules', 'overrideReason', 'outsideProject']);
 const conciseWriteSchema = (schema) => ({ ...schema, properties: Object.fromEntries(Object.entries(schema.properties).map(([key, spec]) =>
-  [key, ['dryRun', 'confirm', 'requestKey'].includes(key) ? spec : Object.fromEntries(Object.entries(spec).filter(([field]) => field !== 'description'))])) });
-// NATIVE-ERGO-1: github_repo_change lists names and shapes only (types and nested fields); its
+  [key, KEEP_DESCRIBED.has(key) ? spec : Object.fromEntries(Object.entries(spec).filter(([field]) => field !== 'description'))])) });
+// NATIVE-ERGO-1: these write tools list names and shapes only (types, enums, nested fields); its
 // limits, patterns and descriptions stay in the full schema (validation) and describe_tool/guidance.
 const leanSpec = (spec) => {
   if (!spec || typeof spec !== 'object') return spec;
   const out = {};
   if (spec.type) out.type = spec.type;
+  if (spec.enum) out.enum = spec.enum;
   if (spec.items) out.items = leanSpec(spec.items);
   if (spec.properties) out.properties = Object.fromEntries(Object.entries(spec.properties).map(([key, value]) => [key, leanSpec(value)]));
   return out;
 };
-const LEAN_WRITE_LISTING = new Set(['github_repo_change']);
+const LEAN_WRITE_LISTING = new Set(['github_repo_change', 'github_repo_download', 'github_git_workspace_download', 'github_git_workspace_upload']);
 // Rarely used switches (fresh) are left to guidance/describe_tool; the full schema still accepts them.
 const LEAN_UNLISTED = new Set(['fresh']);
 const leanWriteSchema = ({ additionalProperties: _closed, ...schema }) => ({ ...schema, properties: Object.fromEntries(Object.entries(schema.properties).filter(([key]) => !LEAN_UNLISTED.has(key)).map(([key, spec]) =>

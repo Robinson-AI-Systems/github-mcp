@@ -43,8 +43,11 @@ the nine write-contract checks pass through every door, and `ci` + `release-poli
 - **Older workers**: capabilities `native_options: "ergonomic-v1"` and `upload_apply: "delete-v1"` mark the new worker.
   Before it is redeployed the MCP sends add-all as explicit status paths and fetch-by-name as a full fetch; the other new
   options are refused plainly with a fallback before anything is sent.
-- **Listing**: `github_repo_change` is in `COMPACT_DEVELOPER_TOOLS` with a names-and-types listing schema (limits and
-  descriptions stay in the full schema and guidance); compact listing 5,994 / 6,000 tokens, no budget change.
+- **Listing**: `github_repo_change` is in `COMPACT_DEVELOPER_TOOLS`. To make room without raising the 6,000-token budget
+  (CONN-FB-1 adds `github_check_wait` in parallel), the four transfer/change write tools list names, types, enums and
+  nested fields only, and `github_content_push_files` / `github_content_commit_git_data` list arguments without
+  descriptions; write-safety arguments (dryRun, confirm, requestKey, overrideRules, overrideReason, outsideProject) keep
+  theirs. Full schemas (validation) and `github_describe_tool` are unchanged.
 
 ## Items not done here
 
