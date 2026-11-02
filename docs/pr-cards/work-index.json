@@ -2926,7 +2926,9 @@
       ],
       "readiness": "READY",
       "ownerInputs": [],
-      "pr": []
+      "pr": [
+        538
+      ]
     },
     {
       "id": "SINGLE-DOMAIN-1",
@@ -2938,7 +2940,7 @@
         "GIT-DOWNLOAD-1"
       ],
       "card": "docs/pr-cards/SINGLE-DOMAIN-1.md",
-      "status": "IN_PROGRESS",
+      "status": "MERGED",
       "migration": "none",
       "budget": 900,
       "units": [
