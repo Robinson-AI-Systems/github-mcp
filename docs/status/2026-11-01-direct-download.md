@@ -4,7 +4,7 @@
 files one at a time (`github_content_get_archive_link` withholds GitHub's token-bearing link; `read_file` is 32 KiB per
 call).
 
-**Built (branch `ai/claude/direct-download`):** `github_git_workspace_download` — one call returns a one-time command in
+**Built (PR #536, branch `ai/claude/direct-download`):** `github_git_workspace_download` — one call returns a one-time command in
 `progress`: `git clone "<url>" repo` (local branches and tags, or one `ref`; `git fetch` works too) or
 `curl -fsSL "<url>" -o repo.tar.gz && mkdir -p repo && tar -xzf repo.tar.gz -C repo` (a ref via `git archive`, or
 `ref:"worktree"` for uncommitted files, never `.git`). The URL carries a signed `robinson-native-download/v1` capability
