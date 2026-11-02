@@ -11,6 +11,7 @@ A hosted MCP server that lets Chris Robinson's AI agents work in GitHub for ever
 - Chris: [docs/START-HERE.md](docs/START-HERE.md), then [docs/OWNER-GUIDE.md](docs/OWNER-GUIDE.md) and [docs/OWNER-CHECKLIST.md](docs/OWNER-CHECKLIST.md).
 - Agents: read [AGENTS.md](AGENTS.md) first, then [docs/OWNER-DECISION-2026-10-27.md](docs/OWNER-DECISION-2026-10-27.md), which governs older restrictions.
 - Current state: [docs/STATUS.md](docs/STATUS.md).
+- Brand: [docs/UNLEASHED-BRAND-SPEC.md](docs/UNLEASHED-BRAND-SPEC.md) — the Unleashed brand spec; this repo's product is GitHub Unleashed (accent Arctic).
 
 ## Rules in one paragraph
 
