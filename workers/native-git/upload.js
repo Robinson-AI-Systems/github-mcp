@@ -236,10 +236,12 @@ function catObjects(root, repo, ids, onObject, { timeoutMs = 120000 } = {}) {
 function findingFor(label, bytes) {
   const text = bytes.toString('utf8');
   if (!containsCredential(text)) return null;
-  const rules = [...new Set(activeProtectionReport(text).findings.map(f => f.rule))].slice(0, 3);
-  return { path: label, rules };
+  const findings = activeProtectionReport(text).findings;
+  const rules = [...new Set(findings.map(f => f.rule))].slice(0, 3);
+  // NATIVE-ERGO-1: say where (line and rule, never the value) so a false positive can be found and reported.
+  return { path: label, rules, lines: findings.slice(0, 3).map(f => `line ${f.line} (${f.rule})`) };
 }
-const protectionRefusal = findings => refusal(`Content protection refused this upload: credential-shaped content in ${findings.length} file(s) or commit message(s), first ${JSON.stringify(findings[0].path.slice(0, 200))} (${findings[0].rules.join(', ') || 'credential'}). Remove the values (put real secrets in protected setup) and upload again.`);
+const protectionRefusal = findings => refusal(`Content protection refused this upload: credential-shaped content in ${findings.length} file(s) or commit message(s), first ${JSON.stringify(findings[0].path.slice(0, 200))} (${findings[0].lines?.length ? findings[0].lines.join(', ') : findings[0].rules.join(', ') || 'credential'}). If it is a false positive, check it with github_git_workspace_read protection_check and the repository scanner settings; otherwise remove the values (put real secrets in protected setup) and upload again.`);
 
 async function planGit(worker, w, state, stored, p, { ref, uploadId }) {
   const q = join(p.data, 'repo.git'), refs = stored.refs ?? [];
