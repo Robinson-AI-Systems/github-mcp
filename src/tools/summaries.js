@@ -29,7 +29,8 @@ export const SUMMARIES = Object.freeze({
   commit: always(shape({ sha: 'sha', message: 'commit.message', author: first('author.login', 'commit.author.name'), date: 'commit.author.date', verified: 'commit.verification.verified', parents: count('parents'), html_url: 'html_url' })),
   compare: always(shape({ status: 'status', ahead_by: 'ahead_by', behind_by: 'behind_by', total_commits: 'total_commits', merge_base: 'merge_base_commit.sha', files_changed: count('files'),
     commits: (o) => o.commits?.slice(0, 20).map((c) => ({ sha: c.sha, message: c.commit?.message?.split('\n')[0] })), html_url: 'html_url' })),
-  pull_request: shape({ number: 'number', title: 'title', state: 'state', draft: 'draft', merged: 'merged', user: login('user'), head: 'head.ref', head_sha: 'head.sha', base: 'base.ref',
+  // The list endpoint has merged_at but no merged flag (owner feedback 2026-11-02: say whether a closed PR was merged).
+  pull_request: shape({ number: 'number', title: 'title', state: 'state', draft: 'draft', merged: (o) => (typeof o.merged === 'boolean' ? o.merged : Object.hasOwn(o, 'merged_at') ? o.merged_at !== null : undefined), merged_at: 'merged_at', user: login('user'), head: 'head.ref', head_sha: 'head.sha', base: 'base.ref',
     mergeable_state: 'mergeable_state', labels: names('labels'), updated_at: 'updated_at', html_url: 'html_url' }),
   review: shape({ id: 'id', user: login('user'), state: 'state', submitted_at: 'submitted_at', commit_id: 'commit_id', body: 'body', html_url: 'html_url' }),
   review_thread: shape({ id: 'id', resolved: 'isResolved', outdated: 'isOutdated', path: 'path', line: 'line', comments: (o) => o.comments?.totalCount ?? o.comments?.nodes?.length,

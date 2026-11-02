@@ -2,7 +2,7 @@
 // written to a guessed default), and the branch is part of the target, so production names, protected branches, project-owned refs and
 // the protected-resource list all see it. File writes are optimistic-concurrency safe: the file's current blob SHA is read, shown in the
 // preview and sent; a change since the preview is refused with the new SHA.
-import { graphql } from '../github/client.js';
+import { commitOnBranchVariables, graphql, pinRepositoryQuery } from '../github/client.js';
 import { defineGithubWrite } from './define-github-write.js';
 import { OUTSIDE_PROJECT } from './protect-guard.js';
 import { missing, octo, ownerOf, refusal, slug } from './github-write.js';
@@ -96,7 +96,8 @@ const contentDeleteFile = defineGithubWrite(overridable({
 }, { branchOf: (args) => args.branch }));
 
 // ---- several files in one commit ----
-const COMMIT = 'mutation($input: CreateCommitOnBranchInput!) { createCommitOnBranch(input: $input) { commit { oid url } } }';
+// CONN-FB-1: pinned to the one repository its input names, so a place limited to named repositories can use it.
+const COMMIT = pinRepositoryQuery('mutation($input: CreateCommitOnBranchInput!) { createCommitOnBranch(input: $input) { commit { oid url } } }', commitOnBranchVariables);
 const MAX_FILES = 50;
 const MAX_TOTAL_CHARS = 500_000;
 const FILE_ITEM = { type: 'object', properties: { path: { type: 'string', minLength: 1, maxLength: 1000 }, content: { type: 'string', maxLength: MAX_FILE_CHARS, description: 'New text of the file' },

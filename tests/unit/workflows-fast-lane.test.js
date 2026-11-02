@@ -62,7 +62,8 @@ describe('C-6 real guarded no-label PR creation lane',()=>{
   it('does not bypass notification confirmation on a routine-looking PR title',async()=>{
     const w=await world();
     const r=await run(w,{repo:'hello',head:'feat',title:'Please review @outside-collaborator'});
-    expect(r.structuredContent).toMatchObject({done:false,status:'not_applied',underlying_status:'needs_confirmation'});
+    // CONN-FB-1: an unconfirmed call is a plain preview (nothing sent), still carrying the writer's confirmation status.
+    expect(r.structuredContent).toMatchObject({done:false,status:'preview',underlying_status:'needs_confirmation'});
     expect(calls(w,'POST /repos/{owner}/{repo}/pulls')).toHaveLength(0);
   });
   it('still refuses a connection without write permission',async()=>{

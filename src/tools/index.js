@@ -170,6 +170,8 @@ export const COMPACT_DEVELOPER_TOOLS = Object.freeze([
   'github_pr_create',
   'github_actions_get_run_logs_summary',
   'github_check_get_ci_state',
+  // CONN-FB-1 (owner feedback 2026-11-02): waiting for CI is part of every PR loop.
+  'github_check_wait',
   'github_review_list_threads',
   // SINGLE-DOMAIN-1 (owner request 2026-11-02): the whole-repository download in one call, and the
   // workspace download/upload it builds on, are in the default list.

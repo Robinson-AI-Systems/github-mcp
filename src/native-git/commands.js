@@ -1,5 +1,5 @@
 // Shared typed native Git surface; no provider or operating-system access.
-import { containsCredential } from '../github/content-protection.js';
+import { containsCredential, credentialLocations } from '../github/content-protection.js';
 export const READ_OPERATIONS = ['protection_check', 'operation_result', 'status', 'log', 'show', 'diff', 'blame', 'refs', 'conflicts', 'read_file', 'remote_refs', 'stash_list', 'worktree_list', 'bisect_log'];
 export const WRITE_OPERATIONS = ['write_file', 'remove_file', 'branch_create', 'branch_delete', 'branch_rename', 'switch', 'tag_create', 'tag_delete', 'add', 'restore', 'commit', 'merge', 'merge_abort', 'rebase', 'rebase_continue', 'rebase_abort', 'cherry_pick', 'cherry_pick_continue', 'cherry_pick_abort', 'revert', 'revert_continue', 'revert_abort', 'reset', 'clean', 'stash_push', 'stash_pop', 'stash_drop', 'fetch', 'pull', 'push', 'worktree_add', 'worktree_remove', 'bisect_start', 'bisect_good', 'bisect_bad', 'bisect_reset'];
 const sha = /^[a-f0-9]{40,64}$/;
@@ -31,7 +31,7 @@ const OPTIONS = {
 export function gitCommand(operation, a = {}) {
   if (!a || typeof a !== 'object' || Array.isArray(a)) throw new TypeError('Native options must be an object.');
   if (containsCredential(JSON.stringify(a))) throw new TypeError('Credential-shaped native input belongs in protected setup, not tool arguments.');
-  if (operation === 'write_file' && typeof a.base64 === 'string' && containsCredential(Buffer.from(a.base64, 'base64').toString('utf8'))) throw new TypeError('Credential-shaped file input belongs in protected setup, not tool arguments.');
+  if (operation === 'write_file' && typeof a.base64 === 'string') { const text = Buffer.from(a.base64, 'base64').toString('utf8'); if (containsCredential(text)) throw new TypeError(`Credential-shaped file input belongs in protected setup, not tool arguments (matched at ${credentialLocations(text)}; github_content_protection_check explains the rule).`); }
   const allowed = OPTIONS[operation];
   if (!allowed) throw new TypeError('Unsupported typed native Git operation; use the documented local alternative.');
   for (const key of Object.keys(a)) if (key !== 'worktree' && !allowed.includes(key)) throw new TypeError(`Option is not supported for ${operation}; inspect the native operation guidance.`);

@@ -153,15 +153,61 @@ export async function credentialFor(ctx, { owner, cred = 'I', scope, forceApp = 
  * repositories may only reach those repositories through the REST API: GraphQL and owner-level addresses are refused
  * because the repository cannot be read out of them.
  */
-export function assertPlaceRequest(place, account, method, url, write) {
+export function assertPlaceRequest(place, account, method, url, write, { query, variables } = {}) {
   if (write && place.allow_changes !== true)
     throw new GithubClientError('outside_scope', `Changes are off for ${account}. Turn on 'allow changes' for it on My connection.`, { account });
   const list = place.allowed_repos;
   if (!Array.isArray(list) || !list.length) return;
-  const parts = new URL(url, 'https://api.github.com').pathname.split('/');
+  const pathname = new URL(url, 'https://api.github.com').pathname;
+  const parts = pathname.split('/');
   const safe = (v) => { try { return decodeURIComponent(v ?? '').toLowerCase(); } catch { return ''; } };
-  const inside = parts[1] === 'repos' && safe(parts[2]) === account.toLowerCase() && list.some((r) => r.toLowerCase() === safe(parts[3]));
-  if (!inside) throw new GithubClientError('outside_scope', 'That repository is not one of the places you added.', { account });
+  const listed = (repo) => list.some((r) => r.toLowerCase() === String(repo ?? '').toLowerCase());
+  // CONN-FB-1: a pinned GraphQL document (one of this server's own fixed queries whose only repository selector is checked
+  // below) reaches the same repositories the REST path does. Any other GraphQL text stays refused on a limited place.
+  if (pathname === '/graphql' && typeof query === 'string' && PINNED_QUERIES.has(query)) {
+    let slug = null;
+    try { slug = PINNED_QUERIES.get(query)(variables ?? {}); } catch { slug = null; }
+    const [o, r, extra] = typeof slug === 'string' ? slug.split('/') : [];
+    if (extra === undefined && o && r && o.toLowerCase() === account.toLowerCase() && listed(r)) return;
+    throw new GithubClientError('outside_scope', `That repository is not one of the places you added for ${account} (${list.join(', ')}).`, { account });
+  }
+  const inside = parts[1] === 'repos' && safe(parts[2]) === account.toLowerCase() && listed(safe(parts[3]));
+  if (!inside) throw new GithubClientError('outside_scope', pathname === '/graphql'
+    ? `${account} was added only for ${list.join(', ')}, and this GitHub GraphQL request cannot be tied to one of them; use the REST tool for that repository instead.`
+    : `That repository is not one of the places you added for ${account} (${list.join(', ')}).`, { account });
+}
+
+// Fixed GraphQL documents that name exactly one repository, through variables this module checks (CONN-FB-1).
+const PINNED_QUERIES = new Map();
+const plainString = (v) => typeof v === 'string' && /^[A-Za-z0-9_.-]{1,100}$/.test(v);
+/** Selector of `repository(owner: $owner, name: $<nameVar>)`: both variables must be plain names. */
+export const repositoryVariables = (nameVar = 'name') => (v) => (plainString(v.owner) && plainString(v[nameVar]) ? `${v.owner}/${v[nameVar]}` : null);
+/** Selector of `createCommitOnBranch(input: $input)`: the branch must be named by repository and branch only (never by node id). */
+export const commitOnBranchVariables = (v) => {
+  const b = v?.input?.branch;
+  if (!b || typeof b !== 'object' || Object.keys(b).some((k) => k !== 'repositoryNameWithOwner' && k !== 'branchName')) return null;
+  const [o, r, extra] = String(b.repositoryNameWithOwner ?? '').split('/');
+  return extra === undefined && plainString(o) && plainString(r) ? `${o}/${r}` : null;
+};
+function pinnedCommitTarget(query, variables) {
+  if (typeof query !== 'string' || PINNED_QUERIES.get(query) !== commitOnBranchVariables) return null;
+  const slug = commitOnBranchVariables(variables ?? {});
+  const branch = variables?.input?.branch?.branchName;
+  if (!slug || typeof branch !== 'string' || !branch) return null;
+  const [owner, repo] = slug.split('/');
+  return { owner, repo, branch };
+}
+/**
+ * Registers one of this server's own GraphQL documents as tied to the repository its variables name, so an extra place
+ * limited to named repositories can run it for those repositories. Returns the document unchanged. Only module-level
+ * constants may be pinned; the document must select data through that repository alone (no node ids, no search, no viewer).
+ */
+export function pinRepositoryQuery(query, selector) {
+  if (typeof query !== 'string' || typeof selector !== 'function') throw new TypeError('pinRepositoryQuery needs a document and a selector.');
+  if (/\b(?:node|nodes|search|viewer|organization|user|repositoryOwner)\s*\(/.test(query))
+    throw new TypeError('A pinned document may only select through its one repository.');
+  PINNED_QUERIES.set(query, selector);
+  return query;
 }
 
 /** Replaces every BigInt in a parsed GitHub response by its exact decimal string; everything else is untouched. */
@@ -205,7 +251,7 @@ export async function githubFor(ctx, { owner, cred = 'I', scope } = {}) {
     const { method: rawMethod, url } = octokit.request.endpoint.parse(options);
     const method = String(rawMethod || 'GET').toUpperCase();
     const write = isWrite(method, { ...options, url });
-    if (place) assertPlaceRequest(place, account, method, url, write);
+    if (place) assertPlaceRequest(place, account, method, url, write, { query: options.query ?? options.body?.query, variables: options.variables ?? options.body?.variables });
     const forced = options.request?.robinsonAs; // 'app' | 'me': set only by this module and the deliberate rule override
     const query = options.query ?? options.body?.query;
     const parsedUrl = new URL(url, 'https://api.github.com');
@@ -230,7 +276,12 @@ export async function githubFor(ctx, { owner, cred = 'I', scope } = {}) {
     } else if (place && write && !isOwnerConnection(ctx.connection) && forced !== 'me' && forced !== 'app') {
       // An extra place has no app. A change to a branch that has rules is not made by an admin's token on its own: the person
       // must ask to override on purpose. (Tags, releases and similar keep working exactly as in GOD-5.)
-      const need = await mustUseAppForBranch({ method, pathname: parsedUrl.pathname, options, query, owner: account, repo: parsedUrl.pathname.split('/')[3], read: readWith('me') });
+      // CONN-FB-1: a pinned commit mutation names its repository and branch in variables; check that branch's rules exactly as
+      // the REST contents path would, instead of treating it like an unchecked GraphQL document.
+      const pinnedCommit = parsedUrl.pathname === '/graphql' ? pinnedCommitTarget(query, options.variables ?? options.body?.variables) : null;
+      const need = pinnedCommit
+        ? await mustUseAppForBranch({ method: 'PUT', pathname: `/repos/${pinnedCommit.owner}/${pinnedCommit.repo}/contents/_`, options: { branch: pinnedCommit.branch }, query: '', owner: account, repo: pinnedCommit.repo, read: readWith('me') })
+        : await mustUseAppForBranch({ method, pathname: parsedUrl.pathname, options, query, owner: account, repo: parsedUrl.pathname.split('/')[3], read: readWith('me') });
       if (need && !need.always) throw new GithubClientError('outside_scope', `Branch rules apply to ${need.branch ?? 'this branch'}, and only the app may write there, but the app is not installed on ${account}. Ask to override the rules on purpose if you are allowed to.`, { account });
     }
 

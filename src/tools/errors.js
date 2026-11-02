@@ -96,8 +96,10 @@ export function describeGithubError(error, { account = null } = {}) {
   if (status === 404 || (status === 422 && /no commit found for the ref|reference does not exist/i.test(message))) {
     // A missing branch or ref is the common case, not access: say so first (owner feedback 2026-11-02).
     const url = String(error?.request?.url ?? error?.response?.url ?? '');
-    const refName = /No commit found for the ref ([^\s]+)/i.exec(message)?.[1] ?? /\/branches\/([^/?#]+)/.exec(url)?.[1] ?? /\/git\/(?:ref|refs)\/heads\/([^?#]+)/.exec(url)?.[1] ?? /[?&]ref=([^&#]+)/.exec(url)?.[1];
-    if (/branch not found|no commit found for the ref|reference does not exist/i.test(message) || (refName && /^not found$/i.test(message.trim()))) {
+    // A commit list started from a missing branch answers 404 "No commit found for SHA: <name>" (CONN-FB-1).
+    const shaParam = /\/repos\/[^/]+\/[^/]+\/commits\?/.test(url) ? /[?&]sha=([^&#]+)/.exec(url)?.[1] : undefined;
+    const refName = /No commit found for the ref ([^\s]+)/i.exec(message)?.[1] ?? /^The branch (\S+) does not exist/i.exec(message)?.[1] ?? /^There is no branch (\S+?)\.(?:\s|$)/i.exec(message)?.[1] ?? /\/branches\/([^/?#]+)/.exec(url)?.[1] ?? /\/git\/(?:ref|refs)\/heads\/([^?#]+)/.exec(url)?.[1] ?? /[?&]ref=([^&#]+)/.exec(url)?.[1] ?? shaParam;
+    if (/branch not found|no commit found for the ref|reference does not exist|^the branch \S+ does not exist|^there is no branch \S/i.test(message) || (shaParam && /no commit found for sha/i.test(message)) || (refName && /^not found$/i.test(message.trim()))) {
       const name = refName ? ` "${clip(decodeURIComponent(refName), 120)}"` : '';
       return out('ref_not_found', `The branch or ref${name} does not exist${account ? ` in ${account}'s repository` : ''}.`, 'It has not been created yet, was deleted or merged away, or the name is misspelled. (This is not a permissions problem when the repository itself can be read.)', 'List the branches to check the name, or create the branch first (for example with github_branch_create from the default branch), then try again.');
     }

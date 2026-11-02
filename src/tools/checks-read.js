@@ -45,6 +45,66 @@ export const checkGetCiState = defineRead({
   })
 });
 
+// CONN-FB-1 (owner feedback 2026-11-02: "can't wait for checks to finish, so we waited by hand"). One bounded wait inside a
+// single tool call: polls the same exact-head CI helper and returns as soon as the outcome is decided (all green, or any
+// required check red), or when its time ends with a resumable answer. It never merges or reruns anything.
+const WAIT_MAX_SECONDS = 45;
+const WAIT_DEFAULT_SECONDS = 40;
+const WAIT_POLL_MS = 6000;
+const overallOf = (state) => state.green === true ? 'green' : state.green === null ? 'unknown' : state.checks.some((c) => c.state === 'failure') ? 'red' : 'pending';
+export const checkWait = defineRead({
+  name: 'github_check_wait', area: 'check', audience: ['B', 'Op'],
+  description: 'Wait up to 45 s for a PR\'s or commit\'s checks to finish; resumable.',
+  properties: { owner: OWNER, repo: REPO, pr: { type: 'integer', minimum: 1, description: 'Pull request number (waits on its current head)' },
+    ref: { type: 'string', minLength: 1, maxLength: 250, description: 'Commit SHA or branch when there is no PR' },
+    timeoutSeconds: { type: 'integer', minimum: 1, maximum: WAIT_MAX_SECONDS, description: `How long to wait in this call (default ${WAIT_DEFAULT_SECONDS}, at most ${WAIT_MAX_SECONDS})` },
+    expectedHeadSha: { type: 'string', pattern: '^[a-fA-F0-9]{40}$', description: 'Stop with head_moved if the PR head is no longer this commit' } },
+  required: ['repo'],
+  handler: (args, ctx) => plain(async () => {
+    if (!args.pr === !args.ref) throw new TypeError('Give exactly one of pr (a pull request number) or ref (a commit SHA or branch).');
+    const { owner, octokit } = await readerFor(args, ctx);
+    const p = { owner, repo: args.repo };
+    const now = () => (typeof ctx.now === 'function' ? ctx.now() : Date.now());
+    const sleep = ctx.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
+    const start = now();
+    const deadline = start + (args.timeoutSeconds ?? WAIT_DEFAULT_SECONDS) * 1000;
+    let headSha; let baseBranch;
+    if (args.pr) {
+      const pr = (await octokit.request('GET /repos/{owner}/{repo}/pulls/{pull_number}', { ...p, pull_number: args.pr })).data;
+      headSha = pr.head.sha; baseBranch = pr.base.ref;
+      if (args.expectedHeadSha && headSha.toLowerCase() !== args.expectedHeadSha.toLowerCase())
+        return { status: 'head_moved', done: true, head_sha: headSha, expected_head_sha: args.expectedHeadSha, next: 'The pull request has a newer head commit. Wait on that commit instead (pass the new expectedHeadSha).' };
+    } else {
+      const [repo, commit] = await Promise.all([
+        octokit.request('GET /repos/{owner}/{repo}', p),
+        octokit.request('GET /repos/{owner}/{repo}/commits/{ref}', { ...p, ref: args.ref })]);
+      headSha = commit.data.sha; baseBranch = repo.data.default_branch;
+    }
+    let state; let polls = 0;
+    for (;;) {
+      state = await ciState(octokit, { owner, repo: args.repo, baseBranch, headSha });
+      polls += 1;
+      const overall = overallOf(state);
+      if (overall !== 'pending' || now() + WAIT_POLL_MS > deadline) break;
+      await sleep(Math.min(WAIT_POLL_MS, Math.max(0, deadline - now())));
+    }
+    const overall = overallOf(state);
+    const waited = Math.round((now() - start) / 1000);
+    const resume = { tool: 'github_check_wait', arguments: { ...(args.owner ? { owner: args.owner } : {}), repo: args.repo, ...(args.pr ? { pr: args.pr, expectedHeadSha: headSha } : { ref: headSha }) } };
+    const running = state.checks.filter((c) => c.state === 'pending').map((c) => c.context);
+    const notReported = state.checks.filter((c) => c.state === 'missing').map((c) => c.context);
+    const next = overall === 'green' ? 'Every required check passed at this exact commit.'
+      : overall === 'red' ? `A required check failed${running.length ? ' (others are still running)' : ''}. Read why with github_actions_get_run_logs_summary (pr or ref), fix it and push again.`
+      : overall === 'unknown' ? `The check state could not be read: ${state.errors.join('; ')}. Waiting longer will not help until that read works.`
+      : `Checks are still running after ${waited} s${!running.length && notReported.length ? ' (required checks have not reported yet; CI usually starts within a minute of a push)' : ''}. Call github_check_wait again with resume.arguments; nothing has to be redone.`;
+    return { status: overall === 'pending' ? 'still_running' : 'finished', done: overall !== 'pending', overall, head_sha: headSha, base_branch: baseBranch,
+      waited_seconds: waited, polls, basis: state.basis,
+      checks: state.checks.slice(0, 30).map((c) => ({ context: c.context, state: c.state })), ...(state.checks.length > 30 ? { checks_not_shown: state.checks.length - 30 } : {}),
+      ...(running.length ? { still_running: running.slice(0, 20) } : {}), ...(notReported.length ? { not_reported_yet: notReported.slice(0, 20) } : {}), ...(state.problems.length ? { problems: state.problems.slice(0, 10) } : {}),
+      ...(state.errors.length ? { could_not_check: state.errors } : {}), next, ...(overall === 'pending' ? { resume } : {}) };
+  })
+});
+
 export const checkGetRun = defineRead({
   name: 'github_check_get_run', area: 'check', audience: ['B'],
   description: 'One check run with its output summary and the first annotations (file, line, message).',
@@ -110,6 +170,6 @@ export const cacheList = defineRead({
   })
 });
 
-const defs = [checkGetCiState, checkGetRun, artifactList, artifactGetLink, cacheList];
+const defs = [checkGetCiState, checkWait, checkGetRun, artifactList, artifactGetLink, cacheList];
 export const tools = defs.map((d) => d.tool);
 export const handlers = Object.fromEntries(defs.map((d) => [d.tool.name, d.handler]));

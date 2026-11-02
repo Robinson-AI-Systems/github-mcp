@@ -21,6 +21,9 @@ const DATABASE_URI = /\b(?:postgres(?:ql)?|mysql|mariadb|mongodb(?:\+srv)?|redis
 const PASSWORD_FIELD = /\b(?:password|pwd)["']?[ \t]*[:=](?![=>])[ \t]*/gi;
 const DATABASE_FIELD = /\b(?:host|server|data source|database|initial catalog|user ?id|username|uid|port)["']?[ \t]*[:=]/i;
 const CLOUD_VARIABLE=/\b(?:AWS_SECRET_ACCESS_KEY|AZURE_STORAGE_ACCOUNT_KEY|AZURE_STORAGE_KEY)["']?[ \t]*[:=][ \t]*/g;
+// A version or version range (1.0.5, ^1.0.5, ~2.1, >=4, 1.x, 2.0.0-beta.1) or a structure opening ({ or [) assigned to a
+// password-looking key is a dependency entry, not a credential (owner feedback 2026-11-02: package-lock.json was refused).
+const NOT_A_PASSWORD=/^(?:[{[]|(?:[\^~]|[<>]=?|=)?v?\d+(?:\.(?:\d+|[xX*]))*(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?)$/;
 const DATABASE_VARIABLE = /\b(?:db|database|postgres(?:ql)?|mysql|mariadb|mongo(?:db)?|redis|mssql|sqlserver|pg)_?(?:password|pass)\b["']?[ \t]*[:=](?![=>])[ \t]*/gi;
 
 /** Return a literal's range, excluding quote delimiters. Never evaluate code or expand variables. */
@@ -40,7 +43,9 @@ function* databaseMatches(text) {
  }
  for (const m of text.matchAll(DATABASE_VARIABLE)) {
   const value = assignedLiteral(text,m.index+m[0].length);
-  if (value.length) yield { ...value,rule:'database-password-assignment',description:'Explicit database password assignment' };
+  // Package manifests and lockfiles name the npm package `pgpass` ("pgpass": "1.0.5", "node_modules/pgpass": {, pgpass: 1.0.5):
+  // a dependency version or an opening brace is not a password.
+  if (value.length && !NOT_A_PASSWORD.test(text.slice(value.index,value.index+value.length))) yield { ...value,rule:'database-password-assignment',description:'Explicit database password assignment' };
  }
 }
 // Generic key/value detection is adapted from the corpus's generic-api-key concept,
@@ -70,6 +75,11 @@ function reportMatches(text,matches,{maxFindings=30}={}) {
 }
 /** Same matchers as redaction; locations/rules only, NEVER values or snippets. */
 export function contentProtectionReport(value,options={}) {const text=String(value);return reportMatches(text,credentialMatches(text),options);}
+/** Where the first matches are, for a refusal message: "line 12 (database-password-assignment)". Never a value or snippet. */
+export function credentialLocations(value,{max=3}={}){
+ const r=activeProtectionReport(value,{maxFindings:max});
+ return r.findings.map(f=>`line ${f.line} (${f.rule})`).join(', ')+(r.total_findings>max?` and ${r.total_findings-max} more`:'');
+}
 export function activeProtectionReport(value,options={}){const text=String(value);return reportMatches(text,(function*(){yield* credentialMatches(text);yield* customCredentialRanges(text,protectionContext.getStore()?.rules??[]);})(),options);}
 export function databaseProtectionReport(value,options={}) {const text=String(value);return reportMatches(text,databaseMatches(text),options);}
 const protectionContext=new AsyncLocalStorage();
