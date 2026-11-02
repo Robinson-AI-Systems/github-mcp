@@ -59,10 +59,14 @@ async function runsNoCi(octokit, p, headSha, now, committedAt) {
   try {
     const [workflows, suites, commit] = await Promise.all([
       octokit.request('GET /repos/{owner}/{repo}/actions/workflows', { ...p, per_page: 1 }),
-      octokit.request('GET /repos/{owner}/{repo}/commits/{ref}/check-suites', { ...p, ref: headSha, per_page: 1 }),
+      octokit.request('GET /repos/{owner}/{repo}/commits/{ref}/check-suites', { ...p, ref: headSha, per_page: 50 }),
       committedAt ? null : octokit.request('GET /repos/{owner}/{repo}/commits/{ref}', { ...p, ref: headSha })]);
     const date = Date.parse(committedAt ?? commit?.data?.commit?.committer?.date ?? '');
-    if (suites.data?.total_count !== 0 || !Number.isFinite(date)) return null;
+    // GitHub creates an empty, permanently queued suite for every installed app with checks access (this App, coding
+    // agents); only a suite that started or holds a check run means checks are coming.
+    const list = suites.data?.check_suites ?? [];
+    const live = list.filter((x) => x.status !== 'queued' || (x.latest_check_runs_count ?? 0) > 0).length;
+    if (live > 0 || (suites.data?.total_count ?? 0) > list.length || !Number.isFinite(date)) return null;
     if (workflows.data?.total_count === 0 && now - date > NO_CI_AFTER_MS) return 'no_ci';
     // Workflows exist but none ran for this commit long after it was made (e.g. manual-only workflows): none are coming.
     if (now - date > NONE_RAN_AFTER_MS) return 'none_ran';
