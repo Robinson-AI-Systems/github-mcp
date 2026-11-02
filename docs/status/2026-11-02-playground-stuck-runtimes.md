@@ -14,3 +14,10 @@
 - **Branch/PR:** `ai/claude/playground-stuck-allocations` (see the PR for head SHA and CI).
 - **Next:** after release, read the five allocation rows (expect `phase: disposed`, `runtimeOnly: true`) and confirm the
   composes are gone in Dokploy.
+
+**Live acceptance (2026-11-02, release `b7ddc603`, worker redeployed):** the five appliance-desk allocations stuck since
+2026-10-30/31 (two in `deploying` with an `error` compose, two `attaching`, one `allocated`) were all marked
+`runtime_stuck` by the sweep and reached `disposed` between 16:44:17 and 16:45:32 UTC, about a minute after the release.
+Dokploy then listed only the Playground manager and the native Git worker composes. The native workspaces were left
+open, as designed, to lapse on their own idle leases. Untested: a fresh replacement after `provision`, which needs the
+owner's Appliance Desk agent to call again.
