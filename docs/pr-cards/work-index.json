@@ -2910,6 +2910,23 @@
       "pr": [
         535
       ]
+    },
+    {
+      "id": "ERR-REF-1",
+      "title": "A missing branch is reported as missing, not as an access problem",
+      "batch": "FIN",
+      "design": "docs/pr-cards/ERR-REF-1.md",
+      "dependencies": [],
+      "card": "docs/pr-cards/ERR-REF-1.md",
+      "status": "MERGED",
+      "migration": "none",
+      "budget": 150,
+      "units": [
+        "ERR-REF-1"
+      ],
+      "readiness": "READY",
+      "ownerInputs": [],
+      "pr": []
     }
   ],
   "gatewayBoundary": {

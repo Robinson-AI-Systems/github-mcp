@@ -93,6 +93,15 @@ export function describeGithubError(error, { account = null } = {}) {
     }
   }
 
+  if (status === 404 || (status === 422 && /no commit found for the ref|reference does not exist/i.test(message))) {
+    // A missing branch or ref is the common case, not access: say so first (owner feedback 2026-11-02).
+    const url = String(error?.request?.url ?? error?.response?.url ?? '');
+    const refName = /No commit found for the ref ([^\s]+)/i.exec(message)?.[1] ?? /\/branches\/([^/?#]+)/.exec(url)?.[1] ?? /\/git\/(?:ref|refs)\/heads\/([^?#]+)/.exec(url)?.[1] ?? /[?&]ref=([^&#]+)/.exec(url)?.[1];
+    if (/branch not found|no commit found for the ref|reference does not exist/i.test(message) || (refName && /^not found$/i.test(message.trim()))) {
+      const name = refName ? ` "${clip(decodeURIComponent(refName), 120)}"` : '';
+      return out('ref_not_found', `The branch or ref${name} does not exist${account ? ` in ${account}'s repository` : ''}.`, 'It has not been created yet, was deleted or merged away, or the name is misspelled. (This is not a permissions problem when the repository itself can be read.)', 'List the branches to check the name, or create the branch first (for example with github_branch_create from the default branch), then try again.');
+    }
+  }
   if (status === 404) {
     return out('not_found', `GitHub says this was not found${account ? ` (using the ${account} account)` : ''}.`, 'Either it does not exist, or this credential cannot see it: GitHub answers 404 for private things you have no access to.', 'Check the spelling of the owner, repository and number, and that the App is installed on that repository.');
   }
