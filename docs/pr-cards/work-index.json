@@ -3020,7 +3020,7 @@
         "GIT-UPLOAD-1"
       ],
       "card": "docs/pr-cards/CHUNK-UPLOAD-1.md",
-      "status": "IN_PROGRESS",
+      "status": "MERGED",
       "migration": "none",
       "budget": 1200,
       "units": [
@@ -3028,7 +3028,9 @@
       ],
       "readiness": "READY",
       "ownerInputs": [],
-      "pr": []
+      "pr": [
+        548
+      ]
     },
     {
       "id": "NATIVE-ERGO-1",
