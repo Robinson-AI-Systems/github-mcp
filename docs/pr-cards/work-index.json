@@ -2868,6 +2868,25 @@
       "pr": [
         531
       ]
+    },
+    {
+      "id": "VIS-1",
+      "title": "Larger results visible to structured-only clients (8 KB budget; explicit file windows whole)",
+      "batch": "FIN",
+      "design": "docs/pr-cards/VIS-1.md",
+      "dependencies": [
+        "GIT-UPLOAD-1"
+      ],
+      "card": "docs/pr-cards/VIS-1.md",
+      "status": "READY_FOR_REVIEW",
+      "migration": "none",
+      "budget": 300,
+      "units": [
+        "VIS-1"
+      ],
+      "readiness": "READY",
+      "ownerInputs": [],
+      "pr": []
     }
   ],
   "gatewayBoundary": {
@@ -2911,7 +2930,7 @@
       "docs/pr-cards/RESULT-OWN-KEYS.md",
       "docs/pr-cards/RESULT-OFFSET-METADATA.md"
     ],
-    "sourceAndAutomated": "All five #151–#155 source implementations accepted by the complete seven exact-head CI/release gates; #155 merger/final-main CI must still be observed independently.",
+    "sourceAndAutomated": "All five #151\u2013#155 source implementations accepted by the complete seven exact-head CI/release gates; #155 merger/final-main CI must still be observed independently.",
     "deployedExactRevision": "UNVERIFIED for this batch; last independently observed production source #146",
     "authenticatedCustomMcp": "UNVERIFIED",
     "directOAuth": "UNVERIFIED",
