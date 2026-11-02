@@ -55,7 +55,10 @@ it('archive flow through every door: one-time URL with no credential, curl-style
   expect(begun).toMatchObject({ status: 'applied', confirmed: true, result: { state: 'awaiting', mode: 'archive', single_use: true, max_bytes: 2 * 1048576 } });
   const url = new URL(begun.result.url);
   expect(url.origin).toBe('https://mcp.example.test'); expect(url.pathname).toMatch(/^\/v1\/transfer\/[du]\/w\/[A-Za-z0-9_-]{32}\//);
-  expect(begun.result.command).toContain('curl --fail --upload-file');
+  // CHUNK-UPLOAD-1: the resumable chunked command first; the one-request command (with its digest) stays.
+  expect(begun.result.command).toContain('/chunk?offset=$o'); expect(begun.result.command).toContain('/finish?size=');
+  expect(begun.result.single_command).toContain('curl --fail -H "X-Content-SHA256: $(sha256sum files.tar.gz|cut -c1-64)" --upload-file files.tar.gz');
+  expect(begun.result.chunk_note).toMatch(/4 MiB/);
   // Compact clients drop `result`; the always-visible progress must carry the one-time command.
   expect(begun.progress).toMatchObject({ upload_id: begun.result.upload_id, command: begun.result.command, single_use: true });
   expect(begun.progress.if_blocked).toContain('mcp.example.test'); expect(Buffer.byteLength(JSON.stringify(begun.progress))).toBeLessThanOrEqual(1200);
@@ -68,7 +71,11 @@ it('archive flow through every door: one-time URL with no credential, curl-style
   // Replay never hands out the address again (it is not kept in the change log).
   const replay = parse(await door.call(w, { workspace_id: WORKSPACE, operation: 'begin', mode: 'archive', maxMegabytes: 2, requestKey: 'begin-' + door.name }));
   expect(replay).toMatchObject({ status: 'replayed' }); expect(JSON.stringify(replay)).not.toContain(url.pathname);
-  expect((await fetch(local(w, begun.result.url), { method: 'PUT', body: tarGz([['photos/a.txt', 'one\n'], ['photos/b.txt', 'two\n']]) })).status).toBe(200);
+  // Run the exact returned command (split, curl, wc, sha256sum) against the relayed address.
+  const work = await mkdtemp(join(tmpdir(), 'upload-chunks-')); cleanups.push(() => rm(work, { recursive: true, force: true }));
+  await writeFile(join(work, 'files.tar.gz'), tarGz([['photos/a.txt', 'one\n'], ['photos/b.txt', 'two\n']]));
+  const ran = await spawnAsync('bash', ['-c', begun.result.command.replace(begun.result.url, local(w, begun.result.url))], { cwd: work, env: ENV });
+  expect(ran.status, ran.stderr).toBe(0); expect(JSON.parse(ran.stdout)).toMatchObject({ received: true, upload_id: begun.result.upload_id });
   const applied = parse(await door.call(w, { workspace_id: WORKSPACE, operation: 'apply', upload_id: begun.result.upload_id, expectedGeneration: 0, path: 'site', requestKey: 'apply-' + door.name }));
   expect(applied).toMatchObject({ status: 'applied', confirmed: true, result: { mode: 'archive', target: 'site', files_added: 2, workspace: { generation: 1 } } });
   expect(applied.progress).toMatchObject({ applied: true, mode: 'archive', target: 'site', files_added: 2, workspace: { generation: 1 } });
@@ -85,9 +92,11 @@ it('git flow: a real git push to the returned address, then a fast-forward apply
  execFileSync('git', ['clone', '--quiet', f.seed, agent], { env: ENV });
  await writeFile(join(agent, 'image.bin'), Buffer.from([0, 1, 2, 255, 254])); git('add', 'image.bin'); git('commit', '-m', 'image');
  const begun = parse(await definition.handler({ workspace_id: WORKSPACE, operation: 'begin', mode: 'git', requestKey: 'git-begin' }, w.ctx));
- expect(begun.result.command).toMatch(/^git -c http\.followRedirects=false push ".+" HEAD:refs\/heads\/upload$/);
- const pushed = await spawnAsync('git', ['push', local(w, begun.result.url), 'HEAD:refs/heads/upload'], { cwd: agent, env: ENV });
- expect(pushed.status, pushed.stderr).toBe(0);
+ expect(begun.result.single_command).toMatch(/^git -c http\.followRedirects=false push ".+" HEAD:refs\/heads\/upload$/);
+ expect(begun.result.command).toMatch(/^git bundle create \.u\.b HEAD --not [0-9a-f]{16}&&U="/);
+ expect(Buffer.byteLength(JSON.stringify(begun.progress))).toBeLessThanOrEqual(1200); expect(begun.progress.command).toBe(begun.result.command);
+ const ran = await spawnAsync('bash', ['-c', begun.result.command.replace(begun.result.url, local(w, begun.result.url))], { cwd: agent, env: ENV });
+ expect(ran.status, ran.stderr).toBe(0); expect(JSON.parse(ran.stdout)).toMatchObject({ received: true, branches: ['upload'] });
  const applied = parse(await definition.handler({ workspace_id: WORKSPACE, operation: 'apply', upload_id: begun.result.upload_id, expectedGeneration: 0, requestKey: 'git-apply' }, w.ctx));
  expect(applied).toMatchObject({ status: 'applied', result: { mode: 'git', commits: 1, files_added: 1, head: git('rev-parse', 'HEAD') } });
 });

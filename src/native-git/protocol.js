@@ -51,13 +51,19 @@ function decodeCapability(token, key, fields, label) {
  if (!claim || typeof claim !== 'object' || Array.isArray(claim) || JSON.stringify(Object.keys(claim).sort()) !== JSON.stringify(fields)) throw new TypeError(`Invalid ${label} address.`);
  return claim;
 }
-export function verifyUploadCapability(token, key, now = Date.now()) {
+// CHUNK-UPLOAD-1: a chunked upload that started inside its ten-minute window may keep sending chunks,
+// reading status and finishing for this much longer (the worker refuses it for an upload that had not
+// started chunking before expiry). Nothing new can start after the ten minutes.
+export const UPLOAD_CHUNK_GRACE_MS = 1200000;
+export const UPLOAD_CHUNK_MAX_BYTES = 8 * 1024 * 1024;
+export function verifyUploadCapability(token, key, now = Date.now(), { graceMs = 0 } = {}) {
  const claim = decodeCapability(token, key, UPLOAD_FIELDS, 'upload');
  if (claim.purpose !== UPLOAD_PURPOSE || claim.version !== 1 || !['git', 'archive'].includes(claim.mode)) throw new TypeError('Invalid upload address.');
  if (!/^git_[a-f0-9]{32}$/.test(claim.workspace_id) || !/^[a-f0-9]{64}$/.test(claim.binding) || !/^[a-f0-9]{32}$/.test(claim.uploadId) || !/^[a-f0-9]{32}$/.test(claim.nonce)) throw new TypeError('Invalid upload address.');
  if (!Number.isSafeInteger(claim.maxBytes) || claim.maxBytes < 1 || claim.maxBytes > UPLOAD_MAX_BYTES) throw new TypeError('Invalid upload address.');
  // Small allowance for clock difference between the control plane and the worker.
- if (!Number.isSafeInteger(claim.expiresAt) || claim.expiresAt <= now || claim.expiresAt > now + UPLOAD_TTL_MS + 30000) throw new TypeError('This upload address has expired. Begin a new upload.');
+ if (!Number.isSafeInteger(claim.expiresAt) || claim.expiresAt > now + UPLOAD_TTL_MS + 30000) throw new TypeError('This upload address has expired. Begin a new upload.');
+ if (claim.expiresAt <= now - Math.min(Math.max(graceMs, 0), UPLOAD_CHUNK_GRACE_MS)) throw new TypeError('This upload address has expired. Begin a new upload.');
  return claim;
 }
 // GIT-DOWNLOAD-1: a one-time download address carries this signed claim, never a GitHub credential.

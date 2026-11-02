@@ -134,6 +134,40 @@ github_git_workspace_upload {workspace_id, operation:"apply", upload_id, expecte
 
 Then review (`status`/`diff`), `add`, `commit` and `push` with `github_git_workspace_run` as usual.
 
+### Chunked, resumable uploads (CHUNK-UPLOAD-1)
+
+Large single requests through the service's domain were not reliable (live 2026-11-02: a 20 MB upload got HTTP 502
+`ROUTER_EXTERNAL_TARGET_CONNECTION_ERROR` from Vercel's proxy). When the worker (and, for a runtime, its ingress) supports
+it, begin's `command` is a copy-paste shell line that needs only `split`, `curl`, `wc` and `sha256sum` (macOS:
+`shasum -a 256`); `single_command` keeps the one-request form for uploads below about 8 MB.
+
+```text
+U="<url>";F=files.tar.gz;split -b4m -a4 $F .u.&&o=0&&for c in .u.????;do curl -fsS --retry 4 -o/dev/null -T $c "$U/chunk?offset=$o"||break;o=$((o+$(wc -c<$c)));done;rm -f .u.????;curl -sS -XPOST "$U/finish?size=$(($(wc -c<$F)))&sha256=$(sha256sum $F|cut -c1-64)"
+# git mode: the same loop over a bundle of your commits since the workspace HEAD
+git bundle create .u.b HEAD --not <base>&&U="<url>";F=.u.b;…;rm -f .u.b
+```
+
+- `PUT <url>/chunk?offset=N` stores one chunk of at most 8 MiB (the command sends 4 MiB). A retried identical chunk is
+  answered `already_stored`; different bytes at a stored range, or an overlapping range, are refused (409). An optional
+  `X-Content-SHA256` header is checked per chunk. A cut-off chunk is never stored.
+- `GET <url>/status` reports `present` byte ranges, `chunks`, `bytes_present` and `accepts_chunks_until`; rerunning the
+  command resumes (stored chunks come back as duplicates).
+- `POST <url>/finish?size=N&sha256=H` refuses gaps (409 with `missing` ranges; the upload stays open), re-hashes every
+  stored chunk, assembles the file and compares the whole-file SHA-256: a mismatch discards the upload (422). Git mode
+  then fetches the bundle (fsck on) into the same quarantine repository a `git push` uses. Then apply as usual.
+- The first chunk claims the address for chunks (a one-request upload then gets 410, and the reverse). The address must
+  be first used within its 10 minutes; a chunked upload that started in time may keep sending, reading status and
+  finishing for 20 more minutes (a 100 MiB upload over a slow link can take longer than ten minutes; nothing new can
+  start late, and the capability still names exactly one quarantine). Size caps, credential scanning, quarantine-then-apply
+  and "no GitHub credential in any URL" are unchanged.
+- The one-request archive command sends `X-Content-SHA256`, so damaged bytes are refused when they arrive, not at apply;
+  the worker also refuses a body shorter than its `Content-Length`.
+- A refused apply never changes the quarantined upload: each apply expands a `.tar.gz` into its own scratch file and
+  removes it. (Before this, a refused apply left `expanded.tar` behind and the corrected apply then reported "the gzip
+  data is damaged": the cause of the live 20 MB failure.)
+- Large `git push` through the domain is one long request like the old archive upload; use git mode's chunked command
+  (a bundle) for big binary payloads.
+
 - **begin** returns the URL once (a replay does not repeat it; begin again with a fresh `requestKey`). It works for one
   push session or one upload, within 10 minutes, up to `maxMegabytes` (1–100, default 50). A second use gets HTTP 410;
   an expired or altered address gets 403. Do not publish it.

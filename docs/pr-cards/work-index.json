@@ -3011,6 +3011,26 @@
       "pr": []
     },
     {
+      "id": "CHUNK-UPLOAD-1",
+      "title": "Large uploads work reliably through the single domain: chunked resumable uploads, receive-time integrity, refused apply keeps the quarantine; check_wait answers no_ci",
+      "batch": "FIN",
+      "design": "docs/pr-cards/CHUNK-UPLOAD-1.md",
+      "dependencies": [
+        "SINGLE-DOMAIN-1",
+        "GIT-UPLOAD-1"
+      ],
+      "card": "docs/pr-cards/CHUNK-UPLOAD-1.md",
+      "status": "IN_PROGRESS",
+      "migration": "none",
+      "budget": 1200,
+      "units": [
+        "CHUNK-UPLOAD-1"
+      ],
+      "readiness": "READY",
+      "ownerInputs": [],
+      "pr": []
+    },
+    {
       "id": "NATIVE-ERGO-1",
       "title": "github_repo_change commits and pushes (and opens the PR) in one call; native Git accepts the options agents pass; conflicts and refusals are definite outcomes",
       "batch": "FIN",

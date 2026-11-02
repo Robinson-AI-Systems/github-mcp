@@ -133,7 +133,7 @@ Card(s): D-2.
 | `github_git_workspace_run` | Typed native Git; branch name/branch aliases, switch ref alias, independent branch readback and verified push. Top-level path/paths/branch/ref/message/all shortcuts, add all, several-path remove, fetch by branch, merge branch/message flags, switch create; conflicts and Git refusals are definite outcomes with a next step; `next_generation` every time; `quiet` | P·D·Prod* | N | I | B,O,Op | F | PAR-2 |
 | `github_git_workspace_close` | Dispose only the owned local workspace, verify absence and retain immutable disposal replay | P·D·Prod* | N | I | B,O,Op | F | PAR-2 |
 | `github_git_workspace_list` | Page current connection workspaces with fresh repository access checks and explicit omissions/cursor | — | N | I | B,O,Op | R | PAR-2 |
-| `github_git_workspace_upload` | Bulk files into a workspace (worker or attached runtime): begin returns a one-time, 10-minute `git push` or `curl --upload-file` URL on this service's own domain (no GitHub credential) plus a labelled worker-host fallback; apply fast-forwards or extracts after safety and secret checks; archive apply also takes `deletePaths` and `mirror`. Compact list | P | N | I | B,O,Op | F | GIT-UPLOAD-1 |
+| `github_git_workspace_upload` | Bulk files into a workspace (worker or attached runtime): begin returns a one-time URL on this service's own domain (no GitHub credential, first use within 10 minutes) with a resumable chunked `command` (4 MiB requests via split/curl, size and SHA-256 checked at finish; git mode sends a git bundle) and a `single_command` (`git push` / `curl --upload-file` with `X-Content-SHA256`), plus a labelled worker-host fallback; apply fast-forwards or extracts after safety and secret checks; archive apply also takes `deletePaths` and `mirror`. Compact list | P | N | I | B,O,Op | F | GIT-UPLOAD-1 |
 | `github_git_workspace_download` | Whole workspace at once (worker or attached runtime): a one-time, 10-minute `git clone` URL (branches/tags or one ref) or `curl` .tar.gz of a ref or the uncommitted worktree, on this service's own domain (no GitHub credential). Compact list | P | N | I | B,O,Op | F | GIT-DOWNLOAD-1 |
 | `github_repo_download` | Whole repository in one call: reuses the open workspace of that repository (or clones a Git-only one) and returns a one-time `git clone` or `curl` .tar.gz command on this service's own domain; `state: opening` while a large clone runs. Compact list | P | N | I | B,O,Op | F | SINGLE-DOMAIN-1 |
 | `github_repo_change` | One call: write/delete files (or apply an upload) on a new or existing branch, commit, push with a lease and readback, optionally open the PR through `github_workflow_open_pr`; `expectedHead`/`allowMoved`; the same call again resumes and never commits twice. Compact list | P·Prod* | N | I | B,O,Op | F | NATIVE-ERGO-1 |
@@ -291,7 +291,7 @@ Card(s): G-2.
 
 | Tool | What it does | Safety | Origin | Cred | Audience | Profile | Card |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| `github_check_wait` | Wait (≤45 s per call) for the required checks at a PR head or commit to finish; green/red as soon as decided, else `still_running` with `resume` arguments | — | N | I | B,Op | R | CONN-FB-1 |
+| `github_check_wait` | Wait (≤45 s per call) for the required checks at a PR head or commit to finish; green/red as soon as decided, else `still_running` with `resume` arguments; `no_ci` at once when the repository has no workflows, no check suites and no required checks and the commit is over 2 minutes old | — | N | I | B,Op | R | CONN-FB-1 |
 | `github_check_get_ci_state` | CI state at a commit or PR head: every check run and status, which are required by rules, overall green/red/pending | — | N | I | B,Op | R | G-2 built #42 |
 | `github_check_get_run` | One check run with output summary and annotations | — | C | I | B | R | G-2 built #42 |
 | `github_check_create_run` | Create a check run on a commit (GitHub App only) | P | C | I | B | E | G-2 built #43 |
@@ -1073,6 +1073,8 @@ Attach fix (2026-11-01): attaching reads the full source state without renewing 
 Attach recovery (2026-11-01): a re-prepared transfer uses a new ID; a stale partial copy on the runtime triggers a fresh attempt. No tool changes.
 
 Close/attach robustness (2026-11-01): close readback retries a briefly busy worker; attach waits briefly for a just-provisioned runtime. No tool changes.
+
+Chunked uploads (2026-11-02, CHUNK-UPLOAD-1): `github_git_workspace_upload` begin (and `github_repo_change` upload) return a resumable chunked `command` when the worker reports `upload_chunks: "chunks-v1"` (and a runtime ingress reports `upload_chunks: "v1"`): `PUT <url>/chunk?offset=N` (≤8 MiB), `GET <url>/status` (present ranges), `POST <url>/finish?size=N&sha256=H`; `single_command` keeps the one request. A refused apply no longer corrupts the next one. `github_check_wait` answers `no_ci` for a repository that runs no checks. See [native operations](NATIVE-GIT-OPERATIONS.md#chunked-resumable-uploads-chunk-upload-1).
 
 Upload essentials (2026-11-01): `github_git_workspace_upload` begin/apply results carry a small always-visible `progress` (the one-time command; the apply summary) so compact clients can use the feature.
 

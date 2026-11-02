@@ -139,11 +139,12 @@ it('opens the pull request through the guarded PR workflow and returns its numbe
 it('larger changes: upload returns a one-time command first, then one more call applies, deletes, commits and pushes', async () => {
  const begun = parse(await call('github_repo_change', { repo: 'hello', branch: 'bulk', upload: 'archive', requestKey: 'bulk-1' }));
  expect(begun, JSON.stringify(begun)).toMatchObject({ status: 'applied', result: { stage: 'awaiting_upload', upload_id: expect.stringMatching(/^upl_/), single_use: true } });
- expect(begun.result.command).toMatch(/^curl --fail --upload-file files\.tar\.gz "https:\/\/mcp\.example\.test\/v1\/transfer\/u\//);
+ expect(begun.result.command).toMatch(/^U="https:\/\/mcp\.example\.test\/v1\/transfer\/u\/.+\/chunk\?offset=/);
+ expect(begun.result.single_command).toMatch(/^curl --fail -H "X-Content-SHA256: .+" --upload-file files\.tar\.gz "https:\/\/mcp\.example\.test\/v1\/transfer\/u\//);
  expect(begun.progress.command).toBe(begun.result.command);
  const src = join(dir, 'bulk'); await mkdir(join(src, 'docs'), { recursive: true }); await writeFile(join(src, 'docs', 'big.md'), 'x'.repeat(200000)); await writeFile(join(src, 'file.txt'), 'changed\n');
  const archive = execFileSync('tar', ['-czf', '-', '-C', src, '.']);
- const url = begun.result.command.match(/"(.+)"/)[1];
+ const url = begun.result.command.match(/^U="(https:[^"]+)"/)[1];
  const sent = await fetch(relay.local(url).replace('https://worker.example.test', origin), { method: 'PUT', body: archive });
  expect(sent.status, await sent.clone().text()).toBe(200);
  const done = parse(await call('github_repo_change', { repo: 'hello', branch: 'bulk', workspace_id: begun.result.workspace_id, upload_id: begun.result.upload_id, deletePaths: ['old.txt'], message: 'Bulk change', requestKey: 'bulk-2' }));

@@ -182,6 +182,34 @@ describe('item 1: github_check_wait', () => {
     const w = await makeWorld();
     expect((await call(w, 'github_check_wait', { repo: 'hello' })).content[0].text).toMatch(/exactly one of pr/);
   });
+  // Live-found 2026-11-02: a repository with no CI at all answered still_running forever.
+  const noCi = (gh, { workflows = 0, suites = 0, committed }) => {
+    gh.when('GET /repos/{owner}/{repo}/pulls/{pull_number}').reply(200, { number: 1, state: 'open', head: { ref: 'work', sha: A }, base: { ref: 'main', sha: B } });
+    gh.when('GET /repos/{owner}/{repo}/rules/branches/{branch}').reply(200, []);
+    gh.when('GET /repos/{owner}/{repo}/branches/{branch}/protection/required_status_checks').reply(404, { message: 'Not Found' });
+    gh.when('GET /repos/{owner}/{repo}/commits/{ref}/check-runs').reply(200, { total_count: 0, check_runs: [] });
+    gh.when('GET /repos/{owner}/{repo}/commits/{ref}/status').reply(200, { state: 'pending', statuses: [] });
+    gh.when('GET /repos/{owner}/{repo}/actions/workflows').reply(200, { total_count: workflows, workflows: workflows ? [{ id: 1, node_id: 'W_1', name: 'ci', path: '.github/workflows/ci.yml', state: 'active', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z', url: 'https://api.github.com/x', html_url: 'https://github.com/x', badge_url: 'https://github.com/x' }] : [] });
+    gh.when('GET /repos/{owner}/{repo}/commits/{ref}/check-suites').reply(200, { total_count: suites, check_suites: [] });
+    gh.when('GET /repos/{owner}/{repo}/commits/{ref}').reply(200, { sha: A, commit: { committer: { date: committed } } });
+  };
+  it('answers no_ci at once for a repository with no workflows, check suites or required checks', async () => {
+    const w = await makeWorld({ advanceClockOnSleep: true });
+    noCi(w.gh, { committed: new Date(w.ctx.now() - 600000).toISOString() });
+    const out = parse(await call(w, 'github_check_wait', { repo: 'hello', pr: 1 }));
+    expect(out).toMatchObject({ status: 'no_ci', done: true, overall: 'no_ci', head_sha: A, polls: 1 });
+    expect(out.next).toMatch(/runs no automated checks/); expect(out.resume).toBeUndefined();
+    expect(w.gh.invalid).toEqual([]);
+  });
+  it('keeps waiting while the commit is new or the repository has workflows', async () => {
+    for (const shape of [{ committed: new Date(Date.now() - 30000).toISOString() }, { workflows: 1, committed: '2026-01-01T00:00:00Z' }]) {
+      const w = await makeWorld({ advanceClockOnSleep: true });
+      noCi(w.gh, { ...shape, committed: shape.workflows ? shape.committed : new Date(w.ctx.now() - 30000).toISOString() });
+      const out = parse(await call(w, 'github_check_wait', { repo: 'hello', pr: 1, timeoutSeconds: 5 }));
+      expect(out).toMatchObject({ status: 'still_running', done: false });
+      expect(w.gh.invalid).toEqual([]);
+    }
+  });
 });
 
 describe('merge_when_green: waitForChecks and the stack sibling message', () => {

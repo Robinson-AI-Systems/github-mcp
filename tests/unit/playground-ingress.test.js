@@ -24,7 +24,7 @@ it('SINGLE-DOMAIN-1: one-time download/upload paths reach the broker; everything
  const seen=[],coding=createServer((req,res)=>{seen.push(['coding',req.url]);res.end('coding');}),broker=createServer((req,res)=>{seen.push(['broker',req.url,req.headers.cookie]);let n=0;req.on('data',c=>{n+=c.length;});req.on('end',()=>res.end('broker '+n));});
  const c=await listen(coding),b=await listen(broker),gateway=ingressServer({coding:c,broker:b}),g=await listen(gateway),url='http://127.0.0.1:'+g.port,cap='eyJh.c2ln';
  try{
-  expect(await(await fetch(url+'/v1/ingress')).json()).toEqual({service:'robinson-playground-ingress',transfer:'broker-v1'});
+  expect(await(await fetch(url+'/v1/ingress')).json()).toEqual({service:'robinson-playground-ingress',transfer:'broker-v1',upload_chunks:'v1'});
   expect(await(await fetch(url+'/v1/download/'+cap)).text()).toBe('broker 0');
   expect(await(await fetch(url+'/v1/download/'+cap+'/info/refs?service=git-upload-pack')).text()).toBe('broker 0');
   expect(await(await fetch(url+'/v1/upload/'+cap+'/git-receive-pack',{method:'POST',body:Buffer.alloc(3*1024*1024)})).text()).toBe('broker '+3*1024*1024);
