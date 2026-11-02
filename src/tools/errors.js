@@ -50,7 +50,7 @@ export function ruleViolations(data) {
  */
 export function describeGithubError(error, { account = null } = {}) {
   if (error instanceof GithubClientError) {
-    const todo = { outside_scope: 'Use one of the accounts this connection may use.', no_credentials: 'Set the account up on the setup page.', rate_limited: error.details?.reset_display ? `Try again after ${error.details.reset_display}.` : 'Wait a little and try again.' }[error.code] ?? 'Check the message and try again.';
+    const todo = { outside_scope: 'Use one of the accounts this connection may use. If you collaborate on a repository owned by another account, add it (owner/repo) under \u201cAdd a place\u201d on your connection page (' + (process.env.PUBLIC_BASE_URL || 'https://github.robinsonaisystems.com') + '/connection), or ask its owner to install the GitHub App.', no_credentials: 'Set the account up on the setup page.', rate_limited: error.details?.reset_display ? `Try again after ${error.details.reset_display}.` : 'Wait a little and try again.' }[error.code] ?? 'Check the message and try again.';
     return { kind: error.code, what: error.message, cause: 'The server stopped the request before it reached GitHub.', todo, technical: `client:${error.code}`, retryable: error.code === 'rate_limited' };
   }
   const status = Number.isInteger(error?.status) ? error.status : null;
