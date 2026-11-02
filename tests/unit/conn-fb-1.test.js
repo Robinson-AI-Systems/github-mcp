@@ -183,14 +183,15 @@ describe('item 1: github_check_wait', () => {
     expect((await call(w, 'github_check_wait', { repo: 'hello' })).content[0].text).toMatch(/exactly one of pr/);
   });
   // Live-found 2026-11-02: a repository with no CI at all answered still_running forever.
-  const noCi = (gh, { workflows = 0, suites = 0, committed }) => {
+  const suiteOf = (i) => ({ id: 100 + i, node_id: 'CS_' + i, head_branch: 'work', head_sha: A, status: 'queued', conclusion: null, url: 'https://api.github.com/x', before: null, after: null, pull_requests: [], app: null, repository: null, created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z', head_commit: null, latest_check_runs_count: 0, check_runs_url: 'https://api.github.com/x' });
+  const noCi = (gh, { workflows = 0, suites = 0, emptyQueued = 0, committed }) => {
     gh.when('GET /repos/{owner}/{repo}/pulls/{pull_number}').reply(200, { number: 1, state: 'open', head: { ref: 'work', sha: A }, base: { ref: 'main', sha: B } });
     gh.when('GET /repos/{owner}/{repo}/rules/branches/{branch}').reply(200, []);
     gh.when('GET /repos/{owner}/{repo}/branches/{branch}/protection/required_status_checks').reply(404, { message: 'Not Found' });
     gh.when('GET /repos/{owner}/{repo}/commits/{ref}/check-runs').reply(200, { total_count: 0, check_runs: [] });
     gh.when('GET /repos/{owner}/{repo}/commits/{ref}/status').reply(200, { state: 'pending', statuses: [] });
     gh.when('GET /repos/{owner}/{repo}/actions/workflows').reply(200, { total_count: workflows, workflows: workflows ? [{ id: 1, node_id: 'W_1', name: 'ci', path: '.github/workflows/ci.yml', state: 'active', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z', url: 'https://api.github.com/x', html_url: 'https://github.com/x', badge_url: 'https://github.com/x' }] : [] });
-    gh.when('GET /repos/{owner}/{repo}/commits/{ref}/check-suites').reply(200, { total_count: suites, check_suites: [] });
+    gh.when('GET /repos/{owner}/{repo}/commits/{ref}/check-suites').reply(200, { total_count: suites + emptyQueued, check_suites: Array.from({ length: emptyQueued }, (_, i) => suiteOf(i)) });
     gh.when('GET /repos/{owner}/{repo}/commits/{ref}').reply(200, { sha: A, commit: { committer: { date: committed } } });
   };
   it('answers no_ci at once for a repository with no workflows, check suites or required checks', async () => {
@@ -207,6 +208,13 @@ describe('item 1: github_check_wait', () => {
     const out = parse(await call(w, 'github_check_wait', { repo: 'hello', pr: 1 }));
     expect(out).toMatchObject({ status: 'no_ci', done: true, reason: 'none_ran', polls: 1 });
     expect(out.next).toMatch(/do not run for it/);
+    expect(w.gh.invalid).toEqual([]);
+  });
+  it('ignores the empty queued suites GitHub creates for installed apps', async () => {
+    const w = await makeWorld({ advanceClockOnSleep: true });
+    noCi(w.gh, { workflows: 3, emptyQueued: 2, committed: new Date(w.ctx.now() - 60 * 60000).toISOString() });
+    const out = parse(await call(w, 'github_check_wait', { repo: 'hello', pr: 1 }));
+    expect(out).toMatchObject({ status: 'no_ci', reason: 'none_ran' });
     expect(w.gh.invalid).toEqual([]);
   });
   it('never says none are coming while a required check is still missing', async () => {

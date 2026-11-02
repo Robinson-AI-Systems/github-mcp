@@ -27,3 +27,7 @@ disturb the upload.
 has manual-only workflows, so "no workflows" was false. It now also answers `no_ci` with `reason: none_ran` when no check
 suite has run on a commit more than 10 minutes old and no check is required. A required check that is still missing
 keeps it waiting (`tests/unit/conn-fb-1.test.js`).
+
+**Second follow-up (2026-11-03):** the live retest of `none_ran` still waited, because GitHub had created two empty,
+permanently `queued` check suites for installed apps on that commit. Those are now ignored; started suites or any check
+run still mean wait.

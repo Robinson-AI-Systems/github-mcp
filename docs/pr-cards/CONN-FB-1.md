@@ -47,3 +47,9 @@ person listed are reachable, now by the same rule for REST and for this server's
 `github_check_wait` also answers `no_ci` with `reason: none_ran` when workflows exist but no check suite has run on a
 commit older than 10 minutes and no check is required (manual-only workflows). A missing required check keeps it waiting.
 Found live on `robinson-ai-scratch/upload-probe`; tests in `tests/unit/conn-fb-1.test.js`.
+
+## Follow-up 2026-11-03 (second live retest)
+
+Live on `robinson-ai-scratch/upload-probe` the commit had two check suites, both `queued` with 0 runs, created
+automatically for installed apps (this App and a coding agent's). These never run. `github_check_wait` now ignores
+queued suites with no check runs when deciding that no checks are coming; any started suite or check run still means wait.
