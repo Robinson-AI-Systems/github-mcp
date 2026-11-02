@@ -21,3 +21,9 @@ handler, dispatch and `github_call`; no credential-shaped text in any result.
 then report `direct_upload: "quarantine-v1"`), and the MCP released, before live use; then a real acceptance (begin →
 push/curl → apply → commit → push with GitHub readback) belongs in `docs/developer-evidence.json`. Traefik's entrypoint
 read timeout (60 s default in v3) bounds one upload's duration; raise only if slow links need it.
+
+## Release and first live check (2026-11-01, release 26643443)
+
+Released and the native worker redeployed. First live `begin` (archive) on workspace `job_200b5ca76b02cdfc` returned
+`applied` but a compact client dropped `result` (which holds the one-time command). Follow-up PR adds an always-visible
+`progress` with the command and the apply summary, and marks GIT-UPLOAD-1 MERGED (#531) in the work index.
