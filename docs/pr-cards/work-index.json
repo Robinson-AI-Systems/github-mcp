@@ -2951,6 +2951,26 @@
       "pr": [
         540
       ]
+    },
+    {
+      "id": "PG-STUCK-1",
+      "title": "Stuck Playground runtimes are replaced; retries and status reads do not keep them alive; close resumes on the same key",
+      "batch": "FIN",
+      "design": "docs/pr-cards/PG-STUCK-1.md",
+      "dependencies": [
+        "PLAY-1",
+        "FLEET-6"
+      ],
+      "card": "docs/pr-cards/PG-STUCK-1.md",
+      "status": "IN_PROGRESS",
+      "migration": "none",
+      "budget": 900,
+      "units": [
+        "PG-STUCK-1"
+      ],
+      "readiness": "READY",
+      "ownerInputs": [],
+      "pr": []
     }
   ],
   "gatewayBoundary": {

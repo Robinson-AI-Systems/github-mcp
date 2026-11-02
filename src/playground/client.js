@@ -40,7 +40,8 @@ export function playgroundRuntimeKey(ctx,args){
 export function playgroundRequestKey(ctx,args){return 'rmcp_playground_'+createHash('sha256').update(JSON.stringify([playgroundRuntimeKey(ctx,args),args.argv,args.cwd??'.',args.timeoutMs??600000])).digest('hex')+'_0';}
 export async function callPlayground(ctx,record,action,options={}){
  const renew=action!=='capabilities';
- if(renew)await callNativeWorker(ctx,{binding:record.binding,job:record.job,workspace_id:record.worker,action:'inspect'});
+ // A runtime command, status or log read is Playground activity: renew the native lease explicitly.
+ if(renew)await callNativeWorker(ctx,{binding:record.binding,job:record.job,workspace_id:record.worker,action:'inspect',renewLease:true});
  if(renew&&!await ctx.db.renewNativeGitJob(record.row.id,nativeConnection(ctx),{idleTimeoutMs:record.job.idleTimeoutMs}))throw fail('playground_expired','Workspace expired or authorization metadata is unavailable. No runtime request was sent.');
  const policy=await loadScannerPolicy(ctx.db,record.binding.owner,record.binding.repo);
  const body=JSON.stringify({scannerPolicy:{settings:policy.settings,revision:policy.revision},purpose:'robinson-coding/v1',binding:record.allocation.binding,expiresAt:(ctx.now??Date.now)()+60000,action,options});

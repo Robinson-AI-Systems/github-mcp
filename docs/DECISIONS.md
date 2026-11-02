@@ -58,6 +58,21 @@ Chris approved building all nine previously unapproved items, each used only whe
 it removes executed-code/Git-broker isolation and no demand level justifies that. Design:
 [GATED-EXPANSION](designs/GATED-EXPANSION-2026-11-01.md); cards FLEET-2, FLEET-7, PUB-7, PUB-8, PUB-9, CAP-6.
 
+## 2026-11-02 — PG-STUCK-1: stuck Playground runtimes are replaced; only real work extends a workspace lease
+
+Found live: five Appliance Desk runtimes created 2026-10-30/31 sat in `deploying`/`allocated`/`attaching` for two days
+(two with Dokploy `composeStatus: error`), the sweep retried them every 30 s forever, and the owner's agent kept them
+alive. Decisions: (1) a shared-pool runtime with a provider `error`, or no provisioning/attachment progress for a stored
+operator threshold (`PLAYGROUND_STUCK_AFTER_MINUTES`, default 45 minutes: every healthy step finishes in minutes), is
+removed and replaced on the next provision/attach/run; the native workspace is kept; after 3 failed starts in a row it is
+reported, not retried. This is a service resource threshold, not an owner spending or policy limit. (2) Workspace idle
+leases are extended only by real work: Git operations, Git reads (log/diff/refs/files), uploads, downloads and Playground
+commands/status/logs. A status inspect (`github_git_workspace_read` status, open/download replays, run progress checks,
+write preflights and readbacks) and refused/rejected calls are not activity, so an agent that keeps checking or retrying
+a broken workspace no longer keeps it alive. Cost: a person who only checks status for four hours lets an idle workspace
+expire, which is the intended meaning of "idle". (3) A `github_git_workspace_close` that could not be confirmed is
+finished by the same call with the same requestKey (each step is idempotent) instead of requiring a new key.
+
 ## 2026-11-01 — PUB-7: approved live policies stay in effect; the lawyer review is an owner row
 
 The PUB-7 card asked for "draft" legal pages labelled for Chris and a lawyer. On `main` the privacy, terms, security and

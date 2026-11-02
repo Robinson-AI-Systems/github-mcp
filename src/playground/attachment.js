@@ -8,8 +8,12 @@ const failure=message=>Object.assign(new TypeError(message),{safeMessage:true,sa
 const keyFor=(ctx,binding,id)=>createHash('sha256').update(signNativeWorkerBody(JSON.stringify({purpose:'robinson-playground-attachment-key/v1',binding,id}),ctx.env)).digest('base64');
 export async function attachRepository(ctx,record,{budgetMs=15000}={}){
  const binding=playgroundBinding(record),setting='playground.'+binding.slice(0,40),started=Date.now();
- let stored=await ctx.db.getSetting(setting);if(stored?.binding!==binding||!stored.composeId||!['allocated','attaching','attached'].includes(stored.phase))throw failure('Allocate this exact workspace before attaching its repository.');
- const save=async patch=>{const next=await ctx.db.compareAndSetSetting(setting,stored.revision,{...stored,...patch,revision:stored.revision+1});if(!next)throw Object.assign(failure('Another attach of this workspace is already in progress (the automatic one starts right after provisioning). Nothing was lost; read the allocation in a minute instead of attaching again.'),{safeRetryable:true});stored=next;await indexAllocation(ctx,stored);};
+ let stored=await ctx.db.getSetting(setting);
+ if(stored?.binding===binding&&stored.cleanupRequested===true&&stored.runtimeOnly===true)throw Object.assign(failure('This runtime failed to start and is being replaced; nothing was transferred. Next: github_playground_workspace operation provision (it removes the broken runtime and starts a fresh one).'),{noOperationStarted:true});
+ if(stored?.binding===binding&&['requested','waiting_resources','creating','created','exposing','exposed','deploying'].includes(stored.phase))throw Object.assign(failure(`This runtime is still starting (phase ${stored.phase}); nothing was transferred. It attaches automatically when it is ready, and is replaced automatically if it stops making progress. Next: github_playground_read operation allocation in a few minutes, not another attach.`),{noOperationStarted:true});
+ if(stored?.binding!==binding||!stored.composeId||!['allocated','attaching','attached'].includes(stored.phase))throw Object.assign(failure('No runtime is provisioned for this workspace; nothing was transferred. Next: github_playground_workspace operation provision.'),{noOperationStarted:true});
+ // Every saved step is progress (it resets the stuck clock); a failed attempt saves nothing.
+ const save=async patch=>{const next=await ctx.db.compareAndSetSetting(setting,stored.revision,{...stored,...patch,progressAt:(ctx.now??Date.now)(),revision:stored.revision+1});if(!next)throw Object.assign(failure('Another attach of this workspace is already in progress (the automatic one starts right after provisioning). Nothing was lost; read the allocation in a minute instead of attaching again.'),{safeRetryable:true});stored=next;await indexAllocation(ctx,stored);};
  const sourceJob={...record.job,brokerOrigin:undefined,allocationBinding:undefined};
  const brokerJob={...record.job,brokerOrigin:stored.plan.origin,allocationBinding:binding};
  const invoke=(job,action,options,network=false)=>callNativeWorker(ctx,{binding:record.binding,workspace_id:record.worker,job,action,options,allowWrite:true,renewLease:false,network,preferShortLived:network});
@@ -20,7 +24,7 @@ export async function attachRepository(ctx,record,{budgetMs=15000}={}){
  // A just-provisioned runtime may need a few seconds before it answers: wait briefly (bounded).
  let brokerCap;const waits=ctx.brokerStartupWait??{tries:4,ms:2500};
  for(let i=0;;i++){try{brokerCap=await callNativeWorker(ctx,{action:'capabilities',job:brokerJob});break;}catch{
-  if(i+1>=waits.tries)throw Object.assign(failure('The runtime is not reachable yet (still starting, or its HTTPS address is being set up). Nothing was transferred; run attach again in a minute.'),{safeRetryable:true,noOperationStarted:true});
+  if(i+1>=waits.tries)throw Object.assign(failure('The runtime is not reachable yet (still starting, or its HTTPS address is being set up). Nothing was transferred. The automatic attach keeps trying, and a runtime that stays unreachable is replaced automatically; next: github_playground_read operation allocation in a few minutes.'),{safeRetryable:true,noOperationStarted:true});
   await (ctx.sleep??(ms=>new Promise(r=>setTimeout(r,ms))))(waits.ms);}}
  if(sourceCap.repository_attachment!=='sealed-mounted-v1'||brokerCap.repository_attachment!=='sealed-mounted-v1')throw failure('Update the Git worker/broker to the checked sealed attachment protocol. No shared-worker command execution is used.');
  // Heal a transfer saved without its source head/status (it could never verify): release its
@@ -72,6 +76,6 @@ export async function attachRepository(ctx,record,{budgetMs=15000}={}){
   callPlayground(ctx,{...record,job:brokerJob,allocation:{binding,url:new URL('/v1/coding',stored.plan.origin).href}},'capabilities')
  ]);
  if(source.generation!==t.generation||target.generation!==t.generation||source.head!==t.sourceHead||target.head!==source.head||source.status!==target.status||!/^ed25519:[A-Za-z0-9+/=]+$/.test(runtime.identity_key??'')||!runtime.repository?.worktree||runtime.repository.worktree!==brokerCap.repository?.worktree||runtime.repository.git!==brokerCap.repository?.git||runtime.repository.gitReadOnly!==true||brokerCap.repository.gitReadOnly!==false)throw failure('Generation, ancestry, local changes or shared/read-only mount evidence differs. Both copies remain preserved.');
- await save({phase:'attached',origin:stored.plan.origin,brokerOrigin:stored.plan.origin,repositoryAttached:true,runtimePublicKey:runtime.identity_key,attachment:{cipherHash:t.digest,generation:t.generation,head:t.sourceHead,files:imported.files,bytes:imported.bytes,mounts:runtime.repository}});
+ await save({phase:'attached',failedStarts:0,origin:stored.plan.origin,brokerOrigin:stored.plan.origin,repositoryAttached:true,runtimePublicKey:runtime.identity_key,attachment:{cipherHash:t.digest,generation:t.generation,head:t.sourceHead,files:imported.files,bytes:imported.bytes,mounts:runtime.repository}});
  await invoke(sourceJob,'attachment_export',{mode:'release',transferId:t.transferId});return stored;
 }

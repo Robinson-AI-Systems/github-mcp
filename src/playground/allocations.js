@@ -12,6 +12,7 @@ import {playgroundBinding} from './client.js';
 import {nativeWorkerPublicKey} from '../native-git/signing.js';
 import {nativeConnection} from '../native-git/client.js';
 import {allocationPlan,dokployConfig,dokployProvider,allocationProcessesStopped,pinProviderIdentity,choosePool} from './dokploy.js';
+import {stuckReason,stuckExplanation,markStuck,releaseTransferLock,isRuntimeOnlyCleanup,MAX_FAILED_STARTS,PRE_ATTACHED} from './stuck.js';
 const fail=message=>Object.assign(new TypeError(message),{safeMessage:true,safeCode:'playground_allocation_recovery'});
 const providerScope=(stored,config)=>{if(stored&&(stored.providerOrigin!==config.origin||stored.providerProject!==config.project||stored.providerEnvironment!==config.environment))throw fail('Allocation provider scope changed; preserve the original resources.');};
 export const allocationKey=binding=>'playground.'+binding.slice(0,40);
@@ -45,23 +46,34 @@ export async function ensureAllocation(ctx,record,{provider,config,manager=ensur
  {const row=await allocationRecord(ctx,record);config??=row?dokployConfig(ctx.env,row.pool):(choosePool(ctx.env,playgroundBinding(record))??dokployConfig(ctx.env));}
  // A stored class is immutable for that allocation; a new row takes the caller's
  // class (or the protected default). Classes only lower protected ceilings.
- const prior=await allocationRecord(ctx,record),sizeClass=prior?prior.size:resolveSizeClass(size,ctx.env);
- if(!prior&&sizeClass===null)throw fail('Runtime size none means no Playground allocation; choose auto, small, medium or large to provision.');
+ const prior=await allocationRecord(ctx,record);
+ // PG-STUCK-1: a runtime already marked for removal is never advanced again (no redeploy of a
+ // broken compose); a removed runtime of a still-open workspace is replaced by a fresh one.
+ if(prior&&isRuntimeOnlyCleanup(prior)&&prior.phase!=='disposed')return prior;
+ const replacing=prior?.phase==='disposed';
+ if(replacing&&(prior.failedStarts??0)>=MAX_FAILED_STARTS)throw Object.assign(fail(`This workspace's runtime failed to start ${prior.failedStarts} times in a row, so no new one is started automatically. Your workspace files are kept and Git tools still work. Try github_playground_run later, or close this workspace and open a new one.`),{safeCode:'playground_runtime_failed'});
+ const sizeClass=prior&&!replacing?prior.size:(prior?.size??resolveSizeClass(size,ctx.env));
+ if((!prior||replacing)&&sizeClass===null)throw fail('Runtime size none means no Playground allocation; choose auto, small, medium or large to provision.');
  config=sizedConfig(config,sizeClass);
  // A new allocation uses the published image of this server's commit when one exists (slim when the gate allows).
- let runtimeImage=null;if(!prior){const choice=await choose(sizeClass,!!config.image);runtimeImage=choice.record;if(choice.image&&!config.image)config={...config,image:choice.image};}
+ let runtimeImage=null;if(!prior||replacing){const choice=await choose(sizeClass,!!config.image);runtimeImage=choice.record;if(choice.image&&!config.image)config={...config,image:choice.image};}
  // A row queued earlier already chose its image (published digest); keep it, or the rebuilt plan would silently fall back to a source build.
  else if(!config.image){const queued=queuedImage(prior);if(queued)config={...config,image:queued};}
  const refreshed=await refreshAdmission(ctx,config),admission=allocationAdmission(refreshed.env,config,(ctx.now??Date.now)());
  if(admission.allowed&&admission.observedAt!==null){const observed=JSON.parse(refreshed.env.PLAYGROUND_ADMISSION);config={...config,cpuCpus:Math.min(config.cpuCpus??8,observed.availableCpuCpus??config.cpuCpus??8),memoryBytes:Math.min(config.memoryBytes??8*1024**3,observed.availableMemoryBytes)};}
  provider??=dokployProvider(config,{fetch:ctx.fetch});
  const binding=playgroundBinding(record),key=allocationKey(binding);let plan=allocationPlan({binding,verificationKey:nativeWorkerPublicKey(ctx.env),idleTimeoutMs:record.job.idleTimeoutMs},{...config,scope:ctx.db.playgroundScope,worker:record.worker,nativeBinding:createHash('sha256').update(JSON.stringify(['authority','connection','owner','repo'].map(k=>record.binding[k]))).digest('hex')});
- let stored=await allocationRecord(ctx,record);providerScope(stored,config);
- if(stored?.plan?.providerAppName&&stored.planHash===plan.planHash)plan=stored.plan;
- if(stored&&stored.planHash!==plan.planHash){if(stored.providerOrigin!==config.origin||stored.providerProject!==config.project||stored.providerEnvironment!==config.environment)throw fail('Allocation provider scope changed; preserve the original resources.');if(!admission.allowed||stored.composeId||!['requested','waiting_resources'].includes(stored.phase))plan=stored.plan;}
- const save=async patch=>{const next=await ctx.db.compareAndSetSetting(key,stored?.revision??0,{...stored,...patch,revision:(stored?.revision??0)+1});if(!next)throw fail('Another allocation transition is in progress; inspect the existing state.');stored=next;await indexAllocation(ctx,stored);};
- if(!stored){await provider.project();await save({kind:'playground-allocation',pool:config.pool??'default',...(sizeClass?{size:sizeClass}:{}),...(runtimeImage?{runtimeImage}:{}),scope:ctx.db.playgroundScope??{legacy:true},delegated:ctx.connection.pass===true,providerOrigin:config.origin,providerProject:config.project,providerEnvironment:config.environment,binding,connection:nativeConnection(ctx),clientId:ctx.connection.client_id??null,passId:ctx.connection.pass_id??null,workspace:record.row.id,owner:record.row.owner,repo:record.row.repo,phase:'requested',planHash:plan.planHash,plan,native:{binding:record.binding,worker:record.worker,job:record.job},createdAt:(ctx.now??Date.now)(),expiresAt:new Date(record.row.expires_at).getTime()});
- }
+ let stored=await allocationRecord(ctx,record);if(!replacing)providerScope(stored,config);
+ if(!replacing&&stored?.plan?.providerAppName&&stored.planHash===plan.planHash)plan=stored.plan;
+ if(!replacing&&stored&&stored.planHash!==plan.planHash){if(stored.providerOrigin!==config.origin||stored.providerProject!==config.project||stored.providerEnvironment!==config.environment)throw fail('Allocation provider scope changed; preserve the original resources.');if(!admission.allowed||stored.composeId||!['requested','waiting_resources'].includes(stored.phase))plan=stored.plan;}
+ // Every transition stamps progressAt: the stuck threshold measures time without progress.
+ const save=async patch=>{const next=await ctx.db.compareAndSetSetting(key,stored?.revision??0,{...stored,...patch,progressAt:(ctx.now??Date.now)(),revision:(stored?.revision??0)+1});if(!next)throw fail('Another allocation transition is in progress; inspect the existing state.');stored=next;await indexAllocation(ctx,stored);};
+ // A replacement starts from a clean row under the same key: nothing of the removed runtime
+ // (provider identity, transfer, origin, runtime key) carries over except the failure history
+ // and a new transfer attempt number, so a leftover partial copy is never mixed in.
+ if(replacing){await provider.project();const fresh=newRow();const next=await ctx.db.compareAndSetSetting(key,stored.revision,{...fresh,revision:stored.revision+1,progressAt:(ctx.now??Date.now)(),failedStarts:stored.failedStarts??0,replacements:(stored.replacements??0)+1,transferAttempt:(Number.isSafeInteger(stored.transferAttempt)?stored.transferAttempt:0)+1,previous:{reason:stored.cleanupReason??null,disposedAt:stored.disposedAt??null}});if(!next)throw fail('Another allocation transition is in progress; inspect the existing state.');stored=next;await indexAllocation(ctx,stored);}
+ else if(!stored){await provider.project();await save(newRow());}
+ function newRow(){return {kind:'playground-allocation',pool:config.pool??'default',...(sizeClass?{size:sizeClass}:{}),...(runtimeImage?{runtimeImage}:{}),scope:ctx.db.playgroundScope??{legacy:true},delegated:ctx.connection.pass===true,providerOrigin:config.origin,providerProject:config.project,providerEnvironment:config.environment,binding,connection:nativeConnection(ctx),clientId:ctx.connection.client_id??null,passId:ctx.connection.pass_id??null,workspace:record.row.id,owner:record.row.owner,repo:record.row.repo,phase:'requested',planHash:plan.planHash,plan,native:{binding:record.binding,worker:record.worker,job:record.job},createdAt:(ctx.now??Date.now)(),expiresAt:new Date(record.row.expires_at).getTime()};}
  await manager(ctx,config,provider);
  if(admission.allowed&&stored.planHash!==plan.planHash)await save({planHash:plan.planHash,plan});if(!admission.allowed){if(stored.phase==='requested'||stored.phase==='waiting_resources')await save({phase:'waiting_resources',admission});return stored;}
  if(stored.phase==='requested'||stored.phase==='waiting_resources'){await save({phase:'creating'});
@@ -71,12 +83,15 @@ export async function ensureAllocation(ctx,record,{provider,config,manager=ensur
  }
  if(['cleanup_requested','stopped','deleting','disposed'].includes(stored.phase))return stored;
  if(!plan.providerAppName){const a=await provider.inspect(stored.composeId,plan,{adoptAssignedName:true});plan=pinProviderIdentity(plan,a?.appName);await save({plan});}
- await provider.inspect(stored.composeId,plan);
+ const seen=await provider.inspect(stored.composeId,plan);
+ // A provider deployment that reported an error never becomes usable: mark it for removal now.
+ if(seen?.composeStatus==='error'&&PRE_ATTACHED.includes(stored.phase)){const marked=await markStuck(ctx,stored,'runtime_failed_to_start',{now:(ctx.now??Date.now)()});if(!marked)throw fail('Another allocation transition is in progress; inspect the existing state.');return marked;}
  if(stored.phase==='created'){await save({phase:'exposing'});await provider.expose(stored.composeId,plan);await save({phase:'exposed'});}
  if(stored.phase==='exposing'){const observed=await provider.inspect(stored.composeId,plan);if([['/',plan.ingressService??'coding'],['/v1/workspace',plan.ingressService??'broker']].every(([path,service])=>observed?.domains?.some(d=>d.host===plan.host&&d.port===3000&&d.https===true&&d.serviceName===service&&d.path===path&&d.internalPath==='/'&&d.stripPath===false)))await save({phase:'exposed'});}
  if(stored.phase==='exposing')throw fail('Ingress creation is uncertain. Inspect exact allocation domains before resuming; no duplicate domain was created.');
  if(stored.phase==='exposed'){await save({phase:'deploying'});await provider.deploy(stored.composeId,plan);}
- if(stored.phase==='deploying'){const a=await provider.inspect(stored.composeId,plan);if(a?.composeStatus==='done')await save({phase:'allocated',origin:plan.origin,repositoryAttached:false,enforcementVerified:false});}
+ if(stored.phase==='deploying'){const a=await provider.inspect(stored.composeId,plan);if(a?.composeStatus==='done')await save({phase:'allocated',origin:plan.origin,repositoryAttached:false,enforcementVerified:false});
+  else if(a?.composeStatus==='error'){const marked=await markStuck(ctx,stored,'runtime_failed_to_start',{now:(ctx.now??Date.now)()});if(marked)return marked;}}
  return stored;
 }
 export async function disposeAllocation(ctx,record,{provider,config,deviceWaitMs}={}){
@@ -106,13 +121,45 @@ export async function disposeAllocation(ctx,record,{provider,config,deviceWaitMs
  await save({phase:'disposed',disposed:true,disposedAt:(ctx.now??Date.now)(),cleanupEvidence:evidence,volumesVerified:evidence!=='compose_and_containers_absent_volume_read_forbidden'});return stored;
 }
 
+// PG-STUCK-1: remove a runtime that can no longer make progress (provider error, or no progress
+// past the stored threshold), keeping the person's workspace. Returns {stored, reason, pending}.
+// pending=true means removal was started but its whole-process absence is not confirmed yet.
+export async function recoverAllocation(ctx,record,{provider,config,composeStatus}={}){
+ let stored=await allocationRecord(ctx,record);if(!stored||stored.placement==='device')return {stored,reason:null,pending:false};
+ let reason=isRuntimeOnlyCleanup(stored)?stored.cleanupReason:null;
+ if(!reason&&!stored.cleanupRequested){reason=stuckReason(stored,{now:(ctx.now??Date.now)(),env:ctx.env,composeStatus});if(reason){const marked=await markStuck(ctx,stored,reason,{now:(ctx.now??Date.now)()});if(!marked)throw Object.assign(fail('Another allocation transition is in progress; read the allocation in a minute.'),{safeRetryable:true});stored=marked;}}
+ if(!reason||stored.phase==='disposed')return {stored,reason,pending:false};
+ await releaseTransferLock(ctx,stored);
+ const result=await disposeAllocation(ctx,record,{provider,config});
+ return {stored:result.disposed?await allocationRecord(ctx,record):result,reason,pending:result.disposed!==true};
+}
+const replacingMessage=(reason,env)=>`This workspace's runtime failed to start (${stuckExplanation(reason,env)}) and is being removed; your workspace files are kept.`;
+export function recoveryPendingError(reason,env){return Object.assign(fail(replacingMessage(reason,env)+' Call github_playground_workspace operation provision again in about a minute; a fresh runtime is created then.'),{status:409,safeRetryable:true,safeCode:'playground_runtime_replacing'});}
+/** Provision, replacing a stuck runtime first (at most once per call, never the same broken compose). */
+export async function provisionAllocation(ctx,record,options={}){
+ let replaced=null;
+ for(let round=0;round<2;round++){
+  const recovered=await recoverAllocation(ctx,record,options);
+  if(recovered.pending)throw recoveryPendingError(recovered.reason,ctx.env);
+  if(recovered.reason)replaced=recovered.reason;
+  const stored=await ensureAllocation(ctx,record,options);
+  // A deployment that reported an error during this call is removed and replaced in the second round.
+  if(!isRuntimeOnlyCleanup(stored)||round===1)return replaced?{...stored,replacedReason:replaced}:stored;
+  replaced=stored.cleanupReason;
+ }
+}
+export function replacementNotice(reason,env){return reason?`The previous runtime failed to start (${stuckExplanation(reason,env)}) and was removed; a fresh runtime is being provisioned and attaches automatically. Next: github_playground_read operation allocation in a few minutes.`:null;}
+
 export async function inspectAllocation(ctx,record,{provider,config}={}){
  let stored=await allocationRecord(ctx,record);if(!stored)return {workspace_id:record.row.id,phase:'absent',allocation_ready:false};
- if(stored.phase==='disposed')return {workspace_id:record.row.id,phase:'disposed',disposed:true};
+ if(stored.phase==='disposed')return {workspace_id:record.row.id,phase:'disposed',disposed:true,...(stored.runtimeOnly?{runtime_failed:true,failed_reason:stored.cleanupReason??null,next:(stored.failedStarts??0)>=MAX_FAILED_STARTS?`The runtime failed to start ${stored.failedStarts} times in a row; nothing more is retried automatically. Your workspace files are kept and Git tools still work.`:`The runtime failed to start (${stuckExplanation(stored.cleanupReason,ctx.env)}) and was removed; your workspace files are kept. Next: github_playground_workspace operation provision for a fresh runtime.`}:{})};
  if(stored.placement==='device')return {workspace_id:record.row.id,phase:stored.phase,runtime_size:describeSize(stored.size),runtime_image:stored.runtimeImage??null,...await inspectDevice(ctx,stored),allocation_ready:['allocated','attaching','attached'].includes(stored.phase),repository_attached:stored.repositoryAttached===true,execution_available:false,next:stored.phase==='waiting_resources'?'Your computer is offline or not ready; provisioning continues when it checks in again.':'Repository attachment is required before commands.'};
  config??=dokployConfig(ctx.env,stored.pool);providerScope(stored,config);provider??=dokployProvider(config,{fetch:ctx.fetch});
  if(!stored.composeId)return {workspace_id:record.row.id,phase:stored.phase,allocation_ready:false,next:'Recover the original provisioning intent; no replacement was created.'};
  const observed=await provider.inspect(stored.composeId,stored.plan);
+ // A failing or stalled runtime is reported plainly; removal itself is done by provision/attach or the sweep.
+ const failure=isRuntimeOnlyCleanup(stored)?stored.cleanupReason:stuckReason(stored,{now:(ctx.now??Date.now)(),env:ctx.env,composeStatus:observed?.composeStatus});
+ if(failure)return {workspace_id:record.row.id,phase:stored.phase,runtime_size:describeSize(stored.size),allocation_ready:false,repository_attached:false,execution_available:false,provider_observed:observed!==null,runtime_failed:true,failed_reason:failure,next:replacingMessage(failure,ctx.env)+' Next: github_playground_workspace operation provision; it removes this runtime and starts a fresh one.'};
  if(observed?.composeStatus==='done'&&stored.phase==='deploying'){
   const next=await ctx.db.compareAndSetSetting(allocationKey(stored.binding),stored.revision,{...stored,phase:'allocated',origin:stored.plan.origin,repositoryAttached:false,enforcementVerified:false,revision:stored.revision+1});if(next){stored=next;await indexAllocation(ctx,stored);}
  }

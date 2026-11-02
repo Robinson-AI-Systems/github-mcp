@@ -47,7 +47,16 @@ export async function nativeRecord(ctx, id, { allowDisposed = false } = {}) {
  if(allocation&&(allocation.binding!==allocationBinding||allocation.connection!==binding.connection||allocation.workspace!==id))throw new TypeError('Dedicated broker allocation does not match this workspace.');
  return {row,job:{id,idleTimeoutMs,host:meta.host,createdAt:row.created_at,...(allocation?.phase==='attached'?{brokerOrigin:allocation.brokerOrigin,allocationBinding}:{})},binding,worker:meta.worker};
 }
-export async function callNativeWorker(ctx, { binding, action, workspace_id, operation, options, requestKey, expectedGeneration, allowWrite = false, network = false, job, renewLease = true, preferShortLived = false }) {
+// Lease rule (PG-STUCK-1, docs/DECISIONS.md 2026-11-02): only real work extends a workspace's idle
+// lease: Git operations, file/diff/log reads, uploads/downloads and Playground commands. A status
+// inspect (github_git_workspace_read status, open/download replays, run progress polls, write
+// preflights and readbacks) is not activity unless its caller says so explicitly, so an agent that
+// keeps checking or retrying a broken workspace no longer keeps it alive forever.
+export async function callNativeWorker(ctx, { binding, action, workspace_id, operation, options, requestKey, expectedGeneration, allowWrite = false, network = false, job, renewLease: renewRequested, preferShortLived = false }) {
+ // A defaulted status inspect still returns the full repository state (head, branch, status),
+ // without sliding the lease; an explicit renewLease:false inspect stays metadata-only.
+ const renewLease = renewRequested ?? action !== 'inspect';
+ if (action === 'inspect' && renewRequested === undefined) options = { ...(options ?? {}), includeRepository: true };
  const url = nativeWorkerRoute(ctx.env, job);
  if(ctx.env?.NATIVE_GIT_WORKER_DRAINING==='true'&&url===workerUrl(ctx.env))throw Object.assign(new TypeError('The native Git worker is temporarily draining for an update. No worker request was sent; existing files are retained. Retry after maintenance completes.'),{safeMessage:true,safeCode:'native_worker_maintenance',safeRetryable:true,status:503});
  const scannerPolicy=binding?await loadScannerPolicy(ctx.db,binding.owner,binding.repo):null;
