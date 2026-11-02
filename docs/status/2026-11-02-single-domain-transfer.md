@@ -9,7 +9,7 @@
   local runtime ingress + broker; relay refusal, header, redirect and digest-bound tests; nine write-contract checks for
   `github_repo_download` through every door. Not verified: Vercel's live proxy behaviour (body sizes above 4 MB in
   particular) — live check after release.
-- **Branch/PR:** `ai/claude/single-domain-transfer` (see the PR for head SHA and CI).
+- **Branch/PR:** `ai/claude/single-domain-transfer`, PR #540 (see the PR for head SHA and CI).
 - **Release needs:** deploy the control plane; rebuild/publish the runtime image for runtime transfers. Shared worker
   redeploy optional.
 - **Next:** live acceptance: `github_repo_download` from a Claude sandbox that allows only the service domain (git and

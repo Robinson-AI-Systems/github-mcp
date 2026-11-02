@@ -14,6 +14,7 @@ import { makeWorld, parse } from '../../test/helpers/write-contract.js';
 import { prepareNativeWorld } from '../../test/helpers/native-git-world.js';
 import { startTransferRelay } from '../../test/helpers/transfer-relay.js';
 import { nativeGitServer } from '../../workers/native-git/server.js';
+import { createResourceMonitor } from '../../workers/native-git/resources.js';
 import { NativeGitWorker } from '../../workers/native-git/engine.js';
 import { ingressServer } from '../../workers/coding-workspace/ingress.js';
 import { nativeWorkerPublicKey } from '../../src/native-git/signing.js';
@@ -41,7 +42,11 @@ async function attachedWorld({ ingress = 'current', origin = BROKER } = {}) {
  const repo = join(root, workerId, 'repo'), git = (...a) => execFileSync('git', a, { cwd: repo, stdio: 'pipe' });
  await writeFile(join(repo, 'runtime.txt'), 'made in the runtime\n'); git('add', 'runtime.txt'); git('-c', 'user.name=Runtime', '-c', 'user.email=runtime@example.test', 'commit', '-m', 'runtime work');
  w.brokerRepo = repo;
- const broker = nativeGitServer({ root, key: nativeWorkerPublicKey(w.ctx.env), now: w.ctx.now, singleWorkspaceId: workerId, singleBinding: nativeBindingHash(binding) });
+ // This in-process broker shares the test runner's event loop with the control plane under test (in
+ // production they are separate processes), so its loop-delay admission would measure the test's own
+ // first-call work. Memory and disk admission keep their defaults; only the shared-loop delay is widened.
+ const resources = createResourceMonitor({ root, policy: { maxLoopDelayMs: 5000 } });
+ const broker = nativeGitServer({ resources, root, key: nativeWorkerPublicKey(w.ctx.env), now: w.ctx.now, singleWorkspaceId: workerId, singleBinding: nativeBindingHash(binding) });
  const brokerPort = await listen(broker); cleanups.push(() => { broker.closeAllConnections(); return new Promise(r => broker.close(r)); });
  const coding = createServer((_req, res) => { res.writeHead(404); res.end(); }); const codingPort = await listen(coding); cleanups.push(() => new Promise(r => coding.close(r)));
  const front = ingress === 'current' ? ingressServer({ coding: { hostname: '127.0.0.1', port: codingPort }, broker: { hostname: '127.0.0.1', port: brokerPort } })

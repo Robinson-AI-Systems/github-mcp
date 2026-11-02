@@ -5,7 +5,7 @@
 // the body both ways and never following a redirect. Only destination hosts are mapped to local
 // fixture origins (the public test hostnames do not resolve).
 import { createServer, request as httpRequest } from 'node:http';
-import { handleTransfer } from '../../middleware.js';
+import { handleTransfer } from '../../src/native-git/relay.js';
 
 export async function startTransferRelay({ env, now = Date.now, publicOrigin = 'https://mcp.example.test', destinations = {} }) {
  const seen = [];

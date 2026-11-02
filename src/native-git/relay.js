@@ -120,3 +120,21 @@ export function fitDigest(value, optional = [], limit = 1200) {
  for (const key of optional) { if (Buffer.byteLength(JSON.stringify(out)) <= limit) break; delete out[key]; }
  return out;
 }
+
+// The documented `rewrite()` helper of @vercel/functions (3.10.x) is exactly these headers:
+// x-middleware-rewrite names the destination; x-middleware-override-headers plus
+// x-middleware-request-<name> REPLACE the upstream request headers with only the listed ones.
+export function rewriteResponse(destination, headers) {
+ const out = new Headers({ 'x-middleware-rewrite': destination });
+ const names = [];
+ for (const [name, value] of headers) { out.set('x-middleware-request-' + name, value); names.push(name); }
+ out.set('x-middleware-override-headers', names.join(','));
+ return new Response(null, { headers: out });
+}
+
+/** The whole Routing Middleware answer for one transfer request (middleware.js calls this). */
+export function handleTransfer(request, env = process.env, now = Date.now()) {
+ const plan = planTransferRelay({ method: request.method, url: request.url, headers: request.headers }, env, now);
+ if (!plan.ok) return new Response(plan.message, { status: plan.status, headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' } });
+ return rewriteResponse(plan.destination, plan.headers);
+}
