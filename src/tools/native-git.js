@@ -299,7 +299,6 @@ export const UPLOAD_COMMAND_SINGLE_WITH_DIGEST = UPLOAD_COMMAND.archive;
 // CHUNK-UPLOAD-1: resumable upload in requests of at most 4 MiB, with plain shell tools only (split, curl,
 // wc, sha256sum; git bundle in git mode). Rerunning it resumes: stored chunks answer as duplicates. The
 // worker checks every offset, then the whole size and SHA-256 at finish, before anything is quarantined.
-export const CHUNK_THRESHOLD_BYTES = 8 * 1048576;
 // Kept terse on purpose: the command must fit the always-visible 1200-byte digest with the URL in it.
 const chunkLoop = (url, file) => `U="${url}";F=${file};split -b4m -a4 $F .u.&&o=0&&for c in .u.????;do curl -fsS --retry 4 -o/dev/null -T $c "$U/chunk?offset=$o"||break;o=$((o+$(wc -c<$c)));done;rm -f .u.????;curl -sS -XPOST "$U/finish?size=$(($(wc -c<$F)))&sha256=$(sha256sum $F|cut -c1-64)"`;
 export const CHUNKED_UPLOAD_COMMAND = {
