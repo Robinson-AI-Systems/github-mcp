@@ -15,3 +15,15 @@
   command only); runtime image rebuild for runtime-attached workspaces (same fallback until then).
 - **Next:** live acceptance after release: the 20 MB archive with the chunked command through the domain, an apply refused
   then corrected, `github_check_wait` on `robinson-ai-scratch/upload-probe` PR #1.
+
+**Live acceptance (2026-11-03 ~00:00 UTC, release `5179c359`, worker redeployed):** from an agent sandbox that can reach
+only the MCP domain, `github_repo_change` with `upload: "archive"` returned the chunked command. Running it unchanged on
+a 20,977,460-byte `.tar.gz` (the size that failed earlier) sent 6 chunks in 20 s; finish verified the size and SHA-256.
+The second `github_repo_change` call then applied all 20 files, committed `4279786` and pushed `retest/big-upload` to
+`robinson-ai-scratch/upload-probe`. A non-existent `deletePaths` entry was reported as "already absent" and did not
+disturb the upload.
+
+**Follow-up (CHECK-WAIT-2):** `github_check_wait` on that scratch repository kept answering `still_running`, because it
+has manual-only workflows, so "no workflows" was false. It now also answers `no_ci` with `reason: none_ran` when no check
+suite has run on a commit more than 10 minutes old and no check is required. A required check that is still missing
+keeps it waiting (`tests/unit/conn-fb-1.test.js`).

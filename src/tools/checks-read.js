@@ -54,6 +54,7 @@ const WAIT_POLL_MS = 6000;
 // A repository with no workflows, no check suite on the commit and no required checks runs no CI at
 // all: say so instead of "still running" forever, once the commit is old enough for CI to have started.
 const NO_CI_AFTER_MS = 120000;
+const NONE_RAN_AFTER_MS = 10 * 60 * 1000;
 async function runsNoCi(octokit, p, headSha, now, committedAt) {
   try {
     const [workflows, suites, commit] = await Promise.all([
@@ -61,8 +62,12 @@ async function runsNoCi(octokit, p, headSha, now, committedAt) {
       octokit.request('GET /repos/{owner}/{repo}/commits/{ref}/check-suites', { ...p, ref: headSha, per_page: 1 }),
       committedAt ? null : octokit.request('GET /repos/{owner}/{repo}/commits/{ref}', { ...p, ref: headSha })]);
     const date = Date.parse(committedAt ?? commit?.data?.commit?.committer?.date ?? '');
-    return workflows.data?.total_count === 0 && suites.data?.total_count === 0 && Number.isFinite(date) && now - date > NO_CI_AFTER_MS;
-  } catch { return false; }
+    if (suites.data?.total_count !== 0 || !Number.isFinite(date)) return null;
+    if (workflows.data?.total_count === 0 && now - date > NO_CI_AFTER_MS) return 'no_ci';
+    // Workflows exist but none ran for this commit long after it was made (e.g. manual-only workflows): none are coming.
+    if (now - date > NONE_RAN_AFTER_MS) return 'none_ran';
+    return null;
+  } catch { return null; }
 }
 const overallOf = (state) => state.green === true ? 'green' : state.green === null ? 'unknown' : state.checks.some((c) => c.state === 'failure') ? 'red' : 'pending';
 export const checkWait = defineRead({
@@ -97,9 +102,13 @@ export const checkWait = defineRead({
     for (;;) {
       state = await ciState(octokit, { owner, repo: args.repo, baseBranch, headSha });
       polls += 1;
-      if (polls === 1 && !state.checks.length && await runsNoCi(octokit, p, headSha, now(), committedAt))
+      const none = polls === 1 && !state.checks.length && state.basis !== 'required' ? await runsNoCi(octokit, p, headSha, now(), committedAt) : null;
+      if (none === 'no_ci')
         return { status: 'no_ci', done: true, overall: 'no_ci', head_sha: headSha, base_branch: baseBranch, waited_seconds: Math.round((now() - start) / 1000), polls, basis: state.basis, checks: [],
           next: 'This repository runs no automated checks (no workflows, no check suites, no required checks); there is nothing to wait for.' };
+      if (none === 'none_ran')
+        return { status: 'no_ci', done: true, overall: 'no_ci', reason: 'none_ran', head_sha: headSha, base_branch: baseBranch, waited_seconds: Math.round((now() - start) / 1000), polls, basis: state.basis, checks: [],
+          next: `No check has run on this commit in the ${NONE_RAN_AFTER_MS / 60000} minutes since it was made, and none is required; this repository's workflows do not run for it (for example they are manual-only). There is nothing to wait for.` };
       const overall = overallOf(state);
       if (overall !== 'pending' || now() + WAIT_POLL_MS > deadline) break;
       await sleep(Math.min(WAIT_POLL_MS, Math.max(0, deadline - now())));
