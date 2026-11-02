@@ -201,10 +201,26 @@ describe('item 1: github_check_wait', () => {
     expect(out.next).toMatch(/runs no automated checks/); expect(out.resume).toBeUndefined();
     expect(w.gh.invalid).toEqual([]);
   });
-  it('keeps waiting while the commit is new or the repository has workflows', async () => {
-    for (const shape of [{ committed: new Date(Date.now() - 30000).toISOString() }, { workflows: 1, committed: '2026-01-01T00:00:00Z' }]) {
+  it('says none are coming when workflows exist but none ran on a commit older than 10 minutes', async () => {
+    const w = await makeWorld({ advanceClockOnSleep: true });
+    noCi(w.gh, { workflows: 1, committed: new Date(w.ctx.now() - 11 * 60000).toISOString() });
+    const out = parse(await call(w, 'github_check_wait', { repo: 'hello', pr: 1 }));
+    expect(out).toMatchObject({ status: 'no_ci', done: true, reason: 'none_ran', polls: 1 });
+    expect(out.next).toMatch(/do not run for it/);
+    expect(w.gh.invalid).toEqual([]);
+  });
+  it('never says none are coming while a required check is still missing', async () => {
+    const w = await makeWorld({ advanceClockOnSleep: true });
+    noCi(w.gh, { workflows: 1, committed: new Date(w.ctx.now() - 60 * 60000).toISOString() });
+    w.gh.when('GET /repos/{owner}/{repo}/branches/{branch}/protection/required_status_checks').reply(200, { url: 'https://api.github.com/x', strict: false, contexts: ['ci'], contexts_url: 'https://api.github.com/x', checks: [{ context: 'ci', app_id: null }] });
+    const out = parse(await call(w, 'github_check_wait', { repo: 'hello', pr: 1, timeoutSeconds: 5 }));
+    expect(out.status).not.toBe('no_ci');
+    expect(w.gh.invalid).toEqual([]);
+  });
+  it('keeps waiting while the commit is new (with or without workflows)', async () => {
+    for (const shape of [{ workflows: 0, ageMs: 30000 }, { workflows: 1, ageMs: 5 * 60000 }]) {
       const w = await makeWorld({ advanceClockOnSleep: true });
-      noCi(w.gh, { ...shape, committed: shape.workflows ? shape.committed : new Date(w.ctx.now() - 30000).toISOString() });
+      noCi(w.gh, { workflows: shape.workflows, committed: new Date(w.ctx.now() - shape.ageMs).toISOString() });
       const out = parse(await call(w, 'github_check_wait', { repo: 'hello', pr: 1, timeoutSeconds: 5 }));
       expect(out).toMatchObject({ status: 'still_running', done: false });
       expect(w.gh.invalid).toEqual([]);
