@@ -14,24 +14,27 @@ import {TenantCapacityError} from '../../src/tenancy/runtime-limits.js';
 import { registry } from '../../src/tools/index.js';
 
 const KEY = 'FAKE-worker-service-key-for-local-tests-only';
-let dir, bare, server, origin, w, requests, asymmetric, routeEnv, routeOrigins, secondServer,pressure;
+let dir, bare, server, origin, w, requests, asymmetric, routeEnv, routeOrigins, secondServer,pressure,busyAfterClose=0;
 const fixtureResources=()=>({policy:{minMemoryBytes:33554432,minDiskBytes:67108864,maxLoopDelayMs:250},body:()=>({allowed:true}),check:async()=>pressure?{allowed:false,reason:pressure,retryAfterSeconds:2}:{allowed:true},close(){}});
 const git = (cwd, ...args) => execFileSync('git', args, { cwd, encoding: 'utf8', stdio: 'pipe' }).trim();
 beforeEach(async () => {
  dir = await mkdtemp(join(tmpdir(), 'native-service-')); const seed = join(dir, 'seed'); bare = join(dir, 'remote.git');
  await mkdir(seed); git(seed, 'init', '-b', 'main'); git(seed, 'config', 'user.name', 'Fixture'); git(seed, 'config', 'user.email', 'fixture@example.test');
  await writeFile(join(seed, 'file.txt'), 'initial\n'); git(seed, 'add', 'file.txt'); git(seed, 'commit', '-m', 'initial'); git(dir, 'clone', '--bare', seed, bare);
- w = await makeWorld({ mode: 'production', profile: 'full' }); requests = []; asymmetric = false; routeEnv={}; routeOrigins=new Map(); secondServer=null; pressure=null;
+ w = await makeWorld({ mode: 'production', profile: 'full' }); busyAfterClose = 0; requests = []; asymmetric = false; routeEnv={}; routeOrigins=new Map(); secondServer=null; pressure=null;
  server = nativeGitServer({ root: join(dir, 'storage'), key: KEY, now: w.ctx.now, allowLocalFixtures: true, fixtureRemote: () => bare,resources:fixtureResources() });
  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve)); origin = `http://127.0.0.1:${server.address().port}`; routeOrigins.set('https://worker.example.test',origin);
  w.gh.when('GET /repos/{owner}/{repo}').reply(200, { full_name: 'example-org/hello', default_branch: 'main' });
 });
 afterEach(async () => { vi.restoreAllMocks(); if(secondServer) await new Promise(resolve=>secondServer.close(resolve)); await new Promise(resolve => server.close(resolve)); await rm(dir, { recursive: true, force: true }); });
 async function invoke(name, args, connection = w.connection) {
- const run = createDispatch({ ...w.ctx, env: { ...w.ctx.env, NATIVE_GIT_WORKER_URL: 'https://worker.example.test/', ...(asymmetric ? {} : { NATIVE_GIT_WORKER_KEY: KEY }), ...routeEnv }, gates: [], fetch: async (url, init) => {
+ const run = createDispatch({ ...w.ctx, sleep: async () => {}, env: { ...w.ctx.env, NATIVE_GIT_WORKER_URL: 'https://worker.example.test/', ...(asymmetric ? {} : { NATIVE_GIT_WORKER_KEY: KEY }), ...routeEnv }, gates: [], fetch: async (url, init) => {
   const host=new URL(url).origin;
   const routed=host==='https://worker.example.test'?origin:routeOrigins.get(host);
-  if (routed) { requests.push(JSON.parse(init.body)); return fetch(routed + '/v1/workspace', init); }
+  if (routed) { const body=JSON.parse(init.body); requests.push(body);
+   // Simulates the worker briefly refusing under load right after a close.
+   if(busyAfterClose>0&&body.action==='inspect'&&requests.some(r=>r.action==='close')){busyAfterClose--;return new Response(JSON.stringify({error:'busy'}),{status:429,headers:{'content-type':'application/json'}});}
+   return fetch(routed + '/v1/workspace', init); }
   return w.gh.fetch(url, init);
  } });
  return run({ registry, name, args, connection, db: w.db });
@@ -40,6 +43,12 @@ async function opened() {
  const result = parse(await invoke('github_git_workspace_open', { owner: 'example-org', repo: 'hello' }));
  expect(result.status, JSON.stringify(result)).toBe('applied'); return result.result.workspace_id;
 }
+it('confirms a close even when the worker is briefly busy right afterwards (readback retries)', async () => {
+ const id = await opened(); busyAfterClose = 2;
+ const closed = parse(await invoke('github_git_workspace_close', { workspace_id: id, requestKey: 'close-busy' }));
+ expect(closed.status, JSON.stringify(closed)).toBe('applied'); expect(closed.result.disposed).toBe(true);
+ expect(busyAfterClose).toBe(0);
+});
 it('verifies internal signatures, expiry, fixed origin and non-write grants', async () => {
  const lease = JSON.stringify({ version: 2, action: 'inspect', expiresAt: w.ctx.now() + 60000 });
  expect(verifyWorkerBody(lease, signWorkerBody(lease, KEY), KEY, w.ctx.now()).action).toBe('inspect');

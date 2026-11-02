@@ -114,3 +114,7 @@ See the status note `docs/status/2026-11-01-play1-acceptance.md` (last section).
 ## 2026-11-01 — Attach recovers from a stale partial import
 
 See `docs/status/2026-11-01-play1-acceptance.md` (follow-up).
+
+## 2026-11-01 — Outside agent report follow-ups
+
+See `docs/status/2026-11-01-outside-agent-report.md`.

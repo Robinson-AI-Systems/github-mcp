@@ -9,7 +9,7 @@ vi.mock('../../src/native-git/client.js', () => ({
   callNativeWorker: async (_ctx, request) => {
     calls.push(request);
     const {action, options = {}} = request;
-    if (action === 'capabilities') return {repository_attachment: 'sealed-mounted-v1'};
+    if (action === 'capabilities') { if (request.job?.brokerOrigin && (behaviour.brokerDown ?? 0) > 0) { behaviour.brokerDown--; throw new Error('Native Git worker could not be reached.'); } return {repository_attachment: 'sealed-mounted-v1'}; }
     // Mirrors the worker: a non-renewing inspect without includeRepository returns metadata only.
     if (action === 'inspect') return request.renewLease === false && !options.includeRepository ? {generation: 2} : {generation: 2, head: 'a'.repeat(40), status: ''};
     if (action === 'attachment_export' && options.mode === 'release') { behaviour.released = (behaviour.released ?? 0) + 1; return {released: true}; }
@@ -99,5 +99,21 @@ describe('attach while another attach of the same workspace is running', () => {
     expect(error.safeRetryable).toBe(true);
     expect(row()).toMatchObject({phase: 'allocated', transfer: null, transferAttempt: 1});
     expect(behaviour.released).toBe(1);
+  });
+  it('waits briefly for a just-provisioned runtime before saying it is not reachable', async () => {
+    behaviour.brokerDown = 2;
+    const {ctx, record, row} = world({fresh: true});
+    ctx.brokerStartupWait = {tries: 4, ms: 1}; ctx.sleep = async () => {};
+    await attachRepository(ctx, record, {budgetMs: 0}).catch(() => {});
+    expect(behaviour.brokerDown).toBe(0);
+    expect(row().transfer?.sourceHead).toBe('a'.repeat(40));
+  });
+  it('still answers "not reachable yet" (retryable, nothing transferred) when the runtime stays down', async () => {
+    behaviour.brokerDown = 10;
+    const {ctx, record} = world({fresh: true});
+    ctx.brokerStartupWait = {tries: 3, ms: 1}; ctx.sleep = async () => {};
+    const error = await attachRepository(ctx, record, {budgetMs: 0}).catch(e => e);
+    expect(error.message).toMatch(/not reachable yet/); expect(error.noOperationStarted).toBe(true);
+    expect(behaviour.brokerDown).toBe(7);
   });
 });

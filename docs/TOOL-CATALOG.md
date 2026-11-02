@@ -1056,3 +1056,5 @@ Runtime image (2026-11-01 fix): an allocation queued with a published image keep
 Attach fix (2026-11-01): attaching reads the full source state without renewing the lease, and heals transfers saved without a source head. No tool changes.
 
 Attach recovery (2026-11-01): a re-prepared transfer uses a new ID; a stale partial copy on the runtime triggers a fresh attempt. No tool changes.
+
+Close/attach robustness (2026-11-01): close readback retries a briefly busy worker; attach waits briefly for a just-provisioned runtime. No tool changes.
