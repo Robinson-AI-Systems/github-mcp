@@ -11,7 +11,8 @@ import {setTimeout as pause} from 'node:timers/promises';
 import {callNativeWorker, nativeConnection, nativeRecord} from '../native-git/client.js';
 import {nativeWorkspaceId, nativeWorkerHost} from '../native-git/protocol.js';
 import {TenantCapacityError} from '../tenancy/runtime-limits.js';
-import {enqueueAllocation, ensureAllocation, allocationRecord, disposeAllocation} from './allocations.js';
+import {enqueueAllocation, ensureAllocation, allocationRecord, disposeAllocation, recoverAllocation} from './allocations.js';
+import {stuckReason, isRuntimeOnlyCleanup, stuckExplanation} from './stuck.js';
 import {attachRepository} from './attachment.js';
 import {playgroundRecord, callPlayground, playgroundExecutionId, presentPlayground} from './client.js';
 import {playgroundAvailability, requirePlaygroundExecution} from './availability.js';
@@ -37,7 +38,7 @@ export const runLeaseMs = timeoutMs => Math.min(86400000, Math.max(1800000, (tim
 
 /** Real collaborators; tests replace the runtime-side ones (allocation and command transport). */
 export const defaultRunDeps = Object.freeze({
-  callNativeWorker, nativeRecord, enqueueAllocation, ensureAllocation, attachRepository, allocationRecord, disposeAllocation,
+  callNativeWorker, nativeRecord, enqueueAllocation, ensureAllocation, attachRepository, allocationRecord, disposeAllocation, recoverAllocation,
   playgroundRecord, callPlayground, repositorySignals,
   availability: (ctx, record) => playgroundAvailability(ctx, record, () => callPlayground(ctx, record, 'capabilities')),
   sleep: (ctx, ms) => (typeof ctx.sleep === 'function' ? ctx.sleep(ms) : pause(ms))
@@ -127,13 +128,25 @@ async function step(ctx, run, deps, note = {}) {
     if (!a) a = await deps.enqueueAllocation(ctx, record, {size: s.size, signals: s.signals ?? undefined});
     note.allocationPhase = a?.phase ?? null;
     if (a?.phase === 'attached') { await run.save({phase: 'starting', lastError: null}); return true; }
-    if (!a || ['cleanup_requested', 'stopped', 'deleting', 'disposed'].includes(a.phase)) { await run.save({phase: 'disposing', outcome: 'runtime_unavailable', outcomeReason: 'The runtime was cleaned up before the command could start; nothing ran.'}); return true; }
+    // PG-STUCK-1: a runtime that failed to start (or stopped making progress) is removed and,
+    // on the next step, replaced by a fresh one; a run never waits on the same broken runtime.
+    if (a && (isRuntimeOnlyCleanup(a) && a.phase !== 'disposed' || stuckReason(a, {now: (ctx.now ?? Date.now)(), env: ctx.env}))) {
+      const recovered = await deps.recoverAllocation(ctx, record);
+      if (recovered.pending) { note.waitingOn = `The runtime failed to start (${stuckExplanation(recovered.reason, ctx.env)}) and is being replaced.`; return false; }
+      a = recovered.stored;
+    }
+    const replaceable = a?.phase === 'disposed' && a.runtimeOnly === true;
+    if (!a || !replaceable && ['cleanup_requested', 'stopped', 'deleting', 'disposed'].includes(a.phase)) { await run.save({phase: 'disposing', outcome: 'runtime_unavailable', outcomeReason: 'The runtime was cleaned up before the command could start; nothing ran.'}); return true; }
     // The maintenance sweep may be advancing the same allocation; its "in progress" answer means wait.
     const busy = error => /in progress/i.test(String(error?.message));
     try {
       a = await deps.ensureAllocation(ctx, record, {size: s.size, signals: s.signals ?? undefined});
       if (['allocated', 'attaching'].includes(a?.phase)) a = await deps.attachRepository(ctx, await deps.nativeRecord(ctx, s.workspace_id), {budgetMs: 15000});
-    } catch (error) { if (busy(error) || error?.safeRetryable) { note.waitingOn = 'The runtime is being prepared by another step: ' + errorText(error); return false; } throw error; }
+    } catch (error) {
+      if (error?.safeCode === 'playground_runtime_failed') { await run.save({phase: 'disposing', outcome: 'runtime_failed_to_start', outcomeReason: errorText(error)}); return true; }
+      if (busy(error) || error?.safeRetryable) { note.waitingOn = 'The runtime is being prepared by another step: ' + errorText(error); return false; }
+      throw error;
+    }
     note.allocationPhase = a?.phase ?? note.allocationPhase;
     if (a?.phase === 'attached') { await run.save({phase: 'starting', allocationPhase: 'attached', lastError: null}); return true; }
     note.waitingOn = `The runtime is ${a?.phase ?? 'not created yet'}; provisioning continues on the next call.`;

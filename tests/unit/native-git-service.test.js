@@ -378,7 +378,8 @@ it('adopts a legacy workspace without changing its original idle duration or rev
  const path=join(dir,'storage',opened.workspace_id,'workspace.json'),meta=JSON.parse(await readFile(path,'utf8'));
  delete meta.idleTimeoutMs;delete meta.lastActivityAt;await writeFile(path,JSON.stringify(meta));
  const id='job_1234567890abcdef';await w.db.createJob({id,connection:nativeConnection(w.ctx),owner:'example-org',repo:'hello',kind:'native-git-workspace',providerRef:JSON.stringify({authority:binding.authority,worker:opened.workspace_id}),ttlMinutes:1});
- w.advanceClock(40000);const renewed=parse(await invoke('github_git_workspace_read',{workspace_id:id,operation:'status'}));
+ // A real read (refs) is activity and renews the idle lease; a status read does not (PG-STUCK-1).
+ w.advanceClock(40000);const renewed=parse(await invoke('github_git_workspace_read',{workspace_id:id,operation:'refs'}));
  expect(renewed.idle_timeout_ms).toBe(60000);expect(renewed.expires_at).toBe(w.ctx.now()+60000);
  expect(JSON.parse((await w.db.getJob(id,nativeConnection(w.ctx))).provider_ref).idleTimeoutMs).toBe(60000);
  w.advanceClock(40000);expect(parse(await invoke('github_git_workspace_read',{workspace_id:id,operation:'status'})).state).toBe('ready');
@@ -411,7 +412,7 @@ it('rejects protocol-3 mutations without a matching signed idle window before Gi
 it('does not clear an existing mutation lock when idle renewal is refused',async()=>{
  const id=await opened(),row=await w.db.getJob(id,nativeConnection(w.ctx)),backend=JSON.parse(row.provider_ref).worker;
  const lock=join(dir,'storage',backend,'mutation.lock');await writeFile(lock,'operator-owned-lock');
- const refused=await invoke('github_git_workspace_read',{workspace_id:id,operation:'status'});expect(refused.isError).toBe(true);
+ const refused=await invoke('github_git_workspace_read',{workspace_id:id,operation:'refs'});expect(refused.isError).toBe(true);
  expect(await readFile(lock,'utf8')).toBe('operator-owned-lock');
  await rm(lock);expect(parse(await invoke('github_git_workspace_read',{workspace_id:id,operation:'status'})).state).toBe('ready');
 });

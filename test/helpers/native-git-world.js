@@ -40,7 +40,9 @@ export async function prepareNativeWorld(w, { existing = false } = {}) {
    if (payload.action === 'upload_apply') return new Response(JSON.stringify({ status: 'unconfirmed', generation: 0, idle_timeout_ms:payload.idleTimeoutMs, last_activity_at:w.ctx.now(), expires_at:w.ctx.now()+payload.idleTimeoutMs }));
    if (payload.action === 'run') return new Response(JSON.stringify({ status: 'unconfirmed', generation: 0, idle_timeout_ms:payload.idleTimeoutMs, last_activity_at:w.ctx.now(), expires_at:w.ctx.now()+payload.idleTimeoutMs }));
    if (payload.action === 'close') return new Response(JSON.stringify({ disposed: false }));
-   if (payload.action === 'inspect' && !existing) return new Response(JSON.stringify({ state: 'opening' }));
+   // A clone that the read-back finds failed. (Status inspects no longer renew the idle lease,
+   // so the mismatch is a real state disagreement, not a missing lease field.)
+   if (payload.action === 'inspect' && !existing) return new Response(JSON.stringify({ state: 'failed', generation: 0 }));
   }
   return fetch(origin + '/v1/workspace', init);
  };

@@ -215,3 +215,30 @@ it('a compact client still sees the run essentials when the large result is dedu
   const big = runEssentials(presentRun({phase: 'done', workspace_id: 'job_0123456789abcdef', owner: 'o', repo: 'r', ref: 'main', execution_id: 'e', execution: {state: 'completed', exitCode: 1}, log_tail: '\u{1F600}'.repeat(400), lastError: 'z'.repeat(400), waitingOn: 'w'.repeat(400)}));
   expect(Buffer.byteLength(JSON.stringify(big))).toBeLessThanOrEqual(1200);
 });
+
+// PG-STUCK-1: a run never waits on a runtime that failed to start; it is removed and replaced,
+// and after repeated failures the run ends plainly with nothing run.
+it('replaces a runtime whose deployment failed instead of waiting on it, then runs the command', async () => {
+  const w = await world(), {deps, calls} = runtimeFakes({attachAfter: 1});
+  let alloc = null, recovered = 0, ensures = 0;
+  Object.assign(deps, {
+    enqueueAllocation: async (_c, _r, o) => { calls.enqueue.push(o); alloc ??= {phase: 'deploying', size: o.size, cleanupRequested: true, runtimeOnly: true, cleanupReason: 'runtime_failed_to_start'}; return alloc; },
+    allocationRecord: async () => alloc,
+    recoverAllocation: async () => { recovered++; alloc = {...alloc, phase: 'disposed'}; return {stored: alloc, reason: 'runtime_failed_to_start', pending: false}; },
+    ensureAllocation: async () => { ensures++; alloc = {phase: 'allocated', size: alloc.size}; return alloc; },
+    attachRepository: async () => { alloc = {...alloc, phase: 'attached'}; return alloc; }
+  });
+  const tool = playground.runToolDefinition(deps, {pollMs: 1});
+  const out = parse(await tool.handler({...args, requestKey: 'replaced'}, w.ctx));
+  expect(out.result).toMatchObject({phase: 'done', command_succeeded: true});
+  expect(recovered).toBe(1); expect(ensures).toBe(1); expect(calls.start).toHaveLength(1);
+});
+it('ends the run plainly when the runtime keeps failing to start', async () => {
+  const w = await world(), {deps, calls} = runtimeFakes();
+  Object.assign(deps, {ensureAllocation: async () => { throw Object.assign(new TypeError('This workspace\'s runtime failed to start 3 times in a row, so no new one is started automatically.'), {safeMessage: true, safeCode: 'playground_runtime_failed'}); }});
+  const tool = playground.runToolDefinition(deps, {pollMs: 1});
+  const out = parse(await tool.handler({...args, requestKey: 'keeps-failing'}, w.ctx));
+  expect(out.result).toMatchObject({phase: 'done', outcome: 'runtime_failed_to_start', command_started: false, cleaned_up: true});
+  expect(out.result.outcome_reason).toMatch(/failed to start 3 times/);
+  expect(calls.start).toHaveLength(0);
+});

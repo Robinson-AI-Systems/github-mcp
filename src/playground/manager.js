@@ -9,6 +9,7 @@ import {ensureAllocation,disposeAllocation} from './allocations.js';
 import {indexAllocation,rootAllocationDb} from './index.js';
 import {dokployConfig,dokployProvider,pinProviderIdentity} from './dokploy.js';
 import {reconcileWarmRuntimes} from './warm-runtimes.js';
+import {stuckReason,markStuck,releaseTransferLock,isRuntimeOnlyCleanup} from './stuck.js';
 const hash=x=>createHash('sha256').update(x).digest('hex');
 export const sweepKey=env=>hash(signNativeWorkerBody(JSON.stringify({purpose:'robinson-playground-maintenance/v1',origin:publicOrigin(env)}),env));
 export async function ensureProjectManager(ctx,config,provider){
@@ -35,13 +36,24 @@ export async function ensureProjectManager(ctx,config,provider){
  if(state.phase==='created'){await save({phase:'deploying',dispatchVersion:1});await provider.deploy(state.composeId,plan);}
  if(state.phase==='deploying'&&(await provider.inspect(state.composeId,plan))?.composeStatus==='done')await save({phase:'running'});
 }
-export async function sweepAllocations({root,load=allocationScope,env=process.env,budgetMs=20000,now=Date.now,providerFactory=dokployProvider,fetch=globalThis.fetch,warm=reconcileWarmRuntimes}={}){
+export async function sweepAllocations({root,load=allocationScope,authorityOf=allocationAuthority,env=process.env,budgetMs=20000,now=Date.now,providerFactory=dokployProvider,fetch=globalThis.fetch,warm=reconcileWarmRuntimes}={}){
  const start=now(),cursor=await root.getSetting('playground_sweep_cursor'),rows=await root.listPlaygroundIndexes({after:cursor?.after??'',limit:50});let inspected=0,disposed=0,pending=0,after=cursor?.after??'';
  for(const row of rows){if(now()-start>=budgetMs)break;const indexed=row.value.allocation;after=row.setting;inspected++;
   try{
-   const ctx=await load({binding:indexed.binding,...(indexed.scope?.tenantId?{tenant:indexed.scope.tenantId,identity:indexed.scope.identityId}:{})},{env}),s=ctx.stored;
-   const authority=await allocationAuthority(ctx);
-   if(authority.bootstrap&&authority.connection&&!s.cleanupRequested){ctx.connection=authority.connection;ctx.publicDb=root;const record={row:{id:s.workspace,owner:s.owner,repo:s.repo,expires_at:authority.job.expires_at},...s.native};const allocated=await ensureAllocation(ctx,record);if(['allocated','attaching'].includes(allocated.phase))await attachRepository(ctx,record,{budgetMs:Math.max(1000,budgetMs-(now()-start))});continue;}
+   const ctx=await load({binding:indexed.binding,...(indexed.scope?.tenantId?{tenant:indexed.scope.tenantId,identity:indexed.scope.identityId}:{})},{env});let s=ctx.stored;
+   const authority=await authorityOf(ctx);
+   if(authority.bootstrap&&authority.connection&&!s.cleanupRequested){
+    // PG-STUCK-1: a runtime with no progress past the stored threshold is given up on here, never
+    // retried forever; one whose deployment reports an error is marked by ensureAllocation itself.
+    const reason=stuckReason(s,{now:now(),env});
+    if(!reason){ctx.connection=authority.connection;ctx.publicDb=root;const record={row:{id:s.workspace,owner:s.owner,repo:s.repo,expires_at:authority.job.expires_at},...s.native};const allocated=await ensureAllocation(ctx,record);if(!isRuntimeOnlyCleanup(allocated)){if(['allocated','attaching'].includes(allocated.phase))await attachRepository(ctx,record,{budgetMs:Math.max(1000,budgetMs-(now()-start))});continue;}s=allocated;}
+    else{ctx.publicDb=root;const marked=await markStuck(ctx,s,reason,{now:now(),env});if(!marked){pending++;continue;}s=marked;}
+    ctx.stored=s;
+   }
+   // Only the runtime goes for a stuck allocation while its workspace and grant are still current;
+   // an expired/closed workspace or revoked grant still disposes the workspace too, as before.
+   const runtimeOnly=isRuntimeOnlyCleanup(s)&&!(authority.cleanup&&authority.reason!=='allocation_not_active');
+   if(runtimeOnly&&s.phase==='disposed')continue;
    if(!authority.cleanup&&!s.cleanupRequested&&!['cleanup_requested','stopped','deleting'].includes(s.phase))continue;
    ctx.connection={client_id:s.clientId,pass_id:s.passId};ctx.publicDb=root;
    // Device allocations are cleaned up through their own machine; Dokploy rows use their own pool.
@@ -49,9 +61,10 @@ export async function sweepAllocations({root,load=allocationScope,env=process.en
    const config=dokployConfig(env,s.pool),provider=providerFactory(config,{fetch:ctx.fetch});
    if(!s.composeId&&!['requested','waiting_resources','disposed'].includes(s.phase)){const matches=(await provider.inventory()).filter(a=>a.name===s.plan.name||a.appName===s.plan.name);if(matches.length!==1){pending++;continue;}const observed=await provider.inspect(matches[0].composeId,s.plan,{adoptAssignedName:true});const next=await ctx.db.compareAndSetSetting('playground.'+s.binding.slice(0,40),s.revision,{...s,composeId:observed.composeId,plan:pinProviderIdentity(s.plan,observed.appName),revision:s.revision+1});if(!next){pending++;continue;}await indexAllocation(ctx,next);ctx.stored=next;}
    const record={row:{id:s.workspace,owner:s.owner,repo:s.repo},...s.native};
+   if(runtimeOnly)await releaseTransferLock(ctx,s);
    const result=await disposeAllocation(ctx,record,{config,provider});
    if(result.disposed){
-    if(!result.sourceDisposed){
+    if(!result.sourceDisposed&&!runtimeOnly){
      const job={...s.native.job,brokerOrigin:undefined,allocationBinding:undefined};
      const invoke=(action,options)=>callNativeWorker(ctx,{binding:s.native.binding,workspace_id:s.native.worker,job,action,options,allowWrite:true,renewLease:false});
      // Release only this transfer's lock. Close still refuses any unrelated lock;

@@ -96,7 +96,7 @@ const open = defineGithubWrite({
  },
  readAfter: async ({ ctx: c, response }) => {
   const record = await nativeRecord(c, response.workspace_id);
-  try { return { workspace_id: response.workspace_id, playground:response.playground, ...await callNativeWorker(c, { action: 'inspect', binding: record.binding, job: record.job, workspace_id: record.worker }) }; }
+  try { return { workspace_id: response.workspace_id, playground:response.playground, ...await callNativeWorker(c, { action: 'inspect', binding: record.binding, job: record.job, workspace_id: record.worker, renewLease: true }) }; }
   catch { return { workspace_id: response.workspace_id, state: 'uncertain', next: 'Use github_git_workspace_read status; do not open another clone to retry this intent.' }; }
  },
  verify: ({ after }) => ['ready', 'opening'].includes(after.state), present: ({ after, response }) => after?.state === 'opening' ? { ...after, next: 'Large repository: the clone continues on the worker. Read github_git_workspace_read operation status until state is ready (or failed); do not open another clone.' } : after ?? response
@@ -138,6 +138,38 @@ const run = defineGithubWrite({
  verify: ({ args: a, after }) => after.operation.status === 'applied' && after.workspace.generation === after.operation.generation && (a.operation !== 'push' || after.operation.remote_verified === true) && (a.operation !== 'switch' || after.workspace.branch === switchBranch(a.options ?? {})) && (!['branch_create','branch_rename','branch_delete'].includes(a.operation) || after.reference.exists === (a.operation !== 'branch_delete')),
  present: ({ after, response }) => after ?? response
 });
+// The runtime-attached copy lives on the dedicated broker; once that runtime is deleted, the
+// workspace is closed and read back on the source Git worker (never the deleted broker).
+const sourceTarget = t => ({ ...t, record: { ...t.record, job: { ...t.record.job, brokerOrigin: undefined, allocationBinding: undefined } } });
+const CLOSED = 'Native workspace disposed.';
+// Delete the workspace's Playground runtime first, waiting (bounded) for whole-process absence.
+async function disposeRuntimeFor(c, record, budgetMs = c.runtimeDisposeBudgetMs ?? 20000) {
+ const started = Date.now();
+ for (;;) {
+  const allocation = await disposeAllocation(c, record);
+  if (allocation.disposed === true) return;
+  if (Date.now() - started + 2000 > budgetMs)
+   throw Object.assign(new TypeError('The workspace\'s Playground runtime is still being deleted; its files are preserved and nothing was closed yet. Call github_git_workspace_close again with the same arguments in about a minute.'), { safeMessage: true, status: 409, safeRetryable: true });
+  await (c.sleep ?? (ms => new Promise(r => setTimeout(r, ms))))(2000);
+ }
+}
+// Read back on the source worker; 404 = gone. Brief worker refusals right after a close are retried.
+async function confirmClosed(c, t, workspaceId) {
+ for (let attempt = 0; ; attempt++) {
+  try { await invoke(c, sourceTarget(t), { action: 'inspect', renewLease: false }); return { state: 'pending' }; }
+  catch (error) {
+   if (error.status === 404) break;
+   const transient = error.nativeCode === 'native_busy' || error.nativeCode === 'native_transport' || [429, 502, 503, 504].includes(error.status);
+   if (!transient || attempt >= 3) throw error;
+   await (c.sleep ?? (ms => new Promise(r => setTimeout(r, ms))))(500 * 2 ** attempt);
+  }
+ }
+ return await c.db.finishJob(workspaceId, nativeConnection(c), { state: 'ready', detail: CLOSED }) ?? c.db.getJob(workspaceId, nativeConnection(c));
+}
+async function closeSource(c, t) {
+ try { return await invoke(c, sourceTarget(t), { action: 'close', allowWrite: true }); }
+ catch (error) { if (error.status === 404) return { disposed: true }; throw error; }
+}
 const close = defineGithubWrite({
  name: 'github_git_workspace_close', area: 'git', audience: ['B', 'O', 'Op'],
  description: 'Dispose this connection’s native Git workspace, including uncommitted changes; never deletes the GitHub repository.',
@@ -145,21 +177,19 @@ const close = defineGithubWrite({
  explain: error => error?.safeMessage ? error.message : 'Native Git operation could not be confirmed. Inspect workspace state and the same intent receipt before retrying.',
  classifyError: error => [401,409,429].includes(error?.status) ? 'rejected' : 'uncertain', target: (a, c) => target(a, c, true),
  read: async (_a, c, t) => { try { return await invoke(c, t, { action: 'inspect', renewLease: false }); } catch (e) { if (e.status === 404) return { disposed: true }; throw e; } }, classify: () => ({}), summarize: ({ target: t }) => `Dispose native workspace for ${t.owner}/${t.repo}; uncommitted local work is deleted.`,
- apply: async ({ ctx: c, target: t, before }) => { const allocation=await disposeAllocation(c,t.record);if(allocation.disposed!==true)throw Object.assign(new TypeError('Playground cleanup is pending; native files were preserved.'),{safeMessage:true});if (before.disposed) return { disposed: true }; const result = await invoke(c, {...t,record:{...t.record,job:{...t.record.job,brokerOrigin:undefined,allocationBinding:undefined}}}, { action: 'close', allowWrite: true }); return result; },
- readAfter: async ({ args: a, ctx: c, target: t }) => {
-  // The worker may briefly refuse under load right after a close; retry the readback
-  // (it is read-only) before calling the outcome uncertain. 404 = the workspace is gone.
-  for (let attempt = 0; ; attempt++) {
-   try { await invoke(c, t, { action: 'inspect', renewLease: false }); return { state: 'pending' }; }
-   catch (error) {
-    if (error.status === 404) break;
-    const transient = error.nativeCode === 'native_busy' || error.nativeCode === 'native_transport' || [429, 502, 503, 504].includes(error.status);
-    if (!transient || attempt >= 3) throw error;
-    await (c.sleep ?? (ms => new Promise(r => setTimeout(r, ms))))(500 * 2 ** attempt);
-   }
-  }
-  return await c.db.finishJob(a.workspace_id, nativeConnection(c), { state: 'ready', detail: 'Native workspace disposed.' }) ?? c.db.getJob(a.workspace_id, nativeConnection(c));
- }, verify: ({ after }) => after?.state === 'ready' && after.detail === 'Native workspace disposed.', present: ({ after }) => ({ disposed: after?.state === 'ready' && after.detail === 'Native workspace disposed.' })
+ apply: async ({ ctx: c, target: t, before }) => { await disposeRuntimeFor(c, t.record); if (before.disposed) return { disposed: true }; return await closeSource(c, t); },
+ readAfter: ({ args: a, ctx: c, target: t }) => confirmClosed(c, t, a.workspace_id),
+ // PG-STUCK-1: the same call again (same requestKey) finishes an unconfirmed close instead of
+ // forcing a new key: runtime deletion, source close and readback are each idempotent.
+ resumeReplay: true,
+ refreshReplay: async ({ args: a, ctx: c, target: t }) => {
+  const row = await c.db.getJob(a.workspace_id, nativeConnection(c));
+  if (row?.state === 'ready' && row.detail === CLOSED) return row;
+  await disposeRuntimeFor(c, t.record);
+  await closeSource(c, t);
+  return confirmClosed(c, t, a.workspace_id);
+ },
+ verify: ({ after }) => after?.state === 'ready' && after.detail === CLOSED, present: ({ after }) => ({ disposed: after?.state === 'ready' && after.detail === CLOSED })
 });
 const list = defineRead({
  name: 'github_git_workspace_list', area: 'git', audience: ['B', 'O', 'Op'],

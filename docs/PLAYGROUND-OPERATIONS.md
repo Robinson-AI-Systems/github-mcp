@@ -29,6 +29,7 @@ hypervisor VMs.
 | `PLAYGROUND_WARM_RUNTIMES` | `auto` | Warm-runtime gate (FLEET-7): `auto` lets the coded gate decide; `off` drains every warm image holder at the next sweep. Any other value counts as off |
 | `PLAYGROUND_WARM_MIN_ALLOCATIONS_PER_HOUR`, `PLAYGROUND_WARM_ALLOCATIONS_PER_IMAGE`, `PLAYGROUND_WARM_MAX_IMAGES` | 6, 6, 2 | Demand needed (new pool runtimes per hour averaged over the last 24 h), runtimes per hour per extra warm image, and the most images kept warm per pool (0–3). See [warm runtimes](#warm-runtimes-fleet-7-2026-11-01) |
 | `PLAYGROUND_WARM_MIN_HOST_MEMORY_BYTES`, `PLAYGROUND_WARM_MIN_HOST_DISK_BYTES`, `PLAYGROUND_WARM_MAX_HOST_PRESSURE`, `PLAYGROUND_WARM_DISK_PER_IMAGE_BYTES` | 8 GiB, 50 GB, 0.5, 6 GB | Fresh host headroom needed before anything is kept warm, and the disk one warm image is assumed to take. Stricter than allocation admission on purpose. An invalid value turns warm runtimes off |
+| `PLAYGROUND_STUCK_AFTER_MINUTES` | 45 | **Stuck runtimes (PG-STUCK-1):** a shared-pool runtime that has not reached `attached` and made no provisioning or attachment progress for this many minutes (whole minutes, 15–1440; anything else means 45) is removed by the sweep, keeping the person's workspace. A provider deployment in `error` is removed at once |
 | `PLAYGROUND_ALLOCATIONS` | — | Legacy manual `{workspace_id,binding,origin}` list; managed allocations use stored records |
 
 Set inside each allocation by the plan (never by hand): `CODING_WORKSPACE_BINDING`, `CODING_CONTROL_PUBLIC_KEY`,
@@ -197,6 +198,21 @@ requested → (waiting_resources) → creating → created → exposing → expo
   answer the runtime keeps retrying for up to 3 minutes (no command can start without a lease) instead of exiting; a
   forged or tampered first answer still stops it. Attach reports "not reachable yet" (retryable, nothing transferred)
   while the runtime or its HTTPS address is still coming up.
+- **Stuck or failed runtimes (PG-STUCK-1):** every saved step stamps `progressAt`. A shared-pool runtime in a pre-attached
+  phase (`creating` … `attaching`) whose provider deployment reports `error`, or that made no progress for
+  `PLAYGROUND_STUCK_AFTER_MINUTES` (default 45), is marked `cleanupRequested` with `cleanupReason`
+  (`runtime_failed_to_start` / `runtime_stuck`) and `runtimeOnly: true`, then stopped and deleted exactly like any
+  disposal; an unfinished transfer's source lock is released. **Only the runtime goes:** the native Git workspace (files,
+  lease, job) is kept and never closed by this. A marked runtime is never redeployed. The next `provision`, `attach` or
+  `github_playground_run` step creates a fresh compose under the same allocation key (new transfer attempt, size and
+  failure history kept). After 3 runtimes in a row fail to start for one workspace, no new one is started automatically
+  and the answer says so; a successful attach resets the count. Why 45 minutes: each healthy step (image pull or source
+  build, deploy, HTTPS name, a transfer window) finishes in minutes, so 45 minutes without any step advancing is far past
+  normal, while a broken runtime no longer holds host memory for days.
+- **What extends a workspace's idle lease:** real work only — Git operations, Git reads (log, diff, refs, files), uploads,
+  downloads, and Playground commands/status/logs. Status inspects (`github_git_workspace_read` status, replays of open or
+  download, run progress checks, write preflights and readbacks) and refused or rejected calls do not (DECISIONS
+  2026-11-02).
 
 ## Resource modes
 

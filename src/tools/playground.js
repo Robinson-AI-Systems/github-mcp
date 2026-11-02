@@ -1,6 +1,6 @@
 import {createPreviewEntry} from '../playground/preview-entry.js';
 import {attachRepository} from '../playground/attachment.js';
-import {ensureAllocation,disposeAllocation,allocationRecord,inspectAllocation,resumeAllocation} from '../playground/allocations.js';
+import {disposeAllocation,allocationRecord,inspectAllocation,resumeAllocation,provisionAllocation,recoverAllocation,recoveryPendingError,replacementNotice} from '../playground/allocations.js';
 import {playgroundAvailability,playgroundFallback,requirePlaygroundExecution} from '../playground/availability.js';
 import {warmRuntimeStatus} from '../playground/warm-runtimes.js';
 import {defineRead} from './define-read.js';
@@ -55,14 +55,22 @@ const cancel=defineGithubWrite({name:'github_playground_cancel',area:'playground
  apply:({args:a,ctx:c,target:t})=>callPlayground(c,t.record,'cancel',{id:a.execution_id}),readAfter:({args:a,ctx:c,target:t})=>callPlayground(c,t.record,'status',{id:a.execution_id}),
  verify:({args:a,after})=>after.id===a.execution_id&&['completed','failed'].includes(after.state),present:({after})=>({execution_id:after.id,execution:after,process_group_stopped:after.reason!=='cancelled_before_start',command_never_started:after.no_operation_started===true,whole_allocation_disposed:false})
 });
+// PG-STUCK-1: an attach on a runtime that failed to start (or stopped making progress) does not
+// retry the same broken runtime; it removes it and provisions a fresh one for the same workspace.
+async function attachWithRecovery(c,record){
+ const recovered=await recoverAllocation(c,record);
+ if(recovered.pending)throw recoveryPendingError(recovered.reason,c.env);
+ if(recovered.reason||recovered.stored?.phase==='disposed')return provisionAllocation(c,record);
+ return attachRepository(c,record);
+}
 const workspace=defineGithubWrite({name:'github_playground_workspace',area:'playground',audience:['B','O','Op'],description:'Provision or dispose this workspace’s dedicated Playground allocation, with exact ownership and lifecycle readback.',
  guidance:'Use operation provision with a stable requestKey and the smallest fitting size (small: lint/unit tests; medium: typical builds and a test database; large: browser tests and monorepos); an allocation may remain deploying or awaiting repository attachment/enforcement. Read allocation to inspect progress. Dispose deletes only this exact owned allocation and volume after whole-process absence is independently verified. No provider secrets or runtime URLs are tool arguments.',
  properties:{...properties,operation:{type:'string',enum:['provision','attach','resume','preview','dispose']},port:{type:'integer',minimum:1024,maximum:65535},size:{type:'string',enum:['auto','small','medium','large'],description:'Provision only: runtime size class for a NEW allocation (small 2 CPU/2 GiB, medium 4/4, large 8/8, never above operator ceilings). An existing allocation keeps its size.'}},required:[...required,'operation','requestKey'],declarations:{production:'never',confirm:'when-needed',profiles:['full']},target:targetFor(true),explain,
  read:async(a,c,t)=>({allocation:await allocationRecord(c,t.record)}),classify:()=>({}),summarize:({args:a,target:t})=>`${({provision:'Provision',attach:'Attach the repository to',resume:'Resume',preview:'Open a private preview for',dispose:'Delete the files and volumes of'})[a.operation]} the exact dedicated Playground allocation for ${t.owner}/${t.repo}; uses configured host resources, no additional paid plan.`,
- apply:({args:a,ctx:c,target:t})=>a.operation==='provision'?ensureAllocation(c,t.record,{size:a.size}):a.operation==='attach'?attachRepository(c,t.record):a.operation==='resume'?resumeAllocation(c,t.record):a.operation==='preview'?createPreviewEntry(c,t.record,a.port??4173):disposeAllocation(c,t.record),
+ apply:({args:a,ctx:c,target:t})=>a.operation==='provision'?provisionAllocation(c,t.record,{size:a.size}):a.operation==='attach'?attachWithRecovery(c,t.record):a.operation==='resume'?resumeAllocation(c,t.record):a.operation==='preview'?createPreviewEntry(c,t.record,a.port??4173):disposeAllocation(c,t.record),
  readAfter:async({args:a,ctx:c,target:t,response})=>({response,allocation:await allocationRecord(c,t.record),observed:await inspectAllocation(c,t.record),operation:a.operation}),
  verify:({after})=>after.operation==='preview'?typeof after.response.entry_url==='string':after.operation==='dispose'?after.response.disposed===true:['requested','waiting_resources'].includes(after.allocation?.phase)||after.observed?.provider_observed===true&&!!after.allocation?.composeId&&['created','exposed','deploying','allocated','attaching','attached'].includes(after.allocation.phase),
- present:({after})=>after.operation==='preview'?after.response:({workspace_id:after.allocation?.workspace,phase:after.allocation?.phase??'absent',runtime_size:after.allocation?.size??null,allocation_ready:['allocated','attached'].includes(after.allocation?.phase),repository_attached:after.allocation?.repositoryAttached===true,disposed:after.response.disposed===true,execution_available:false,next:'Read allocation and availability. Provisioning acceptance is not repository attachment, enforcement or command success.'})
+ present:({after,ctx:c})=>after.operation==='preview'?after.response:({workspace_id:after.allocation?.workspace,phase:after.allocation?.phase??'absent',runtime_size:after.allocation?.size??null,allocation_ready:['allocated','attached'].includes(after.allocation?.phase),repository_attached:after.allocation?.repositoryAttached===true,disposed:after.response.disposed===true,execution_available:false,...(after.response?.replacedReason?{runtime_replaced:true,replaced_reason:after.response.replacedReason}:{}),next:replacementNotice(after.response?.replacedReason,c?.env)??'Read allocation and availability. Provisioning acceptance is not repository attachment, enforcement or command success.'})
 });
 // FLEET-2 run-at-commit. One intent = one Git-only workspace at the ref, the smallest fitting
 // runtime, one command and full cleanup. Resumable: each call advances within the function
