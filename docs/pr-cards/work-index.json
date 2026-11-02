@@ -2889,6 +2889,25 @@
       "pr": [
         536
       ]
+    },
+    {
+      "id": "VIS-1",
+      "title": "Larger results visible to structured-only clients (8 KB budget; explicit file windows whole)",
+      "batch": "FIN",
+      "design": "docs/pr-cards/VIS-1.md",
+      "dependencies": [
+        "GIT-UPLOAD-1"
+      ],
+      "card": "docs/pr-cards/VIS-1.md",
+      "status": "IN_PROGRESS",
+      "migration": "none",
+      "budget": 300,
+      "units": [
+        "VIS-1"
+      ],
+      "readiness": "READY",
+      "ownerInputs": [],
+      "pr": []
     }
   ],
   "gatewayBoundary": {

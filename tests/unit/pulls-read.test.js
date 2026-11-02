@@ -74,7 +74,7 @@ describe('pull request reads (E-1a)', () => {
     }
     expect(w.gh.invalid).toEqual([]);
   });
-  it('exposes a 3.5 KB PR body once but keeps full JSON via content for direct and catalog calls', async () => {
+  it('shows a 3.5 KB PR body to structured-only clients and keeps full JSON in content for direct and catalog calls (VIS-1)', async () => {
     const w = await world();
     const body = 'x'.repeat(3500);
     w.gh.when('GET /repos/{owner}/{repo}/pulls/{pull_number}').reply(200,
@@ -86,10 +86,10 @@ describe('pull request reads (E-1a)', () => {
     ]) {
       const reply = (await run(w, name, args)).result;
       expect(reply.isError).not.toBe(true);
-      expect(reply.structuredContent.body).toBeUndefined();
-      expect(reply.structuredContent.full_payload_location).toBe('content[0].text');
+      expect(reply.structuredContent.body).toBe(body);
+      expect(reply.structuredContent).not.toHaveProperty('full_payload_location');
       expect(JSON.parse(reply.content[0].text).body).toBe(body);
-      expect(Buffer.byteLength(JSON.stringify(reply))).toBeLessThan(5500);
+      expect(Buffer.byteLength(JSON.stringify(reply))).toBeLessThan(9000);
     }
     expect(w.gh.invalid).toEqual([]);
   });
