@@ -35,3 +35,9 @@ No gate raises spend, widens access or opens public sign-up by itself. Secrets n
 Write permissions cannot be read from GitHub without writing, so they are learned from GitHub's own refusals, never guessed.
 One token per owner (GitHub gives a fine-grained token one owner). Real-account acceptance is an owner checklist row.
 
+
+## 2026-11-01 — Collaborator repositories
+
+A repository owned by another account (e.g. one Chris collaborates on) is refused before GitHub until it is added as an
+extra place or its owner installs the App. The refusal now says exactly that, with the connection-page link. Test:
+`errors.test.js` "an account outside the connection points collaborators…".
