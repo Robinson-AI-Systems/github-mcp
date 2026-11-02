@@ -56,6 +56,8 @@ it('archive flow through every door: one-time URL with no credential, curl-style
   const url = new URL(begun.result.url);
   expect(url.origin).toBe('https://native-worker.example.test');
   expect(begun.result.command).toContain('curl --fail --upload-file');
+  // Compact clients drop `result`; the always-visible progress must carry the one-time command.
+  expect(begun.progress).toMatchObject({ upload_id: begun.result.upload_id, command: begun.result.command, single_use: true });
   const claim = verifyUploadCapability(url.pathname.split('/').pop(), w.nativeFixture.key, w.ctx.now());
   expect(Object.keys(claim).sort()).toEqual(['binding', 'expiresAt', 'maxBytes', 'mode', 'nonce', 'purpose', 'uploadId', 'version', 'workspace_id']);
   expect(claim.expiresAt - w.ctx.now()).toBeLessThanOrEqual(600000);
@@ -66,6 +68,7 @@ it('archive flow through every door: one-time URL with no credential, curl-style
   expect((await fetch(local(w, begun.result.url), { method: 'PUT', body: tarGz([['photos/a.txt', 'one\n'], ['photos/b.txt', 'two\n']]) })).status).toBe(200);
   const applied = parse(await door.call(w, { workspace_id: WORKSPACE, operation: 'apply', upload_id: begun.result.upload_id, expectedGeneration: 0, path: 'site', requestKey: 'apply-' + door.name }));
   expect(applied).toMatchObject({ status: 'applied', confirmed: true, result: { mode: 'archive', target: 'site', files_added: 2, workspace: { generation: 1 } } });
+  expect(applied.progress).toMatchObject({ applied: true, mode: 'archive', target: 'site', files_added: 2, workspace: { generation: 1 } });
   expect(await readFile(join(w.nativeFixture.root, w.nativeFixture.workerId, 'repo', 'site', 'photos', 'b.txt'), 'utf8')).toBe('two\n');
   expect(secretShaped(JSON.stringify(applied))).toBe(false);
   expect(w.nativeRequests.filter(x => x === 'upload_apply')).toHaveLength(1);

@@ -85,3 +85,9 @@ the worker (other worker routes keep their 15-second body deadline). Dedicated P
 
 `tests/unit/native-git-upload.test.js` (worker, real Git and curl), `tests/unit/native-git-upload-contract.test.js`
 (nine checks × three doors, full flows, no-credential assertions).
+
+## 2026-11-01 — Compact clients
+
+First live begin (release 26643443): the result, which holds the one-time command, was dropped by a compact client
+(`omitted_fields: ["result"]`), making the feature unusable there. Begin/apply now add a bounded `progress` with the
+command or the apply summary. Test: `native-git-upload-contract.test.js` (fails without the change).
