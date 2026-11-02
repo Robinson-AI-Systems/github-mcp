@@ -7,6 +7,7 @@ Where the archive disagrees with this table or [OWNER-DECISION-2026-10-27.md](OW
 
 | Decision | Date | Reason (one line) | Detail |
 |---|---|---|---|
+| Conflicts and Git refusals in native workspaces are definite outcomes (conflict = applied with outcome conflict; refusal = rejected), never unconfirmed | 2026-11-02 | Owner's agent: these are final facts with a plain next step | [NATIVE-ERGO-1](pr-cards/NATIVE-ERGO-1.md) |
 | One-time transfers use this service's own domain via Routing Middleware; compact listing budget is 6,000 tokens | 2026-11-02 | Owner: sandboxes should need one allowed domain; transfer tools belong in the default list | [SINGLE-DOMAIN-1](pr-cards/SINGLE-DOMAIN-1.md) |
 | Backups and restore are optional future work, not a production gate | 2026-10-30 | Owner deferred them; data-preservation and cleanup safeguards stay binding | [note](status/2026-10-30-playground-provider-identity.md) |
 | Playground may run in protected best-effort resource mode without verified quotas | 2026-10-30 | Owner allows production use before resource monitoring exists; allocation/identity/grant/attachment checks and network readback still required | [note](status/2026-10-30-playground-best-effort.md) |

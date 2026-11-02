@@ -276,7 +276,10 @@ export function defineWrite(spec) {
       try { text = explain(failure, { args, ctx, target: tgt }); } catch { text = 'The change was not completed.'; }
       await ctx.db.finishChange(claim.id, { summary: `${rejected ? 'REJECTED' : 'UNCERTAIN'}: ${line}`, confirmed: false, releaseKey: rejected, actedAs: ctx.actor?.summary?.()?.as ?? null }).catch(() => {});
       if (notStarted) return out({ done: false, status: 'not_applied', reason_code: 'no_operation_started', retryable: failure?.safeRetryable === true, no_change_sent: true, requestKey: key, error: text }, true);
-      return out({ done: false, status: rejected ? 'rejected' : 'uncertain',reason_code:rejected?'provider_rejected':'write_outcome_uncertain',retryable:rejected&&failure?.safeRetryable===true, requestKey: key, error: text,
+      // A tool may attach small, plain facts to a definite refusal (e.g. the next value to send).
+      const details = rejected && failure?.outcomeDetails && typeof failure.outcomeDetails === 'object' && !Array.isArray(failure.outcomeDetails)
+        && Buffer.byteLength(JSON.stringify(failure.outcomeDetails)) <= 2048 ? { details: failure.outcomeDetails } : {};
+      return out({ done: false, status: rejected ? 'rejected' : 'uncertain',reason_code:rejected?'provider_rejected':'write_outcome_uncertain',retryable:rejected&&failure?.safeRetryable===true, requestKey: key, error: text, ...details,
         ...(rejected ? {} : { warning: 'GitHub may or may not have applied this. Check the current state before trying again.' }) }, true);
     }
     let after = null; let confirmed = false; let note = null;

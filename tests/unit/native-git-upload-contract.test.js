@@ -101,7 +101,9 @@ it('reports refusals plainly as rejected with nothing changed, and validates arg
  const early = parse(await definition.handler({ workspace_id: WORKSPACE, operation: 'apply', upload_id: 'upl_' + 'e'.repeat(32), expectedGeneration: 0, requestKey: 'missing' }, w.ctx));
  expect(early.status).toBe('rejected');
  const wrong = await definition.handler({ workspace_id: WORKSPACE, operation: 'begin', mode: 'git', path: 'x' }, w.ctx);
- expect(JSON.stringify(parse(wrong))).toMatch(/path is not used by operation begin/);
+ expect(JSON.stringify(parse(wrong))).toMatch(/path belongs to operation apply .*not begin/);
+ const ignored = parse(await definition.handler({ workspace_id: WORKSPACE, operation: 'begin', mode: 'git', expectedGeneration: 0, dryRun: true }, w.ctx));
+ expect(ignored).toMatchObject({ status: 'preview' });
  const missing = await definition.handler({ workspace_id: WORKSPACE, operation: 'begin' }, w.ctx);
  expect(JSON.stringify(parse(missing))).toMatch(/begin requires mode/);
 });

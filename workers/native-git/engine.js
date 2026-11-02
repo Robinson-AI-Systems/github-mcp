@@ -1,4 +1,4 @@
-import {readWorkspaceFile,writeWorkspaceFile,removeWorkspaceFile} from './safe-files.js';
+import {readWorkspaceFile,writeWorkspaceFile,removeWorkspaceFile,workspaceEntry} from './safe-files.js';
 import {evaluateFileProtection,findingFingerprint} from '../../src/github/file-protection.js';
 import {defaultScannerSettings} from '../../src/github/scanner-policy.js';
 // Portable execution plane: fixed argv, no shell, hooks, filters or caller-supplied config.
@@ -6,7 +6,7 @@ import { spawn } from 'node:child_process';
 import { randomBytes, createHash } from 'node:crypto';
 import { mkdir, readFile, rename, open, rm, realpath, lstat, readdir } from 'node:fs/promises';
 import { resolve, join, dirname, isAbsolute } from 'node:path';
-import { READ_OPERATIONS, gitCommand, ref, value } from '../../src/native-git/commands.js';
+import { READ_OPERATIONS, gitCommand, normalizeNativeOptions, ref, value } from '../../src/native-git/commands.js';
 export { READ_OPERATIONS, WRITE_OPERATIONS, gitCommand } from '../../src/native-git/commands.js';
 import { nativeWorkspaceId } from '../../src/native-git/protocol.js';
 import { containsCredential, redact, activeProtectionReport, withProtectionContext, withRepositoryProtection } from '../../src/github/content-protection.js';
@@ -190,8 +190,8 @@ export class NativeGitWorker {
     return Object.fromEntries(result.stdout.trim().split('\n').filter(Boolean).map(line => { const [id, name] = line.split('\t'); return [name, id]; }));
   }
   async execute(id,binding,options={}){return withProtectionContext(()=>withRepositoryProtection(this.scannerPolicy.settings.additionalRules.filter(r=>!this.scannerPolicy.settings.disabledRules.includes(r.id)),()=>this.executeScoped(id,binding,options)));}
-  async executeScoped(id, binding, { operation, args = {}, requestKey, expectedGeneration } = {}) {
-    gitCommand(operation, args); const writing = !READ_OPERATIONS.includes(operation);
+  async executeScoped(id, binding, { operation, args: raw = {}, requestKey, expectedGeneration } = {}) {
+    gitCommand(operation, raw); const args = normalizeNativeOptions(operation, raw); const writing = !READ_OPERATIONS.includes(operation);
     const w = await this.workspace(id, binding, writing);
     await this.selectWorktree(w, args.worktree);
     if (w.meta.state !== 'ready') throw new TypeError(w.meta.state === 'opening' ? 'The clone is still running; read status until it reports ready.' : 'Workspace is not ready; inspect or dispose it.');
@@ -220,6 +220,16 @@ export class NativeGitWorker {
       if (!Number.isSafeInteger(offset) || offset < 0 || offset > data.length || !Number.isSafeInteger(length) || length < 1 || length > 32768) throw new TypeError('Invalid byte window.');
       return { file_hash: fileHash, encoding: 'base64', content_base64: data.subarray(offset, offset + length).toString('base64'), byte_offset: offset, byte_length: data.subarray(offset, offset + length).length, total_bytes: data.length, next_byte_offset: Math.min(data.length, offset + length), complete: offset + length >= data.length };
     }
+    if (!writing && operation === 'changed_files') {
+      // NATIVE-ERGO-1: paths that differ from ref (committed or not) plus untracked files, so a
+      // downloaded copy without .git never needs a second copy to diff against.
+      const since = ref(args.ref ?? 'HEAD');
+      const diff = await this.git(w.repo, ['diff', '-z', '--name-status', '--no-renames', '--no-ext-diff', '--no-textconv', since, '--']);
+      const fields = diff.stdout.split('\0'), files = [];
+      for (let i = 0; i + 1 < fields.length; i += 2) files.push({ status: fields[i], path: fields[i + 1] });
+      for (const path of (await this.git(w.repo, ['ls-files', '-z', '--others', '--exclude-standard'])).stdout.split('\0').filter(Boolean)) files.push({ status: '?', path });
+      return { untrusted: true, ref: since, count: files.length, files: files.slice(0, 2000), complete: files.length <= 2000, legend: 'A added, M modified, D deleted, T type changed, ? untracked (not yet added)' };
+    }
     if (!writing && operation === 'remote_refs') return { refs: await this.remoteRefs(w, this.allowLocalFixtures ? null : await this.credential?.(binding, { write: false }), args.ref) };
     if (!writing) return this.git(w.repo, gitCommand(operation, args), { allowedCodes: [0, 1] });
     value(requestKey, 128);
@@ -229,21 +239,26 @@ export class NativeGitWorker {
     try {
       const current = await json(join(w.dir, 'workspace.json'));
       try { const old = await json(receipt); if (old.intent !== intent) throw new TypeError('Request key already belongs to different input.'); return { ...(old.result ?? { status: 'uncertain', next: 'Inspect local and remote state before a new intent.' }), replayed: true }; } catch (e) { if (e.code !== 'ENOENT') throw e; }
-      if (expectedGeneration !== current.generation) throw new TypeError('Workspace generation changed; inspect before another mutation.');
+      if (expectedGeneration !== current.generation) throw new TypeError(`Stale expectedGeneration ${Number.isSafeInteger(expectedGeneration) ? expectedGeneration : 'missing'}: the workspace is at generation ${current.generation}. Nothing was changed. Send expectedGeneration ${current.generation} with a new requestKey.`);
+      if (operation === 'remove_file') for (const p of args.paths ?? [args.path]) {
+        const entry = await workspaceEntry(w.repo, p); await entry.file?.close();
+        if (!['file', 'symlink'].includes(entry.type)) throw new TypeError(`${JSON.stringify(p.slice(0, 200))} ${entry.type === 'missing' ? 'does not exist' : 'is not a file'} in the workspace. Nothing was removed.`);
+      }
       await save(receipt, { intent, state: 'sending' });
-      let result;
+      // Set just before anything in the workspace or on GitHub can change; a check that throws before it changed nothing.
+      let result, started = false;
       try {
         if (operation === 'write_file') {
           if (typeof args.base64 !== 'string' || args.base64.length > 1400000 || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(args.base64)) throw new TypeError('Supply canonical base64 of at most 1 MiB.');
           const bytes = Buffer.from(args.base64, 'base64'); if (containsCredential(bytes.toString('utf8'))) throw new TypeError('Credential-shaped file input belongs in protected setup, not tool arguments.');
-          await writeWorkspaceFile(w.repo,args.path,bytes);
+          started = true; await writeWorkspaceFile(w.repo,args.path,bytes);
           if (!(await readWorkspaceFile(w.repo,args.path)).equals(bytes)) throw new Error('File readback differed.');
           result = { code: 0, file_hash: createHash('sha256').update(bytes).digest('hex') };
-        } else if (operation === 'remove_file') { await removeWorkspaceFile(w.repo,args.path); result = { code: 0 }; }
+        } else if (operation === 'remove_file') { const list = args.paths ?? [args.path]; started = true; for (const p of list) await removeWorkspaceFile(w.repo, p); result = { code: 0, removed: list.length }; }
         else if (operation.startsWith('worktree_')) {
           if (!/^[a-zA-Z0-9_-]{1,60}$/.test(args.name ?? '')) throw new TypeError('Worktree name must be a simple local identifier.');
           const path = join(w.dir, 'worktrees', args.name); await mkdir(dirname(path), { recursive: true });
-          result = await this.git(w.repo, operation === 'worktree_add' ? ['worktree', 'add', '--detach', '--', path, ref(args.ref ?? 'HEAD')] : ['worktree', 'remove', '--', path]);
+          started = true; result = await this.git(w.repo, operation === 'worktree_add' ? ['worktree', 'add', '--detach', '--', path, ref(args.ref ?? 'HEAD')] : ['worktree', 'remove', '--', path]);
         } else {
           const network = ['fetch', 'pull', 'push'].includes(operation);
           const token = network && !this.allowLocalFixtures ? await this.credential?.(binding, { write: operation === 'push' }) : null;
@@ -255,13 +270,17 @@ export class NativeGitWorker {
               if (args.tag && expectedRemote !== args.expectedHead) throw new TypeError('Updating an existing tag requires explicit force and its expected-head lease.');
               if (!args.tag && (await this.git(w.repo, ['merge-base', '--is-ancestor', args.expectedHead, expectedRemote], { allowedCodes: [0,1,128] })).code !== 0) throw new TypeError('Non-fast-forward push refused: fetch the expected remote commit or select explicit force with a lease.');
             } } }
-          result = await this.git(w.repo, gitCommand(operation, args), { token, remote: current.remote, allowedCodes: [0, 1, 128] });
+          started = true; result = await this.git(w.repo, gitCommand(operation, args), { token, remote: current.remote, allowedCodes: [0, 1, 128] });
           if (operation === 'push' && result.code === 0) { const actual = (await this.remoteRefs(w, token, destination))[destination] ?? null; result.remote_verified = actual === expectedRemote; result.remote_head = actual; }
         }
         current.generation += 1; await save(join(w.dir, 'workspace.json'), current);
         const state = await this.inspect(id, binding, args.worktree);
-        result = { ...result, ...state, status: result.code === 0 ? result.remote_verified === false ? 'unconfirmed' : 'applied' : state.conflicts.length ? 'conflict' : 'rejected' };
-      } catch (error) { result = { status: 'uncertain', error: error instanceof TypeError ? error.message : 'Native operation did not finish with verified state; inspect before another intent.' }; }
+        result = { ...result, ...state, next_generation: state.generation, status: result.code === 0 ? result.remote_verified === false ? 'unconfirmed' : 'applied' : state.conflicts.length ? 'conflict' : 'rejected' };
+      } catch (error) {
+        // A TypeError is a check that refused before anything changed (the generation did not move).
+        result = error instanceof TypeError && !started ? { status: 'refused', error: error.message, no_change: true, generation: current.generation, next_generation: current.generation }
+          : { status: 'uncertain', error: 'Native operation did not finish with verified state; inspect before another intent.' };
+      }
       await save(receipt, { intent, result, finished_at: this.now() }); return result;
     } finally { await lock.close(); await rm(join(w.dir, 'mutation.lock'), { force: true }); }
   }

@@ -18,7 +18,7 @@ import { value } from '../../src/native-git/commands.js';
 import { UPLOAD_MAX_BYTES, UPLOAD_TTL_MS, verifyUploadCapability } from '../../src/native-git/protocol.js';
 import { ARCHIVE_LIMITS, entryPath, openArchive } from './archive.js';
 import { bindingHash, gitEnvironment, gitPrefix, hash, json, save } from './engine.js';
-import { readWorkspaceFile, writeWorkspaceFile } from './safe-files.js';
+import { readWorkspaceFile, writeWorkspaceFile, removeWorkspaceFile, workspaceEntry } from './safe-files.js';
 
 const MiB = 1024 * 1024;
 const WORKSPACE = /^git_[a-f0-9]{32}$/, UPLOAD = /^[a-f0-9]{32}$/;
@@ -236,10 +236,12 @@ function catObjects(root, repo, ids, onObject, { timeoutMs = 120000 } = {}) {
 function findingFor(label, bytes) {
   const text = bytes.toString('utf8');
   if (!containsCredential(text)) return null;
-  const rules = [...new Set(activeProtectionReport(text).findings.map(f => f.rule))].slice(0, 3);
-  return { path: label, rules };
+  const findings = activeProtectionReport(text).findings;
+  const rules = [...new Set(findings.map(f => f.rule))].slice(0, 3);
+  // NATIVE-ERGO-1: say where (line and rule, never the value) so a false positive can be found and reported.
+  return { path: label, rules, lines: findings.slice(0, 3).map(f => `line ${f.line} (${f.rule})`) };
 }
-const protectionRefusal = findings => refusal(`Content protection refused this upload: credential-shaped content in ${findings.length} file(s) or commit message(s), first ${JSON.stringify(findings[0].path.slice(0, 200))} (${findings[0].rules.join(', ') || 'credential'}). Remove the values (put real secrets in protected setup) and upload again.`);
+const protectionRefusal = findings => refusal(`Content protection refused this upload: credential-shaped content in ${findings.length} file(s) or commit message(s), first ${JSON.stringify(findings[0].path.slice(0, 200))} (${findings[0].lines?.length ? findings[0].lines.join(', ') : findings[0].rules.join(', ') || 'credential'}). If it is a false positive, check it with github_git_workspace_read protection_check and the repository scanner settings; otherwise remove the values (put real secrets in protected setup) and upload again.`);
 
 async function planGit(worker, w, state, stored, p, { ref, uploadId }) {
   const q = join(p.data, 'repo.git'), refs = stored.refs ?? [];
@@ -311,7 +313,7 @@ async function destination(repo, path) {
   return 'file';
 }
 
-async function planArchive(worker, w, stored, p, { path }) {
+async function planArchive(worker, w, stored, p, { path, deletePaths, mirror }) {
   let prefix = '';
   try { prefix = path === undefined ? '' : entryPath(path); } catch (error) { throw refusal(error.message.replace('Archive refused: ', 'Target path refused: ')); }
   let archive;
@@ -326,6 +328,22 @@ async function planArchive(worker, w, stored, p, { path }) {
       plan.push({ file, dest });
     }
     if (findings.length) throw protectionRefusal(findings);
+    // NATIVE-ERGO-1: deletions travel with the archive: explicit deletePaths, or mirror (tracked files
+    // under the target folder that the archive no longer has). Untracked files are never mirrored away.
+    const incoming = new Set(plan.map(x => x.dest)), removals = new Set();
+    for (const raw of deletePaths ?? []) {
+      let rel; try { rel = entryPath(raw); } catch (error) { throw refusal(error.message.replace('Archive refused: ', 'Delete path refused: ')); }
+      if (incoming.has(rel)) throw refusal(`${JSON.stringify(rel.slice(0, 200))} is both in the archive and in deletePaths; choose one.`);
+      const entry = await workspaceEntry(w.repo, rel); await entry.file?.close();
+      if (!['file', 'symlink'].includes(entry.type)) throw refusal(`${JSON.stringify(rel.slice(0, 200))} ${entry.type === 'missing' ? 'does not exist' : 'is not a file'} in the workspace, so it cannot be deleted. Nothing was applied.`);
+      removals.add(rel);
+    }
+    if (mirror) {
+      if (!plan.length) throw refusal('mirror needs an archive with at least one file; an empty archive would delete everything under the target.');
+      const tracked = (await worker.git(w.repo, ['ls-files', '-z', '--', ...(prefix ? [prefix] : [])], { maxOutputBytes: 32 * MiB })).stdout.split('\0').filter(Boolean);
+      for (const file of tracked) if (!incoming.has(file) && (!prefix || file.startsWith(prefix + '/'))) removals.add(file);
+      if (removals.size > 5000) throw refusal('mirror would delete more than 5,000 files; check the archive root and path, or delete in smaller steps.');
+    }
     return { close: () => archive.close(), execute: async () => {
       let added = 0, changed = 0, unchanged = 0, written = 0;
       for (const { file, dest } of plan) {
@@ -337,30 +355,36 @@ async function planArchive(worker, w, stored, p, { path }) {
         if (!(await readWorkspaceFile(w.repo, dest, bytes.length)).equals(bytes)) throw new Error('readback');
         if (existed) changed++; else added++; written += bytes.length;
       }
-      return { mode: 'archive', format: archive.format, target: prefix || '.', files: plan.length, files_added: added, files_changed: changed, files_unchanged: unchanged, bytes_written: written, received_bytes: stored.receivedBytes, paths_sample: plan.slice(0, 20).map(x => x.dest) };
+      let deleted = 0;
+      for (const rel of removals) { const entry = await workspaceEntry(w.repo, rel); await entry.file?.close(); if (entry.type === 'missing') continue; await removeWorkspaceFile(w.repo, rel); deleted++; }
+      return { mode: 'archive', format: archive.format, target: prefix || '.', files: plan.length, files_added: added, files_changed: changed, files_unchanged: unchanged, files_deleted: deleted, bytes_written: written, received_bytes: stored.receivedBytes, paths_sample: plan.slice(0, 20).map(x => x.dest), ...(removals.size ? { deleted_sample: [...removals].slice(0, 20) } : {}) };
     } };
   } catch (error) { await archive.close(); throw error; }
 }
 
-export async function applyUpload(worker, id, binding, { uploadId, ref, path, requestKey, expectedGeneration } = {}) {
+export async function applyUpload(worker, id, binding, { uploadId, ref, path, deletePaths, mirror, requestKey, expectedGeneration } = {}) {
   if (ref !== undefined) value(ref, 256);
   if (path !== undefined) value(path, 1024);
+  if (deletePaths !== undefined && (!Array.isArray(deletePaths) || !deletePaths.length || deletePaths.length > 1000)) throw new TypeError('deletePaths must list 1–1000 workspace paths.');
+  for (const p of deletePaths ?? []) value(p, 4096);
+  if (mirror !== undefined && typeof mirror !== 'boolean') throw new TypeError('mirror must be true or false.');
   value(requestKey, 128);
   const { w, p } = await owned(worker, id, binding, uploadId, true);
   if (w.meta.state !== 'ready') throw new TypeError('Workspace is not ready; read status first.');
-  const receipt = join(w.dir, 'intent-' + hash(requestKey) + '.json'), intent = hash({ operation: 'upload_apply', uploadId, ref: ref ?? null, path: path ?? null });
+  const receipt = join(w.dir, 'intent-' + hash(requestKey) + '.json'), intent = hash({ operation: 'upload_apply', uploadId, ref: ref ?? null, path: path ?? null, ...(deletePaths ? { deletePaths } : {}), ...(mirror ? { mirror } : {}) });
   let lock;
   try { lock = await open(join(w.dir, 'mutation.lock'), 'wx', 0o600); } catch (error) { if (error.code === 'EEXIST') throw new TypeError('Workspace is leased. Inspect current state; interrupted leases require explicit operator recovery, never automatic write replay.'); throw error; }
   let plan;
   try {
     const current = await json(join(w.dir, 'workspace.json'));
     try { const old = await json(receipt); if (old.intent !== intent) throw new TypeError('Request key already belongs to different input.'); return { ...(old.result ?? { status: 'uncertain', next: 'Inspect local state before a new intent.' }), replayed: true }; } catch (error) { if (error.code !== 'ENOENT') throw error; }
-    if (expectedGeneration !== current.generation) throw new TypeError('Workspace generation changed; inspect before another mutation.');
+    if (expectedGeneration !== current.generation) throw new TypeError(`Stale expectedGeneration ${Number.isSafeInteger(expectedGeneration) ? expectedGeneration : 'missing'}: the workspace is at generation ${current.generation}. Nothing was applied. Call apply again with expectedGeneration ${current.generation} and a new requestKey.`);
     const stored = await record(p, binding);
+    if (stored.mode === 'git' && (deletePaths || mirror)) return { status: 'refused', reason: 'deletePaths and mirror are for archive uploads. In git mode, delete the files in your commits (git rm) and push again.' };
     if (stored.state !== 'received') return { status: 'refused', reason: STATE_HELP[stored.state] ?? 'This upload is not ready to apply.' };
     if (worker.now() > stored.expiresAt + UPLOAD_RETENTION_MS) return { status: 'refused', reason: 'This upload expired before it was applied. Begin a new upload.' };
     const state = await worker.inspect(id, binding);
-    try { plan = stored.mode === 'git' ? await planGit(worker, w, state, stored, p, { ref, uploadId }) : await planArchive(worker, w, stored, p, { path }); }
+    try { plan = stored.mode === 'git' ? await planGit(worker, w, state, stored, p, { ref, uploadId }) : await planArchive(worker, w, stored, p, { path, deletePaths, mirror }); }
     catch (error) { if (error.refusal) return { status: 'refused', reason: error.message }; throw error; }
     // Checks passed and nothing in the workspace changed yet; from here the receipt records the intent.
     await save(receipt, { intent, state: 'sending' });

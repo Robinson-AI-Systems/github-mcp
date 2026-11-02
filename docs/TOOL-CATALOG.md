@@ -29,7 +29,7 @@ Restricted preview RTC successful replies revalidate service pass and scratch ow
 
 Every tool this server will have, by area — the product scope. The implementing model builds exactly these; anything
 else goes in `docs/ROADMAP.md` and the PR report, and universal tools (last section) provide guarded access only where their actual credential, classification and request support permits. Endpoint-level completeness remains unproven; see [MAXIMUM-AUTHORITY](designs/MAXIMUM-AUTHORITY.md). Counts are checked by `python3 scripts/count-catalog.py` (run by `npm run check` and CI since A-1, #1). When a
-tool merges, its Card cell gains `built #<PR>`. Built so far: **510 cataloged tools** (every row below is in the registry, `src/tools/index.js`; `scripts/count-catalog.py` and `scripts/check-writes.mjs` fail the build if a tool and its row disagree)
+tool merges, its Card cell gains `built #<PR>`. Built so far: **511 cataloged tools** (every row below is in the registry, `src/tools/index.js`; `scripts/count-catalog.py` and `scripts/check-writes.mjs` fail the build if a tool and its row disagree)
 and holds the two A-5 tools, the B-3 protected-list reader the two B-2 production-switch tools and the B-4 spend-limit tool. Since B-5 every result of these tools is shaped (`src/tools/util.js`) and failures are explained by `src/tools/errors.js`. Since B-6 a connection sees only the tools its profile allows (`tools/list` and by-name calls). Every write tool below is built with `defineGithubWrite` (B-1, #16, `src/tools/define-github-write.js`) and pass the nine write-contract checks (`test/helpers/write-contract.js`); the two B-2 tools are the first (`src/tools/server.js`).
 
 **Safety metadata and scoped behavior:** `—` reads only; `P` supports optional dryRun; `D` describes destructive effects; `Prod`/`Prod*` describe production scope; `A`/`A*` describe access changes; `M` describes notifications; `$`/`$*` describe billing. `C` retains the restricted-profile confirmation declaration checked against source. On a full ordinary owner connection these marks are disclosure, not automatic confirmation or refusal. Explicitly restricted profiles/passes retain their chosen mode, access and spend limits. GitHub applies provider rules; journal/replay/readback and credential isolation apply to everyone.
@@ -122,20 +122,21 @@ Agent-facing runtime operations through the existing search/describe/call contra
 | `github_playground_workspace` | Provision (optional `size` small/medium/large), attach, resume, privately preview or dispose the exact owned allocation with independent readback | P | N | I | B,O,Op | F | PLAY-1 |
 | `github_playground_run` | One command at a branch/tag/SHA in a fresh right-sized runtime: open, provision, run, return exit code and log tail, dispose; resumable by requestKey | P·Prod* | N | I | B,O,Op | F | FLEET-2 |
 
-## Files, commits and git data (`github_content_*, github_commit_*, github_git_*`) — 26
+## Files, commits and git data (`github_content_*, github_commit_*, github_git_*`) — 27
 
 Card(s): D-2.
 
 | Tool | What it does | Safety | Origin | Cred | Audience | Profile | Card |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `github_git_workspace_open` | Clone with a distinct intent per workspace; optional `runtime` (none/small/medium/large/auto) sizes or skips the Playground; replay reports historical receipt and current availability | P | N | I | B,O,Op | F | PAR-2 |
-| `github_git_workspace_read` | Inspect native Git capabilities and exact operation help, history, conflicts, refs, receipts and protected byte windows | — | N | I | B,O,Op | R | PAR-2 |
-| `github_git_workspace_run` | Typed native Git; branch name/branch aliases, switch ref alias, independent branch readback and verified push | P·D·Prod* | N | I | B,O,Op | F | PAR-2 |
+| `github_git_workspace_read` | Inspect native Git capabilities and exact operation help, history, conflicts, refs, receipts and protected byte windows; `changed_files` since a ref | — | N | I | B,O,Op | R | PAR-2 |
+| `github_git_workspace_run` | Typed native Git; branch name/branch aliases, switch ref alias, independent branch readback and verified push. Top-level path/paths/branch/ref/message/all shortcuts, add all, several-path remove, fetch by branch, merge branch/message flags, switch create; conflicts and Git refusals are definite outcomes with a next step; `next_generation` every time; `quiet` | P·D·Prod* | N | I | B,O,Op | F | PAR-2 |
 | `github_git_workspace_close` | Dispose only the owned local workspace, verify absence and retain immutable disposal replay | P·D·Prod* | N | I | B,O,Op | F | PAR-2 |
 | `github_git_workspace_list` | Page current connection workspaces with fresh repository access checks and explicit omissions/cursor | — | N | I | B,O,Op | R | PAR-2 |
-| `github_git_workspace_upload` | Bulk files into a workspace (worker or attached runtime): begin returns a one-time, 10-minute `git push` or `curl --upload-file` URL on this service's own domain (no GitHub credential) plus a labelled worker-host fallback; apply fast-forwards or extracts after safety and secret checks. Compact list | P | N | I | B,O,Op | F | GIT-UPLOAD-1 |
+| `github_git_workspace_upload` | Bulk files into a workspace (worker or attached runtime): begin returns a one-time, 10-minute `git push` or `curl --upload-file` URL on this service's own domain (no GitHub credential) plus a labelled worker-host fallback; apply fast-forwards or extracts after safety and secret checks; archive apply also takes `deletePaths` and `mirror`. Compact list | P | N | I | B,O,Op | F | GIT-UPLOAD-1 |
 | `github_git_workspace_download` | Whole workspace at once (worker or attached runtime): a one-time, 10-minute `git clone` URL (branches/tags or one ref) or `curl` .tar.gz of a ref or the uncommitted worktree, on this service's own domain (no GitHub credential). Compact list | P | N | I | B,O,Op | F | GIT-DOWNLOAD-1 |
 | `github_repo_download` | Whole repository in one call: reuses the open workspace of that repository (or clones a Git-only one) and returns a one-time `git clone` or `curl` .tar.gz command on this service's own domain; `state: opening` while a large clone runs. Compact list | P | N | I | B,O,Op | F | SINGLE-DOMAIN-1 |
+| `github_repo_change` | One call: write/delete files (or apply an upload) on a new or existing branch, commit, push with a lease and readback, optionally open the PR through `github_workflow_open_pr`; `expectedHead`/`allowMoved`; the same call again resumes and never commits twice. Compact list | P·Prod* | N | I | B,O,Op | F | NATIVE-ERGO-1 |
 | `github_content_get` | A file or directory at any ref; compact text by default (a cut-short file says plainly how to read it whole with `fullText`, up to 1 MB, or by `startLine`/`endLine` windows of up to 500 lines returned whole with a `next_start_line` cursor), byte-exact base64 via `byteOffset`/`byteLength` (up to 32 KiB per explicit call) and a retained handle for overflow | — | F | I | B,Op | R | D-2 built #30 |
 | `github_content_protection_check` | Explain matching rules and locations without values; provide a safe false-positive report and exact local-Git retrieval guidance | — | N | I | B,O,Op | R | PAR-2 |
 | `github_content_get_tree` | Recursive tree with blob SHA/mode, glob and pinned offset continuation beyond 500 entries | — | C | I | B | R | D-2 built #30 |
@@ -932,7 +933,7 @@ Metered actions with no published per-use price (larger runners, Copilot agent a
 
 ## Totals
 
-**Totals:** 510 tools: 504 hand-built + 6 universal (`github_api_*`, `github_graphql_*`), plus guided settings for every
+**Totals:** 511 tools: 505 hand-built + 6 universal (`github_api_*`, `github_graphql_*`), plus guided settings for every
 dashboard-only owner setting. By profile (lowest profile that has the tool): read_only 161, everyday adds 85
 (everyday lists 246), full adds 118 (full lists 406; `github_tenant_remove` only on the owner's own direct connection, so everyone else sees 403). In compact mode (`docs/designs/BATCH-C.md`) an agent
 loads only about 25 tools up front (meta-tools, whoami, universal search, workflows) and reaches the rest through
@@ -942,7 +943,7 @@ loads only about 25 tools up front (meta-tools, whoami, universal search, workfl
 | --- | --- |
 | Server about itself | 27 |
 | Repositories | 22 |
-| Files, commits and git data | 26 |
+| Files, commits and git data | 27 |
 | Branches and tags | 9 |
 | Pull requests | 15 |
 | Reviews and review threads | 10 |
@@ -985,7 +986,7 @@ loads only about 25 tools up front (meta-tools, whoami, universal search, workfl
 | Code quality and GitHub help | 4 |
 | Robinson Playground commands | 5 |
 | CAP-6 gated families: merge queue, Copilot coding agent, feature check | 5 |
-| **Total** | **510** |
+| **Total** | **511** |
 
 <!-- #108: experimental RTC HTTPS reader bridges only server/meta read tools using existing guarded dispatch; RTC 1 certification is not claimed. -->
 

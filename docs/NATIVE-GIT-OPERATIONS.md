@@ -42,6 +42,66 @@ readiness from a configured URL. Future scale-out (several workers, device-hoste
    each repository is freshly authorized, so omitted entries never prove absence. `github_git_workspace_close` deletes only
    the local workspace (never the GitHub repository) and verifies absence.
 
+### One call for the common job (`github_repo_change`, NATIVE-ERGO-1)
+
+`github_repo_change` does open (or reuse), branch, write, delete, add, commit, push and, optionally, open the PR in one
+call — the owner's agent needed seven or eight calls for one file before. Call shape:
+
+```json
+{ "owner": "example-org", "repo": "hello", "branch": "fix/typo", "base": "main",
+  "files": [{ "path": "README.md", "content": "…" }, { "path": "logo.png", "base64": "…" }],
+  "deletePaths": ["old.txt"], "message": "Fix the typo",
+  "pr": { "title": "Fix the typo", "body": "…", "draft": false },
+  "expectedHead": "<sha you last saw, or \"\" for a new branch>", "allowMoved": false, "requestKey": "fix-typo-1" }
+```
+
+- **Workspace**: the one this intent already used (a retry), `workspace_id` if given, the newest open workspace of the
+  repository on this connection when it is clean and its copy of the branch is absent or equal to GitHub's, otherwise a new
+  Git-only clone (no runtime; `fresh: true` always clones). It reaches collaborator repositories exactly like the
+  workspace tools.
+- **Branch**: an existing branch is checked out at GitHub's head (fetch, then switch / fast-forward); a new one is made
+  from `origin/<base>` (base defaults to the default branch). `expectedHead` refuses before any change when GitHub's head
+  differs; a move discovered later refuses without committing. `allowMoved: true` builds on the moved head instead.
+- **Change**: `files` (≤ 100, each ≤ about 1 MB, text `content` or `base64`), `deletePaths` (≤ 100; already-absent paths are
+  counted, not refused), every changed path staged, one commit, one push with a lease on the head it read, read back from
+  GitHub. Identical content gives `stage: "no_changes"` (nothing committed or pushed).
+- **Larger or binary changes**: call with `upload: "archive"` (or `"git"`) — the branch is prepared and a one-time upload
+  command is returned; run it, then call again with `workspace_id`, `upload_id`, `message` (and `deletePaths`).
+- **PR**: `pr` opens it through `github_workflow_open_pr` (its own journal, guards and readback); an existing open PR for
+  the same head/base is reused. The result has `pr.number` and `pr.url`.
+- **Retries**: every native step has its own key derived from this intent's `requestKey`, so the same call again replays
+  finished steps from the worker's receipts and continues an interrupted change; it never commits or pushes twice.
+- **Result**: `stage` (`pushed`, `no_changes`, `awaiting_upload`, `cloning`, `stopped`), `commit`, `branch`, `base`,
+  `workspace_id`, `pr`, and a short `progress` list, also in the always-visible `progress` digest.
+- It uses only operations every deployed worker already runs, so it needs no worker update.
+
+### Ergonomics and definite outcomes (NATIVE-ERGO-1)
+
+- **Shortcuts**: `path`, `paths`, `branch`, `ref`, `message` and `all` are accepted at the top level of
+  `github_git_workspace_run` (and `path`/`paths`/`ref` on `_read`); `owner`/`repo` are accepted and checked against the
+  workspace. A wrong option names the valid ones.
+- **add** `options.all: true` or `paths: ["."]` stages everything. **remove_file** takes `paths` (each must exist; none is
+  removed otherwise). **fetch** takes `branch`/`branches`/`ref` (`origin/` or `refs/heads/` prefixes are fine), `remote:
+  "origin"`, `prune`, `tags`. **merge** takes `ref` or `branch`, `message`, `noFastForward`, `fastForwardOnly`. **pull**
+  takes `branch` or `ref`. **switch** `create: true` (+ `from`) makes and switches; a plain switch to a branch that exists
+  only as `origin/<name>` (for example made with `github_branch_create`, then fetched) tracks it.
+- **changed_files** (read) lists paths that differ from `options.ref` (default HEAD), committed or not, plus untracked files.
+- **next_generation** is in every run result (and in `details` of a refusal); `quiet: true` returns only outcome, branch,
+  head, counts and `next_generation`. A stale `expectedGeneration` says plainly that nothing changed and gives the value to
+  send.
+- **Definite outcomes**: a merge/rebase/cherry-pick/revert/stash pop that stops with conflicts is `applied` with
+  `outcome: "conflict"`, the files and the next step (fix, add, commit/continue, or abort). Git refusing (for example
+  `fatal: invalid reference`) and worker checks that refuse before any change are `rejected` with a plain next step (for a
+  missing branch: fetch it by name, or `create: true`). Only genuinely unknown results (transport loss, unverified push)
+  stay unconfirmed.
+- **Upload**: `begin` ignores `expectedGeneration`; `apply` ignores `mode`/`maxMegabytes` and accepts `deletePaths` and
+  `mirror: true` (archive mode: delete tracked files under `path` that the archive does not contain).
+- **Worker versions**: add-all, fetch-by-name, merge `branch` and pull `ref` work on every worker (the MCP sends an older
+  worker the same intent in its own shape). `remove_file` with several paths, `switch create`, merge
+  message/fast-forward flags, fetch prune/tags, `changed_files` and upload `deletePaths`/`mirror` need a worker that
+  reports `native_options: "ergonomic-v1"` / `upload_apply: "delete-v1"` in capabilities; until it is redeployed they are
+  refused plainly with a fallback, before anything is sent.
+
 **Idle lease.** Authorized workspace reads and Git requests renew the idle window; responses carry `last_activity_at`,
 `idle_timeout_ms` and `expires_at`. Listing, capabilities/health and close do not renew it, and neither do chat activity
 or other tools (PR/CI). Renewal never extends the service sign-in grant or revives a disposed workspace. Workspaces created
@@ -192,7 +252,8 @@ new intent. Error messages are bounded and redacted, including worker paths.
 | Signed request validity | MCP signs for 60 s; worker accepts ≤ 90 s | `src/native-git/client.js`, `protocol.js` |
 | MCP → worker | 50 s fetch timeout; 3 MiB response cap | `src/native-git/client.js` |
 | Worker request body | 2 MiB (413 above); 15 s request timeout | `workers/native-git/server.js` |
-| Direct upload | one push or archive per address, ≤ 10 min, ≤ 100 MiB (+1 MiB Git commands); 5 min per request; apply: ≤ 100 MiB per file, 256 MiB total, 10,000 entries, 5,000 commits | `workers/native-git/upload.js`, `archive.js` |
+| Direct upload | one push or archive per address, ≤ 10 min, `maxMegabytes` default 50, up to 100 MiB (+1 MiB Git commands); streamed to disk, never held in memory; 5 min per request; apply: ≤ 100 MiB per file, 256 MiB total, 10,000 entries, 5,000 commits. A 30 MB archive through the relay and worker is tested locally (`tests/unit/native-git-ergonomics.test.js`); the owner's 19.5 MB 502 predates the single-domain relay and matches the earlier worker-redeploy 502 (no lower limit exists in this code); 8.4 MB through the live relay passed on 2026-11-02. Larger live sizes are not yet verified | `workers/native-git/upload.js`, `archive.js` |
+| `github_repo_change` | ≤ 100 files (each ≤ about 1 MB), ≤ 100 deletions per call; larger changes go through `upload` | `src/tools/repo-change.js` |
 | Snapshot export | ≤ 100 MiB raw, ≤ 100,000 files, no symlinks/special files; encrypted import ≤ 150 MiB. Playground attachment uses the **lean** format when eligible (history fetched from GitHub; only local changes count) | `snapshot.js`, `lean.js` |
 
 ## API content-commit alternative
