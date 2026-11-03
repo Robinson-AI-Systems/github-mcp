@@ -210,7 +210,7 @@ print(" ".join(bad))')"
     "$ts" funnel --bg --yes --https=443 --set-path=/git "http://127.0.0.1:$git_port/git" >/dev/null
     "$ts" funnel --bg --yes --https=443 --set-path=/health "http://127.0.0.1:$git_port/health" >/dev/null
     ok "443: /git and /health -> 127.0.0.1:$git_port (direct git); everything else -> 127.0.0.1:$api_port (worker API)"
-    "$ts" funnel status 2>/dev/null | tr -d '\r' | sed 's/^/     /' || true
+    { "$ts" funnel status 2>/dev/null | tr -d '\r'; echo; } | sed 's/^/     /' || true
     if curl -fsS --max-time 15 "$origin/health" >/dev/null 2>&1; then ok "public check: $origin/health answers"
     else note "$origin/health does not answer from here yet (new Funnel names can take a few minutes). Check again: curl -fsS $origin/health"; fi
   fi

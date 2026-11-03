@@ -105,3 +105,11 @@ control plane signs a purpose-separated (`robinson-native-download/v1`), ten-min
 grants only a read-only `git clone`/`git fetch` (advertised refs only) or one `.tar.gz` download (a ref, or the current
 worktree without `.git`). No GitHub credential; the URL is returned once and not stored in the change log. Outgoing
 bytes are the person's own workspace content, so they are not secret-scanned. Design: [GIT-DOWNLOAD-1](pr-cards/GIT-DOWNLOAD-1.md).
+
+2026-11-03 04:27 MST (PC-WORKER-1) — Chris: "Use my PC … treat the PC as the primary route, not the fallback. Build for
+the PC." and "my own use of this PC always wins instantly, so anything running on it must be pausable/killable and
+resumable, never defended." Dokploy's Traefik cuts uploads at 60 s and its admin will not raise it. So the native Git
+worker runs on the PC (WSL2 Docker, low priority, localhost ports, Tailscale Funnel on the PC's own node, no router
+change) as the primary worker; Dokploy stays the previous worker. The owner pause is a file on the worker volume that
+refuses new work with `no_operation_started`; admitted work finishes; kill is always allowed. Runbook:
+[PC-WORKER](PC-WORKER.md).
