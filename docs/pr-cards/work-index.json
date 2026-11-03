@@ -3137,6 +3137,27 @@
       "pr": [
         555
       ]
+    },
+    {
+      "id": "SRV-STATUS-1",
+      "title": "github_server_status: release, deploy time, recent live changes, worker versions and health in one compact read",
+      "batch": "FIN",
+      "design": "docs/pr-cards/SRV-STATUS-1.md",
+      "dependencies": [
+        "VER-1"
+      ],
+      "card": "docs/pr-cards/SRV-STATUS-1.md",
+      "status": "MERGED",
+      "migration": "none",
+      "budget": 600,
+      "units": [
+        "SRV-STATUS-1"
+      ],
+      "readiness": "READY",
+      "ownerInputs": [],
+      "pr": [
+        558
+      ]
     }
   ],
   "gatewayBoundary": {

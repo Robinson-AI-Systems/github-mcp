@@ -20,7 +20,7 @@ import { join } from 'node:path';
 import { nativeGitServer } from '../../workers/native-git/server.js';
 import { handleGitRemote } from '../../src/git-remote/edge.js';
 import { exchange, broker, directAuthorize } from '../../src/git-remote/api.js';
-import { directConfig, directIdentity } from '../../workers/native-git/direct.js';
+import { directIdentity } from '../../workers/native-git/direct.js';
 import { indexKey } from '../../src/git-remote/keys.js';
 
 export const WORKER_KEY = 'FAKE-local-git-remote-worker-key-0123456789';
@@ -82,6 +82,10 @@ export async function startFakeGithubGit({ owner = 'example-org', repo = 'hello'
  * The whole git remote around a write-contract world `w` (fake DB with a live connector login,
  * fake GitHub API for repository checks and credentials).
  */
+/**
+ * `direct`: false (no direct host), true (the worker environment names it, GIT-DIRECT-1) or 'configure' (only this
+ * service names it; the worker is configured by the signed `direct_configure` action, GIT-DIRECT-2).
+ */
 export async function startGitRemote(w, { gates = [], direct = false, githubPushLimit = null, limits = undefined, freeDisk = undefined, limiter = undefined } = {}) {
  const github = await startFakeGithubGit({ pushLimit: githubPushLimit });
  const dir = await mkdtemp(join(tmpdir(), 'git-remote-world-'));
@@ -106,11 +110,18 @@ export async function startGitRemote(w, { gates = [], direct = false, githubPush
   res.statusCode = 404; res.end('no route');
  });
  const functionsOrigin = await listen(functions);
- const directSettings = direct ? { config: directConfig({ GIT_DIRECT_ORIGIN: DIRECT, GIT_DIRECT_CONTROL_ORIGIN: functionsOrigin, GIT_DIRECT_PORT: '1' }, { local: true }), identity: await directIdentity(root) } : null;
+ // The direct port is any free local port (GIT_DIRECT_PORT is only a placeholder here).
+ const listenDirect = server => new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', () => { server.off('error', reject); resolve(); }); });
+ const directEnv = direct === true ? { GIT_DIRECT_ORIGIN: DIRECT, GIT_DIRECT_CONTROL_ORIGIN: functionsOrigin, GIT_DIRECT_PORT: '1' } : { GIT_DIRECT_PORT: '1' };
+ const directSettings = direct ? { identity: await directIdentity(root), env: directEnv, stored: null, listen: listenDirect } : null;
+ // A worker configured by this service asks it at PUBLIC (served here by the functions server).
+ const directFetch = (url, init) => String(url).startsWith(PUBLIC + '/') ? fetch(functionsOrigin + String(url).slice(PUBLIC.length), init) : fetch(url, init);
  const worker = nativeGitServer({ root, key: WORKER_KEY, now, allowLocalFixtures: true, resources: permissive, direct: directSettings,
-  remote: { github: github.url, broker: () => `${functionsOrigin}/api/git-remote?op=broker`, limits, freeDisk, limiter } });
+  remote: { github: github.url, broker: () => `${functionsOrigin}/api/git-remote?op=broker`, limits, freeDisk, limiter, ...(direct === 'configure' ? { directFetch } : {}) } });
  const workerOrigin = await listen(worker);
- const directOrigin = worker.direct ? await listen(worker.direct) : null;
+ // Boot: an environment-configured host listens at once; a control-plane-configured one when configured.
+ if (worker.directHost) await worker.directHost.start();
+ const directPortNow = () => worker.direct?.listening ? worker.direct.address().port : null;
  const seen = [];
  // A certificate for the public test hostname; the agent's git and curl trust it and reach it through a CONNECT proxy,
  // so the setup command runs exactly as issued (https only, the real hostname).
@@ -138,8 +149,9 @@ export async function startGitRemote(w, { gates = [], direct = false, githubPush
  await new Promise(resolve => edge.listen(0, '127.0.0.1', resolve));
  const edgePort = edge.address().port;
  // The direct host's TLS terminator (Traefik's role in production): TLS in, plain bytes to the worker's direct port.
- const terminator = directOrigin ? createTlsSocketServer({ key: readFileSync(keyFile), cert: readFileSync(cert) }, socket => {
-  const upstream = connect(Number(new URL(directOrigin).port), '127.0.0.1'); socket.pipe(upstream); upstream.pipe(socket);
+ const terminator = worker.direct ? createTlsSocketServer({ key: readFileSync(keyFile), cert: readFileSync(cert) }, socket => {
+  const port = directPortNow(); if (!port) { socket.destroy(); return; }
+  const upstream = connect(port, '127.0.0.1'); socket.pipe(upstream); upstream.pipe(socket);
   upstream.on('error', () => socket.destroy()); socket.on('error', () => upstream.destroy());
  }) : null;
  if (terminator) await new Promise(resolve => terminator.listen(0, '127.0.0.1', resolve));
@@ -155,6 +167,6 @@ export async function startGitRemote(w, { gates = [], direct = false, githubPush
  const home = join(dir, 'home'); await mkdir(home);
  const agentEnv = { ...GIT_ENV, HOME: home, GIT_CONFIG_GLOBAL: join(home, '.gitconfig'), GIT_CONFIG_NOSYSTEM: '1', https_proxy: proxyOrigin, HTTPS_PROXY: proxyOrigin, NO_PROXY: '', no_proxy: '',
   GIT_SSL_CAINFO: cert, CURL_CA_BUNDLE: cert };
- return { github, root, env, now, openScope, functionsOrigin, workerOrigin, directOrigin, worker, seen, api, home, agentEnv, dir, cert,
-  close: async () => { proxy.close(); terminator?.close(); for (const s of [edge, worker, ...(worker.direct ? [worker.direct] : []), functions]) { s.closeAllConnections(); await new Promise(r => s.close(r)); } await github.close(); await rm(dir, { recursive: true, force: true }); } };
+ return { github, root, env, now, openScope, functionsOrigin, workerOrigin, get directOrigin() { const port = directPortNow(); return port ? `http://127.0.0.1:${port}` : null; }, worker, seen, api, home, agentEnv, dir, cert,
+  close: async () => { proxy.close(); terminator?.close(); for (const s of [edge, worker, ...(worker.direct?.listening ? [worker.direct] : []), functions]) { s.closeAllConnections(); await new Promise(r => s.close(r)); } await github.close(); await rm(dir, { recursive: true, force: true }); } };
 }

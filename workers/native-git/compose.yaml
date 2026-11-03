@@ -3,6 +3,9 @@ services:
     build:
       context: ../..
       dockerfile: workers/native-git/Dockerfile
+      # SRV-STATUS-1: set SOURCE_COMMIT to the live commit being deployed so the worker reports it.
+      args:
+        SOURCE_COMMIT: ${SOURCE_COMMIT:-}
     restart: unless-stopped
     init: true
     stop_grace_period: 75s

@@ -18,6 +18,9 @@ COPY src/native-git/commands.js src/native-git/protocol.js ./src/native-git/
 COPY src/git-remote/wire.js ./src/git-remote/
 COPY workers/native-git/ ./workers/native-git/
 USER node
+# SRV-STATUS-1: the commit this image is built from, reported in signed capabilities (empty = not reported).
+ARG SOURCE_COMMIT=
+ENV NATIVE_GIT_BUILD_COMMIT=${SOURCE_COMMIT}
 ENV NODE_ENV=production PORT=3000 NATIVE_GIT_STORAGE_ROOT=/data
 # 3001: the optional direct git host (GIT_DIRECT_ORIGIN; see docs/NATIVE-GIT-OPERATIONS.md).
 EXPOSE 3000 3001
