@@ -43,3 +43,16 @@ test('packaged image includes the direct download route', async () => {
  const { downloadHttp, beginDownload } = await import('./download.js'); const { workspaceEntry } = await import('./safe-files.js');
  assert.equal(typeof downloadHttp, 'function'); assert.equal(typeof beginDownload, 'function'); assert.equal(typeof workspaceEntry, 'function');
 });
+
+test('packaged image includes the direct git host and makes its signing key as the unprivileged user', async () => {
+ const dir = await mkdtemp(join(tmpdir(), 'native-direct-image-'));
+ try {
+  const { gitDirectServer, directIdentity, directConfig } = await import('./direct.js');
+  const identity = await directIdentity(dir); const again = await directIdentity(dir);
+  assert.match(identity.publicKey, /^ed25519:/); assert.equal(again.publicKey, identity.publicKey);
+  assert.equal(directConfig({}), null);
+  const config = directConfig({ GIT_DIRECT_ORIGIN: 'https://git.example.test', GIT_DIRECT_CONTROL_ORIGIN: 'https://mcp.example.test' });
+  assert.equal(config.port, 3001);
+  assert.equal(typeof gitDirectServer, 'function');
+ } finally { await rm(dir, { recursive: true, force: true }); }
+});

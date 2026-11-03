@@ -207,7 +207,7 @@ export async function serveRemote(req, res, ctx, { route, search, claimToken, di
   const hookEnv = { ...env, ROBINSON_REMOTE_CLAIM: claimToken, ROBINSON_REMOTE_BROKER: brokerUrl, ROBINSON_REMOTE_GITHUB: ctx.githubRemote(claim.owner, claim.repo), ROBINSON_REMOTE_ROOT: ctx.root,
    ROBINSON_REMOTE_SLUG: `${claim.owner}/${claim.repo}`, ROBINSON_REMOTE_FILE_LIMIT: String(limits.fileBytes), ROBINSON_REMOTE_GITHUB_LIMIT: String(limits.githubPushBytes),
    ...(direct ? { ROBINSON_REMOTE_DIRECT: '1' } : {}), ...(ctx.local ? { ROBINSON_REMOTE_LOCAL: '1', ...(limits.renewMs !== undefined ? { ROBINSON_REMOTE_RENEW_MS: String(limits.renewMs) } : {}) } : {}) };
-  if (direct) return directReceive(req, res, { ctx, m, hooks, hookEnv, limits, pushBytes: Math.min(direct.pushBytes, limits.maxPushBytes ?? Infinity), decoded: req.headers['content-encoding'] === 'gzip' ? req.pipe(createGunzip()) : req });
+  if (direct) return directReceive(req, res, { ctx, m, hooks, hookEnv, limits, pushBytes: direct.pushBytes, decoded: req.headers['content-encoding'] === 'gzip' ? req.pipe(createGunzip()) : req });
   const child = spawn('git', [...gitPrefix(), '-c', `core.hooksPath=${hooks}`, 'receive-pack', '--stateless-rpc', m.repo], { cwd: m.dir, env: hookEnv, stdio: ['pipe', 'pipe', 'ignore'], detached: true });
   const kill = () => { try { process.kill(-child.pid, 'SIGKILL'); } catch { /* ended */ } };
   const timer = setTimeout(kill, REMOTE_LIMITS.serveMs); timer.unref();

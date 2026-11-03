@@ -4,6 +4,7 @@ on:
     paths:
       - 'workers/native-git/**'
       - 'src/native-git/**'
+      - 'src/git-remote/wire.js'
       - 'src/github/content-protection.js'
       - 'src/github/open-secret-rules.js'
       - 'src/github/secret-literals.js'
