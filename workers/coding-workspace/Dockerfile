@@ -16,7 +16,7 @@ RUN npm ci --ignore-scripts \
 COPY src/github/content-protection.js src/github/open-secret-rules.js src/github/secret-literals.js src/github/custom-secret-rules.js src/github/scanner-policy.js src/github/file-protection.js ./src/github/
 COPY vendor/gitleaks/ ./vendor/gitleaks/
 COPY workers/native-git/ ./workers/native-git/
-COPY src/native-git/commands.js src/native-git/protocol.js ./src/native-git/
+COPY src/native-git/commands.js src/native-git/protocol.js src/native-git/pool-config.js ./src/native-git/
 COPY src/git-remote/wire.js ./src/git-remote/
 COPY workers/coding-workspace/runtime.js workers/coding-workspace/server.js workers/coding-workspace/capacity.js workers/coding-workspace/preview.js workers/coding-workspace/initialize.js workers/coding-workspace/authority.js workers/coding-workspace/browser-preview.js workers/coding-workspace/manager.js workers/coding-workspace/ingress.js workers/coding-workspace/egress.js workers/coding-workspace/test-database ./workers/coding-workspace/
 # Only supervisor is root. Every command runs UID/GID1000 with a clean environment.

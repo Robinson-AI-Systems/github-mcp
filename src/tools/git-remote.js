@@ -96,7 +96,7 @@ async function readyCheck(c, a) {
  // WORKER-POOL-1: the key's mirror lives on the first available pool host that serves the git remote (the primary
  // unless it is paused, busy, full or offline); the key stays on that host for its whole life (recorded in its index).
  let host;
- try { host = await placeWorkspace(c, { needs: cap => cap?.git_remote === 'v1' }); }
+ try { host = await placeWorkspace(c, { needs: cap => cap?.git_remote === 'v1', workspace: false }); }
  catch (error) {
   if (error?.safeCode === 'native_worker_update_required') throw safe('The native Git worker must be updated before the git remote works. Use github_repo_download and github_repo_change meanwhile.', 'native_worker_update_required');
   throw error;

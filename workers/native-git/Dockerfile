@@ -13,7 +13,7 @@ WORKDIR /app
 COPY package.json ./package.json
 COPY src/github/content-protection.js src/github/open-secret-rules.js src/github/secret-literals.js src/github/custom-secret-rules.js src/github/scanner-policy.js src/github/file-protection.js ./src/github/
 COPY vendor/gitleaks/ ./vendor/gitleaks/
-COPY src/native-git/commands.js src/native-git/protocol.js ./src/native-git/
+COPY src/native-git/commands.js src/native-git/protocol.js src/native-git/pool-config.js ./src/native-git/
 # GIT-DIRECT-1: the git remote's shared wire format (no database, no credentials).
 COPY src/git-remote/wire.js ./src/git-remote/
 COPY workers/native-git/ ./workers/native-git/

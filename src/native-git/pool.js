@@ -39,7 +39,7 @@ export async function poolHosts(ctx) {
  * What one host's capabilities answer means for new work:
  * available | paused | busy | full | update_required | unavailable | disabled.
  */
-export function judgeHost(host, cap, { download = false } = {}) {
+export function judgeHost(host, cap, { download = false, workspace = true } = {}) {
  const active = Number.isSafeInteger(cap?.active_workspaces) && cap.active_workspaces >= 0 ? cap.active_workspaces : null;
  const limits = [host.maxWorkspaces, cap?.max_workspaces].filter(n => Number.isSafeInteger(n) && n > 0);
  const max = limits.length ? Math.min(...limits) : null;
@@ -47,8 +47,9 @@ export function judgeHost(host, cap, { download = false } = {}) {
  if (!host.enabled) return { ...base, state: 'disabled' };
  if (!cap || typeof cap !== 'object' || cap.ready !== true) return { ...base, state: 'unavailable' };
  if (cap.owner_paused === true || cap.admission?.reason === 'owner_paused') return { ...base, state: 'paused' };
- if (cap.capacity_mode !== 'resource-aware' || (download && cap.direct_download !== 'one-time-v1')) return { ...base, state: 'update_required' };
- if (cap.admission?.allowed !== true) return { ...base, state: 'busy', reason: reasonText(cap.admission?.reason) ?? 'resource_observation_unavailable' };
+ if ((workspace && cap.capacity_mode !== 'resource-aware') || (download && cap.direct_download !== 'one-time-v1')) return { ...base, state: 'update_required' };
+ // A workspace needs resource-based admission; the git remote (workspace: false) only needs no explicit refusal.
+ if (workspace ? cap.admission?.allowed !== true : cap.admission?.allowed === false) return { ...base, state: 'busy', reason: reasonText(cap.admission?.reason) ?? 'resource_observation_unavailable' };
  if (max !== null && active !== null && active >= max) return { ...base, state: 'full' };
  return { ...base, state: 'available' };
 }
@@ -107,10 +108,11 @@ export function poolRefusal(tried, { download = false } = {}) {
 
 /**
  * Chooses the host for a new workspace (see the top of this file). `exclude` names host ids that already refused
- * this open definitely (no operation started); `needs(capabilities)` adds a feature the host must report.
+ * this open definitely (no operation started); `needs(capabilities)` adds a feature the host must report;
+ * `workspace: false` (the git remote) does not require resource-based admission, only no explicit refusal.
  * Returns the host (with the capabilities it answered); throws the plain refusal when none can take it.
  */
-export async function placeWorkspace(ctx, { download = false, exclude = [], call = callNativeWorker, needs = null } = {}) {
+export async function placeWorkspace(ctx, { download = false, exclude = [], call = callNativeWorker, needs = null, workspace = true } = {}) {
  const hosts = await poolHosts(ctx);
  if (!hosts.length) throw Object.assign(new TypeError('Native Git worker is not configured. Set NATIVE_GIT_WORKER_URL (docs/NATIVE-GIT-OPERATIONS.md). Existing GitHub API tools remain available.'), { safeMessage: true, safeCode: 'native_worker_unconfigured', noOperationStarted: true });
  const tried = [];
@@ -118,7 +120,7 @@ export async function placeWorkspace(ctx, { download = false, exclude = [], call
   if (exclude.includes(host.id)) { tried.push({ name: host.name, state: 'busy' }); continue; }
   if (!host.enabled) { tried.push({ name: host.name, state: 'disabled' }); continue; }
   const cap = await hostCapabilities(ctx, host, { call });
-  let judged = judgeHost(host, cap, { download });
+  let judged = judgeHost(host, cap, { download, workspace });
   if (judged.state === 'available' && needs && !needs(cap)) judged = { ...judged, state: 'update_required' };
   if (judged.state === 'available') return Object.assign(Object.create(null), host, { capabilities: cap });
   tried.push({ name: host.name, state: cap?.draining ? 'draining' : judged.state, ...(judged.reason ? { reason: judged.reason } : {}) });

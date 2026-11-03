@@ -66,6 +66,11 @@ describe('pool configuration (protected environment only)', () => {
   expect(judgeHost({ ...host, maxWorkspaces: 2 }, cap).state).toBe('full');
   expect(judgeHost(host, null).state).toBe('unavailable');
   expect(judgeHost({ ...host, enabled: false }, cap).state).toBe('disabled');
+  // The git remote needs no resource-based admission, only no explicit refusal or pause.
+  expect(judgeHost(host, { ready: true, git_remote: 'v1' }, { workspace: false }).state).toBe('available');
+  expect(judgeHost(host, { ready: true, git_remote: 'v1' }).state).toBe('update_required');
+  expect(judgeHost(host, { ready: true, admission: { allowed: false, reason: 'memory_pressure' } }, { workspace: false }).state).toBe('busy');
+  expect(judgeHost(host, { ready: true, owner_paused: true }, { workspace: false }).state).toBe('paused');
  });
 });
 
