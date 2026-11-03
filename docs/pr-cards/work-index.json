@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated": "2026-10-31",
+  "updated": "2026-11-02",
   "order": [
     "A",
     "B",
@@ -3081,6 +3081,25 @@
       ]
     },
     {
+      "id": "BRAND-1",
+      "title": "GitHub Unleashed product mark on the home and connection page headers",
+      "batch": "FIN",
+      "design": "docs/pr-cards/BRAND-1.md",
+      "dependencies": [],
+      "card": "docs/pr-cards/BRAND-1.md",
+      "status": "MERGED",
+      "migration": "none",
+      "budget": 100,
+      "units": [
+        "BRAND-1"
+      ],
+      "readiness": "READY",
+      "ownerInputs": [],
+      "pr": [
+        554
+      ]
+    },
+    {
       "id": "PUB-10",
       "title": "CIMD card clients: Claude and ChatGPT connect with their own ID cards",
       "batch": "PUB",
@@ -3097,7 +3116,9 @@
       ],
       "readiness": "READY",
       "ownerInputs": [],
-      "pr": []
+      "pr": [
+        555
+      ]
     }
   ],
   "gatewayBoundary": {

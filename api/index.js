@@ -1,6 +1,6 @@
 import { registry } from '../src/tools/index.js';
 import { profileCounts } from '../src/core/registry.js';
-import { iconBytes } from '../src/brand/brand.js';
+import { iconBytes, productMarkBytes } from '../src/brand/brand.js';
 import { HOME_CSP, renderHome } from '../src/brand/home-page.js';
 import { publicOrigin } from '../src/core/http.js';
 
@@ -22,8 +22,14 @@ export function publicInfo(buildSha = process.env.VERCEL_GIT_COMMIT_SHA) {
 const homeOrigin = () => { try { return publicOrigin(process.env); } catch { return 'https://github.robinsonaisystems.com'; } };
 
 export default function handler(req, res) {
-  // The product icon (/brand/icon-256.png, /brand/icon-64.png) is served here too: one function, no static folder.
+  // The brand images (/brand/icon-256.png, /brand/icon-64.png, /brand/unleashed-github.png) are served here too: one function, no static folder.
   const icon = String(req.query?.brand_icon || '');
+  if (icon === 'unleashed') {
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    res.setHeader('Content-Type', 'image/png');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    return res.status(200).send(productMarkBytes());
+  }
   if (icon === '256' || icon === '64') {
     res.setHeader('Cache-Control', 'public, max-age=86400');
     res.setHeader('Content-Type', 'image/png');

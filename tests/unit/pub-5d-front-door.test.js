@@ -42,6 +42,7 @@ describe('the home page', () => {
     const html = renderHome(ORIGIN);
     expect(html).toContain(`<code class="addr" id="address">${ORIGIN}/api/mcp</code>`);
     expect(html).toContain('Not affiliated with or endorsed by GitHub.');
+    expect(html).toContain('/brand/unleashed-github.png');
     for (const word of ['<h2>Claude (web, desktop and phone app)</h2>', '<h2>ChatGPT</h2>', '<h2>Claude Code</h2>', '<h2>Cursor</h2>', '<h2>VS Code</h2>']) expect(html).toContain(word);
     expect(html).toContain(`claude mcp add --transport http github-robinson ${ORIGIN}/api/mcp`);
     expect(html).not.toMatch(/<script/i);

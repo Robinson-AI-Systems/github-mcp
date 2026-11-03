@@ -56,6 +56,14 @@ describe('public informational root route', () => {
     expect(JSON.stringify(config.headers ?? [])).not.toMatch(/includeSubDomains/);
   });
 
+  it('serves the GitHub Unleashed product mark at /brand/unleashed-github.png', async () => {
+    expect(rewrites).toContainEqual({source: '/brand/unleashed-github.png', destination: '/api/index?brand_icon=unleashed'});
+    const result = await call(handler, request('GET', { brand_icon: 'unleashed' }));
+    expect(result.statusCode).toBe(200);
+    expect(result.headers['Content-Type']).toBe('image/png');
+    expect(result.body.subarray(0, 4).toString('hex')).toBe('89504e47');
+  });
+
   it('serves /favicon.ico from the existing 64px brand icon route', () => {
     expect(rewrites).toContainEqual({source: '/favicon.ico', destination: '/api/index?brand_icon=64'});
   });

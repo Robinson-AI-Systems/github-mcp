@@ -1,7 +1,7 @@
 // Robinson AI Systems look for the pages this server shows people (tokens copied from robinsonaisystems.com/assets/brand.css:
 // charcoal surfaces, emerald-to-teal gradient, Mist White text). System fonts only, so no outside font request is made.
 import { createRequire } from 'node:module';
-import { ICON_256_PNG_BASE64, ICON_64_PNG_BASE64 } from './assets.js';
+import { ICON_256_PNG_BASE64, ICON_64_PNG_BASE64, UNLEASHED_GITHUB_256_PNG_BASE64 } from './assets.js';
 
 // One version number for the package, the MCP server info and server.json.
 export const VERSION = createRequire(import.meta.url)('../../package.json').version;
@@ -12,6 +12,9 @@ export const BRAND = Object.freeze({
   emerald: '#00B67A', teal: '#00E3C2', charcoal: '#0C0C0C', graphite: '#1E1E1E', mist: '#F8FAF8', grey: '#9FA5A3'
 });
 export const ICON_PATH = '/brand/icon-256.png';
+/** The product mark for page headers: GitHub Unleashed (Arctic shard), per docs/UNLEASHED-BRAND-SPEC.md. The company R above stays the favicon and the MCP server icon. */
+export const PRODUCT_MARK_PATH = '/brand/unleashed-github.png';
+export const productMarkBytes = () => Buffer.from(UNLEASHED_GITHUB_256_PNG_BASE64, 'base64');
 export const iconBytes = (size) => Buffer.from(size === 64 ? ICON_64_PNG_BASE64 : ICON_256_PNG_BASE64, 'base64');
 
 /** Page CSS: dark surface, gradient primary button, emerald focus ring, readable on a phone. */
@@ -26,7 +29,7 @@ input:focus,select:focus,button:focus-visible{outline:2px solid var(--teal);outl
 button{font:600 16px Inter,-apple-system,'Segoe UI',sans-serif;color:#fff;background:var(--grad);border:0;border-radius:50px;padding:13px 20px;cursor:pointer}button:hover{box-shadow:0 0 20px rgba(0,182,122,.35)}
 footer{margin-top:28px;color:var(--muted);font-size:14px}a{color:var(--teal)}`;
 
-export const brandHeader = () => `<header class="brand"><img src="${ICON_PATH}" alt="" width="44" height="44"><div><b>${BRAND.product}</b><small>${BRAND.tagline}</small></div></header>`;
+export const brandHeader = () => `<header class="brand"><img src="${PRODUCT_MARK_PATH}" alt="" width="44" height="44"><div><b>${BRAND.product}</b><small>${BRAND.tagline}</small></div></header>`;
 export const brandFooter = () => `<footer>Operated by <a href="${BRAND.website}" rel="noopener noreferrer">${BRAND.name}</a>. Not affiliated with or endorsed by GitHub. We never ask for your GitHub password here. <a href="/privacy">Privacy</a> · <a href="/terms">Terms</a> · <a href="/security">Security</a> · <a href="/support">Support</a></footer>`;
 /** MCP server icons: shown by apps next to the connection. */
 export const serverIcons = (origin) => [
