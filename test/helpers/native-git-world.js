@@ -27,7 +27,7 @@ export async function prepareNativeWorld(w, { existing = false, pool = null, pri
   w.nativeFixture = { root, binding, workerId: opened.workspace_id, key: KEY, seed };
   await w.db.createJob({ id: 'job_0123456789abcdef', connection: nativeConnection(w.ctx), owner: 'example-org', repo: 'hello', kind: 'native-git-workspace', ttlMinutes:240, providerRef: JSON.stringify({ authority: binding.authority, worker: opened.workspace_id }) });
  }
- const baseResources=createResourceMonitor({root,pauseFile:join(root,'.owner-pause')});
+ const baseResources=createResourceMonitor(pool?{root,pauseFile:join(root,'.owner-pause')}:{root});
  const hostControl=(hostRoot,monitor)=>{const control={root:hostRoot,requests:[],pressure:null,
   pause:async()=>{await mkdir(hostRoot,{recursive:true});await writeFile(join(hostRoot,'.owner-pause'),'');},
   resume:async()=>{await rm(join(hostRoot,'.owner-pause'),{force:true});}};
