@@ -9,6 +9,7 @@ vi.mock('../../src/native-git/client.js', async (importOriginal) => ({ ...await 
   authorizeNativeRepo: async (_ctx, owner, repo) => ({ full_name: `${owner}/${repo}`, default_branch: 'main', permissions: { pull: true, push: true } }) }));
 import { randomBytes } from 'node:crypto';
 import { PROFILES, ORIGIN, appFinishes, appStartsSignIn, browserFor, mcpTool, startWorld } from './setup.js';
+import { handleGitRemote } from '../../src/git-remote/edge.js';
 
 let world, people = 0;
 beforeAll(async () => { world = await startWorld(); });
@@ -390,11 +391,24 @@ describe('My connection', () => {
     try { issued = (await mcpTool(world, tokens.access_token, 'github_git_remote_setup', { owner: p.login, repo: 'notes', access: 'write' })).content; }
     finally { globalThis.fetch = realFetch; for (const [k, v] of [['NATIVE_GIT_WORKER_URL', saved.url], ['NATIVE_GIT_WORKER_KEY', saved.key]]) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } }
     expect(issued, JSON.stringify(issued)).toMatchObject({ status: 'applied', result: { owner: p.login, repo: 'notes', access: 'write', state: 'awaiting_setup' } });
+    // The person's own (tenant) database end to end: the code is exchanged once, in git credential format ...
+    const code = /code=(rgc_[a-f0-9]{32}_[A-Za-z0-9_-]{43})/.exec(issued.result.command)[1];
+    const exchange = () => world.call({ method: 'POST', path: '/git-remote/exchange', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: 'code=' + code });
+    const swapped = await exchange();
+    expect(swapped.status).toBe(200);
+    const key = new RegExp(`^protocol=https\nhost=[^\n]+\npath=git/${p.login}/notes\.git\nusername=x-robinson-git\npassword=(rgk_[a-f0-9]{32}_[A-Za-z0-9_-]{43})\n\n$`).exec(swapped.text)?.[1];
+    expect(key).toBeTruthy();
+    expect((await exchange()).status).toBe(410);
+    // ... and Routing Middleware finds the key in that tenant database and forwards (to the configured worker only).
+    const ask = async () => { process.env.NATIVE_GIT_WORKER_URL = 'https://native-worker.example.test/';
+      try { return await handleGitRemote(new Request(ORIGIN + `/git/${p.login}/notes.git/info/refs?service=git-receive-pack`, { headers: { authorization: 'Basic ' + Buffer.from('x-robinson-git:' + key).toString('base64') } })); }
+      finally { if (saved.url === undefined) delete process.env.NATIVE_GIT_WORKER_URL; else process.env.NATIVE_GIT_WORKER_URL = saved.url; } };
+    expect((await ask()).headers.get('x-middleware-rewrite')).toBe('https://native-worker.example.test/v1/remote/info/refs?service=git-receive-pack');
     await b.page.goto(ORIGIN + '/connection');
     await b.page.click('#manage-sign-in');
     await b.page.waitForSelector('#git-keys');
     const listed = await b.page.textContent('#git-keys');
-    expect(listed).toContain(p.login + '/notes'); expect(listed).toContain('read and push'); expect(listed).toContain('waiting for setup');
+    expect(listed).toContain(p.login + '/notes'); expect(listed).toContain('read and push'); expect(listed).toContain('in use'); expect(listed).toContain('last used');
     expect(listed).not.toMatch(/rg[kc]_/);
     await fitsScreen(b.page);
     await b.page.click('#revoke-git-key-' + issued.result.key_id);
@@ -402,10 +416,10 @@ describe('My connection', () => {
     expect(await b.page.textContent('.notice')).toContain('Cancelled the git key for ' + p.login + '/notes');
     expect(await b.page.textContent('main')).toContain('No git keys right now.');
     await fitsScreen(b.page);
-    // The one-time setup code no longer works: the key was cancelled before it was ever set up.
-    const code = /code=(rgc_[a-f0-9]{32}_[A-Za-z0-9_-]{43})/.exec(issued.result.command)[1];
-    const answer = await world.call({ method: 'POST', path: '/git-remote/exchange', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: 'code=' + code });
-    expect(answer.status).toBe(410);
+    // The next git request with the cancelled key is refused before anything is forwarded.
+    const after = await ask();
+    expect(after.status).toBe(401); expect(after.headers.get('x-middleware-rewrite')).toBeNull();
+    expect(await after.text()).toMatch(/was cancelled \(My connection page\)/);
     await b.context.close();
   });
 

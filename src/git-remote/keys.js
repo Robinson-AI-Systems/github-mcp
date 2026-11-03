@@ -119,7 +119,9 @@ export async function openKeyScope(id, { env = process.env, withCredentials = fa
   return { db, env, scope, credentials };
  }
  if (scope.legacy !== true) return null;
+ // The owner's own database is the root database: Routing Middleware needs nothing more (no schema pass, no credentials).
+ if (!withCredentials) return { db: root, env, scope };
  const { getSecretsRuntime } = await import('../runtime.js');
  const runtime = await getSecretsRuntime({ env });
- return { db: runtime.db, env, scope, ...(withCredentials ? { credentials: runtime.credentials } : {}) };
+ return { db: runtime.db, env, scope, credentials: runtime.credentials };
 }
