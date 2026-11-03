@@ -8,7 +8,7 @@ import { serverRelease } from '../brand/brand.js';
 import { currentZone, formatLocal } from '../core/time-zone.js';
 import { projectFields } from '../core/result-rules.js';
 import { callNativeWorker } from '../native-git/client.js';
-import { configuredHosts } from '../native-git/pool-config.js';
+import { configuredHosts, hostAllowed } from '../native-git/pool-config.js';
 import { poolStatus } from '../native-git/pool.js';
 import { WORKER_PROTOCOL } from '../native-git/protocol.js';
 import { NATIVE_OPTIONS_VERSION } from '../native-git/commands.js';
@@ -149,10 +149,12 @@ async function checkPool(ctx, env, budget) {
   if (hosts.length < 2 && !hosts.invalid) return null;
   const r = await bounded(poolStatus(ctx), budget);
   if (r.timeout || r.error || !Array.isArray(r.value)) return { status: 'degraded', reason: 'The worker pool could not be checked just now.' };
-  const list = r.value.map((h) => ({ name: h.name, state: h.state, ...(h.reason ? { reason: h.reason } : {}),
+  // WORKER-POOL-2: each host's audience (owner = the service owner's own connections only, shared = anyone). A
+  // non-owner sees an owner-only host by name and audience only.
+  const list = r.value.map((h) => ({ name: h.name, audience: h.audience, state: h.state, ...(h.reason ? { reason: h.reason } : {}),
     ...(h.active_workspaces !== null ? { active: h.active_workspaces } : {}), ...(h.max_workspaces !== null ? { max: h.max_workspaces } : {}) }));
   const open = list.filter((h) => h.state === 'available').length;
-  if (!open) return { status: 'down', hosts: list, reason: 'No workspace host is taking new work (all paused, busy, full, disabled or offline); new workspaces are refused with "try again".' };
+  if (!open) return { status: 'down', hosts: list, reason: `No workspace host ${r.value.owner ? '' : 'open to this connection '}is taking new work (all paused, busy, full, disabled or offline); new workspaces are refused with "try again".` };
   if (r.value.invalid) return { status: 'degraded', hosts: list, reason: 'Part of the NATIVE_GIT_WORKER_POOL setting is not valid and was ignored.' };
   return { status: 'ok', available: open, hosts: list };
 }
@@ -166,6 +168,9 @@ const directOrigin = (env) => {
 async function checkDirect(ctx, env, budget, slow) {
   const origin = directOrigin(env);
   if (!origin) return null;
+  // WORKER-POOL-2: the direct git host is the primary's; a caller who may not use an owner-only primary is not told about it.
+  const primary = configuredHosts(env).find((h) => h.role === 'primary');
+  if (primary && !hostAllowed(ctx, primary)) return null;
   const start = performance.now();
   const r = await bounded((async () => {
     const res = await ctx.fetch(`${origin}/health`, { redirect: 'error', signal: AbortSignal.timeout(budget) });

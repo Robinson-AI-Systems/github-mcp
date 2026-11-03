@@ -125,3 +125,9 @@ leases and short-lived GitHub credentials; the stored `native_git.worker_pool` s
 change its priority or limit. The previous host is now eligible for new work (lowest default priority). The direct git
 host stays the primary's; a git remote key placed elsewhere uses this service's domain. Agent-facing tools unchanged.
 Runbook: [NATIVE-GIT-OPERATIONS](NATIVE-GIT-OPERATIONS.md) "Worker pool".
+
+2026-11-03 (WORKER-POOL-2) — Chris, in chat: "Only my work on my PC." Other people's native Git workspaces are never
+placed on his PC; they go to the Dokploy worker, and his PC serves only his own connections. Shape chosen: an optional
+`audience` (`owner`/`shared`) per `NATIVE_GIT_WORKER_POOL` entry, protected configuration only; default primary = owner
+whenever another host is shared. "Own connections" = the operator's direct connector (PUB-8 mark) without a tenant scope;
+passes, RTC/HTTPS doors and every tenant/public/Marketplace connection count as others. Card: docs/pr-cards/WORKER-POOL-2.md.

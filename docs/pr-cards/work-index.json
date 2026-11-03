@@ -3253,6 +3253,24 @@
       "ownerInputs": []
     },
     {
+      "id": "WORKER-POOL-2",
+      "title": "Owner-only pool hosts: Chris's PC serves only his own connections; every other person's native Git workspaces, capability probes, git remote keys and status go to the shared (Dokploy) host, with a plain retryable refusal when it is unavailable",
+      "batch": "FIN",
+      "design": "docs/pr-cards/WORKER-POOL-2.md",
+      "dependencies": [
+        "WORKER-POOL-1"
+      ],
+      "card": "docs/pr-cards/WORKER-POOL-2.md",
+      "status": "IN_PROGRESS",
+      "migration": "none (NATIVE_GIT_WORKER_POOL entries gain optional audience)",
+      "budget": 600,
+      "units": [
+        "WORKER-POOL-2"
+      ],
+      "readiness": "READY",
+      "ownerInputs": []
+    },
+    {
       "id": "DOOR-DB-1",
       "title": "Keyless doors answer without waking the database: /api/mcp sign-in challenge, keyless RTC refusals and OAuth discovery documents issue zero SQL; signed-in calls keep every store-backed check",
       "batch": "FIN",

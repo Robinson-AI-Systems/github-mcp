@@ -241,3 +241,18 @@ PC take new work again at once. More machines (the Workshop PC, another enrolled
 Optional on the PC: `NATIVE_GIT_MAX_WORKSPACES=<n>` in `deploy/pc/.env` caps how many workspaces the PC holds at once
 (empty = resources only); the next workspace then goes to the next host. `github_server_status` shows each host's state
 by name under `health.worker_pool`.
+
+## Only Chris's own work on the PC (WORKER-POOL-2)
+
+Owner decision 2026-11-03: "Only my work on my PC." The PC is an **owner-only** pool host: it serves only Chris's own
+connections (his direct connector on this service). Everyone else — public-connect and private-tenant people, Marketplace
+connections, service passes (even ones Chris issued) and RTC/HTTPS door calls — is placed on the Dokploy worker. If
+Dokploy is busy, paused or offline they get the plain "try again in a minute" refusal with nothing started; their work
+never falls back to the PC. Their `github_git_remote_setup` gives this service's own domain, never the PC's
+`<pc>.<tailnet>.ts.net` address, and the PC's direct git host refuses a key whose mirror is on another host.
+`github_server_status` shows each host's `audience`; others see the PC only as `pc` / `owner` / `owner_only`.
+
+No setting is needed: the primary host is owner-only by default whenever another host serves everyone. To change it,
+set `"audience": "owner"` or `"shared"` on the host's entry in `NATIVE_GIT_WORKER_POOL` (protected Vercel setting only;
+see [NATIVE-GIT-OPERATIONS](NATIVE-GIT-OPERATIONS.md) "Worker pool"). Anything another person already had on the PC
+before this change keeps working until it closes, and is counted in the logs.

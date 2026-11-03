@@ -24,7 +24,8 @@ const view = r => r?.content || r?.structuredContent ? parse(r) : r;
 const arrange = (gh, outcome = 'ok') => { gh.nativeOutcome = outcome; gh.when('GET /repos/{owner}/{repo}').reply(200, { full_name: 'example-org/hello', default_branch: 'main' }); };
 const POOL = [{ name: 'dokploy', role: 'previous' }, { name: 'workshop' }];
 async function world(options = {}) {
- const w = await makeWorld({ profile: 'full', mode: 'production', gates: [] }); arrange(w.gh);
+ // WORKER-POOL-2: these are the owner's own connection (operator mark), so the primary (owner-only by default) is theirs.
+ const w = await makeWorld({ profile: 'full', mode: 'production', gates: [], operator: options.owner ?? true }); arrange(w.gh);
  cleanups.push(await prepareNativeWorld(w, { pool: options.pool ?? POOL, primary: options.primary ?? {} })); await w.nativeReady();
  return w;
 }
@@ -238,13 +239,13 @@ describe('capabilities caching', () => {
 });
 
 describe('visibility', () => {
- it('github_server_status lists each pool host by name with its state and counts, never an address', async () => {
+ it('github_server_status lists each pool host by name with its audience, state and counts, never an address', async () => {
   const w = await world({ primary: { limit: 4 } });
   await open(w, 'status-one');
   await w.pool.dokploy.pause();
   const status = await serverStatus({ fields: ['health'] }, w.ctx, { budgetMs: 5000 });
   expect(status.health.worker_pool).toMatchObject({ status: 'ok', available: 2 });
-  expect(status.health.worker_pool.hosts).toEqual([{ name: 'pc', state: 'available', active: 1, max: 4 }, { name: 'workshop', state: 'available', active: 0 }, { name: 'dokploy', state: 'paused', active: 0 }]);
+  expect(status.health.worker_pool.hosts).toEqual([{ name: 'pc', audience: 'owner', state: 'available', active: 1, max: 4 }, { name: 'workshop', audience: 'shared', state: 'available', active: 0 }, { name: 'dokploy', audience: 'shared', state: 'paused', active: 0 }]);
   expect(JSON.stringify(status)).not.toMatch(/example\.test/);
   const states = await poolStatus(w.ctx);
   expect(states.map(s => s.role)).toEqual(['primary', 'pool', 'previous']);
@@ -297,7 +298,7 @@ describe('git remote keys stay on their pool host', () => {
  const ENV = { TOKEN_ENCRYPTION_KEY: Buffer.alloc(32, 9).toString('base64'), PUBLIC_BASE_URL: 'https://mcp.example.test', NATIVE_GIT_WORKER_URL: PC + '/', NATIVE_GIT_WORKER_KEY: 'FAKE-pool-remote-worker-key-for-signing-tests', VERCEL_ENV: 'production',
   NATIVE_GIT_WORKER_POOL: JSON.stringify([{ name: 'workshop', origin: 'https://workshop.example.test' }]) };
  async function key(host) {
-  const w = await makeWorld({ profile: 'full', mode: 'production' });
+  const w = await makeWorld({ profile: 'full', mode: 'production', operator: true });
   await w.db.createAccessToken({ accessToken: 'FAKE-access-pool', refreshToken: 'FAKE-refresh-pool', clientId: 'client-1', defaultAccount: 'example-org', accounts: ['example-org'], mode: 'production', profile: 'full', listing: 'compact' });
   const { id, code } = newExchangeCode(), secret = newSessionKey(id);
   await w.db.createGitRemoteKey({ id, connection: 'client-1', owner: 'example-org', repo: 'hello', access: 'write', codeHash: sha256(code), codeExpiresAt: new Date(w.ctx.now() + 600000), expiresAt: new Date(w.ctx.now() + 8 * 3600000) });

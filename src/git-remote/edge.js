@@ -10,7 +10,7 @@
 // Request bodies (pushes) never pass through this code (`skipMiddlewareRequestBody`).
 import { publicOrigin } from '../core/http.js';
 import { workerOrigin, rewriteResponse } from '../native-git/relay.js';
-import { configuredHost } from '../native-git/pool-config.js';
+import { configuredHost, hostByOrigin, noteStray } from '../native-git/pool-config.js';
 import { authorizeGitRequest } from './authorize.js';
 import { openKeyScope } from './keys.js';
 import { GIT_REALM, KEY_PREFIX, basicPassword, parseGitRequest as parseWire, parseSecret } from './wire.js';
@@ -53,6 +53,9 @@ export async function handleGitRemote(request, env = process.env, { now = Date.n
  const pinned = verdict.host ? configuredHost(env, verdict.host) : null;
  if (verdict.host && !pinned) return text(503, 'The worker host this git session key was set up on is no longer configured. Ask your AI to call github_git_remote_setup again for a new key.');
  const worker = pinned?.origin ?? primary;
+ // WORKER-POOL-2: setup never places a non-owner key on an owner-only host; one made earlier keeps working, counted.
+ const destination = pinned ?? hostByOrigin(env, primary);
+ if (destination?.audience === 'owner' && !verdict.ownerKey) noteStray(destination, 'git_remote');
  const headers = new Headers();
  for (const name of REMOTE_FORWARDED_HEADERS) { const value = request.headers.get(name); if (value !== null) headers.set(name, value); }
  headers.set(CLAIM_HEADER, verdict.claim);
