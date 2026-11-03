@@ -1,14 +1,15 @@
 // WORKER-POOL-2 (owner decision 2026-11-03, "Only my work on my PC"): owner-only pool hosts. Real signed worker hosts
 // (workers/native-git/server.js) on real local Git behind the same control plane, fake GitHub validated against the
 // vendored schema. The primary ("pc") is owner-only by default whenever another host serves everyone.
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { generateKeyPairSync, createPublicKey, sign } from 'node:crypto';
 import { makeWorld, parse, doorsFor } from '../../test/helpers/write-contract.js';
 import { prepareNativeWorld, POOL_ORIGIN } from '../../test/helpers/native-git-world.js';
 import * as native from '../../src/tools/native-git.js';
 import * as gitRemote from '../../src/tools/git-remote.js';
 import { nativeConnection } from '../../src/native-git/client.js';
-import { configuredHosts, applyPoolSetting, hostId, ownerCaller, hostAllowed, routeJobFor, strayCount } from '../../src/native-git/pool-config.js';
+import { configuredHosts, applyPoolSetting, hostId } from '../../src/native-git/pool-config.js';
+import { ownerCaller, hostAllowed, routeJobFor, strayCount } from '../../src/native-git/pool-audience.js';
 import { serverStatus } from '../../src/tools/server-status.js';
 import { handleGitRemote } from '../../src/git-remote/edge.js';
 import { directAuthorize, DIRECT_WORKER_SETTING } from '../../src/git-remote/api.js';
@@ -77,6 +78,9 @@ describe('host audience comes from protected configuration only', () => {
 });
 
 describe('placement: other people never land on the owner\'s PC', () => {
+ // As in worker-pool.test.js: the worker hosts share this process's event loop and their admission measures its delay,
+ // so one warm-up open absorbs first-use compilation before the first assertion.
+ beforeAll(async () => { const w = await world({ owner: true }); await open(w, 'warm-up'); await w.nativeReady(); });
  it('a public or tenant connection is placed on Dokploy through every door, and the PC is never even asked', async () => {
   const w = await world({ owner: false });
   for (const door of doorsFor(def('github_git_workspace_open'))) {
@@ -228,5 +232,26 @@ describe('github_server_status', () => {
   const status = await serverStatus({ fields: ['health'] }, w.ctx, { budgetMs: 5000 });
   expect(status.health.worker_pool.hosts[0]).toMatchObject({ name: 'pc', audience: 'owner', state: 'available' });
   expect(JSON.stringify(status)).not.toMatch(/native-worker/);
+ });
+});
+
+describe('worker images', () => {
+ // The native Git and coding-workspace images copy only the src files they need; a relative import from one of those
+ // files to a file that is not copied breaks the image at start (found by the image smoke test on this PR's first run).
+ it('every src file the worker images copy imports only files that are copied too', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const { dirname, join, normalize } = await import('node:path');
+  for (const image of ['workers/native-git/Dockerfile', 'workers/coding-workspace/Dockerfile']) {
+   const text = await readFile(image, 'utf8');
+   const copied = new Set(text.split('\n').filter(l => /^COPY src\//.test(l)).flatMap(l => l.split(/\s+/).slice(1, -1)).filter(f => f.endsWith('.js')));
+   for (const file of copied) {
+    const source = await readFile(file, 'utf8');
+    for (const [, spec] of source.matchAll(/^import[^'"]*['"](\.{1,2}\/[^'"]+)['"]/gm)) {
+     const target = normalize(join(dirname(file), spec));
+     if (!target.startsWith('src/') || !target.endsWith('.js')) continue; // vendor/ and data are copied as folders
+     expect(copied.has(target), `${image}: ${file} imports ${target}, which the image does not copy`).toBe(true);
+    }
+   }
+  }
  });
 });

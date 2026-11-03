@@ -22,7 +22,8 @@ import { publicOrigin, paramsOf } from '../core/http.js';
 import { GITHUB_PUSH_LIMIT_BYTES, REMOTE_REPORT_GRACE_MS, verifyRemoteClaim } from '../native-git/protocol.js';
 import { nativeWorkerPublicKey } from '../native-git/signing.js';
 import { authorizeGitRequest } from './authorize.js';
-import { configuredHosts, noteStray } from '../native-git/pool-config.js';
+import { configuredHosts } from '../native-git/pool-config.js';
+import { noteStray } from '../native-git/pool-audience.js';
 import { DIRECT_HEADER, DIRECT_SKEW_MS, DIRECT_WORKER_KEY, cleanOrigin, directPayload } from './wire.js';
 
 const plain = (res, status, message) => { res.statusCode = status; res.setHeader('Content-Type', 'text/plain; charset=utf-8'); res.setHeader('Cache-Control', 'no-store'); res.end(message + '\n'); };

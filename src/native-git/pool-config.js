@@ -21,13 +21,13 @@
 // configuration (the "audience" field above), never from the stored setting. Default without any audience set: the
 // primary host (NATIVE_GIT_WORKER_URL, Chris's PC) is `owner` whenever another host is `shared`; every other host is
 // `shared`. A one-host pool stays `shared` (otherwise nobody else could use native Git at all), unless it says
-// "audience": "owner" explicitly.
+// "audience": "owner" explicitly. Who may use which host: src/native-git/pool-audience.js (control plane only; this
+// file is also copied into the worker images and imports nothing outside src/native-git).
 //
 // Lower priority numbers are tried first. A workspace is pinned for life to the host it was opened on by the
 // host id below (the same 32-hex origin hash every existing workspace already stores), so a pool host stays
 // routable while it is configured, even when it is disabled for new work.
 import { createHash } from 'node:crypto';
-import { isOperatorConnection } from '../core/authority.js';
 
 export const MAX_POOL_HOSTS = 16;
 export const HOST_NAME = /^[a-z0-9][a-z0-9-]{0,31}$/;
@@ -115,37 +115,3 @@ export function applyPoolSetting(hosts, stored) {
  return Object.freeze(out.map((h, order) => ({ h, order })).sort((a, b) => a.h.priority - b.h.priority || a.order - b.order).map(x => x.h));
 }
 
-// ---- WORKER-POOL-2: who may use which host ---------------------------------------------------------------------
-/**
- * The service owner's own connection: the operator's direct full connector (PUB-8 `operator` mark, set only by the
- * operator's own database route) on the operator's own database. A person's tenant or public connection, a
- * Marketplace connection, a service pass, an RTC/HTTPS door call and a background maintenance context are not.
- */
-export const ownerCaller = ctx => isOperatorConnection(ctx?.connection) && !ctx?.db?.playgroundScope?.tenantId;
-/** Whether this caller may be placed on (or sent to, unpinned) this host. */
-export const hostAllowed = (ctx, host) => !!host && (host.audience !== 'owner' || ownerCaller(ctx));
-/** The host a worker origin belongs to, or null. */
-export const hostByOrigin = (env, origin) => configuredHosts(env).find(h => h.origin === origin) ?? null;
-
-/** Requests that reached an owner-only host for a non-owner because they were already pinned there (served, counted). */
-const strays = { count: 0, byHost: Object.create(null) };
-export const strayCount = () => ({ count: strays.count, by_host: { ...strays.byHost } });
-export function noteStray(host, where) {
- strays.count++; strays.byHost[host.name] = (strays.byHost[host.name] ?? 0) + 1;
- try { console.warn('[worker-pool] non-owner request served on owner-only host (pinned before WORKER-POOL-2)', host.name, where); } catch { /* logging never breaks a call */ }
-}
-
-/**
- * The job one worker call is routed with, for this caller. A pinned call (a workspace's stored host, or an older
- * workspace's creation time, or a dedicated broker) keeps its host. An unpinned call (a capabilities probe, the
- * direct-host setup) goes to the primary, except that a non-owner whose primary is owner-only goes to the first host
- * it may use; with none it is refused before anything is sent (retryable, no operation started).
- */
-export function routeJobFor(ctx, job) {
- if (job && (job.brokerOrigin || job.host !== undefined || job.createdAt !== undefined)) return job;
- const hosts = configuredHosts(ctx?.env), primary = hosts.find(h => h.role === 'primary');
- if (!primary || hostAllowed(ctx, primary)) return job;
- const other = hosts.find(h => h.enabled && hostAllowed(ctx, h));
- if (!other) throw Object.assign(new TypeError('All workspace hosts are busy or paused; try again in a minute. No operation was started (nothing was sent to a worker).'), { safeMessage: true, safeCode: 'native_hosts_busy', safeRetryable: true, status: 503, noOperationStarted: true, nativeNoOperationStarted: true });
- return { ...(job ?? {}), host: other.id };
-}

@@ -12,7 +12,8 @@
 // time until it answers again (an offline computer does not slow every open down). A paused, busy or full answer is
 // never reused: those answers are fast, so a host the owner resumes takes work again at once.
 import { callNativeWorker } from './client.js';
-import { configuredHosts, applyPoolSetting, hostAllowed, ownerCaller } from './pool-config.js';
+import { configuredHosts, applyPoolSetting } from './pool-config.js';
+import { hostAllowed, ownerCaller } from './pool-audience.js';
 import { rootAllocationDb } from '../playground/index.js';
 
 export const POOL_SETTING = 'native_git.worker_pool';

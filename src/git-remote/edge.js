@@ -10,7 +10,8 @@
 // Request bodies (pushes) never pass through this code (`skipMiddlewareRequestBody`).
 import { publicOrigin } from '../core/http.js';
 import { workerOrigin, rewriteResponse } from '../native-git/relay.js';
-import { configuredHost, hostByOrigin, noteStray } from '../native-git/pool-config.js';
+import { configuredHost } from '../native-git/pool-config.js';
+import { hostByOrigin, noteStray } from '../native-git/pool-audience.js';
 import { authorizeGitRequest } from './authorize.js';
 import { openKeyScope } from './keys.js';
 import { GIT_REALM, KEY_PREFIX, basicPassword, parseGitRequest as parseWire, parseSecret } from './wire.js';

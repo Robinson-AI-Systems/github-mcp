@@ -78,5 +78,5 @@ design). Per-repository or per-person audiences.
 
 Builds on WORKER-POOL-1 (pool, placement, routing, key host), PUB-8 (`operator` mark), GIT-DIRECT-1/-2 (direct host is
 the primary's). New: pool entry field `audience`, host field `audience`, `ownerCaller`/`hostAllowed`/`routeJobFor`/
-`strayCount` in `src/native-git/pool-config.js`, pool status state `owner_only`, direct authorize refusal reason
+`strayCount` in the new control-plane-only `src/native-git/pool-audience.js` (kept out of `pool-config.js`, which the worker images copy), pool status state `owner_only`, direct authorize refusal reason
 `other_host`. No database migration, no tool schema change, no protocol version change.

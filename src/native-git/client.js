@@ -3,7 +3,7 @@ import { transportFetch } from '../fleet/relay.js';
 import { createHash } from 'node:crypto';
 import { githubFor, credentialFor, requestKey } from '../github/client.js';
 import { WORKER_PROTOCOL, nativeWorkerRoute, workerUrl } from './protocol.js';
-import { routeJobFor, hostByOrigin, hostAllowed, noteStray } from './pool-config.js';
+import { routeJobFor, hostByOrigin, hostAllowed, noteStray } from './pool-audience.js';
 import { signNativeWorkerBody } from './signing.js';
 import { redactExcerpt } from '../github/content-protection.js';
 import { explainGithubError } from '../tools/errors.js';
