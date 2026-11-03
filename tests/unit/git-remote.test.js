@@ -2,7 +2,7 @@
 // (curl + git credential) through a stand-in for Vercel's edge running the real Routing Middleware,
 // to the real native Git worker and its real pre-receive hook, to a fake GitHub served by the real
 // git http-backend. Only GitHub's API and the database are fakes; every value is fake.
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
 import { randomBytes } from 'node:crypto';
 import { tmpdir } from 'node:os';

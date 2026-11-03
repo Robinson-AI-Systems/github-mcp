@@ -114,3 +114,15 @@ copy, Git LFS, partial clone filters, protocol v2. Recorded in `docs/ROADMAP.md`
 Control plane (daily release: middleware, `/git-remote/exchange`, `/api/git-remote`, tables are created on first use).
 Native worker redeploy (until then the tool answers "the native Git worker must be updated"). No new environment
 variable; no runtime image change.
+
+## Drift check
+
+Builds on SINGLE-DOMAIN-1 (same middleware file and rewrite helper, a second matcher `/git/:path*`; the transfer path
+is unchanged), GIT-UPLOAD-1/GIT-DOWNLOAD-1 (same quarantine configuration, content protection functions, Git safety
+prefix and environment; `catObjects`/`findingFor` gain only an `env` option and an export) and the native credential
+brokering (`authorizeNativeRepo`, `credentialFor` with the same narrowing and credential choice). New: one tool, two
+additive tables per tenant database, one root index setting per key, one function file (`api/git-remote.js`), one
+rewrite (`/git-remote/exchange`), a worker route `/v1/remote/*` and capability `git_remote: "v1"`, and a claim purpose
+`robinson-git-remote/v1`. `redactExcerpt` additionally hides `rgk_`/`rgc_` values. No GitHub API version, permission,
+plan or spend change. Compact listing: `github_pr_create` and `github_branch_create` list lean schemas (full schemas
+still validate); budget unchanged at 6,000.
