@@ -1,0 +1,74 @@
+# PC-WORKER-1: the native Git worker on the owner's PC (Windows 11 + WSL2 Ubuntu, Docker Engine inside WSL).
+# Owner decision 2026-11-03: the PC is the primary worker; Dokploy stays the previous worker.
+# Hard rule: the owner's own use of the PC always wins, so this container is small, low priority and
+# pausable/killable at any time (deploy/pc/pc-worker pause|resume|status|stop). Runbook: docs/PC-WORKER.md.
+#
+# Run through deploy/pc/pc-worker or deploy/pc/install.sh (they pass --env-file <home>/.env). Every
+# limit below is adjustable in that .env; the defaults leave most of the PC free.
+name: robinson-git
+services:
+  native-git:
+    # Tagged by commit so an earlier build can be started again without rebuilding (rollback).
+    image: robinson-git-native:${SOURCE_COMMIT:-local}
+    build:
+      context: ../..
+      dockerfile: workers/native-git/Dockerfile
+      args:
+        # SRV-STATUS-1: the commit this image is built from, reported to github_server_status.
+        SOURCE_COMMIT: ${SOURCE_COMMIT:-}
+    restart: unless-stopped
+    init: true
+    # A graceful stop lets admitted work finish; pc-worker pause uses its own, shorter wait.
+    stop_grace_period: ${PC_WORKER_STOP_GRACE:-75s}
+    user: "1000:1000"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: ${PC_WORKER_PIDS:-256}
+    # Whole-container ceilings shared by every workspace (not reservations).
+    cpus: ${PC_WORKER_CPUS:-4}
+    mem_limit: ${PC_WORKER_MEMORY:-6g}
+    memswap_limit: ${PC_WORKER_MEMORY:-6g}
+    # Low priority: CPU weight (default 1024), IO weight 100 of 10-1000 (fixed here because compose does
+    # not interpolate it; ignored with a warning where the kernel's IO scheduler has no weights), and the
+    # first to go when memory runs short.
+    cpu_shares: ${PC_WORKER_CPU_SHARES:-256}
+    blkio_config:
+      weight: 100
+    oom_score_adj: 500
+    # nice/ionice for the worker and every git process it starts; an ionice refusal is reported, not fatal.
+    command: ["sh", "-c", "ionice -c \"$${PC_WORKER_IO_CLASS:-3}\" -p $$$$ 2>/dev/null || echo 'ionice not applied; continuing' >&2; exec nice -n \"$${PC_WORKER_NICE:-10}\" node workers/native-git/server.js"]
+    environment:
+      PORT: "3000"
+      NATIVE_GIT_STORAGE_ROOT: /data
+      PC_WORKER_NICE: ${PC_WORKER_NICE:-10}
+      PC_WORKER_IO_CLASS: ${PC_WORKER_IO_CLASS:-3}
+      # Admission floors: new work is refused (no_operation_started) below these, so the PC keeps
+      # memory and disk for its owner.
+      NATIVE_GIT_MIN_AVAILABLE_MEMORY_MB: ${NATIVE_GIT_MIN_AVAILABLE_MEMORY_MB:-256}
+      NATIVE_GIT_MIN_AVAILABLE_DISK_MB: ${NATIVE_GIT_MIN_AVAILABLE_DISK_MB:-20480}
+      NATIVE_GIT_MAX_LOOP_DELAY_MS: ${NATIVE_GIT_MAX_LOOP_DELAY_MS:-250}
+      # Public, from the MCP's GET /api/native-git-key (never a private key).
+      NATIVE_GIT_CONTROL_PUBLIC_KEY: ${NATIVE_GIT_CONTROL_PUBLIC_KEY:?Set NATIVE_GIT_CONTROL_PUBLIC_KEY from the MCP's /api/native-git-key}
+      # GIT-DIRECT-1: the direct git host is this PC's own Funnel origin; the MCP answers its op=authorize.
+      GIT_DIRECT_ORIGIN: ${PC_WORKER_PUBLIC_ORIGIN:?Set PC_WORKER_PUBLIC_ORIGIN to https://<pc>.<tailnet>.ts.net}
+      GIT_DIRECT_CONTROL_ORIGIN: ${MCP_ORIGIN:?Set MCP_ORIGIN to the MCP's https origin}
+      GIT_DIRECT_PORT: "3001"
+    volumes:
+      # A bind mount on WSL's own ext4 disk (never /mnt/c): workspaces, mirrors, receipts, the pause file.
+      - ${PC_WORKER_DATA:-/srv/robinson-git/data}:/data
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    # Published on localhost only (never the LAN). Windows reaches them through WSL localhost
+    # forwarding; Tailscale Funnel on Windows proxies to http://127.0.0.1:<port>.
+    ports:
+      - "127.0.0.1:${PC_WORKER_API_PORT:-47300}:3000"
+      - "127.0.0.1:${PC_WORKER_GIT_PORT:-47301}:3001"
+    healthcheck:
+      test: ["CMD", "node", "-e", "Promise.all([3000,3001].map(p=>fetch('http://127.0.0.1:'+p+'/health'))).then(r=>process.exit(r.every(x=>x.ok)?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+    labels:
+      robinson-git.role: native-git-worker

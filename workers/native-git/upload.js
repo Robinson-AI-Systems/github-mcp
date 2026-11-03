@@ -19,6 +19,7 @@ import { UPLOAD_CHUNK_GRACE_MS, UPLOAD_CHUNK_MAX_BYTES, UPLOAD_MAX_BYTES, UPLOAD
 import { ARCHIVE_LIMITS, entryPath, openArchive } from './archive.js';
 import { bindingHash, gitEnvironment, gitPrefix, hash, json, save } from './engine.js';
 import { readWorkspaceFile, writeWorkspaceFile, removeWorkspaceFile, workspaceEntry } from './safe-files.js';
+import { refusalText } from './resources.js';
 
 const MiB = 1024 * 1024;
 const WORKSPACE = /^git_[a-f0-9]{32}$/, UPLOAD = /^[a-f0-9]{32}$/;
@@ -99,9 +100,10 @@ function reply(res, status, message, headers = {}) {
   res.end(message + '\n');
 }
 async function exclusive(path) { const handle = await open(path, 'wx', 0o600); await handle.close(); }
-async function admitted(root, monitor, bytes) {
-  if (monitor) { const check = await monitor.check({ needsDisk: true }); if (!check.allowed) return false; }
-  try { const disk = await statfs(root); return Number(disk.bavail) * Number(disk.bsize) >= bytes + 64 * MiB; } catch { return false; }
+// Resolves to null when admitted, otherwise the refused check (PC-WORKER-1: the owner pause has its own sentence).
+async function refused(root, monitor, bytes) {
+  if (monitor) { const check = await monitor.check({ needsDisk: true }); if (!check.allowed) return check; }
+  try { const disk = await statfs(root); return Number(disk.bavail) * Number(disk.bsize) >= bytes + 64 * MiB ? null : { allowed: false, reason: 'storage_pressure' }; } catch { return { allowed: false, reason: 'storage_observation_unavailable' }; }
 }
 function counted(limit, onOver) {
   let total = 0;
@@ -154,7 +156,7 @@ export async function uploadHttp(req, res, { root, key, now = Date.now, monitor 
     res.writeHead(200, { 'Content-Type': 'application/x-git-receive-pack-result', 'Cache-Control': 'no-store' }); return res.end();
   }
   if (git && req.headers['content-type'] !== 'application/x-git-receive-pack-request') { req.resume(); return reply(res, 415, 'This address only accepts git push.'); }
-  if (!await admitted(root, monitor, claim.maxBytes)) { req.resume(); return reply(res, 503, 'The worker is short of storage or memory; nothing was received. Retry the same command shortly.', { 'Retry-After': '2' }); }
+  { const no = await refused(root, monitor, claim.maxBytes); if (no) { req.resume(); return reply(res, 503, refusalText(no, 'The worker is short of storage or memory; nothing was received. Retry the same command shortly.'), { 'Retry-After': String(no.retryAfterSeconds ?? 2) }); } }
   try { await exclusive(p.claimed); } catch { req.resume(); return reply(res, 410, 'This upload address was already used. Begin a new upload.'); }
   await save(p.record, { ...stored, state: 'receiving', claimedAt: now() });
   const fail = async (status, message) => { await save(p.record, { ...stored, state: 'failed', claimedAt: now() }).catch(() => {}); await rm(p.data, { recursive: true, force: true }).catch(() => {}); return reply(res, status, message); };
@@ -278,7 +280,7 @@ async function receiveChunk(req, res, { url, claim, p, root, monitor, now }, kin
   if (clientDigest !== null && !/^[a-f0-9]{64}$/.test(clientDigest)) { req.resume(); return reply(res, 400, 'X-Content-SHA256 must be the 64-character hex SHA-256 of the chunk.'); }
   const stored = await json(p.record);
   if (!['awaiting', 'receiving'].includes(stored.state)) { req.resume(); return reply(res, 410, stored.state === 'received' ? 'This upload was already finished; call apply.' : 'This upload is closed. Begin a new upload.'); }
-  if (!await admitted(root, monitor, 2 * UPLOAD_CHUNK_MAX_BYTES)) { req.resume(); return reply(res, 503, 'The worker is short of storage or memory; this chunk was not stored. Retry it shortly.', { 'Retry-After': '2' }); }
+  { const no = await refused(root, monitor, 2 * UPLOAD_CHUNK_MAX_BYTES); if (no) { req.resume(); return reply(res, 503, refusalText(no, 'The worker is short of storage or memory; this chunk was not stored. Retry it shortly.'), { 'Retry-After': String(no.retryAfterSeconds ?? 2) }); } }
   if (kind === null) {
     // Atomic claim: link() fails if a one-request upload (or another first chunk) claimed it first.
     const marker = p.claimed + '.' + randomBytes(6).toString('hex');

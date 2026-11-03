@@ -63,6 +63,14 @@ Direct git host (GIT-DIRECT-1/-2, optional; until it is done everything keeps wo
 Worker environment values `GIT_DIRECT_ORIGIN` + `GIT_DIRECT_CONTROL_ORIGIN` still work (GIT-DIRECT-1) and, when both are set, win over the stored configuration.
 Optional stored setting `git_remote.push_limit` `{ "max_push_bytes": n }` (default 2 GiB = GitHub's limit; raise it to accept larger single pushes, which are then sent on to GitHub in parts; mind the worker volume).
 
+PC worker as the primary native Git worker (PC-WORKER-1, owner decision 2026-11-03 "Use my PC … treat the PC as the primary route, not the fallback"). Dokploy stays the previous worker. Runbook with every command: [PC-WORKER](PC-WORKER.md). Placeholders: `<pc>.<tailnet>.ts.net` is the PC's own Windows Tailscale name, `<mcp-domain>` the MCP's domain.
+1. **PC, inside WSL as root** (Chris's assistant over SSH, or an agent on a linked device): `git clone https://github.com/Robinson-AI-Systems/github-mcp.git /srv/robinson-git/src`, then `bash /srv/robinson-git/src/deploy/pc/install.sh --mcp-origin https://<mcp-domain> --ref live`. Expect every step `ok`, both local health checks and the Windows reachability check.
+2. **PC, Funnel on its own node**: the same command plus `--configure-funnel` (adds `/`, `/git`, `/health` on 443 of this node only; refuses if the node already serves anything else). Check `curl -fsS https://<pc>.<tailnet>.ts.net/health` answers `ok`. No router change.
+3. **Vercel** (production, agent): `NATIVE_GIT_WORKER_URL=https://<pc>.<tailnet>.ts.net`, `NATIVE_GIT_PREVIOUS_WORKER_URL=<current Dokploy worker origin>`, `NATIVE_GIT_WORKER_CUTOVER_AT=<UTC switch time>`, `GIT_DIRECT_ORIGIN=https://<pc>.<tailnet>.ts.net`; effective with the next release deployment.
+4. **Agent**: `github_server_status` (worker ok, `build_commit` = the PC commit, direct git ok), one `github_git_remote_setup` (pins the PC's direct-host key; `remote_url` on the ts.net name), then live acceptance on the scratch repository (open/clone/push/close, a large push through `remote_url`), recorded in `docs/developer-evidence.json`.
+5. **Pause/resume from Windows**: `wsl -u root -e /srv/robinson-git/pc-worker pause` / `resume` / `status` / `stop`. Rollback to Dokploy: swap the two worker URLs in Vercel (runbook "Roll back to Dokploy").
+The Dokploy Traefik 60-second upload limit (step 6 above) no longer matters for pushes once the direct host is on the PC.
+
 ## 7. Appliance Desk and other repos (Agent can check)
 
 Run `github_workflow_app_readiness` for `appliance-desk` ([APP-NEEDS-APPLIANCE-DESK](APP-NEEDS-APPLIANCE-DESK.md)). Done 2026-10-09: `main` requires `ci` only. Not verified: force-push and deletion blocked, secret scanning, fork-PR approval, a `live` branch. Same ruleset wanted on `stripe-mcp`, `google-workspace-mcp`, `robinsons-toolkit-hub`, `vercel-mcp`, `neon-mcp`; not verified.

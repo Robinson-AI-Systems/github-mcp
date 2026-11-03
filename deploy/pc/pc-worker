@@ -1,0 +1,181 @@
+#!/usr/bin/env bash
+# PC-WORKER-1: pause, resume, stop and check the native Git worker on the owner's PC.
+# Owner rule (2026-11-03): "my own use of this PC always wins instantly, so anything running on it must
+# be pausable/killable and resumable, never defended." Runbook: docs/PC-WORKER.md.
+#
+# From Windows (PowerShell, Command Prompt or a shortcut):
+#   wsl -u root -e /srv/robinson-git/pc-worker pause
+#   wsl -u root -e /srv/robinson-git/pc-worker resume
+#   wsl -u root -e /srv/robinson-git/pc-worker status
+#   wsl -u root -e /srv/robinson-git/pc-worker stop
+#
+# Only this project's own container (compose project "robinson-git") is ever touched.
+set -euo pipefail
+
+usage() {
+  cat <<'EOF'
+Usage: pc-worker <command>
+  pause [--keep-running]  Stop new work now, let admitted work finish (PC_WORKER_PAUSE_GRACE_SECONDS,
+                          default 30), then stop the container. --keep-running only refuses new work.
+  resume                  Allow new work again and start the container (no rebuild).
+  stop [seconds]          Stop right away (default 2 s grace). Also refuses new work until resume.
+  status                  Paused or not, container state and health, local health checks, and any
+                          workspace left locked by an interrupted operation.
+  logs [lines]            The last lines of the worker log (default 200; never follows).
+  recover-lease <id>      After a hard stop: release one workspace's interrupted lock (worker stopped).
+  update [install args]   Run install.sh again (for example: update --commit <full-sha>).
+EOF
+}
+
+say() { printf '%s\n' "$*"; }
+fail() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
+
+# Reads KEY=value from the .env file without running it as shell code.
+env_value() {
+  local key="$1" default="${2:-}" line value=""
+  if [[ -f "$ENV_FILE" ]]; then
+    while IFS= read -r line || [[ -n "$line" ]]; do
+      [[ "$line" == "$key="* ]] && value="${line#*=}"
+    done < "$ENV_FILE"
+  fi
+  value="${value%$'\r'}"
+  if [[ -n "$value" ]]; then printf '%s' "$value"; else printf '%s' "$default"; fi
+}
+
+compose() {
+  docker compose --project-name robinson-git --env-file "$ENV_FILE" -f "$HOME_DIR/src/deploy/pc/compose.yaml" "$@"
+}
+
+container_id() { compose ps -a -q native-git 2>/dev/null | head -n 1; }
+
+container_state() {
+  local id; id="$(container_id)"
+  if [[ -z "$id" ]]; then say "not created"; return; fi
+  docker inspect -f '{{.State.Status}}{{if .State.Health}} ({{.State.Health.Status}}){{end}}' "$id" 2>/dev/null || say "unknown"
+}
+
+local_health() {
+  local api git
+  api="$(env_value PC_WORKER_API_PORT 47300)"; git="$(env_value PC_WORKER_GIT_PORT 47301)"
+  if curl -fsS --max-time 3 "http://127.0.0.1:${api}/health" >/dev/null 2>&1; then say "  worker API  127.0.0.1:${api}/health  ok"; else say "  worker API  127.0.0.1:${api}/health  not answering"; fi
+  if curl -fsS --max-time 3 "http://127.0.0.1:${git}/health" >/dev/null 2>&1; then say "  direct git  127.0.0.1:${git}/health  ok"; else say "  direct git  127.0.0.1:${git}/health  not answering"; fi
+}
+
+set_pause() {
+  [[ -d "$DATA_DIR" ]] || fail "The data folder $DATA_DIR does not exist. Run install.sh first."
+  if ! ( umask 022; printf 'paused %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$PAUSE_FILE" ) 2>/dev/null; then
+    fail "Could not write $PAUSE_FILE. Run as root: wsl -u root -e $HOME_DIR/pc-worker ..."
+  fi
+}
+
+wait_healthy() {
+  local state
+  for _ in $(seq 1 30); do
+    state="$(container_state)"
+    [[ "$state" == "running (healthy)" ]] && { say "Worker is running and healthy."; return 0; }
+    sleep 2
+  done
+  say "Worker state after 60 s: $(container_state). Check: $HOME_DIR/pc-worker logs"
+  return 1
+}
+
+cmd_pause() {
+  local keep="no"
+  [[ "${1:-}" == "--keep-running" ]] && keep="yes"
+  set_pause
+  say "Paused: new work is refused now (agents see 'paused by its owner, no operation was started')."
+  if [[ "$keep" == "yes" ]]; then
+    say "The container keeps running; work already admitted finishes. Resume with: $HOME_DIR/pc-worker resume"
+    return 0
+  fi
+  local grace; grace="$(env_value PC_WORKER_PAUSE_GRACE_SECONDS 30)"
+  [[ "$grace" =~ ^[0-9]+$ ]] || grace=30
+  if [[ -n "$(container_id)" ]]; then
+    say "Stopping the container (up to ${grace} s for admitted work to finish)..."
+    compose stop -t "$grace" native-git >/dev/null 2>&1 || true
+  fi
+  say "Container: $(container_state). CPU and memory are free. Resume with: $HOME_DIR/pc-worker resume"
+}
+
+cmd_resume() {
+  rm -f "$PAUSE_FILE"
+  say "Pause removed: new work is allowed."
+  if ! compose up -d --no-build native-git >/dev/null 2>&1; then
+    fail "The container could not start (has it been built?). Run: $HOME_DIR/pc-worker update"
+  fi
+  wait_healthy
+}
+
+cmd_stop() {
+  local grace="${1:-2}"
+  [[ "$grace" =~ ^[0-9]+$ ]] || fail "stop takes a number of seconds."
+  set_pause
+  if [[ -n "$(container_id)" ]]; then compose stop -t "$grace" native-git >/dev/null 2>&1 || true; fi
+  say "Stopped (new work refused until resume). Container: $(container_state)."
+  say "Files on disk are kept. If an operation was cut off, '$HOME_DIR/pc-worker status' lists any locked workspace."
+}
+
+cmd_status() {
+  say "Robinson native Git worker (PC)"
+  say "  home        $HOME_DIR"
+  if [[ -e "$PAUSE_FILE" ]]; then say "  paused      yes (since $(cut -d' ' -f2 "$PAUSE_FILE" 2>/dev/null || echo unknown))"; else say "  paused      no"; fi
+  say "  container   $(container_state)"
+  say "  commit      $(env_value SOURCE_COMMIT unknown)"
+  say "  public      $(env_value PC_WORKER_PUBLIC_ORIGIN 'not set')"
+  local_health
+  local locks=() lock
+  if [[ -d "$DATA_DIR" ]]; then
+    for lock in "$DATA_DIR"/git_*/mutation.lock; do [[ -e "$lock" ]] && locks+=("$(basename "$(dirname "$lock")")"); done
+  fi
+  if (( ${#locks[@]} )); then
+    say "  locked      ${#locks[@]} workspace(s) hold a lock: ${locks[*]}"
+    if [[ "$(container_state)" == running* ]]; then
+      say "              (normal while an operation runs; after a hard stop, stop the worker and run: pc-worker recover-lease <id>)"
+    else
+      say "              The worker is stopped, so these were cut off. Release each with: $HOME_DIR/pc-worker recover-lease <id>"
+    fi
+  else
+    say "  locked      none"
+  fi
+}
+
+cmd_logs() {
+  local lines="${1:-200}"
+  [[ "$lines" =~ ^[0-9]+$ ]] || fail "logs takes a number of lines."
+  compose logs --no-color --tail "$lines" native-git
+}
+
+cmd_recover_lease() {
+  local id="${1:-}"
+  [[ "$id" =~ ^git_[a-f0-9]{32}$ ]] || fail "Give the exact workspace id (git_ followed by 32 hex characters)."
+  [[ "$(container_state)" == running* ]] && fail "Stop the worker first: $HOME_DIR/pc-worker stop"
+  compose run --rm --no-deps -e NATIVE_GIT_WORKER_STOPPED=yes native-git node workers/native-git/snapshot-cli.js recover-lease "$id"
+  say "Released. Resume, then have the agent inspect the workspace and remote refs before any new change."
+}
+
+main() {
+  local self
+  self="$(readlink -f "${BASH_SOURCE[0]}")"
+  # Installed copy: <home>/pc-worker. Source copy: <home>/src/deploy/pc/pc-worker.
+  if [[ -n "${PC_WORKER_HOME:-}" ]]; then HOME_DIR="$PC_WORKER_HOME"
+  elif [[ "$(dirname "$self")" == */src/deploy/pc ]]; then HOME_DIR="$(dirname "$(dirname "$(dirname "$(dirname "$self")")")")"
+  else HOME_DIR="$(dirname "$self")"; fi
+  ENV_FILE="$HOME_DIR/.env"
+  DATA_DIR="$(env_value PC_WORKER_DATA "$HOME_DIR/data")"
+  PAUSE_FILE="$DATA_DIR/.owner-pause"
+  local cmd="${1:-}"; shift || true
+  case "$cmd" in
+    pause) cmd_pause "$@" ;;
+    resume|start) cmd_resume ;;
+    stop|kill) cmd_stop "$@" ;;
+    status) cmd_status ;;
+    logs) cmd_logs "$@" ;;
+    recover-lease) cmd_recover_lease "$@" ;;
+    update) exec bash "$HOME_DIR/src/deploy/pc/install.sh" --home "$HOME_DIR" "$@" ;;
+    -h|--help|help|"") usage ;;
+    *) usage; exit 2 ;;
+  esac
+}
+
+main "$@"
+exit $?

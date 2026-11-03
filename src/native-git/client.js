@@ -98,7 +98,11 @@ export async function callNativeWorker(ctx, { binding, action, workspace_id, ope
  }
  let data;
  try { data = JSON.parse(content); if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('shape'); }
- catch { throw failure('native_response', 'Native Git worker returned an invalid response. Inspect workspace state and the same intent receipt before retrying.'); }
+ catch {
+  // PC-WORKER-1: a stopped or paused worker host behind a tunnel or proxy answers with its own non-JSON 502/503/504 page.
+  if ([502, 503, 504].includes(response.status)) throw failure('native_transport', `Native Git worker is not answering (HTTP ${response.status}): its host may be paused by its owner, restarting or offline. Inspect workspace state and the same intent receipt before retrying; the outcome may be unknown.`, response.status);
+  throw failure('native_response', 'Native Git worker returned an invalid response. Inspect workspace state and the same intent receipt before retrying.');
+ }
  if (!response.ok) {
   const busy = response.status === 409 || response.status === 429;
   const resource=data.error==='worker_resource_pressure';
@@ -107,7 +111,8 @@ export async function callNativeWorker(ctx, { binding, action, workspace_id, ope
   const reason = typeof data.reason === 'string'
    ? redactExcerpt(data.reason).replace(/(?:\/[A-Za-z0-9_.-]+){2,}/g, '[host path]').replace(/[\x00-\x1f\x7f]/g, ' ').slice(0, 220) : '';
   const error=failure(busy ? 'native_busy' : 'native_http', busy
-   ? resource?`Native Git worker resource pressure: ${typeof data.reason==='string'?data.reason.replace(/[^a-z_]/g,'').slice(0,64):'unavailable'}. No operation was started. Retry after resources recover.`:'Native Git worker is busy. After the active operation finishes, inspect state and retry the same intent.'
+   ? resource&&data.reason==='owner_paused'?'Native Git worker is paused by its owner (the computer it runs on is in use). No operation was started. Retry later; GitHub API tools (github_repo_download, github_repo_change) keep working.'
+   : resource?`Native Git worker resource pressure: ${typeof data.reason==='string'?data.reason.replace(/[^a-z_]/g,'').slice(0,64):'unavailable'}. No operation was started. Retry after resources recover.`:'Native Git worker is busy. After the active operation finishes, inspect state and retry the same intent.'
    : `Native Git worker returned HTTP ${response.status}${reason ? ': ' + reason : '.'} Inspect state before a new intent.`, response.status);
   if(resource&&data.phase==='admission'&&data.no_operation_started===true)error.nativeNoOperationStarted=true;
   throw error;

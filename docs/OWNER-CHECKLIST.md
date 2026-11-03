@@ -19,6 +19,8 @@ Only things that need you (your sign-in, phone or desktop, money, or a decision)
 
 5. **Deploy the updated runtime image for Git access inside Playground (AGENT-FB-3, added 2026-11-03).** The new `git_access` operation needs the Playground runtime image rebuilt from this release (`workers/coding-workspace`) on the shared pool and any of your own machines. Until then it says the runtime did not accept the key and cancels it; nothing else is affected. Not a blocker.
 
+6. **Link this chat to the PC (Claude desktop app → Link to this computer)** (PC-WORKER-1, added 2026-11-03). Lets an agent run the PC worker kit and its checks inside WSL itself instead of through your assistant. Optional: Vivienne can run the same commands over SSH ([PC-WORKER](PC-WORKER.md)). To pause the worker any time, from Windows: `wsl -u root -e /srv/robinson-git/pc-worker pause` (and `resume`). Nothing is bought.
+
 ## Only if you want them
 
 - **Backups of Git workspaces.** Optional and not needed for production (decision 2026-10-30). No backup exists today. The off-server destination currently returns 401; do not work around it. When you want it: [runbook](NATIVE-GIT-BACKUP-RUNBOOK.md).

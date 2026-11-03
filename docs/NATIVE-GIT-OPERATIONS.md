@@ -407,6 +407,7 @@ autoscaling pool.
 | `NATIVE_GIT_PREVIOUS_WORKER_URL` | MCP | Older origin kept during a drain |
 | `NATIVE_GIT_WORKER_CUTOVER_AT` | MCP | Exact `YYYY-MM-DDTHH:MM:SS(.mmm)Z`; unpinned rows created before it use the previous origin. Required when a previous origin is set |
 | `NATIVE_GIT_WORKER_DRAINING=true` | MCP | Temporarily pauses the **primary** origin only (also blocks new opens and capabilities there) |
+| `<storage>/.owner-pause` (file) | worker | PC-WORKER-1 owner pause: while it exists every new piece of work is refused before it starts (429 `owner_paused`, `no_operation_started`; 503 on upload/download/git routes); admitted work finishes; capabilities report `owner_paused: true`. Written/removed by `deploy/pc/pc-worker pause/resume` ([PC-WORKER](PC-WORKER.md)); absent on other hosts |
 | `NATIVE_GIT_WORKER_KEY` | both | Legacy shared-key fixtures only |
 | `NATIVE_GIT_CONTROL_PUBLIC_KEY` | worker | Pinned MCP verification key |
 | `NATIVE_GIT_STORAGE_ROOT`, `PORT` (3000) | worker | Data root and port |

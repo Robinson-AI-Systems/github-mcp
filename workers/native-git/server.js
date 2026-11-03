@@ -14,7 +14,7 @@ import { verifyWorkerBody, workerKey, nativeWorkspaceId, WORKER_PROTOCOL } from 
 import { NATIVE_OPTIONS_VERSION } from '../../src/native-git/commands.js';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import {createResourceMonitor,resourcePolicyFromEnv} from './resources.js';
+import {createResourceMonitor,resourcePolicyFromEnv,OWNER_PAUSE_FILE,OWNER_PAUSED_TEXT} from './resources.js';
 import {uploadHttp,beginUpload,uploadStatus,applyUpload,pruneUploads} from './upload.js';
 import {downloadHttp,beginDownload,downloadStatus,pruneDownloads} from './download.js';
 import {remoteHttp,pruneRemotes} from './remote.js';
@@ -35,9 +35,10 @@ const listenDirect = (server, port) => new Promise((resolve, reject) => {
 // SRV-STATUS-1: the commit this image was built from (Dockerfile build argument SOURCE_COMMIT, or Render's RENDER_GIT_COMMIT),
 // reported in signed capabilities so github_server_status can warn when the worker is older than the control plane.
 export const workerBuildCommit = (env = process.env) => [env.NATIVE_GIT_BUILD_COMMIT, env.RENDER_GIT_COMMIT].find((v) => /^[0-9a-f]{40}$/.test(String(v ?? ''))) ?? null;
-export function nativeGitServer({ root, key, now = Date.now, allowLocalFixtures = false, fixtureRemote, resources, resourcePolicy = {}, singleWorkspaceId, singleBinding, authorityUrl, cloneTimeoutMs = 900000, cloneWaitMs = 30000, remote = {}, direct = null, buildCommit = workerBuildCommit() } = {}) {
+export function nativeGitServer({ root, key, now = Date.now, allowLocalFixtures = false, fixtureRemote, resources, resourcePolicy = {}, singleWorkspaceId, singleBinding, authorityUrl, cloneTimeoutMs = 900000, cloneWaitMs = 30000, remote = {}, direct = null, buildCommit = workerBuildCommit(), pauseFile = root ? join(root, OWNER_PAUSE_FILE) : null } = {}) {
  workerKey(key); const busy = new Set();
- const monitor=resources??createResourceMonitor({root,policy:resourcePolicy});
+ // PC-WORKER-1: `<storage>/.owner-pause` (deploy/pc/pc-worker pause) refuses new work; admitted work finishes.
+ const monitor=resources??createResourceMonitor({root,policy:resourcePolicy,pauseFile});
  const host = direct && !singleWorkspaceId ? directHost({ root, identity: direct.identity, env: direct.env ?? {}, local: allowLocalFixtures, stored: direct.stored ?? null, listen: direct.listen ?? listenDirect }) : null;
  const remoteCtx = () => ({ root, key, now, monitor, local: allowLocalFixtures, githubRemote: allowLocalFixtures && remote.github ? remote.github : GITHUB_REMOTE, brokerUrl: allowLocalFixtures && remote.broker ? remote.broker : BROKER_URL, fetchImpl: allowLocalFixtures && remote.fetch ? remote.fetch : fetch, ...(allowLocalFixtures && remote.limits ? { limits: remote.limits } : {}), ...(allowLocalFixtures && remote.freeDisk ? { freeDisk: remote.freeDisk } : {}) });
  const gitVersion=execFileSync('git',['--version'],{encoding:'utf8',timeout:2000}).trim();
@@ -60,7 +61,7 @@ export function nativeGitServer({ root, key, now = Date.now, allowLocalFixtures 
    const chunks = []; let bytes = 0;
    for await (const chunk of req) { bytes += chunk.length; if (bytes > 2 * 1024 * 1024) return send(413, { error: 'request_too_large' }); const admitted=monitor.body(bytes);if(!admitted.allowed){res.setHeader('Retry-After','2');return send(429,{error:'worker_resource_pressure',reason:admitted.reason,phase:'admission',no_operation_started:true});}chunks.push(chunk); }
    claim = verifyWorkerBody(Buffer.concat(chunks).toString('utf8'), req.headers['x-robinson-signature'], key, now());
-   if (claim.action === 'capabilities') return send(200, { ready: true, protocol: WORKER_PROTOCOL, ...(buildCommit?{build_commit:buildCommit}:{}), native_git:gitVersion,max_concurrent:null,capacity_mode:'resource-aware',resource_policy:monitor.policy,admission:await monitor.check(),workspace_lease:'idle-v1',repository_attachment:'sealed-mounted-v1',direct_upload:'quarantine-v1',direct_download:'one-time-v1',native_options:NATIVE_OPTIONS_VERSION,upload_apply:'delete-v1',upload_chunks:'chunks-v1',...(singleWorkspaceId?{}:{git_remote:'v1'}),...(host?.report()?{git_direct:host.report()}:{}),...(host?{git_direct_configure:'v1'}:{}),...(singleWorkspaceId?{repository:await repositoryMounts(join(root,singleWorkspaceId,'repo'))}:{}) });
+   if (claim.action === 'capabilities') return send(200, { ready: true, protocol: WORKER_PROTOCOL, ...(buildCommit?{build_commit:buildCommit}:{}), native_git:gitVersion,max_concurrent:null,capacity_mode:'resource-aware',resource_policy:monitor.policy,admission:await monitor.check(),...(monitor.paused?.()?{owner_paused:true}:{}),workspace_lease:'idle-v1',repository_attachment:'sealed-mounted-v1',direct_upload:'quarantine-v1',direct_download:'one-time-v1',native_options:NATIVE_OPTIONS_VERSION,upload_apply:'delete-v1',upload_chunks:'chunks-v1',...(singleWorkspaceId?{}:{git_remote:'v1'}),...(host?.report()?{git_direct:host.report()}:{}),...(host?{git_direct_configure:'v1'}:{}),...(singleWorkspaceId?{repository:await repositoryMounts(join(root,singleWorkspaceId,'repo'))}:{}) });
    // GIT-DIRECT-2: the control plane configures (or, with origin null, turns off) the direct git host.
    if (claim.action === 'direct_configure') {
     if (!host) return send(404, { error: 'not_found' });
@@ -78,7 +79,7 @@ export function nativeGitServer({ root, key, now = Date.now, allowLocalFixtures 
    if(claim.action!=='close'&&!(claim.action==='inspect'&&claim.renewLease===false)){
     const needsDisk=['open','upload_begin','upload_apply','download_begin'].includes(claim.action)||claim.action==='run'&&!['remove_file','clean'].includes(claim.operation);
     const admitted=await monitor.check({needsDisk});
-    if(!admitted.allowed){res.setHeader('Retry-After','2');return send(429,{error:'worker_resource_pressure',reason:admitted.reason,phase:'admission',no_operation_started:true,next:'Measured worker resources are under pressure. Inspect state, then retry after resources recover.'});}
+    if(!admitted.allowed){res.setHeader('Retry-After',String(admitted.retryAfterSeconds??2));return send(429,{error:'worker_resource_pressure',reason:admitted.reason,phase:'admission',no_operation_started:true,next:admitted.reason==='owner_paused'?OWNER_PAUSED_TEXT:'Measured worker resources are under pressure. Inspect state, then retry after resources recover.'});}
    }
    const worker = new NativeGitWorker({ root, allowLocalFixtures, now, cloneTimeoutMs, cloneWaitMs, scannerPolicy:{settings:policy,revision:claim.scannerPolicy?.revision??0},
     authorize: async (binding, { write }) => JSON.stringify(binding) === expected && claim.expiresAt > now() && (!write || claim.allowWrite === true),
