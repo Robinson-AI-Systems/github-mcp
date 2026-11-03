@@ -9,7 +9,8 @@
 import {createHash, randomBytes} from 'node:crypto';
 import {setTimeout as pause} from 'node:timers/promises';
 import {callNativeWorker, nativeConnection, nativeRecord} from '../native-git/client.js';
-import {nativeWorkspaceId, nativeWorkerHost} from '../native-git/protocol.js';
+import {nativeWorkspaceId} from '../native-git/protocol.js';
+import {placeWorkspace, forgetHost, noteOpened} from '../native-git/pool.js';
 import {TenantCapacityError} from '../tenancy/runtime-limits.js';
 import {enqueueAllocation, ensureAllocation, allocationRecord, disposeAllocation, recoverAllocation} from './allocations.js';
 import {stuckReason, isRuntimeOnlyCleanup, stuckExplanation} from './stuck.js';
@@ -63,7 +64,9 @@ export async function startRun(ctx, a, {deps = defaultRunDeps, requestKey} = {})
   if (existing) return existing;
   const id = 'job_' + randomBytes(8).toString('hex'), leaseMs = runLeaseMs(a.timeoutMs);
   const binding = {authority: randomBytes(16).toString('hex'), connection: nativeConnection(ctx), owner, repo: a.repo};
-  const nativeKey = requestKey ?? runRequestKey(ctx, a), worker = nativeWorkspaceId(binding, nativeKey), host = nativeWorkerHost(ctx.env);
+  // WORKER-POOL-1: the run's workspace goes to the first available pool host and stays there.
+  const host = (await placeWorkspace(ctx, {call: deps.callNativeWorker})).id;
+  const nativeKey = requestKey ?? runRequestKey(ctx, a), worker = nativeWorkspaceId(binding, nativeKey);
   await ctx.db.createJob({id, connection: nativeConnection(ctx), owner, repo: a.repo, kind: 'native-git-workspace', providerRef: JSON.stringify({authority: binding.authority, worker, host, idleTimeoutMs: leaseMs}), ttlMinutes: Math.ceil(leaseMs / 60000)}).catch(error => {
     if (error instanceof TenantCapacityError) throw Object.assign(new TypeError('Active workspace capacity was reached before anything was cloned. Close a finished workspace or wait for idle cleanup.'), {status: 429, safeMessage: true, safeRetryable: true, noOperationStarted: true});
     throw error;
@@ -75,6 +78,7 @@ export async function startRun(ctx, a, {deps = defaultRunDeps, requestKey} = {})
     await deps.callNativeWorker(ctx, {action: 'open', binding, job: {id, host, idleTimeoutMs: leaseMs}, requestKey: nativeKey, allowWrite: true, network: true, options: {...(SHA.test(a.ref) ? {} : {branch: a.ref}), ttlMs: leaseMs}});
   } catch (error) {
     if (error?.nativeNoOperationStarted) {
+      forgetHost(ctx, host);
       await ctx.db.finishJob(id, nativeConnection(ctx), {state: 'failed', detail: 'Worker resource admission declined before clone.'});
       await ctx.db.compareAndSetSetting(key, 1, {...saved, revision: 2, phase: 'done', outcome: 'not_started', outcomeReason: 'The Git worker was too busy to start the clone; nothing ran.', workspaceDisposed: true});
       throw Object.assign(error, {noOperationStarted: true});
@@ -82,6 +86,7 @@ export async function startRun(ctx, a, {deps = defaultRunDeps, requestKey} = {})
     // An uncertain clone stays in "opening"; the next call inspects it instead of cloning again.
     return await (await saver(ctx, key, saved)).save({lastError: 'The clone outcome was not confirmed; the next call inspects it.'});
   }
+  noteOpened(ctx, host);
   return saved;
 }
 

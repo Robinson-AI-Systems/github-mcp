@@ -52,6 +52,8 @@ services:
       NATIVE_GIT_MIN_AVAILABLE_MEMORY_MB: ${NATIVE_GIT_MIN_AVAILABLE_MEMORY_MB:-256}
       NATIVE_GIT_MIN_AVAILABLE_DISK_MB: ${NATIVE_GIT_MIN_AVAILABLE_DISK_MB:-20480}
       NATIVE_GIT_MAX_LOOP_DELAY_MS: ${NATIVE_GIT_MAX_LOOP_DELAY_MS:-250}
+      # WORKER-POOL-1: optional cap on workspaces held here (empty = resources only); the next one goes to the next host.
+      NATIVE_GIT_MAX_WORKSPACES: ${NATIVE_GIT_MAX_WORKSPACES:-}
       # Public, from the MCP's GET /api/native-git-key (never a private key).
       NATIVE_GIT_CONTROL_PUBLIC_KEY: ${NATIVE_GIT_CONTROL_PUBLIC_KEY:?Set NATIVE_GIT_CONTROL_PUBLIC_KEY from the MCP's /api/native-git-key}
       # GIT-DIRECT-1: the direct git host is this PC's own Funnel origin; the MCP answers its op=authorize.

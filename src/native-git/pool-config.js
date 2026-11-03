@@ -1,0 +1,101 @@
+// WORKER-POOL-1 (owner request 2026-11-03: "use my available machines automatically when my main PC gets busy").
+//
+// The native Git worker pool: every execution site (Chris's PC, the Dokploy worker, later the Workshop machine or
+// another enrolled computer) is one host running its own workers/native-git behind the same control plane.
+//
+// Which hosts exist comes ONLY from protected server configuration (the environment), never from the database
+// or a request: a worker host receives signed leases and short-lived GitHub credentials, so adding one is a
+// protected-configuration change, exactly like NATIVE_GIT_WORKER_URL today. The stored owner setting
+// (`native_git.worker_pool`, src/native-git/pool.js) can only switch a configured host off for new work or change its
+// priority or workspace limit; it can never add an address.
+//
+//   NATIVE_GIT_WORKER_URL           the primary host (name "primary", priority 10)
+//   NATIVE_GIT_PREVIOUS_WORKER_URL  the previous host (name "previous", priority 90), still eligible for new work
+//   NATIVE_GIT_WORKER_POOL          optional JSON list: [{"name":"workshop","origin":"https://…","priority":50,
+//                                   "maxWorkspaces":4,"enabled":true}]; an entry whose origin is the primary's or the
+//                                   previous host's only renames it or sets its priority, limit or enabled flag.
+//
+// Lower priority numbers are tried first. A workspace is pinned for life to the host it was opened on by the
+// host id below (the same 32-hex origin hash every existing workspace already stores), so a pool host stays
+// routable while it is configured, even when it is disabled for new work.
+import { createHash } from 'node:crypto';
+
+export const MAX_POOL_HOSTS = 16;
+export const HOST_NAME = /^[a-z0-9][a-z0-9-]{0,31}$/;
+const DEFAULT_PRIORITY = Object.freeze({ primary: 10, previous: 90, pool: 50 });
+const PRIORITY_MAX = 1000, LIMIT_MAX = 1000;
+
+/** The compact, non-secret id a workspace stores to stay pinned to its host (unchanged since PC-WORKER-1). */
+export const hostId = origin => createHash('sha256').update(origin).digest('hex').slice(0, 32);
+
+/** A fixed HTTPS worker origin (no credentials, path, query or fragment), or null. */
+export function workerOriginOf(raw) {
+ if (typeof raw !== 'string' || !raw) return null;
+ let url; try { url = new URL(raw); } catch { return null; }
+ if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash || url.pathname !== '/') return null;
+ return url.origin;
+}
+const intIn = (value, min, max) => Number.isSafeInteger(value) && value >= min && value <= max;
+
+/** The pool list from NATIVE_GIT_WORKER_POOL: valid entries and whether anything in it was invalid. */
+function poolList(env) {
+ const raw = env?.NATIVE_GIT_WORKER_POOL;
+ if (raw === undefined || raw === null || raw === '') return { entries: [], invalid: false };
+ let list; try { list = JSON.parse(raw); } catch { return { entries: [], invalid: true }; }
+ if (!Array.isArray(list)) return { entries: [], invalid: true };
+ const entries = []; let invalid = list.length > MAX_POOL_HOSTS;
+ for (const item of list.slice(0, MAX_POOL_HOSTS)) {
+  const origin = workerOriginOf(item?.origin);
+  const ok = item && typeof item === 'object' && HOST_NAME.test(item.name ?? '') && origin
+   && (item.priority === undefined || intIn(item.priority, 0, PRIORITY_MAX))
+   && (item.maxWorkspaces === undefined || item.maxWorkspaces === null || intIn(item.maxWorkspaces, 1, LIMIT_MAX))
+   && (item.enabled === undefined || typeof item.enabled === 'boolean');
+  if (!ok) { invalid = true; continue; }
+  entries.push({ name: item.name, origin, priority: item.priority, maxWorkspaces: item.maxWorkspaces ?? null, enabled: item.enabled });
+ }
+ return { entries, invalid };
+}
+
+/**
+ * Every configured worker host, preferred first: [{ id, name, origin, priority, maxWorkspaces, enabled, role }].
+ * An invalid NATIVE_GIT_WORKER_POOL entry is skipped (reported as `invalid`), never guessed at; the primary and
+ * previous hosts always keep working from their own settings.
+ */
+export function configuredHosts(env) {
+ const hosts = [];
+ const add = (origin, role, name) => {
+  if (!origin || hosts.some(h => h.origin === origin)) return;
+  hosts.push({ id: hostId(origin), name, origin, priority: DEFAULT_PRIORITY[role], maxWorkspaces: null, enabled: true, role, order: hosts.length });
+ };
+ add(workerOriginOf(env?.NATIVE_GIT_WORKER_URL), 'primary', 'primary');
+ add(workerOriginOf(env?.NATIVE_GIT_PREVIOUS_WORKER_URL), 'previous', 'previous');
+ const { entries, invalid } = poolList(env);
+ for (const entry of entries) {
+  let host = hosts.find(h => h.origin === entry.origin);
+  if (!host) { if (hosts.length >= MAX_POOL_HOSTS) continue; add(entry.origin, 'pool', entry.name); host = hosts.at(-1); }
+  if (hosts.some(h => h !== host && h.name === entry.name)) continue; // names stay unique; the first one wins
+  host.name = entry.name;
+  if (entry.priority !== undefined) host.priority = entry.priority;
+  if (entry.maxWorkspaces !== null) host.maxWorkspaces = entry.maxWorkspaces;
+  if (entry.enabled !== undefined) host.enabled = entry.enabled;
+ }
+ const sorted = hosts.sort((a, b) => a.priority - b.priority || a.order - b.order).map(({ order: _order, ...h }) => Object.freeze(h));
+ return Object.freeze(Object.assign(sorted, { invalid }));
+}
+
+/** The configured host with this id (any state: a pinned workspace keeps routing to a disabled host). */
+export const configuredHost = (env, id) => typeof id === 'string' && /^[a-f0-9]{32}$/.test(id) ? configuredHosts(env).find(h => h.id === id) ?? null : null;
+
+/** Applies the owner's stored adjustments (enabled, priority, maxWorkspaces per host name); never adds a host. */
+export function applyPoolSetting(hosts, stored) {
+ const by = stored && typeof stored === 'object' && stored.hosts && typeof stored.hosts === 'object' && !Array.isArray(stored.hosts) ? stored.hosts : {};
+ const out = hosts.map(h => {
+  const s = Object.hasOwn(by, h.name) && by[h.name] && typeof by[h.name] === 'object' ? by[h.name] : null;
+  if (!s) return h;
+  return Object.freeze({ ...h,
+   ...(typeof s.enabled === 'boolean' ? { enabled: s.enabled } : {}),
+   ...(intIn(s.priority, 0, PRIORITY_MAX) ? { priority: s.priority } : {}),
+   ...(s.maxWorkspaces === null || intIn(s.maxWorkspaces, 1, LIMIT_MAX) ? { maxWorkspaces: s.maxWorkspaces } : {}) });
+ });
+ return Object.freeze(out.map((h, order) => ({ h, order })).sort((a, b) => a.h.priority - b.h.priority || a.order - b.order).map(x => x.h));
+}

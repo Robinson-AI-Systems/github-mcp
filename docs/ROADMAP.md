@@ -275,3 +275,25 @@ The reverse of `github_repo_download`: one call that begins an upload, then (aft
 commits and pushes. It needs a second call anyway (the agent runs the command in between), so today it is
 `github_git_workspace_upload` begin → command → apply → `github_git_workspace_run` add/commit/push. Not built; needs
 Chris's go-ahead and a design for the two-step flow.
+
+## 2026-11-03 — Worker pool follow-ups (from WORKER-POOL-1, not built; need Chris's say-so)
+
+- **Short queue instead of "try again".** When every pool host is busy or paused, `github_git_workspace_open` refuses
+  with a retryable `no_operation_started`. A bounded queue (hold the intent a few minutes, open on the first host that
+  frees up, report `queued` on the same requestKey) would save agents the retry; it needs a durable intent record and a
+  scheduled drain, so it was left out of the first pool PR.
+- **Wake-on-LAN through an awake LAN peer.** A pool host that is switched off counts as unavailable until it checks in.
+  A machine that is always on in the same home network (for example the PC, or a small device) could receive a signed
+  "wake <host>" order over its dial-out channel and send the magic packet, so the control plane can wake the Workshop
+  machine when the others are busy. Needs: which peer, the target's MAC address kept in protected settings, BIOS/NIC
+  wake support, and a rule for when waking is worth it.
+- **Enrolling other people's machines (for example Caleb's PC).** Today a pool host is added by protected configuration
+  only, and it receives short-lived GitHub credentials for any repository its workspaces use. A machine owned by someone
+  else needs its own enrollment (like the Playground's device pairing), a per-host scope (which connections and
+  repositories may be placed there), the owner's consent on both sides, and a way to revoke it — a security design
+  before any code.
+- **Owner page / owner tool for the stored pool setting.** `native_git.worker_pool` (enable/disable, priority, limit per
+  host name) is read today but has no edit surface; a small My connection control or guarded owner tool would let Chris
+  switch a host off without a release.
+- **Direct git host per pool host.** `GIT_DIRECT_ORIGIN` belongs to the primary; git remote keys placed on another host use
+  this service's domain (pushes up to about 25 MB). Per-host direct origins would need one pinned direct-host key per host.

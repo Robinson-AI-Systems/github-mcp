@@ -225,3 +225,16 @@ in the worker; pause it when the link is needed.
 - **Docker Desktop credential store.** If WSL's `~/.docker/config.json` names `credsStore: desktop.exe` (Docker
   Desktop installed alongside Engine), builds from SSH or service sessions fail. The scripts detect this and build
   with an empty config (the base image is public).
+
+## When the PC is busy: the worker pool (WORKER-POOL-1)
+
+With the PC as `NATIVE_GIT_WORKER_URL` and Dokploy as `NATIVE_GIT_PREVIOUS_WORKER_URL`, both are pool hosts: new
+workspaces go to the PC while it has headroom, and to Dokploy when the PC is paused (`pc-worker pause`), short of memory
+or disk, at its workspace limit, or offline. A workspace stays on the host it was opened on; pausing the PC never moves
+or stops its existing workspaces (their next call answers "paused by its owner", as before). `pc-worker resume` makes the
+PC take new work again at once. More machines (the Workshop PC, another enrolled computer) are added with
+`NATIVE_GIT_WORKER_POOL`; see [NATIVE-GIT-OPERATIONS](NATIVE-GIT-OPERATIONS.md) "Worker pool".
+
+Optional on the PC: `NATIVE_GIT_MAX_WORKSPACES=<n>` in `deploy/pc/.env` caps how many workspaces the PC holds at once
+(empty = resources only); the next workspace then goes to the next host. `github_server_status` shows each host's state
+by name under `health.worker_pool`.

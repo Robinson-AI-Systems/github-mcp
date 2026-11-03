@@ -1,3 +1,4 @@
+import {placeWorkspace} from '../native-git/pool.js';
 import {createPreviewEntry} from '../playground/preview-entry.js';
 import {attachRepository} from '../playground/attachment.js';
 import {disposeAllocation,allocationRecord,inspectAllocation,resumeAllocation,provisionAllocation,recoverAllocation,recoveryPendingError,replacementNotice} from '../playground/allocations.js';
@@ -110,8 +111,8 @@ export function runToolDefinition(deps=defaultRunDeps,{budgetMs=40000,pollMs=200
    const refusal=passRefusal({tool:GIT_TOOL,args:{owner:t.owner,repo:t.repo},connection:c.connection});if(refusal)throw Object.assign(new TypeError(refusal+' A run also needs Git workspace access.'),{safeMessage:true,safeCode:'pass_area_git_required'});
    workerUrl(c.env);await authorizeNativeRepo(c,t.owner,t.repo);
    const existing=await readRun(c,runIntent(c,a));if(existing)return{run_phase:existing.phase};
-   const cap=await callNativeWorker(c,{action:'capabilities'});if(cap.capacity_mode!=='resource-aware')throw Object.assign(new TypeError('Update the native Git worker to resource-based admission before running.'),{safeMessage:true,safeCode:'native_worker_update_required'});
-   if(!cap.admission?.allowed)throw Object.assign(new TypeError('Native Git worker resource pressure. Nothing was cloned; retry in a moment.'),{safeMessage:true,safeCode:'native_resource_pressure',safeRetryable:true});
+   // WORKER-POOL-1: a run needs one pool host that can take its workspace now (the same choice its open makes).
+   await placeWorkspace(c,{call:deps.callNativeWorker});
    return{run_phase:null};
   },
   classify:()=>({}),

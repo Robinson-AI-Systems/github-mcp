@@ -309,6 +309,16 @@ export class NativeGitWorker {
     }
     return { removed };
   }
+  /** WORKER-POOL-1: workspaces on this volume that are cloning or ready and not past their idle lease (any tenant). */
+  async countActive() {
+    let active = 0;
+    for (const id of await readdir(this.root).catch(e => e.code === 'ENOENT' ? [] : Promise.reject(e))) {
+      if (!ID.test(id)) continue;
+      try { const meta = await json(join(this.root, id, 'workspace.json')); if (['opening', 'ready'].includes(meta.state) && Number.isFinite(meta.expiresAt) && meta.expiresAt > this.now()) active++; }
+      catch { /* unreadable metadata is an operator recovery item; it is not counted */ }
+    }
+    return active;
+  }
   async list(binding) {
     await this.access(binding, false); const items = [];
     for (const id of await readdir(this.root).catch(e => e.code === 'ENOENT' ? [] : Promise.reject(e))) {

@@ -113,3 +113,15 @@ worker runs on the PC (WSL2 Docker, low priority, localhost ports, Tailscale Fun
 change) as the primary worker; Dokploy stays the previous worker. The owner pause is a file on the worker volume that
 refuses new work with `no_operation_started`; admitted work finishes; kill is always allowed. Runbook:
 [PC-WORKER](PC-WORKER.md).
+
+2026-11-03 (WORKER-POOL-1) — Chris, relayed by Vivienne: "He wants the system to use his available machines automatically
+when his main PC gets busy." Each machine runs its own native Git worker behind the one control plane. New workspaces go
+to the preferred host while it has headroom and spill to the next when it is paused, short of resources, at its limit
+or offline; when none can take work the open is refused plainly ("busy or paused; try again in a minute",
+`no_operation_started`); a queue is not built (ROADMAP). A workspace and its runtime are pinned to their host for life,
+no live migration, and uncertain work is never re-run elsewhere. Host addresses come only from protected configuration
+(`NATIVE_GIT_WORKER_URL`, `NATIVE_GIT_PREVIOUS_WORKER_URL`, `NATIVE_GIT_WORKER_POOL`) because hosts receive signed
+leases and short-lived GitHub credentials; the stored `native_git.worker_pool` setting may only disable a host or
+change its priority or limit. The previous host is now eligible for new work (lowest default priority). The direct git
+host stays the primary's; a git remote key placed elsewhere uses this service's domain. Agent-facing tools unchanged.
+Runbook: [NATIVE-GIT-OPERATIONS](NATIVE-GIT-OPERATIONS.md) "Worker pool".

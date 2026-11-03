@@ -8,9 +8,10 @@ import { defineGithubWrite, explainGithubError } from './define-github-write.js'
 import { TenantCapacityError } from '../tenancy/runtime-limits.js';
 import { READ_OPERATIONS, WRITE_OPERATIONS, gitCommand, switchBranch, branchName, nativeOperationHelp, allOperationOptions, normalizeNativeOptions, needsErgonomicWorker, olderWorkerOptions, NATIVE_OPTIONS_VERSION } from '../native-git/commands.js';
 import { DEFINITE_FAILURES, definiteFailure, nextStep, porcelainPaths } from '../native-git/outcomes.js';
-import { nativeWorkspaceId, workerUrl, workerKey, nativeWorkerHost, nativeWorkerRoute, nativeBindingHash, UPLOAD_PURPOSE, UPLOAD_TTL_MS, DOWNLOAD_PURPOSE, DOWNLOAD_TTL_MS } from '../native-git/protocol.js';
+import { nativeWorkspaceId, workerUrl, workerKey, nativeWorkerRoute, nativeBindingHash, UPLOAD_PURPOSE, UPLOAD_TTL_MS, DOWNLOAD_PURPOSE, DOWNLOAD_TTL_MS } from '../native-git/protocol.js';
 import { nativeConnection, nativeOpenRequestKey, nativeRecord, authorizeNativeRepo, callNativeWorker } from '../native-git/client.js';
 import { transferUrl, blockedNote, fitDigest } from '../native-git/relay.js';
+import { placeWorkspace, forgetHost, noteOpened } from '../native-git/pool.js';
 import { parseDeviceOrigin, transportFetch } from '../fleet/relay.js';
 
 const OWNER = { type: 'string', minLength: 1, maxLength: 39, pattern: '^[A-Za-z0-9-]+$' };
@@ -31,25 +32,35 @@ const invoke = (c, t, a) => callNativeWorker(c, { binding: t.record.binding, job
 const configured = c => { workerUrl(c.env); if (c.env?.NATIVE_GIT_WORKER_KEY) workerKey(c.env.NATIVE_GIT_WORKER_KEY); else nativeWorkerPublicKey(c.env); };
 
 const safe = (message, safeCode, extra = {}) => Object.assign(new TypeError(message), { safeMessage: true, safeCode, ...extra });
-// Resource admission before any clone is sent (shared by workspace open and github_repo_download).
-async function admitClone(c, { download = false } = {}) {
- const cap=await callNativeWorker(c,{action:'capabilities'});
- if(download&&cap.direct_download!=='one-time-v1')throw safe('The native Git worker must be updated before direct downloads work. No clone was sent.','native_worker_update_required');
- if(cap.capacity_mode!=='resource-aware')throw safe('Update the native Git worker to resource-based admission before opening a new workspace.','native_worker_update_required');
- if(!cap.admission?.allowed)throw safe(`Native Git worker resource pressure: ${typeof cap.admission?.reason==='string'?cap.admission.reason.replace(/[^a-z_]/g,'').slice(0,64):'resource_observation_unavailable'}. No clone was sent.`,'native_resource_pressure',{safeRetryable:true});
-}
-// Records the workspace, then asks the worker to clone it. Returns the worker's answer ('ready', 'opening', or 'uncertain').
-async function openWorkspace(c, t, { branch, depth, authorName, authorEmail, leaseMinutes = 240 }, requestKey) {
- const id = 'job_' + randomBytes(8).toString('hex');
- const binding = { authority: randomBytes(16).toString('hex'), connection: nativeConnection(c), owner: t.owner, repo: t.repo };
- const worker = nativeWorkspaceId(binding, requestKey);
- const host = nativeWorkerHost(c.env);
- await c.db.createJob({ id, connection: nativeConnection(c), owner: t.owner, repo: t.repo, kind: 'native-git-workspace', providerRef: JSON.stringify({ authority: binding.authority, worker, host, idleTimeoutMs: leaseMinutes * 60000 }), ttlMinutes: leaseMinutes }).catch(error=>{
-  if(error instanceof TenantCapacityError) throw Object.assign(new TypeError('Active workspace capacity was reached before any clone was sent. Close a finished workspace or wait for idle cleanup, then start a new clone intent. There is no daily job-creation quota.'),{status:429,safeMessage:true,safeRetryable:true});
-  throw error;
- });
- try { return { workspace_id: id, result: await callNativeWorker(c, { action: 'open', binding, job: {id,host,idleTimeoutMs:leaseMinutes*60000}, requestKey, allowWrite: true, network: true, options: { branch, depth, authorName, authorEmail, ttlMs: leaseMinutes * 60000 } }) }; }
- catch(error) {if(error.nativeNoOperationStarted){await c.db.finishJob(id,nativeConnection(c),{state:'failed',detail:'Worker resource admission declined before clone.'});throw error;}return { workspace_id: id, result: { state: 'uncertain' } }; }
+// WORKER-POOL-1: placement before any clone is sent (shared by workspace open, github_repo_download,
+// github_repo_change): the first pool host, in priority order, that is reachable, not paused by its owner,
+// admits resources and is under its workspace limit (src/native-git/pool.js). Refuses plainly when none is.
+async function admitClone(c, { download = false } = {}) { return placeWorkspace(c, { download }); }
+// Records the workspace on the chosen host, then asks that host to clone it. Returns the worker's answer
+// ('ready', 'opening', or 'uncertain'). A host that definitely refuses before starting anything (owner pause,
+// resources, workspace limit: no_operation_started) is skipped and the next host is tried with a new record;
+// an uncertain answer is never retried elsewhere (the same intent is inspected instead).
+async function openWorkspace(c, t, { branch, depth, authorName, authorEmail, leaseMinutes = 240, download = false }, requestKey) {
+ const refused = [];
+ for (;;) {
+  const host = (await placeWorkspace(c, { download, exclude: refused })).id;
+  const id = 'job_' + randomBytes(8).toString('hex');
+  const binding = { authority: randomBytes(16).toString('hex'), connection: nativeConnection(c), owner: t.owner, repo: t.repo };
+  const worker = nativeWorkspaceId(binding, requestKey);
+  await c.db.createJob({ id, connection: nativeConnection(c), owner: t.owner, repo: t.repo, kind: 'native-git-workspace', providerRef: JSON.stringify({ authority: binding.authority, worker, host, idleTimeoutMs: leaseMinutes * 60000 }), ttlMinutes: leaseMinutes }).catch(error=>{
+   if(error instanceof TenantCapacityError) throw Object.assign(new TypeError('Active workspace capacity was reached before any clone was sent. Close a finished workspace or wait for idle cleanup, then start a new clone intent. There is no daily job-creation quota.'),{status:429,safeMessage:true,safeRetryable:true});
+   throw error;
+  });
+  let result;
+  try { result = await callNativeWorker(c, { action: 'open', binding, job: {id,host,idleTimeoutMs:leaseMinutes*60000}, requestKey, allowWrite: true, network: true, options: { branch, depth, authorName, authorEmail, ttlMs: leaseMinutes * 60000 } }); }
+  catch(error) {
+   if(!error.nativeNoOperationStarted) return { workspace_id: id, result: { state: 'uncertain' } };
+   await c.db.finishJob(id,nativeConnection(c),{state:'failed',detail:'Worker resource admission declined before clone.'});
+   forgetHost(c, host); refused.push(host); continue;
+  }
+  noteOpened(c, host);
+  return { workspace_id: id, result };
+ }
 }
 // SINGLE-DOMAIN-1: where the authoritative copy lives and whether it can serve a one-time transfer.
 // An attached workspace's copy is the runtime broker's (every native call already goes there).
@@ -476,7 +487,7 @@ const repoDownload = defineGithubWrite({
   }
   if (!id) {
    if (before?.reuse) await admitClone(c, { download: true });
-   const opened = await openWorkspace(c, t, { branch: branchOf(a.ref), leaseMinutes: 60 }, requestKey);
+   const opened = await openWorkspace(c, t, { branch: branchOf(a.ref), leaseMinutes: 60, download: true }, requestKey);
    id = opened.workspace_id;
    if (opened.result.state !== 'ready') return { workspace_id: id, reused, state: opened.result.state ?? 'uncertain' };
    record = await nativeRecord(c, id);

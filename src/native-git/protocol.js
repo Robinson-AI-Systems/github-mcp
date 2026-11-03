@@ -1,4 +1,5 @@
 // Internal worker transport, never a user-supplied URL or host command.
+import { configuredHost, hostId } from './pool-config.js';
 import { createHmac, timingSafeEqual, createHash, createPublicKey, verify } from 'node:crypto';
 export const WORKER_PROTOCOL = 3;
 export function workerKey(key) {
@@ -99,15 +100,15 @@ export const nativeWorkspaceId = (binding, key) => {
 
 // Host pins are compact, non-secret IDs. Only protected configured origins are
 // eligible; a stored workspace can never supply an arbitrary credential target.
-export const nativeWorkerHost = env => createHash('sha256').update(new URL(workerUrl(env)).origin).digest('hex').slice(0,32);
+export const nativeWorkerHost = env => hostId(new URL(workerUrl(env)).origin);
 export function nativeWorkerRoute(env, job) {
  if(job?.brokerOrigin){const url=new URL(job.brokerOrigin);if(!/^[a-f0-9]{64}$/.test(job.allocationBinding??'')||url.protocol!=='https:'||url.username||url.password||url.pathname!=='/'||url.search||url.hash)throw new TypeError('Invalid bound dedicated Git broker.');return new URL('/v1/workspace',url).href;}
  const primary=workerUrl(env);
  const previous=env?.NATIVE_GIT_PREVIOUS_WORKER_URL ? workerUrl({...env,NATIVE_GIT_WORKER_URL:env.NATIVE_GIT_PREVIOUS_WORKER_URL}) : null;
  if (job?.host!==undefined) {
-  for (const url of [primary,previous].filter(Boolean)) {
-   if (createHash('sha256').update(new URL(url).origin).digest('hex').slice(0,32)===job.host) return url;
-  }
+  // WORKER-POOL-1: any configured pool host (primary, previous or NATIVE_GIT_WORKER_POOL), by its stored id.
+  const pinned=configuredHost(env,job.host);
+  if (pinned) return new URL('/v1/workspace',pinned.origin).href;
   throw Object.assign(new TypeError('This workspace belongs to a worker origin that is no longer configured. Restore its protected host configuration or migrate its data; no request was sent.'),{safeMessage:true,safeCode:'native_worker_host_unavailable',safeRetryable:false});
  }
  if (previous && job?.createdAt!==undefined) {

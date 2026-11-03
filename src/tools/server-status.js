@@ -8,6 +8,8 @@ import { serverRelease } from '../brand/brand.js';
 import { currentZone, formatLocal } from '../core/time-zone.js';
 import { projectFields } from '../core/result-rules.js';
 import { callNativeWorker } from '../native-git/client.js';
+import { configuredHosts } from '../native-git/pool-config.js';
+import { poolStatus } from '../native-git/pool.js';
 import { WORKER_PROTOCOL } from '../native-git/protocol.js';
 import { NATIVE_OPTIONS_VERSION } from '../native-git/commands.js';
 import { resolvePrebuiltImage } from '../playground/prebuilt-image.js';
@@ -141,6 +143,20 @@ async function checkWorker(ctx, env, budget, slow) {
   return { check: ms > slow.worker ? { status: 'degraded', ms, reason: 'The native Git worker answered, but slowly.' } : { status: 'ok', ms }, cap: r.value };
 }
 
+// WORKER-POOL-1: every pool host's state by name (never an address), only when more than one host is configured.
+async function checkPool(ctx, env, budget) {
+  const hosts = configuredHosts(env);
+  if (hosts.length < 2 && !hosts.invalid) return null;
+  const r = await bounded(poolStatus(ctx), budget);
+  if (r.timeout || r.error || !Array.isArray(r.value)) return { status: 'degraded', reason: 'The worker pool could not be checked just now.' };
+  const list = r.value.map((h) => ({ name: h.name, state: h.state, ...(h.reason ? { reason: h.reason } : {}),
+    ...(h.active_workspaces !== null ? { active: h.active_workspaces } : {}), ...(h.max_workspaces !== null ? { max: h.max_workspaces } : {}) }));
+  const open = list.filter((h) => h.state === 'available').length;
+  if (!open) return { status: 'down', hosts: list, reason: 'No workspace host is taking new work (all paused, busy, full, disabled or offline); new workspaces are refused with "try again".' };
+  if (r.value.invalid) return { status: 'degraded', hosts: list, reason: 'Part of the NATIVE_GIT_WORKER_POOL setting is not valid and was ignored.' };
+  return { status: 'ok', available: open, hosts: list };
+}
+
 const directOrigin = (env) => {
   try {
     const url = new URL(String(env.GIT_DIRECT_ORIGIN ?? ''));
@@ -244,13 +260,14 @@ export async function serverStatus(args, ctx, { budgetMs = STATUS_BUDGET_MS, slo
   const deployTask = want.has('deployed_at') && release.commit
     ? bounded(cached(`deploy:${release.commit}:${environment}`, now, async () => deploymentTime(await gh, release.commit, environment)), budgetMs) : null;
   const health = want.has('health') || want.has('workers');
-  const [history, deployed, database, worker, direct, pool, image] = await Promise.all([
+  const [history, deployed, database, worker, direct, pool, image, workerPool] = await Promise.all([
     historyTask, deployTask,
     want.has('health') ? checkDatabase(ctx, budgetMs, slowMs) : null,
     health ? checkWorker(ctx, env, budgetMs, slowMs) : null,
     want.has('health') ? checkDirect(ctx, env, budgetMs, slowMs) : null,
     health ? playgroundPool(ctx, env, budgetMs) : null,
-    want.has('workers') ? runtimeImage(ctx, env, budgetMs) : null
+    want.has('workers') ? runtimeImage(ctx, env, budgetMs) : null,
+    want.has('health') ? checkPool(ctx, env, budgetMs) : null
   ]);
 
   const out = { release };
@@ -278,7 +295,7 @@ export async function serverStatus(args, ctx, { budgetMs = STATUS_BUDGET_MS, slo
     out.workers = { native_git: nativeGit, playground: { runtime_image: runtime, ...(pool?.manager ? { manager: pool.manager } : {}) } };
   }
   if (want.has('health')) {
-    const checks = { database, worker: worker.check, ...(direct ? { direct_git: direct } : {}), ...(pool?.check ? { playground_pool: pool.check } : {}) };
+    const checks = { database, worker: worker.check, ...(workerPool ? { worker_pool: workerPool } : {}), ...(direct ? { direct_git: direct } : {}), ...(pool?.check ? { playground_pool: pool.check } : {}) };
     out.health = { overall: worst(Object.values(checks)), ...checks };
   }
   if (want.has('warnings')) out.warnings = warningsFor({ release, worker: workerFacts, image, history: historyValue });

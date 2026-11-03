@@ -3233,6 +3233,24 @@
       ],
       "readiness": "READY",
       "ownerInputs": []
+    },
+    {
+      "id": "WORKER-POOL-1",
+      "title": "Native Git worker pool: placement of new workspaces across Chris's machines (preferred host first, spill when busy, paused, full or offline; plain retryable refusal when all are), pinned for life, per-host relay routes and git remote keys, pool health in github_server_status",
+      "batch": "FIN",
+      "design": "docs/pr-cards/WORKER-POOL-1.md",
+      "dependencies": [
+        "PC-WORKER-1"
+      ],
+      "card": "docs/pr-cards/WORKER-POOL-1.md",
+      "status": "IN_PROGRESS",
+      "migration": "none (stored setting native_git.worker_pool; git remote key index gains host)",
+      "budget": 900,
+      "units": [
+        "WORKER-POOL-1"
+      ],
+      "readiness": "READY",
+      "ownerInputs": []
     }
   ],
   "gatewayBoundary": {

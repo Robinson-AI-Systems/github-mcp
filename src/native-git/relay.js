@@ -8,7 +8,7 @@
 //
 // It can never become an open proxy:
 //  - the destination is never read from the request: <route> only selects the configured worker
-//    origin ("w", or "p" for the previous one) or names a dedicated runtime broker host that must
+//    origin ("w", "p" for the previous one, "h.<id>" for another configured pool host) or names a dedicated runtime broker host that must
 //    have the exact Playground shape on a configured ingress address;
 //  - <mac> is a server-side HMAC binding kind + destination + capability, so a valid capability
 //    cannot be pointed at another destination, and a route cannot be reused with another capability;
@@ -20,6 +20,7 @@ import { createHmac, hkdfSync, timingSafeEqual } from 'node:crypto';
 import { readEncryptionKey } from '../core/crypto.js';
 import { publicOrigin } from '../core/http.js';
 import { nativeWorkerPublicKey } from './signing.js';
+import { configuredHosts, configuredHost } from './pool-config.js';
 import { workerUrl, verifyDownloadCapability, verifyUploadCapability, DOWNLOAD_SESSION_MS, UPLOAD_CHUNK_GRACE_MS } from './protocol.js';
 
 export const TRANSFER_PREFIX = '/v1/transfer/';
@@ -54,10 +55,15 @@ export const workerOrigin = (env, previous) => {
  try { return new URL(workerUrl({ ...env, NATIVE_GIT_WORKER_URL: raw })).origin; } catch { return null; }
 };
 
-/** Which route segment names this exact destination origin, or null when it is not eligible. */
+/** Which route segment names this exact destination origin, or null when it is not eligible.
+ *  WORKER-POOL-1: "w" (primary) and "p" (previous) stay exactly as before, so addresses already issued keep
+ *  working; any other configured pool host is "h.<host id>" (the same id its workspaces store), resolved only
+ *  against protected configuration. The HMAC tag binds the resolved destination origin, as for every route. */
 export function routeFor(env, destinationOrigin) {
  if (destinationOrigin === workerOrigin(env, false)) return 'w';
  if (destinationOrigin === workerOrigin(env, true)) return 'p';
+ const pooled = configuredHosts(env).find(h => h.origin === destinationOrigin);
+ if (pooled) return 'h.' + pooled.id;
  let url; try { url = new URL(destinationOrigin); } catch { return null; }
  const m = BROKER_HOST.exec(url.hostname);
  if (url.protocol !== 'https:' || url.port || url.username || url.password || url.pathname !== '/' || url.search || url.hash || !m || url.origin !== destinationOrigin) return null;
@@ -66,6 +72,7 @@ export function routeFor(env, destinationOrigin) {
 function resolveRoute(env, route) {
  if (route === 'w') return workerOrigin(env, false);
  if (route === 'p') return workerOrigin(env, true);
+ if (route.startsWith('h.')) { const host = configuredHost(env, route.slice(2)); return host && routeFor(env, host.origin) === route ? host.origin : null; }
  if (!route.startsWith('b.')) return null;
  const origin = 'https://' + route.slice(2);
  return routeFor(env, origin) === route ? origin : null;
@@ -90,7 +97,7 @@ const capabilityKey = (env, route) => route.startsWith('b.') || !env.NATIVE_GIT_
  */
 export function planTransferRelay(request, env = process.env, now = Date.now()) {
  let url; try { url = new URL(request.url); } catch { return refuse(404, 'Not found.'); }
- const m = /^\/v1\/transfer\/(d|u)\/(w|p|b\.[a-z0-9.-]{1,200})\/([A-Za-z0-9_-]{32})\/([A-Za-z0-9_-]{1,2048}\.[A-Za-z0-9_-]{1,200})(\/info\/refs|\/git-upload-pack|\/git-receive-pack|\/chunk|\/status|\/finish)?$/.exec(url.pathname);
+ const m = /^\/v1\/transfer\/(d|u)\/(w|p|h\.[a-f0-9]{32}|b\.[a-z0-9.-]{1,200})\/([A-Za-z0-9_-]{32})\/([A-Za-z0-9_-]{1,2048}\.[A-Za-z0-9_-]{1,200})(\/info\/refs|\/git-upload-pack|\/git-receive-pack|\/chunk|\/status|\/finish)?$/.exec(url.pathname);
  if (!m) return refuse(404, 'Not found.');
  const [, kind, route, tag, capability, suffix = ''] = m, spec = KIND[kind], step = kind === 'u' ? CHUNK_STEPS[suffix] : undefined;
  if (suffix && suffix !== '/info/refs' && suffix !== spec.pack && !step) return refuse(404, 'Not found.');
