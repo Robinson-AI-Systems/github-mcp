@@ -212,3 +212,16 @@ only when nothing runs in it; the game server already keeps it up, and Docker re
 
 Bandwidth: pushes and clones use the PC's internet link (about 250–300 Mbps today over Wi-Fi). There is no bandwidth cap
 in the worker; pause it when the link is needed.
+
+## WSL2 notes (PC-WORKER-2, found on the first real install, 2026-11-03)
+
+- **Mirrored networking.** With `networkingMode=mirrored` in `.wslconfig`, Docker's published localhost ports never
+  answer: Docker's protection rule drops 127.0.0.1 traffic that does not arrive on `lo`, and mirrored mode routes it
+  through the Windows path. The kit therefore runs the worker with host networking, listening on 127.0.0.1 only
+  (`NATIVE_GIT_BIND_HOST`), on the API and git ports from `.env` (47300/47301). This also works under NAT networking
+  with localhost forwarding. Nothing listens on the LAN.
+- **No IO weight.** WSL2 kernels have no BFQ scheduler, so a `blkio` weight makes the container fail to start. IO
+  priority comes from `ionice` only.
+- **Docker Desktop credential store.** If WSL's `~/.docker/config.json` names `credsStore: desktop.exe` (Docker
+  Desktop installed alongside Engine), builds from SSH or service sessions fail. The scripts detect this and build
+  with an empty config (the base image is public).
