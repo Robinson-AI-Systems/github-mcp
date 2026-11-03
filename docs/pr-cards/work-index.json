@@ -3046,7 +3046,7 @@
         "CHUNK-UPLOAD-1"
       ],
       "card": "docs/pr-cards/GIT-REMOTE-1.md",
-      "status": "IN_PROGRESS",
+      "status": "MERGED",
       "migration": "additive tables git_remote_keys, git_remote_uses (per tenant database)",
       "budget": 2400,
       "units": [

@@ -126,3 +126,9 @@ rewrite (`/git-remote/exchange`), a worker route `/v1/remote/*` and capability `
 `robinson-git-remote/v1`. `redactExcerpt` additionally hides `rgk_`/`rgc_` values. No GitHub API version, permission,
 plan or spend change. Compact listing: `github_pr_create` and `github_branch_create` list lean schemas (full schemas
 still validate); budget unchanged at 6,000.
+
+## Follow-up GIT-REMOTE-2 (2026-11-03, live)
+
+The hosting proxy rejects git's chunked-encoding pack uploads over about 4 MB. The setup command now sets
+`http.<origin>.postBuffer 209715200` for this address only, so git sends a declared length; pushes up to about 25 MB
+work live, and 40 MB was cut off. The push note says so and points larger payloads to the chunked upload.

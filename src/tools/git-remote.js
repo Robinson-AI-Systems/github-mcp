@@ -17,13 +17,15 @@ import { CODE_TTL_MS, indexKey, keyLifetime, newExchangeCode, sha256 } from '../
 const safe = (message, safeCode, extra = {}) => Object.assign(new TypeError(message), { safeMessage: true, safeCode, ...extra });
 const OWNER = { type: 'string', minLength: 1, maxLength: 39, pattern: '^[A-Za-z0-9-]+$' };
 const REPO = { type: 'string', minLength: 1, maxLength: 100, pattern: '^[A-Za-z0-9_.-]+$' };
-/** Measured locally (docs/pr-cards/GIT-REMOTE-1.md): fine through the relay; Vercel's proxy is the limit. */
-export const PUSH_NOTE = 'Pushes up to 100 MiB each. Through this domain a single push of more than about 20 MB may be cut off by the hosting proxy; for huge binary files use github_git_workspace_upload (chunked) or push in smaller commits.';
+/** Measured live 2026-11-03: without a declared length (git streams packs over 1 MiB in chunked encoding) every push
+ *  over ~4 MB got HTTP 502 from the hosting proxy; with http.postBuffer set (git sends Content-Length) 6–25 MB pushed
+ *  and 40 MB was cut off. The setup command sets postBuffer for this one address. */
+export const PUSH_NOTE = 'Pushes up to about 25 MB each work through this domain (the setup command sets git http.postBuffer for it); larger ones may be cut off by the hosting proxy. For huge binary files use github_git_workspace_upload (chunked) or push in smaller commits.';
 
 /** The setup command: stores the key for this one address only (no other git host or helper sees it) and never prints it. */
 export function setupCommand(origin, code, remoteUrl) {
  const scope = `credential.${origin}`;
- return `git config --global --replace-all ${scope}.helper '' && git config --global --add ${scope}.helper 'store --file="$HOME/.git-credentials-robinson"' && git config --global ${scope}.useHttpPath true` +
+ return `git config --global --replace-all ${scope}.helper '' && git config --global --add ${scope}.helper 'store --file="$HOME/.git-credentials-robinson"' && git config --global ${scope}.useHttpPath true && git config --global http.${origin}.postBuffer 209715200` +
   ` && K="$(curl -fsS --proto =https --max-redirs 0 --data-urlencode 'code=${code}' ${origin}/git-remote/exchange)" && printf '%s\\n' "$K" | git credential approve && unset K && echo "git remote ready: ${remoteUrl}"`;
 }
 
