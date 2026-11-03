@@ -40,6 +40,7 @@ import { bareOctokit } from '../github/client.js';
 import { hashToken, randomToken, validRedirectUri } from '../core/oauth.js';
 import { publicOrigin } from '../core/http.js';
 import { isPublicClientId, publicAuthCode, parsePublicCode } from './public-code.js';
+import { isCimdClientId, resolveCimdClient } from './cimd-client.js';
 import { MUSE_PUBLIC_CLIENT_ID, MUSE_REDIRECT_URI } from './muse-client.js';
 import { createMarketplaceStore } from '../marketplace/store.js';
 import { createEnrolledHostStore } from '../playground/enrolled-hosts.js';
@@ -121,7 +122,7 @@ export function createPublicConnect({ env = process.env, fetchImpl = fetch, root
   }
   function checkAuthorizeRequest(p) {
     const origin = active();
-    if (!isPublicClientId(p.client_id) || [FORGET_CLIENT, MANAGE_CLIENT].includes(p.client_id) || p.response_type !== 'code' ||
+    if (!(isPublicClientId(p.client_id) || isCimdClientId(p.client_id)) || [FORGET_CLIENT, MANAGE_CLIENT].includes(p.client_id) || p.response_type !== 'code' ||
         p.code_challenge_method !== 'S256' || !CHALLENGE.test(String(p.code_challenge ?? '')) ||
         !((p.resource === undefined || p.resource === origin + '/api/mcp') || (marketplaceEnabled(env) && accountFromResource(p.resource, env))) ||
         typeof p.redirect_uri !== 'string' || !validRedirectUri(p.redirect_uri) ||
@@ -193,6 +194,15 @@ export function createPublicConnect({ env = process.env, fetchImpl = fetch, root
     // Muse's Android custom-connector form may require an ID without using RFC 7591.
     // Reserve one fixed public ID for Meta's exact callback; it grants no user authority.
     if (p.client_id === MUSE_PUBLIC_CLIENT_ID) await directory().ensureMusePublicClient(MUSE_PUBLIC_CLIENT_ID, MUSE_REDIRECT_URI, hashToken(randomToken(32)));
+    // PUB-10: an app carrying a CIMD card (Claude, ChatGPT) is admitted from its own fetched
+    // metadata document, never from the sign-up store: resolve the document, refuse on any
+    // mismatch, then mirror it as a public client row so every later step (consent, code,
+    // token) treats it exactly like the fixed Muse client.
+    if (isCimdClientId(p.client_id)) {
+      const card = await resolveCimdClient(p.client_id, { fetchImpl });
+      if (!card || !card.redirect_uris.includes(p.redirect_uri)) throw refused('r2c');
+      await directory().ensureCimdPublicClient(p.client_id, [...card.redirect_uris], hashToken(randomToken(32)));
+    }
     const client = await loadClient(p.client_id, p.redirect_uri);
     await directory().purgeExpiredPublicFlows(client.clientId);
     return await openStep({ client, flow: { redirectUri: p.redirect_uri, clientState: p.state, codeChallenge: p.code_challenge,
