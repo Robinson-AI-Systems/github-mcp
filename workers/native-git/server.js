@@ -28,9 +28,11 @@ const BROKER_URL = control => new URL('/api/git-remote?op=broker', control).href
 // The direct git host is configured by the environment (GIT_DIRECT_ORIGIN + GIT_DIRECT_CONTROL_ORIGIN, which win)
 // or by the control plane's signed `direct_configure` action (stored on the volume); once configured, capabilities
 // report it so setup can pin the worker key. `listen(server, port)` opens the direct port (default: all interfaces).
+// PC-WORKER-2: NATIVE_GIT_BIND_HOST (default all interfaces) lets a host-networked worker listen on loopback only.
+export const bindHost = (env = process.env) => { const h = String(env.NATIVE_GIT_BIND_HOST ?? '').trim(); return /^(?:127\.0\.0\.1|::1|0\.0\.0\.0|::)$/.test(h) ? h : '0.0.0.0'; };
 const listenDirect = (server, port) => new Promise((resolve, reject) => {
  const fail = error => { server.off('listening', done); reject(error); }, done = () => { server.off('error', fail); resolve(); };
- server.once('error', fail); server.once('listening', done); server.listen(port, '0.0.0.0');
+ server.once('error', fail); server.once('listening', done); server.listen(port, bindHost());
 });
 // SRV-STATUS-1: the commit this image was built from (Dockerfile build argument SOURCE_COMMIT, or Render's RENDER_GIT_COMMIT),
 // reported in signed capabilities so github_server_status can warn when the worker is older than the control plane.
@@ -133,7 +135,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
  // The direct git host's key and stored configuration (not for a dedicated single-workspace broker).
  const direct=process.env.NATIVE_GIT_SINGLE_WORKSPACE_ID?null:{identity:await directIdentity(root),env:process.env,stored:await readDirectFile(root).catch(()=>{process.stderr.write('The stored direct git host configuration could not be read; configure it again.\n');return null;})};
  const server=nativeGitServer({root,direct,key:process.env.NATIVE_GIT_CONTROL_PUBLIC_KEY??process.env.NATIVE_GIT_WORKER_KEY,resourcePolicy:resourcePolicyFromEnv(process.env),singleWorkspaceId:process.env.NATIVE_GIT_SINGLE_WORKSPACE_ID,singleBinding:process.env.NATIVE_GIT_SINGLE_BINDING,authorityUrl:process.env.NATIVE_GIT_AUTHORITY_URL,cloneTimeoutMs:Math.min(Math.max(Number(process.env.NATIVE_GIT_CLONE_TIMEOUT_MS??900000)||900000,45000),3600000)});
- server.listen(Number(process.env.PORT??3000),'0.0.0.0');
+ server.listen(Number(process.env.PORT??3000),bindHost());
  server.directHost?.start().catch(()=>process.stderr.write('The direct git host could not listen on its port; check GIT_DIRECT_PORT.\n'));
  for(const signal of ['SIGTERM','SIGINT'])process.once(signal,()=>server.close(()=>{process.exitCode=0;}));
 }
