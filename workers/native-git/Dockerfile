@@ -1,11 +1,13 @@
 # Official Node multi-platform manifest, recorded from docker-library/repo-info 2026-10-28.
 FROM node:24.22.1-bookworm-slim@sha256:be8204d4bd327363357f532187b752ff62759c31bedf98e9e18fc08c9cbd605c
+# GIT-SSH-LEG-1: openssh-client (ssh, ssh-keygen) for the optional SSH leg to GitHub (NATIVE_GIT_GITHUB_TRANSPORT=ssh).
 # Freeze Git and its dependencies against signed Debian snapshots; no unauthenticated packages.
 RUN rm -f /etc/apt/sources.list.d/debian.sources \
  && printf 'deb [check-valid-until=no] http://snapshot.debian.org/archive/debian/20261028T000000Z/ bookworm main\ndeb [check-valid-until=no] http://snapshot.debian.org/archive/debian-security/20261028T000000Z/ bookworm-security main\n' > /etc/apt/sources.list \
  && apt-get update \
- && apt-get install -y --no-install-recommends git ca-certificates \
+ && apt-get install -y --no-install-recommends git ca-certificates openssh-client \
  && git --version \
+ && ssh -V \
  && rm -rf /var/lib/apt/lists/* \
  && mkdir -p /data /app \
  && chown node:node /data

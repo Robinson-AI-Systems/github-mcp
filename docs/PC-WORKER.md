@@ -256,3 +256,43 @@ No setting is needed: the primary host is owner-only by default whenever another
 set `"audience": "owner"` or `"shared"` on the host's entry in `NATIVE_GIT_WORKER_POOL` (protected Vercel setting only;
 see [NATIVE-GIT-OPERATIONS](NATIVE-GIT-OPERATIONS.md) "Worker pool"). Anything another person already had on the PC
 before this change keeps working until it closes, and is counted in the logs.
+
+## Faster pushes to GitHub over SSH (GIT-SSH-LEG-1)
+
+Measured from the PC on 2026-11-03 (150 MB, incompressible): GitHub's HTTPS git front end took 444 s (about 0.34 MB/s);
+SSH took 18 s on port 22 and 18 s on `ssh.github.com:443` (about 8 MB/s). The house uploads elsewhere at 57 MB/s, so the
+slowness is GitHub's HTTPS git door from this network. To send pushes over SSH instead, once the release that contains
+this change is live: add these two lines to `/srv/robinson-git/.env` (an existing file is kept as it is, so add them by
+hand), then run `/srv/robinson-git/pc-worker update` (it rebuilds the image, which now includes the `ssh` program, and
+restarts the worker with the new settings):
+
+```
+NATIVE_GIT_GITHUB_TRANSPORT=ssh
+NATIVE_GIT_GITHUB_SSH_PORT=443
+```
+
+What happens on each push through the git remote, with every existing check unchanged (content scan, branch guards,
+large-push parts, the atomic leased push, the read-back and the change log):
+
+1. After the content scan, the worker makes a brand-new key pair in a private temporary folder (memory-backed
+   `/dev/shm`), readable only by the worker. The private key is never logged, returned or kept.
+2. The MCP adds its public half as a **write deploy key on that one repository only**, titled
+   `GitHub Unleashed push <id> (auto-removed)`, with the same GitHub credential the push itself uses (the App, or you with
+   "Act as me"). The change log shows it as an access change, with who and which repository.
+3. The push goes over SSH. GitHub's published SSH host keys are built into the worker; any other server is refused.
+4. The key is removed right after the push, whether it worked or not, and the MCP reads back that it is gone (another
+   change-log row). If removal fails, the worker keeps retrying every minute, and the next SSH push to that repository
+   first removes any of these keys older than 15 minutes. Only keys with exactly that title are ever touched.
+
+If the key cannot be added (the credential lacks Administration permission, the organization turns deploy keys off, or a
+delegated pass is pushing), or GitHub cannot be reached over SSH, the same push goes over HTTPS and the `remote:` lines
+say why. Each push prints one line such as `Sent to GitHub over SSH in 18 s`, and its change-log row records the
+transport and how long the scan, key steps, push and read-back took. Fetches and the read-back stay on HTTPS.
+
+Both settings are **off by default** (`NATIVE_GIT_GITHUB_TRANSPORT=https`, `NATIVE_GIT_GITHUB_HTTP_VERSION` empty), so
+after the release they can be tried one at a time (owner sequencing, 2026-11-03): first the HTTP version alone with
+HTTPS, time a push, set it back to empty; then SSH alone.
+
+Optional experiment: `NATIVE_GIT_GITHUB_HTTP_VERSION=HTTP/1.1` or `HTTP/2` sets git's HTTP version for the HTTPS legs
+(empty = git's default). `NATIVE_GIT_GITHUB_SSH_PORT=22` uses `github.com` port 22 instead of 443. Everywhere else
+(Dokploy, Render) these stay unset, which is plain HTTPS as before.

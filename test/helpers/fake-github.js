@@ -89,6 +89,12 @@ export function makeFakeGitHub({ routes = [], baseUrl = 'https://api.github.com'
         replies.set(route, { status, body, headers });
         return this;
       },
+      /** replyWith((request) => ({ status, body?, headers? })) answers each call from the test's own state (still validated first). */
+      replyWith(fn) {
+        if (typeof fn !== 'function') throw new TypeError('replyWith needs a function');
+        replies.set(route, { dynamic: fn });
+        return this;
+      },
       /** replySequence([{ status, body?, headers? }, …]) answers each call in turn; the last entry repeats. */
       replySequence(steps) {
         if (!Array.isArray(steps) || !steps.length) throw new TypeError('replySequence needs at least one step');
@@ -154,7 +160,7 @@ export function makeFakeGitHub({ routes = [], baseUrl = 'https://api.github.com'
     if (!reply) {
       return json(501, { message: `fake GitHub: no reply configured for ${hit.route}` });
     }
-    const step = reply.sequence ? reply.sequence() : reply;
+    const step = reply.dynamic ? await reply.dynamic(request) : reply.sequence ? reply.sequence() : reply;
     const body = typeof step.body === 'function' ? await step.body(request) : step.body;
     return json(step.status, body, step.headers);
   }

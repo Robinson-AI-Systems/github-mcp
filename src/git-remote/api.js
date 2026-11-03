@@ -12,6 +12,8 @@
 //    op=report closes the push's change-log row with the outcome the worker observed on GitHub.
 //    phase=renew (GIT-DIRECT-1) mints a fresh credential for the next batch of a very large push whose
 //    change-log row is still open.
+//    op=key (GIT-SSH-LEG-1) adds and removes the temporary write deploy key of one push over the worker's SSH leg
+//    (src/git-remote/deploy-keys.js), with the push's own credential; each is an access-change row in the change log.
 //  POST /api/git-remote?op=authorize        — GIT-DIRECT-1: the native worker's direct git host asks
 //    here, signed by the worker key pinned at setup, whether one Git request may be served. It sends
 //    the session key's id and SHA-256 (never the key); the answer is the same signed claim Routing
@@ -92,24 +94,32 @@ async function guardPush(ctx, owner, repo, updates, gates) {
 export async function broker(req, res, { env = process.env, openScope = openKeyScope, now = Date.now, fetchImpl = fetch, gates } = {}) {
  if (req.method !== 'POST') return json(res, 405, { error: 'method_not_allowed' });
  let body; try { body = paramsOf(req); } catch { return json(res, 400, { error: 'invalid_request' }); }
- const op = req.query?.op === 'report' ? 'report' : 'broker';
- let claim; try { claim = verifyRemoteClaim(String(req.headers?.['x-robinson-git-claim'] ?? ''), verifierKey(env), now(), { graceMs: op === 'report' ? REMOTE_REPORT_GRACE_MS : 0 }); }
+ // The worker adds its step to the broker address (…?op=broker&op=report): the last op wins, however the query is parsed.
+ const named = Array.isArray(req.query?.op) ? req.query.op.at(-1) : req.query?.op;
+ const op = ['report', 'key'].includes(named) ? named : 'broker';
+ // GIT-SSH-LEG-1: removing a temporary deploy key (op=key) works for as long as a report does; adding one only while the claim is live.
+ let claim; try { claim = verifyRemoteClaim(String(req.headers?.['x-robinson-git-claim'] ?? ''), verifierKey(env), now(), { graceMs: op === 'broker' ? 0 : REMOTE_REPORT_GRACE_MS }); }
  catch (error) { return json(res, 401, { error: 'invalid_claim', message: /expired/.test(error?.message) ? 'This git request took too long; run the git command again.' : 'Invalid git remote claim.' }); }
- const phase = op === 'report' ? 'report' : body.phase;
- if (!['fetch', 'push', 'renew', 'report'].includes(phase) || (phase === 'fetch') !== (claim.step === 'refs') || (phase !== 'fetch' && claim.service !== 'git-receive-pack')) return json(res, 400, { error: 'invalid_phase' });
+ const phase = op === 'broker' ? body.phase : op;
+ if (op === 'key' && (!['add', 'remove'].includes(body.action) || (body.action === 'add' && claim.expiresAt <= now()))) return json(res, 400, { error: 'invalid_phase' });
+ if (!['fetch', 'push', 'renew', 'report', 'key'].includes(phase) || (phase === 'fetch') !== (claim.step === 'refs') || (phase !== 'fetch' && claim.service !== 'git-receive-pack')) return json(res, 400, { error: 'invalid_phase' });
  const refuse = (message, status = 200) => json(res, status, { allow: false, message });
  let scope; try { scope = await openScope(claim.key, { env, withCredentials: phase !== 'report' }); } catch { return refuse('The service could not check this key right now. Run the git command again in a minute.', 503); }
  if (!scope) return refuse('This git session key is no longer valid. Ask for a new one with github_git_remote_setup.');
  const { db } = scope;
  // Each broker step of one claim works once.
  // Renewals of one push are numbered (at most 26 per push: one per batch).
- const renewal = phase === 'renew' ? (Number.isSafeInteger(body.n) && body.n >= 0 && body.n < 26 ? String.fromCharCode(97 + body.n) : null) : '';
+ // Deploy-key steps are numbered too (one add; removals retried up to 50 times).
+ const renewal = phase === 'renew' ? (Number.isSafeInteger(body.n) && body.n >= 0 && body.n < 26 ? String.fromCharCode(97 + body.n) : null)
+  : phase === 'key' ? (body.action === 'add' ? 'add' : Number.isSafeInteger(body.n) && body.n >= 0 && body.n < 50 ? 'rm' + String.fromCharCode(97 + Math.floor(body.n / 26), 97 + body.n % 26) : null) : '';
  if (renewal === null) return json(res, 400, { error: 'invalid_phase' });
  if (!await db.recordGitRemoteUse({ keyId: claim.key, service: 'broker.' + phase, outcome: 'started', nonce: `${claim.nonce}.${phase}${renewal}` })) return json(res, 409, { error: 'replayed_claim' });
  const row = await db.getGitRemoteKey(claim.key);
  if (!row || !row.key_hash) return refuse('This git session key is no longer valid. Ask for a new one with github_git_remote_setup.');
  const verdict = checkKey(row, row.key_hash, { service: claim.service, owner: claim.owner, repo: claim.repo, now: now() });
- if (!verdict.ok || row.access !== claim.access) return refuse(verdict.message ?? 'This git session key changed. Ask for a new one with github_git_remote_setup.');
+ // GIT-SSH-LEG-1: taking a temporary deploy key away again still works after the session key expired or was revoked.
+ const removal = phase === 'key' && body.action === 'remove' && String(row.owner).toLowerCase() === claim.owner.toLowerCase() && String(row.repo).toLowerCase() === claim.repo.toLowerCase();
+ if (!removal && (!verdict.ok || row.access !== claim.access)) return refuse(verdict.message ?? 'This git session key changed. Ask for a new one with github_git_remote_setup.');
  const connection = await liveConnection(db, row, env);
  if (!connection) return refuse('The app connection this git session key belongs to was disconnected or changed. Connect again, then ask for a new key.');
  const owner = row.owner, repo = row.repo, slug = `${owner}/${repo}`;
@@ -121,9 +131,10 @@ export async function broker(req, res, { env = process.env, openScope = openKeyS
   const outcome = ['applied', 'rejected', 'refused', 'uncertain'].includes(body.outcome) ? body.outcome : 'uncertain';
   let updates; try { updates = updatesOf(body.updates); } catch { updates = []; }
   const reason = typeof body.reason === 'string' ? body.reason.replace(/[\x00-\x1f\x7f]/g, ' ').slice(0, 300) : null;
+  const leg = transportReport(body);
   const line = `git push through the git remote to ${slug}: ${updates.map(describe).join(', ') || 'refs'}`;
   await db.finishChange(journal, { summary: `${{ applied: '', rejected: 'REJECTED: ', refused: 'REFUSED: ', uncertain: 'UNCERTAIN: ' }[outcome]}${line}`,
-   after: { outcome, updates, ...(reason ? { reason } : {}), remote_verified: body.remoteVerified === true }, confirmed: outcome === 'applied' && body.remoteVerified === true,
+   after: { outcome, updates, ...(reason ? { reason } : {}), remote_verified: body.remoteVerified === true, ...leg }, confirmed: outcome === 'applied' && body.remoteVerified === true,
    releaseKey: false, actedAs: ['you', 'app'].includes(body.actedAs) ? body.actedAs : null });
   await db.recordGitRemoteUse({ keyId: claim.key, service: 'push.result', outcome: outcome === 'applied' ? 'allowed' : outcome }).catch(() => {});
   return json(res, 200, { recorded: true });
@@ -136,6 +147,7 @@ export async function broker(req, res, { env = process.env, openScope = openKeyS
  try { repoData = await authorizeNativeRepo(ctx, owner, repo); }
  catch (error) { await db.recordGitRemoteUse({ keyId: claim.key, service: 'broker.' + phase, outcome: 'refused:github' }).catch(() => {}); return refuse(`GitHub did not confirm access to ${slug} for this connection: ${String(error?.message ?? 'not available').replace(/[\x00-\x1f\x7f]/g, ' ').slice(0, 200)}`); }
  const narrowed = !isOwnerConnection(connection) ? { scope: { repositories: [repo] } } : {};
+ if (phase === 'key') return keyStep(res, { body, ctx, db, connection, owner, repo, slug, requestKey, narrowed, now });
  if (phase === 'fetch') {
   let credential;
   try { const c = await credentialFor(ctx, { owner, ...narrowed }); credential = c.token ?? c.personal?.token; } catch { credential = null; }
@@ -176,6 +188,65 @@ export async function broker(req, res, { env = process.env, openScope = openKeyS
   return refuse('GitHub network authorization is unavailable for this repository right now; nothing was pushed.');
  }
  return json(res, 200, { allow: true, credential, journal: journal.id, acted_as: actedAs, scanner_policy: { settings: policy.settings, revision: policy.revision } });
+}
+
+// ---- GIT-SSH-LEG-1: the worker's SSH leg ------------------------------------------------------------------------
+const MS = v => Number.isSafeInteger(v) && v >= 0 && v < 86400000 ? v : undefined;
+/** The transport and per-step timings the hook reports (numbers and fixed words only). */
+export function transportReport(body) {
+ const t = body?.timing && typeof body.timing === 'object' ? body.timing : {};
+ const timing = Object.fromEntries(['scan_ms', 'key_ms', 'push_ms', 'readback_ms', 'total_ms'].map(k => [k, MS(t[k])]).filter(([, v]) => v !== undefined));
+ const transport = ['ssh', 'https'].includes(body?.transport) ? body.transport : null;
+ const note = typeof body?.transportNote === 'string' ? body.transportNote.replace(/[\x00-\x1f\x7f]/g, ' ').slice(0, 200) : null;
+ const httpVersion = ['HTTP/1.1', 'HTTP/2'].includes(body?.httpVersion) ? body.httpVersion : null;
+ return { ...(transport ? { transport } : {}), ...(typeof body?.deployKeyRemoved === 'boolean' ? { deploy_key_removed: body.deployKeyRemoved } : {}), ...(note ? { transport_note: note } : {}), ...(httpVersion ? { http_version: httpVersion } : {}), ...(Object.keys(timing).length ? { timing } : {}) };
+}
+
+/**
+ * op=key: add (action=add) or remove (action=remove) the temporary write deploy key of one push through the git
+ * remote. Only for the push whose change-log row this claim opened; add only while it is still pending and only on
+ * the owner's own connection (a delegated pass never gets an access change it was not given). Uses the same
+ * credential as the push (`actedAs`). Every add/removal is its own access-change row in the change log.
+ */
+async function keyStep(res, { body, ctx, db, connection, owner, repo, slug, requestKey, narrowed, now }) {
+ const { addPushKey, removePushKey, sweepPushKeys, validPublicKey, addRefusal, KEY_JOURNAL_TOOL } = await import('./deploy-keys.js');
+ const { githubFor } = await import('../github/client.js');
+ const { isOwnerConnection } = await import('../core/authority.js');
+ const journal = Number(body.journal);
+ const change = Number.isSafeInteger(journal) ? await db.getChange(journal) : null;
+ if (!change || change.requestKey !== requestKey || change.tool !== PUSH_JOURNAL_TOOL) return json(res, 409, { error: 'unknown_journal' });
+ const actedAs = body.actedAs === 'you' ? 'you' : 'app';
+ const line = (verb, what) => ({ account: owner, repo: slug, mode: connection.mode, connection: connection.client_id, tool: KEY_JOURNAL_TOOL, target: slug, summary: `${verb} ${what}`, dryRun: false, confirmed: true, production: true, accessWidening: true });
+ const record = (verb, what, after) => db.recordChange({ ...line(verb, what), after: { ...after, push_journal: journal, acted_as: actedAs } }).catch(() => null);
+ let gh; try { gh = await githubFor(ctx, { owner, ...narrowed }); } catch { gh = null; }
+ if (body.action === 'add') {
+  const fallback = message => json(res, 200, { allow: false, fallback: true, message });
+  if (change.confirmed !== null) return json(res, 409, { error: 'unknown_journal' });
+  if (!isOwnerConnection(connection)) return fallback('this connection is a delegated pass, and adding a deploy key is an access change it was not given');
+  if (!validPublicKey(body.public_key) || !/^[a-f0-9]{12}$/.test(String(body.marker ?? ''))) return json(res, 400, { error: 'invalid_request' });
+  if (!gh) return fallback('GitHub network authorization is unavailable for this repository right now');
+  // Leftovers of earlier pushes (their removal failed) go first.
+  const swept = await sweepPushKeys(gh, { owner, repo, now: now(), actedAs }).catch(() => null);
+  for (const k of swept?.removed ?? []) await record('Removed', `a leftover temporary push deploy key "${k.title}" from ${slug} (older than 15 minutes)`, { action: 'sweep', key_id: k.id, title: k.title, verified_absent: true });
+  let added;
+  try { added = await addPushKey(gh, { owner, repo, publicKey: body.public_key, id: body.marker, actedAs }); }
+  catch (error) { return fallback(addRefusal(error)); }
+  await record('Added', `a temporary write deploy key "${added.title}" to ${slug} for one git push over SSH (removed right after the push)`, { action: 'add', key_id: added.keyId, title: added.title, read_only: false });
+  return json(res, 200, { allow: true, key_id: added.keyId, swept: swept?.removed.length ?? 0 });
+ }
+ const keyId = Number(body.key_id);
+ if (!Number.isSafeInteger(keyId) || keyId <= 0) return json(res, 400, { error: 'invalid_request' });
+ if (!gh) return json(res, 200, { removed: false, message: 'GitHub network authorization is unavailable right now; the removal is retried.' });
+ let done;
+ try { done = await removePushKey(gh, { owner, repo, keyId, actedAs }); } catch { done = { removed: false }; }
+ if (done.refused) return json(res, 200, { removed: false, refused: true, message: done.refused });
+ if (done.removed && !done.already) await record('Removed', `the temporary write deploy key "${done.title}" from ${slug} after the push (read back: gone)`, { action: 'remove', key_id: keyId, title: done.title, verified_absent: true });
+ if (!done.removed) await record('FAILED to remove', `temporary write deploy key ${keyId} from ${slug} after the push; the worker retries`, { action: 'remove', key_id: keyId, verified_absent: false });
+ if (body.sweep === true) {
+  const swept = await sweepPushKeys(gh, { owner, repo, now: now(), actedAs }).catch(() => null);
+  for (const k of swept?.removed ?? []) await record('Removed', `a leftover temporary push deploy key "${k.title}" from ${slug} (older than 15 minutes)`, { action: 'sweep', key_id: k.id, title: k.title, verified_absent: true });
+ }
+ return json(res, 200, { removed: done.removed === true });
 }
 
 // ---- GIT-DIRECT-1: the worker's direct git host ------------------------------------------------

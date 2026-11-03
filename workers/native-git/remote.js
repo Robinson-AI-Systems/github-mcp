@@ -27,6 +27,7 @@ import { redactExcerpt } from '../../src/github/content-protection.js';
 import { GITHUB_FILE_LIMIT_BYTES, GITHUB_PUSH_LIMIT_BYTES, REMOTE_MAX_PUSH_BYTES, verifyRemoteClaim } from '../../src/native-git/protocol.js';
 import { gitEnvironment, gitPrefix } from './engine.js';
 import { refusalText } from './resources.js';
+import { githubSshRemote, httpVersionArgs } from './github-ssh.js';
 
 const MiB = 1024 * 1024;
 export const REMOTE_LIMITS = Object.freeze({ requestBytes: 4 * MiB, refreshWaitMs: 90000, refreshTimeoutMs: 900000, serveMs: 900000, idleMs: 48 * 3600000, brokerMs: 20000, directServeMs: 12 * 3600000 });
@@ -118,7 +119,7 @@ function refresh(ctx, claim, m, credential, defaultBranch) {
  const task = locked(claim.mirror, async () => {
   const remote = ctx.githubRemote(claim.owner, claim.repo);
   const env = tokenEnvironment(gitEnvironment(ctx.root), remote, credential);
-  const fetched = await runGit([...remotePrefix(ctx.local), 'fetch', '--prune', '--no-tags', '--no-write-fetch-head', '--quiet', '--no-recurse-submodules', '--', remote, '+refs/heads/*:refs/heads/*', '+refs/tags/*:refs/tags/*'],
+  const fetched = await runGit([...remotePrefix(ctx.local), ...httpVersionArgs(ctx.githubTransport?.httpVersion), 'fetch', '--prune', '--no-tags', '--no-write-fetch-head', '--quiet', '--no-recurse-submodules', '--', remote, '+refs/heads/*:refs/heads/*', '+refs/tags/*:refs/tags/*'],
    { cwd: m.repo, env, timeoutMs: REMOTE_LIMITS.refreshTimeoutMs });
   if (fetched.code !== 0) return { ok: false, message: 'GitHub refused or did not answer the refresh of this repository. Run the git command again; if it keeps failing, check that this connection can still read the repository.' };
   if (typeof defaultBranch === 'string' && /^[^\x00-\x20\x7f~^:?*[\\]{1,250}$/.test(defaultBranch) && !defaultBranch.startsWith('-')) {
@@ -207,7 +208,7 @@ export async function serveRemote(req, res, ctx, { route, search, claimToken, di
   const hooks = await hookDirectory(ctx.root);
   const hookEnv = { ...env, ROBINSON_REMOTE_CLAIM: claimToken, ROBINSON_REMOTE_BROKER: brokerUrl, ROBINSON_REMOTE_GITHUB: ctx.githubRemote(claim.owner, claim.repo), ROBINSON_REMOTE_ROOT: ctx.root,
    ROBINSON_REMOTE_SLUG: `${claim.owner}/${claim.repo}`, ROBINSON_REMOTE_FILE_LIMIT: String(limits.fileBytes), ROBINSON_REMOTE_GITHUB_LIMIT: String(limits.githubPushBytes),
-   ...(direct ? { ROBINSON_REMOTE_DIRECT: '1' } : {}), ...(ctx.local ? { ROBINSON_REMOTE_LOCAL: '1', ...(limits.renewMs !== undefined ? { ROBINSON_REMOTE_RENEW_MS: String(limits.renewMs) } : {}) } : {}) };
+   ...(direct ? { ROBINSON_REMOTE_DIRECT: '1' } : {}), ...transportEnvironment(ctx, claim), ...(ctx.local ? { ROBINSON_REMOTE_LOCAL: '1', ...(limits.renewMs !== undefined ? { ROBINSON_REMOTE_RENEW_MS: String(limits.renewMs) } : {}) } : {}) };
   if (direct) return directReceive(req, res, { ctx, m, hooks, hookEnv, limits, pushBytes: direct.pushBytes, decoded: req.headers['content-encoding'] === 'gzip' ? req.pipe(createGunzip()) : req });
   const child = spawn('git', [...gitPrefix(), '-c', `core.hooksPath=${hooks}`, 'receive-pack', '--stateless-rpc', m.repo], { cwd: m.dir, env: hookEnv, stdio: ['pipe', 'pipe', 'ignore'], detached: true });
   const kill = () => { try { process.kill(-child.pid, 'SIGKILL'); } catch { /* ended */ } };
@@ -333,6 +334,18 @@ async function directReceive(req, res, { ctx, m, hooks, hookEnv, limits, pushByt
  await closed; clearTimeout(timer);
  if (!res.headersSent) { res.writeHead(200, { 'Content-Type': 'application/x-git-receive-pack-result', 'Cache-Control': 'no-store' }); }
  res.end();
+}
+
+/**
+ * GIT-SSH-LEG-1: the worker's GitHub transport settings for the hook (server.js reads them from the environment once).
+ * Local tests may point the SSH leg at a fixture host and ssh program.
+ */
+function transportEnvironment(ctx, claim) {
+ const t = ctx.githubTransport;
+ if (!t) return {};
+ return { ...(t.transport === 'ssh' ? { ROBINSON_REMOTE_TRANSPORT: 'ssh', ROBINSON_REMOTE_GITHUB_SSH: (ctx.local && ctx.githubSshRemote ? ctx.githubSshRemote : githubSshRemote)(claim.owner, claim.repo, t.sshPort) } : {}),
+  ...(t.httpVersion ? { ROBINSON_REMOTE_HTTP_VERSION: t.httpVersion } : {}),
+  ...(ctx.local && t.sshBinary ? { ROBINSON_REMOTE_SSH_BINARY: t.sshBinary } : {}), ...(ctx.local && t.sshTmp ? { ROBINSON_REMOTE_SSH_TMP: t.sshTmp } : {}) };
 }
 
 let hookDir = null;

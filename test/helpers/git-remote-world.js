@@ -86,7 +86,7 @@ export async function startFakeGithubGit({ owner = 'example-org', repo = 'hello'
  * `direct`: false (no direct host), true (the worker environment names it, GIT-DIRECT-1) or 'configure' (only this
  * service names it; the worker is configured by the signed `direct_configure` action, GIT-DIRECT-2).
  */
-export async function startGitRemote(w, { gates = [], direct = false, githubPushLimit = null, limits = undefined, freeDisk = undefined, limiter = undefined } = {}) {
+export async function startGitRemote(w, { gates = [], direct = false, githubPushLimit = null, limits = undefined, freeDisk = undefined, limiter = undefined, transport = undefined, githubSsh = undefined } = {}) {
  const github = await startFakeGithubGit({ pushLimit: githubPushLimit });
  const dir = await mkdtemp(join(tmpdir(), 'git-remote-world-'));
  const root = join(dir, 'storage');
@@ -119,7 +119,7 @@ export async function startGitRemote(w, { gates = [], direct = false, githubPush
  // A worker configured by this service asks it at PUBLIC (served here by the functions server).
  const directFetch = (url, init) => String(url).startsWith(PUBLIC + '/') ? fetch(functionsOrigin + String(url).slice(PUBLIC.length), init) : fetch(url, init);
  const worker = nativeGitServer({ root, key: WORKER_KEY, now, allowLocalFixtures: true, resources: permissive, direct: directSettings,
-  remote: { github: github.url, broker: () => `${functionsOrigin}/api/git-remote?op=broker`, limits, freeDisk, limiter, ...(direct === 'configure' ? { directFetch } : {}) } });
+  remote: { github: github.url, broker: () => `${functionsOrigin}/api/git-remote?op=broker`, limits, freeDisk, limiter, transport, githubSsh, ...(direct === 'configure' ? { directFetch } : {}) } });
  const workerOrigin = await listen(worker);
  // Boot: an environment-configured host listens at once; a control-plane-configured one when configured.
  if (worker.directHost) await worker.directHost.start();
