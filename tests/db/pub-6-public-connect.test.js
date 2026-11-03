@@ -418,13 +418,13 @@ describe('PUB-6 branding', () => {
   it('shows the Robinson look and icon on the pages and lists the icon on the MCP server', async () => {
     const { serverInfo, BRAND_CSS, iconBytes, productMarkBytes } = await import('../../src/brand/brand.js');
     const page = await call((req, res) => publicManage(req, res, { env, connect: make() }), request('GET', { manage: '1' }));
-    expect(page.body).toContain('Robinson MCP for GitHub');
+    expect(page.body).toContain('GitHub Unleashed by Robinson AI Systems');
     expect(page.body).toContain('/brand/unleashed-github.png');
     expect(page.body).toContain('#00B67A');
     expect(page.headers['Content-Security-Policy']).toContain("img-src 'self'");
     expect(BRAND_CSS).toContain('#0C0C0C');
     const info = serverInfo(ORIGIN);
-    expect(info.title).toBe('Robinson MCP for GitHub');
+    expect(info.title).toBe('GitHub Unleashed by Robinson AI Systems');
     expect(info.icons[0].src).toBe(ORIGIN + '/brand/icon-256.png');
     expect(serverInfo(null).icons).toBeUndefined();
     expect(iconBytes(256).subarray(0, 4).toString('hex')).toBe('89504e47');

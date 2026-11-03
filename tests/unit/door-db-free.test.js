@@ -105,7 +105,7 @@ describe('DOOR-DB-1: keyless knocks on /api/mcp issue zero SQL', () => {
     const res = response();
     await mcp.default(request({}), res);
     expect({ status: res.statusCode, body: res.body }).toEqual({ status: 503,
-      body: '{"error":"temporarily_unavailable","error_description":"GitHub MCP is not configured or its database is unavailable"}' });
+      body: '{"error":"temporarily_unavailable","error_description":"GitHub Unleashed is not configured or its database is unavailable"}' });
     untouched();
   });
 

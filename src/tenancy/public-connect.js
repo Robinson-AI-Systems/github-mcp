@@ -235,7 +235,7 @@ export function createPublicConnect({ env = process.env, fetchImpl = fetch, root
     const dir = directory(), root = createDb(rootSql());
     // LAUNCH-1: while invite-only is on, a NEW person needs an invite; people who already have a store are never locked out.
     if (env.GITHUB_PUBLIC_INVITE_ONLY === 'enabled' && !await dir.findPublicTenantBySubject(principal.subject) && !await dir.isPublicInvited(principal.login))
-      throw new PublicConnectError('invite_only', 'Robinson GitHub MCP is invite-only right now. Ask Chris for an invite.');
+      throw new PublicConnectError('invite_only', 'GitHub Unleashed is invite-only right now. Ask Chris for an invite.');
     const tenantKey = marketplaceAccountId ? 'marketplace-' + marketplaceAccountId : TENANT_KEY;
     const existing = await dir.findPublicTenantBySubject(principal.subject,tenantKey);
     if (!existing) await checkNewSignupsOpen(dir, root);
@@ -640,7 +640,7 @@ export function createPublicConnect({ env = process.env, fetchImpl = fetch, root
       if (!/^[1-9][0-9]{0,18}$/.test(String(subject))) throw refused('r42');
       await db.setSetting(`${action}.${subject}`, value);
       return { manage: await view(action === 'act_as_me'
-        ? (value === 'on' ? 'Done. GitHub will record you as the one who makes each change.' : 'Done. GitHub will show the Robinson GitHub MCP app for each change.')
+        ? (value === 'on' ? 'Done. GitHub will record you as the one who makes each change.' : 'Done. GitHub will show the GitHub Unleashed app for each change.')
         : (value === 'on' ? 'Done. Your assistant may ask to skip a branch\'s rules for one change, and you confirm each one.' : 'Done. Branch rules can no longer be skipped for you.')) };
     }
     if (action === 'add_place') return { manage: await view(await addPlace({ db, dir, tenant, value, offers: flow.offers ?? [] })) };

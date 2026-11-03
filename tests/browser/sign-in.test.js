@@ -364,7 +364,7 @@ describe('My connection', () => {
     await b.page.click('#act-as-me');
     await b.page.waitForSelector('.notice');
     await b.page.waitForSelector('#act-as-me');
-    expect(await b.page.textContent('#act-as-state')).toContain('Robinson GitHub MCP app');
+    expect(await b.page.textContent('#act-as-state')).toContain('GitHub Unleashed app');
     await b.page.click('#act-as-me');
     await b.page.waitForSelector('.notice');
     expect(await b.page.textContent('#act-as-state')).toContain('you');

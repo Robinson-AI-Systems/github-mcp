@@ -62,7 +62,7 @@ const fineMarkup=details=>'<!doctype html><html lang="en"><head><meta charset="u
   '<title>Fine-grained token</title><style>'+PAGE_CSS+'</style></head><body><main>'+brandHeader()+
   '<h1>Add a fine-grained token</h1>'+
   '<p>This is optional. A fine-grained token lets your assistant use repositories of an account or organization where the '+
-  'Robinson GitHub MCP App is not installed, with only the repositories and permissions you pick on GitHub.</p>'+
+  'GitHub Unleashed app is not installed, with only the repositories and permissions you pick on GitHub.</p>'+
   '<ol><li>Tap the button below. GitHub opens its fine-grained token page. Sign in to GitHub if it asks.</li>'+
   '<li>Under <strong>Resource owner</strong> pick the account or organization. Under <strong>Repository access</strong> pick the repositories.</li>'+
   '<li>Under <strong>Permissions</strong> give what you want your assistant to have (for example Contents, Issues and Pull requests). Then tap <strong>Generate token</strong>.</li>'+

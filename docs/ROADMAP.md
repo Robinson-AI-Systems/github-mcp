@@ -310,7 +310,8 @@ Chris's go-ahead and a design for the two-step flow.
 - **`src/github/wiki-git.js` false positive.** The git auth callback that hands the token to isomorphic-git as the
   password field is flagged as a password assignment by the generic rule, so that file cannot be pushed unchanged
   through the gate. Either a narrower rule (an identifier, not a quoted literal, is never a password) or a small code
-  reshape would fix it.
+  reshape would fix it. BRAND-UNLEASHED-1 left this file's text unchanged for that reason, so the wiki commit author
+  name there is still the old product name until this is fixed.
 - **The scanner's own file could not pass its own gate.** Comments in `src/github/content-protection.js` named the npm
   package for Postgres password files with a version as an assignment and quoted token shapes. PUSH-FIXTURE-1 reworded
   them; a CI check that scans the repository's own source with the gate would stop this coming back.

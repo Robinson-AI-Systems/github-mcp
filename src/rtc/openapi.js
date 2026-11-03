@@ -15,7 +15,7 @@ const read=(operationId,summary)=>({operationId,summary,security:[{rtcPass:[]}],
 const body=s=>({required:true,description:'UTF-8 JSON: at most 32768 bytes.',
   content:json(s)});
 export function rtcOpenApi(){
-  return {openapi:'3.1.0',info:{title:'Robinson GitHub RTC preview API',version:'0.1.0',
+  return {openapi:'3.1.0',info:{title:'GitHub Unleashed RTC preview API',version:'0.1.0',
     description:'Scoped service passes; OAuth MCP retained. RTC1 unverified.'},
     paths:{
       '/api/contract':{get:{operationId:'rtcContract',summary:'Public capability and self-reported build evidence',

@@ -2,7 +2,7 @@
 
 Effective: 2026-10-25. Approved by the owner.
 
-**Who operates the service.** Robinson AI Systems operates Robinson GitHub MCP, a hosted connection between GitHub and a compatible assistant you choose. Contact: [support email]. We are independent of GitHub and your assistant provider.
+**Who operates the service.** Robinson AI Systems operates GitHub Unleashed by Robinson AI Systems ("GitHub Unleashed"), a hosted connection between GitHub and a compatible assistant you choose. Contact: [support email]. We are independent of GitHub and your assistant provider.
 
 ## Information we handle
 - **Account and connection information:** your numeric GitHub identity, connected account names, permissions, connection settings, time zone and subscription status where applicable.

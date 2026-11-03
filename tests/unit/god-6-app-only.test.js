@@ -1,4 +1,4 @@
-// GOD-6: requests only the Robinson GitHub MCP app can make (check runs, /app, /installation). The list is built from the
+// GOD-6: requests only the GitHub Unleashed app can make (check runs, /app, /installation). The list is built from the
 // vendored GitHub description, so it cannot drift; these tests pin that and the matching rules.
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';

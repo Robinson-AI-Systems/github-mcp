@@ -38,7 +38,7 @@ describe('PUB-4 mobile-sized private GitHub consent is also standards-compliant 
     expect(res.headers['Set-Cookie']).toContain('SameSite=Strict');
     const page=res.body;
     expect(page).toContain('name="viewport"');
-    expect(page).toContain('Connect Robinson MCP for GitHub');
+    expect(page).toContain('Connect GitHub Unleashed by Robinson AI Systems');
     expect(page).toContain('name="client_id"');
     expect(page).toContain('name="code_challenge"');
     expect(page).toContain('name="redirect_uri"');

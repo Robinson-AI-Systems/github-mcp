@@ -1,17 +1,17 @@
-# GitHub Marketplace listing: Robinson MCP for GitHub
+# GitHub Marketplace listing: GitHub Unleashed by Robinson AI Systems
 
 Free plan only. Nothing here says or suggests that people should leave GitHub; it adds to it.
 
-**Name:** Robinson MCP for GitHub
+**Name:** GitHub Unleashed by Robinson AI Systems (proposed listing text; the registered GitHub App name is unchanged, see `docs/OWNER-CHECKLIST.md`)
 
 **Short description (≤ 120 characters):** Let your AI assistant work with your GitHub safely, with read-only mode and safeguards for sensitive changes.
 
 **Long description:**
-Robinson MCP for GitHub connects AI assistants such as Claude and ChatGPT to your GitHub account. You sign in with GitHub, choose what the assistant may do, and approve the connection. Your assistant can then read and manage repositories, files, branches, pull requests, issues and Actions for you.
+GitHub Unleashed by Robinson AI Systems connects AI assistants such as Claude and ChatGPT to your GitHub account. You sign in with GitHub, choose what the assistant may do, and approve the connection. Your assistant can then read and manage repositories, files, branches, pull requests, issues and Actions for you.
 
 You stay in control. A read-only choice lets an assistant look but never change anything. Sensitive changes require preview and confirmation; routine permitted changes can be applied directly. Your GitHub sign-in details are never given to the assistant. You can disconnect, and delete everything we hold about you, at any time on the My connection page.
 
-It is free. A fair daily allowance applies to every person (see the limits page). Robinson MCP for GitHub is made by Robinson AI Systems and is not affiliated with or endorsed by GitHub.
+It is free. A fair daily allowance applies to every person (see the limits page). GitHub Unleashed is a Robinson AI Systems product. It is not affiliated with, endorsed by, or sponsored by GitHub.
 
 **Features**
 - Works with Claude, ChatGPT, Claude Code, Cursor and VS Code.

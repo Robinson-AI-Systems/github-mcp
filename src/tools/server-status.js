@@ -4,7 +4,7 @@
 // makes one trivial database read. It never returns a credential, an environment value, a worker or direct-host address,
 // or a provider error text (those can carry host names); every reason is a fixed plain sentence.
 import { bareOctokit } from '../github/client.js';
-import { serverRelease } from '../brand/brand.js';
+import { BRAND, serverRelease } from '../brand/brand.js';
 import { currentZone, formatLocal } from '../core/time-zone.js';
 import { projectFields } from '../core/result-rules.js';
 import { callNativeWorker } from '../native-git/client.js';
@@ -276,7 +276,7 @@ export async function serverStatus(args, ctx, { budgetMs = STATUS_BUDGET_MS, slo
     want.has('health') ? checkPool(ctx, env, budgetMs) : null
   ]);
 
-  const out = { release };
+  const out = { product: BRAND.product, release };
   const historyValue = history?.value ?? null;
   if (want.has('deployed_at')) {
     const found = deployed?.value ?? null;
