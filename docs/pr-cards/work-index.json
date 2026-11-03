@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated": "2026-10-31",
+  "updated": "2026-11-02",
   "order": [
     "A",
     "B",
@@ -3097,6 +3097,25 @@
       "pr": [
         546
       ]
+    },
+    {
+      "id": "BRAND-1",
+      "title": "GitHub Unleashed product mark on the home and connection page headers",
+      "batch": "FIN",
+      "design": "docs/pr-cards/BRAND-1.md",
+      "dependencies": [],
+      "card": "docs/pr-cards/BRAND-1.md",
+      "status": "MERGED",
+      "migration": "none",
+      "budget": 100,
+      "units": [
+        "BRAND-1"
+      ],
+      "readiness": "READY",
+      "ownerInputs": [],
+      "pr": [
+        554
+      ]
     }
   ],
   "gatewayBoundary": {
@@ -3140,7 +3159,7 @@
       "docs/pr-cards/RESULT-OWN-KEYS.md",
       "docs/pr-cards/RESULT-OFFSET-METADATA.md"
     ],
-    "sourceAndAutomated": "All five #151–#155 source implementations accepted by the complete seven exact-head CI/release gates; #155 merger/final-main CI must still be observed independently.",
+    "sourceAndAutomated": "All five #151\u2013#155 source implementations accepted by the complete seven exact-head CI/release gates; #155 merger/final-main CI must still be observed independently.",
     "deployedExactRevision": "UNVERIFIED for this batch; last independently observed production source #146",
     "authenticatedCustomMcp": "UNVERIFIED",
     "directOAuth": "UNVERIFIED",
