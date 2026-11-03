@@ -104,3 +104,11 @@ checks byte-for-byte, the person still signs in with GitHub and taps Approve, an
 client is public (`none`) — there is no secret to leak and no owner credential involved.
 The fetch is bounded (https only, no redirects, 5 s, 64 KB, blocked private hosts) so a
 hostile client_id cannot aim the server at the LAN or hold a request open.
+
+## Follow-up 2026-11-02: concurrent schema start (CHECK-RACE-1)
+
+The client_id check widening ran as two statements (drop, then add). When several requests started the directory schema
+at once, one failed with Postgres 42710 ("constraint already exists") and its sign-in registration answered 503 (seen
+in the browser load smoke on main). It is now one `DO` block that swaps the check only while it is still the narrow
+one and treats a concurrent winner as done. Proof: `tests/db/public-clients-check-race.test.js` (fails before, passes
+after), browser load smoke 6/6 locally.
