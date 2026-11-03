@@ -95,6 +95,10 @@
       "destination": "/api/index?brand_icon=64"
     },
     {
+      "source": "/brand/unleashed-github.png",
+      "destination": "/api/index?brand_icon=unleashed"
+    },
+    {
       "source": "/favicon.ico",
       "destination": "/api/index?brand_icon=64"
     },
