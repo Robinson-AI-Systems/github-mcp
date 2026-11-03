@@ -482,11 +482,13 @@ it('keeps historical clone replay and exact disposal available during resource p
  expect(requests.filter(r=>r.action==='open')).toHaveLength(clones);
 });
 
-it('records admission refusal after metadata creation as rejected and permits safe same-intent retry',async()=>{
+// WORKER-POOL-1: a host that refuses at open (no operation started) is skipped; with no other host the open is
+// "not applied" (reason no_operation_started, retryable) and its request key is released for the same-intent retry.
+it('records admission refusal after metadata creation as not applied and permits safe same-intent retry',async()=>{
  const create=w.db.createJob;
  vi.spyOn(w.db,'createJob').mockImplementation(async(...args)=>{const row=await create(...args);pressure='storage_pressure';return row;});
  const args={owner:'example-org',repo:'hello',requestKey:'pressure-race'};
- const refused=parse(await invoke('github_git_workspace_open',args));expect(refused.status,JSON.stringify(refused)).toBe('rejected');expect(refused.retryable).toBe(true);
+ const refused=parse(await invoke('github_git_workspace_open',args));expect(refused.status,JSON.stringify(refused)).toBe('not_applied');expect(refused.reason_code).toBe('no_operation_started');expect(refused.no_change_sent).toBe(true);expect(refused.retryable).toBe(true);
  expect(requests.some(r=>r.action==='open')).toBe(true);
  expect(await new NativeGitWorker({root:join(dir,'storage'),authorize:async()=>false}).prune()).toEqual({removed:0});
  vi.restoreAllMocks();pressure=null;

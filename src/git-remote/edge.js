@@ -5,10 +5,12 @@
 // connection it belongs to still being live). Only then is the request rewritten to the native Git
 // worker, with the key and every other credential header stripped; the worker receives only a
 // signed, short-lived claim naming this key, the repository's mirror and the one Git service. The
-// destination is the configured worker origin only, never anything from the request: not an open proxy.
+// destination is a configured worker origin only (the key's recorded pool host, WORKER-POOL-1, or the primary),
+// never anything from the request: not an open proxy.
 // Request bodies (pushes) never pass through this code (`skipMiddlewareRequestBody`).
 import { publicOrigin } from '../core/http.js';
 import { workerOrigin, rewriteResponse } from '../native-git/relay.js';
+import { configuredHost } from '../native-git/pool-config.js';
 import { authorizeGitRequest } from './authorize.js';
 import { openKeyScope } from './keys.js';
 import { GIT_REALM, KEY_PREFIX, basicPassword, parseGitRequest as parseWire, parseSecret } from './wire.js';
@@ -42,11 +44,15 @@ export async function handleGitRemote(request, env = process.env, { now = Date.n
  if (password === null) return challenge('Sign-in needed: this git address uses a session key from github_git_remote_setup. Ask your AI to call it for this repository and run the command it returns (it stores the key for this address only).');
  const parsed = parseSecret(password, KEY_PREFIX);
  if (!parsed) return challenge('This git session key is not valid. Ask your AI to call github_git_remote_setup for this repository and run the command it returns.');
- const worker = workerOrigin(env, false);
+ const primary = workerOrigin(env, false);
  let control; try { control = publicOrigin(env); } catch { control = null; }
- if (!worker || !control) return text(503, 'The git remote is not configured on this service yet. Use github_repo_download and github_repo_change meanwhile.');
+ if (!primary || !control) return text(503, 'The git remote is not configured on this service yet. Use github_repo_download and github_repo_change meanwhile.');
  const verdict = await authorizeGitRequest({ parsed, wanted, env, now, openScope, door: 'domain' });
  if (!verdict.ok) return verdict.challenge ? challenge(verdict.message) : text(verdict.status, verdict.message, verdict.retryAfter ? { 'Retry-After': String(verdict.retryAfter) } : {});
+ // WORKER-POOL-1: the key's recorded pool host (protected configuration only); older keys use the primary.
+ const pinned = verdict.host ? configuredHost(env, verdict.host) : null;
+ if (verdict.host && !pinned) return text(503, 'The worker host this git session key was set up on is no longer configured. Ask your AI to call github_git_remote_setup again for a new key.');
+ const worker = pinned?.origin ?? primary;
  const headers = new Headers();
  for (const name of REMOTE_FORWARDED_HEADERS) { const value = request.headers.get(name); if (value !== null) headers.set(name, value); }
  headers.set(CLAIM_HEADER, verdict.claim);

@@ -35,8 +35,20 @@ const listenDirect = (server, port) => new Promise((resolve, reject) => {
 // SRV-STATUS-1: the commit this image was built from (Dockerfile build argument SOURCE_COMMIT, or Render's RENDER_GIT_COMMIT),
 // reported in signed capabilities so github_server_status can warn when the worker is older than the control plane.
 export const workerBuildCommit = (env = process.env) => [env.NATIVE_GIT_BUILD_COMMIT, env.RENDER_GIT_COMMIT].find((v) => /^[0-9a-f]{40}$/.test(String(v ?? ''))) ?? null;
-export function nativeGitServer({ root, key, now = Date.now, allowLocalFixtures = false, fixtureRemote, resources, resourcePolicy = {}, singleWorkspaceId, singleBinding, authorityUrl, cloneTimeoutMs = 900000, cloneWaitMs = 30000, remote = {}, direct = null, buildCommit = workerBuildCommit(), pauseFile = root ? join(root, OWNER_PAUSE_FILE) : null } = {}) {
+/** WORKER-POOL-1: NATIVE_GIT_MAX_WORKSPACES (1-1000), or null when unset or empty. */
+export function workspaceLimitFromEnv(env = process.env) {
+ const raw = env.NATIVE_GIT_MAX_WORKSPACES;
+ if (raw === undefined || raw === '') return null;
+ const n = Number(raw);
+ if (!Number.isSafeInteger(n) || n < 1 || n > 1000) throw new TypeError('NATIVE_GIT_MAX_WORKSPACES must be a whole number from 1 to 1000.');
+ return n;
+}
+export function nativeGitServer({ root, key, now = Date.now, allowLocalFixtures = false, fixtureRemote, resources, resourcePolicy = {}, singleWorkspaceId, singleBinding, authorityUrl, cloneTimeoutMs = 900000, cloneWaitMs = 30000, remote = {}, direct = null, buildCommit = workerBuildCommit(), pauseFile = root ? join(root, OWNER_PAUSE_FILE) : null, maxWorkspaces = null } = {}) {
  workerKey(key); const busy = new Set();
+ // WORKER-POOL-1: an optional limit on workspaces held on this host (NATIVE_GIT_MAX_WORKSPACES); null = resources only.
+ if (maxWorkspaces !== null && !(Number.isSafeInteger(maxWorkspaces) && maxWorkspaces > 0 && maxWorkspaces <= 1000)) throw new TypeError('Invalid native workspace limit.');
+ const counter = new NativeGitWorker({ root, authorize: async () => false, now });
+ const activeCount = () => singleWorkspaceId ? Promise.resolve(null) : counter.countActive().catch(() => null);
  // PC-WORKER-1: `<storage>/.owner-pause` (deploy/pc/pc-worker pause) refuses new work; admitted work finishes.
  const monitor=resources??createResourceMonitor({root,policy:resourcePolicy,pauseFile});
  const host = direct && !singleWorkspaceId ? directHost({ root, identity: direct.identity, env: direct.env ?? {}, local: allowLocalFixtures, stored: direct.stored ?? null, listen: direct.listen ?? listenDirect }) : null;
@@ -61,7 +73,7 @@ export function nativeGitServer({ root, key, now = Date.now, allowLocalFixtures 
    const chunks = []; let bytes = 0;
    for await (const chunk of req) { bytes += chunk.length; if (bytes > 2 * 1024 * 1024) return send(413, { error: 'request_too_large' }); const admitted=monitor.body(bytes);if(!admitted.allowed){res.setHeader('Retry-After','2');return send(429,{error:'worker_resource_pressure',reason:admitted.reason,phase:'admission',no_operation_started:true});}chunks.push(chunk); }
    claim = verifyWorkerBody(Buffer.concat(chunks).toString('utf8'), req.headers['x-robinson-signature'], key, now());
-   if (claim.action === 'capabilities') return send(200, { ready: true, protocol: WORKER_PROTOCOL, ...(buildCommit?{build_commit:buildCommit}:{}), native_git:gitVersion,max_concurrent:null,capacity_mode:'resource-aware',resource_policy:monitor.policy,admission:await monitor.check(),...(monitor.paused?.()?{owner_paused:true}:{}),workspace_lease:'idle-v1',repository_attachment:'sealed-mounted-v1',direct_upload:'quarantine-v1',direct_download:'one-time-v1',native_options:NATIVE_OPTIONS_VERSION,upload_apply:'delete-v1',upload_chunks:'chunks-v1',...(singleWorkspaceId?{}:{git_remote:'v1'}),...(host?.report()?{git_direct:host.report()}:{}),...(host?{git_direct_configure:'v1'}:{}),...(singleWorkspaceId?{repository:await repositoryMounts(join(root,singleWorkspaceId,'repo'))}:{}) });
+   if (claim.action === 'capabilities') return send(200, { ready: true, protocol: WORKER_PROTOCOL, ...(buildCommit?{build_commit:buildCommit}:{}), native_git:gitVersion,max_concurrent:null,active_workspaces:await activeCount(),max_workspaces:maxWorkspaces,capacity_mode:'resource-aware',resource_policy:monitor.policy,admission:await monitor.check(),...(monitor.paused?.()?{owner_paused:true}:{}),workspace_lease:'idle-v1',repository_attachment:'sealed-mounted-v1',direct_upload:'quarantine-v1',direct_download:'one-time-v1',native_options:NATIVE_OPTIONS_VERSION,upload_apply:'delete-v1',upload_chunks:'chunks-v1',...(singleWorkspaceId?{}:{git_remote:'v1'}),...(host?.report()?{git_direct:host.report()}:{}),...(host?{git_direct_configure:'v1'}:{}),...(singleWorkspaceId?{repository:await repositoryMounts(join(root,singleWorkspaceId,'repo'))}:{}) });
    // GIT-DIRECT-2: the control plane configures (or, with origin null, turns off) the direct git host.
    if (claim.action === 'direct_configure') {
     if (!host) return send(404, { error: 'not_found' });
@@ -81,6 +93,8 @@ export function nativeGitServer({ root, key, now = Date.now, allowLocalFixtures 
     const admitted=await monitor.check({needsDisk});
     if(!admitted.allowed){res.setHeader('Retry-After',String(admitted.retryAfterSeconds??2));return send(429,{error:'worker_resource_pressure',reason:admitted.reason,phase:'admission',no_operation_started:true,next:admitted.reason==='owner_paused'?OWNER_PAUSED_TEXT:'Measured worker resources are under pressure. Inspect state, then retry after resources recover.'});}
    }
+   // WORKER-POOL-1: a full host refuses a new clone before anything starts (the control plane then tries the next host).
+   if(claim.action==='open'&&maxWorkspaces!==null){const active=await activeCount();if(active===null||active>=maxWorkspaces){res.setHeader('Retry-After','60');return send(429,{error:'worker_resource_pressure',reason:'workspace_limit',phase:'admission',no_operation_started:true,next:'This host holds its maximum number of workspaces. Close a finished workspace, or try again later.'});}}
    const worker = new NativeGitWorker({ root, allowLocalFixtures, now, cloneTimeoutMs, cloneWaitMs, scannerPolicy:{settings:policy,revision:claim.scannerPolicy?.revision??0},
     authorize: async (binding, { write }) => JSON.stringify(binding) === expected && claim.expiresAt > now() && (!write || claim.allowWrite === true),
     credential: async () => { if (typeof claim.credential !== 'string' || !claim.credential) throw new TypeError('Missing short-lived network authorization.'); return claim.credential; }
@@ -132,7 +146,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
  if (!root) throw new TypeError('Set NATIVE_GIT_STORAGE_ROOT to the mounted persistent volume.');
  // The direct git host's key and stored configuration (not for a dedicated single-workspace broker).
  const direct=process.env.NATIVE_GIT_SINGLE_WORKSPACE_ID?null:{identity:await directIdentity(root),env:process.env,stored:await readDirectFile(root).catch(()=>{process.stderr.write('The stored direct git host configuration could not be read; configure it again.\n');return null;})};
- const server=nativeGitServer({root,direct,key:process.env.NATIVE_GIT_CONTROL_PUBLIC_KEY??process.env.NATIVE_GIT_WORKER_KEY,resourcePolicy:resourcePolicyFromEnv(process.env),singleWorkspaceId:process.env.NATIVE_GIT_SINGLE_WORKSPACE_ID,singleBinding:process.env.NATIVE_GIT_SINGLE_BINDING,authorityUrl:process.env.NATIVE_GIT_AUTHORITY_URL,cloneTimeoutMs:Math.min(Math.max(Number(process.env.NATIVE_GIT_CLONE_TIMEOUT_MS??900000)||900000,45000),3600000)});
+ const server=nativeGitServer({root,direct,key:process.env.NATIVE_GIT_CONTROL_PUBLIC_KEY??process.env.NATIVE_GIT_WORKER_KEY,resourcePolicy:resourcePolicyFromEnv(process.env),singleWorkspaceId:process.env.NATIVE_GIT_SINGLE_WORKSPACE_ID,singleBinding:process.env.NATIVE_GIT_SINGLE_BINDING,authorityUrl:process.env.NATIVE_GIT_AUTHORITY_URL,cloneTimeoutMs:Math.min(Math.max(Number(process.env.NATIVE_GIT_CLONE_TIMEOUT_MS??900000)||900000,45000),3600000),maxWorkspaces:workspaceLimitFromEnv(process.env)});
  server.listen(Number(process.env.PORT??3000),'0.0.0.0');
  server.directHost?.start().catch(()=>process.stderr.write('The direct git host could not listen on its port; check GIT_DIRECT_PORT.\n'));
  for(const signal of ['SIGTERM','SIGINT'])process.once(signal,()=>server.close(()=>{process.exitCode=0;}));

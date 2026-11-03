@@ -47,5 +47,5 @@ export async function authorizeGitRequest({ parsed, wanted, env = process.env, n
   service: wanted.service, step: wanted.step, access: row.access, control, expiresAt: at + ttl, nonce: randomBytes(16).toString('hex') });
  let signed; try { signed = `${Buffer.from(claim).toString('base64url')}.${signGitRemoteClaim(claim, env)}`; } catch { return no(503, 'The git remote is not configured on this service yet.', { challenge: false }); }
  await log('allowed');
- return { ok: true, claim: signed, row, connection };
+ return { ok: true, claim: signed, row, connection, host: scope.host ?? null };
 }

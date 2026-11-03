@@ -95,6 +95,8 @@ export async function openKeyScope(id, { env = process.env, withCredentials = fa
  const index = await root.getSetting(indexKey(id));
  if (index?.kind !== 'git-remote-index' || index.id !== id || !index.scope) return null;
  const scope = index.scope;
+ // WORKER-POOL-1: the pool host this key's mirror lives on (absent for keys made before the pool: the primary).
+ const host = typeof index.host === 'string' && /^[a-f0-9]{32}$/.test(index.host) ? index.host : null;
  if (scope.tenantId) {
   const { createTenantDirectory, createTenantSql, assertTenantSearchPath } = await import('../tenancy/directory.js');
   const directory = createTenantDirectory(rootSql);
@@ -103,15 +105,15 @@ export async function openKeyScope(id, { env = process.env, withCredentials = fa
   if (marketplace && !marketplace.active) return null;
   const sql = createTenantSql(env.DATABASE_URL, scope.tenantId); await assertTenantSearchPath(sql, scope.tenantId);
   const db = createDb(sql); db.playgroundScope = Object.freeze({ ...scope });
-  if (!withCredentials) return { db, env, scope };
+  if (!withCredentials) return { db, env, scope, host };
   const [{ createCredentials }, { createTenantScopedCredentials }] = await Promise.all([import('../github/credentials.js'), import('../tenancy/user-authorization.js')]);
   const credentials = createTenantScopedCredentials({ base: createCredentials({ db, env, rootApps: root }), directory, tenant: authorized, db, env, fetchImpl: fetch });
-  return { db, env, scope, credentials };
+  return { db, env, scope, host, credentials };
  }
  if (scope.legacy !== true) return null;
  // The owner's own database is the root database: Routing Middleware needs nothing more (no schema pass, no credentials).
- if (!withCredentials) return { db: root, env, scope };
+ if (!withCredentials) return { db: root, env, scope, host };
  const { getSecretsRuntime } = await import('../runtime.js');
  const runtime = await getSecretsRuntime({ env });
- return { db: runtime.db, env, scope, credentials: runtime.credentials };
+ return { db: runtime.db, env, scope, host, credentials: runtime.credentials };
 }

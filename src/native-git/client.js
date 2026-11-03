@@ -52,7 +52,7 @@ export async function nativeRecord(ctx, id, { allowDisposed = false } = {}) {
 // inspect (github_git_workspace_read status, open/download replays, run progress polls, write
 // preflights and readbacks) is not activity unless its caller says so explicitly, so an agent that
 // keeps checking or retrying a broken workspace no longer keeps it alive forever.
-export async function callNativeWorker(ctx, { binding, action, workspace_id, operation, options, requestKey, expectedGeneration, allowWrite = false, network = false, job, renewLease: renewRequested, preferShortLived = false }) {
+export async function callNativeWorker(ctx, { binding, action, workspace_id, operation, options, requestKey, expectedGeneration, allowWrite = false, network = false, job, renewLease: renewRequested, preferShortLived = false, timeoutMs = 50000 }) {
  // A defaulted status inspect still returns the full repository state (head, branch, status),
  // without sliding the lease; an explicit renewLease:false inspect stays metadata-only.
  const renewLease = renewRequested ?? action !== 'inspect';
@@ -77,7 +77,7 @@ export async function callNativeWorker(ctx, { binding, action, workspace_id, ope
  });
  let response;
  try {
-  response = await transportFetch(ctx)(url, { method: 'POST', redirect: 'error', signal: AbortSignal.timeout(50000), headers: { 'Content-Type': 'application/json', 'x-robinson-signature': signNativeWorkerBody(body, job?.brokerOrigin?{...ctx.env,NATIVE_GIT_WORKER_KEY:undefined}:ctx.env) }, body });
+  response = await transportFetch(ctx)(url, { method: 'POST', redirect: 'error', signal: AbortSignal.timeout(timeoutMs), headers: { 'Content-Type': 'application/json', 'x-robinson-signature': signNativeWorkerBody(body, job?.brokerOrigin?{...ctx.env,NATIVE_GIT_WORKER_KEY:undefined}:ctx.env) }, body });
  } catch {
   throw failure('native_transport', 'Native Git worker could not be reached. Inspect workspace state and the same intent receipt before retrying; the outcome may be unknown.');
  }

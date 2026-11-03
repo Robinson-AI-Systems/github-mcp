@@ -17,6 +17,7 @@ import { authorizeNativeRepo, callNativeWorker } from '../native-git/client.js';
 import { workerUrl, workerKey } from '../native-git/protocol.js';
 import { nativeWorkerPublicKey } from '../native-git/signing.js';
 import { blockedNote, fitDigest } from '../native-git/relay.js';
+import { placeWorkspace, forgetHost } from '../native-git/pool.js';
 import { publicOrigin } from '../core/http.js';
 import { rootAllocationDb } from '../playground/index.js';
 import { CODE_TTL_MS, indexKey, keyLifetime, newExchangeCode, sha256 } from '../git-remote/keys.js';
@@ -92,27 +93,36 @@ async function readyCheck(c, a) {
  if (c.connection?.pass === true || c.connection?.kind === 'pass') throw safe('A git remote session key belongs to a connector sign-in, not a service pass. Use github_repo_download and github_repo_change with this pass.', 'git_remote_pass');
  try { workerUrl(c.env); if (c.env?.NATIVE_GIT_WORKER_KEY) workerKey(c.env.NATIVE_GIT_WORKER_KEY); else nativeWorkerPublicKey(c.env); publicOrigin(c.env); }
  catch { throw safe('The git remote is not configured on this service yet. Use github_repo_download and github_repo_change meanwhile.', 'git_remote_unconfigured'); }
- const cap = await callNativeWorker(c, { action: 'capabilities' });
- if (cap.git_remote !== 'v1') throw safe('The native Git worker must be updated before the git remote works. Use github_repo_download and github_repo_change meanwhile.', 'native_worker_update_required');
- // The direct host only when this service names it AND the worker (answering this signed call) serves it.
- const configured = directOrigin(c.env), control = publicOrigin(c.env);
+ // WORKER-POOL-1: the key's mirror lives on the first available pool host that serves the git remote (the primary
+ // unless it is paused, busy, full or offline); the key stays on that host for its whole life (recorded in its index).
+ let host;
+ try { host = await placeWorkspace(c, { needs: cap => cap?.git_remote === 'v1' }); }
+ catch (error) {
+  if (error?.safeCode === 'native_worker_update_required') throw safe('The native Git worker must be updated before the git remote works. Use github_repo_download and github_repo_change meanwhile.', 'native_worker_update_required');
+  throw error;
+ }
+ const cap = host.capabilities;
+ // The direct host only when this service names it AND the worker (answering this signed call) serves it. It belongs to
+ // the primary host (GIT_DIRECT_ORIGIN); a key placed on another host uses this service's own domain.
+ const configured = host.role === 'primary' ? directOrigin(c.env) : null, control = publicOrigin(c.env);
  const direct = directFrom(configured, control, cap.git_direct);
  // GIT-DIRECT-2: named here but not (or not this one) served by the worker: the applied setup configures it.
  const pending = configured && !direct ? { origin: configured, control, supported: cap.git_direct_configure === 'v1' } : null;
+ const away = host.role !== 'primary' && directOrigin(c.env) ? `The primary worker is not taking new work just now, so this key uses the ${host.name} host through this service's own domain (no direct git host).` : null;
  const repo = await authorizeNativeRepo(c, a.owner ?? c.connection.default_account, a.repo);
  const [owner, name] = String(repo.full_name).split('/');
  const access = a.access ?? 'read';
  if (access === 'write' && repo.permissions && repo.permissions.push === false) throw safe(`GitHub says this connection can read ${repo.full_name} but not push to it. Ask for access "read", or ask the repository owner for write access.`, 'git_remote_no_push');
  const lifetime = await keyLifetime(c.db);
  if (a.hours !== undefined && a.hours > lifetime.maxHours) throw safe(`A session key lasts at most ${lifetime.maxHours} hours.`, 'git_remote_hours');
- return { owner, repo: name, access, hours: a.hours ?? lifetime.defaultHours, default_branch: repo.default_branch ?? null, direct, ...(pending ? { direct_pending: pending } : {}) };
+ return { owner, repo: name, access, hours: a.hours ?? lifetime.defaultHours, default_branch: repo.default_branch ?? null, direct, host: host.id, ...(away ? { host_note: away } : {}), ...(pending ? { direct_pending: pending } : {}) };
 }
 
 async function createKey(c, before) {
  const { id, code } = newExchangeCode();
- let direct = null, served = before.direct, note = null;
+ let direct = null, served = before.direct, note = before.host_note ?? null;
  // GIT-DIRECT-2: only an applied (confirmed, not dry-run) setup changes the worker's configuration.
- if (!served && before.direct_pending) ({ direct: served, note } = await configureDirect(c, before.direct_pending));
+ if (!served && before.direct_pending) { ({ direct: served, note } = await configureDirect(c, before.direct_pending)); if (typeof before.host === 'string') forgetHost(c, before.host); }
  if (served) {
   const root = rootAllocationDb(c), pinned = await root.getSetting(DIRECT_WORKER_SETTING).catch(() => null);
   // Pins the worker's public signing key (from its signed capabilities answer) for op=authorize.
@@ -123,7 +133,7 @@ async function createKey(c, before) {
  const at = (c.now ?? Date.now)();
  const expiresAt = new Date(at + before.hours * 3600000), codeExpiresAt = new Date(at + CODE_TTL_MS);
  // The root index names only which database holds the row (this tenant, or the owner's own).
- await rootAllocationDb(c).setSetting(indexKey(id), { kind: 'git-remote-index', id, scope: c.db.playgroundScope ?? { legacy: true } });
+ await rootAllocationDb(c).setSetting(indexKey(id), { kind: 'git-remote-index', id, scope: c.db.playgroundScope ?? { legacy: true }, ...(typeof before.host === 'string' ? { host: before.host } : {}) });
  await c.db.createGitRemoteKey({ id, connection: c.connection.client_id, owner: before.owner, repo: before.repo, access: before.access, codeHash: sha256(code), codeExpiresAt, expiresAt });
  return { key_id: id, code, owner: before.owner, repo: before.repo, access: before.access, expires_at: expiresAt.toISOString(), code_expires_at: codeExpiresAt.toISOString(), ...(direct ? { direct } : {}), ...(note ? { direct_note: note } : {}) };
 }
