@@ -3267,6 +3267,22 @@
       ],
       "readiness": "READY",
       "ownerInputs": []
+    },
+    {
+      "id": "PUSH-FIXTURE-1",
+      "title": "Push and write gates accept the documented FAKE-prefixed GitHub test tokens in file content; every other credential shape, argument checks and redaction unchanged",
+      "batch": "FIN",
+      "design": "docs/pr-cards/PUSH-FIXTURE-1.md",
+      "dependencies": [],
+      "card": "docs/pr-cards/PUSH-FIXTURE-1.md",
+      "status": "MERGED",
+      "migration": "none",
+      "budget": 400,
+      "units": [
+        "PUSH-FIXTURE-1"
+      ],
+      "readiness": "READY",
+      "ownerInputs": []
     }
   ],
   "gatewayBoundary": {

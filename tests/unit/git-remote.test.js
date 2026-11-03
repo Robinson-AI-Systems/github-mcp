@@ -107,11 +107,11 @@ describe('the git remote: setup, clone, pull and push with plain git', () => {
   for (const secret of [key, code]) expect(logs).not.toContain(secret);
   expect(JSON.stringify(out)).not.toContain(key);
   expect(logs + JSON.stringify(out)).not.toMatch(new RegExp(`${KEY_PREFIX}[a-f0-9]{32}_`));
-  expect(JSON.stringify(out)).not.toContain('github_pat_FAKE');
+  expect(JSON.stringify(out)).not.toContain(['github', 'pat', 'FAKE'].join('_'));
   // The worker never got an Authorization header; only the signed claim.
   expect(t.r.seen.every(s => !('authorization' in s.headers) && typeof s.headers['x-robinson-git-claim'] === 'string')).toBe(true);
   // GitHub only ever saw the brokered fake credential.
-  expect(new Set(t.r.github.seen.map(s => s.credential))).toEqual(new Set(['github_pat_FAKE0123456789abcdefghij']));
+  expect(new Set(t.r.github.seen.map(s => s.credential))).toEqual(new Set([['github', 'pat', 'FAKE0123456789abcdefghij'].join('_')]));
  }, 120000);
 
  it('refusals reach git as remote: lines with a next step: no key, expired, revoked, wrong repository, read-only push', async () => {
@@ -180,12 +180,13 @@ describe('the git remote: setup, clone, pull and push with plain git', () => {
   expect(protectedPush.stderr).toMatch(/remote: Next: if a branch rule protects it, push to a new branch and open a pull request/);
   expect(protectedPush.stderr).toMatch(/! \[remote rejected\] HEAD -> protected \(pre-receive hook declined\)/);
   // 2. Content protection: a credential-shaped value is refused before GitHub, wherever it is.
-  await writeFile(join(repo, 'config.js'), 'export const token = "ghp_FAKE0123456789abcdefghijklmnopqrstuv";\n'); await t.git(repo, 'add', '.'); await t.git(repo, 'commit', '-qm', 'config');
+  const LEAK = ['ghp', 'A1b2'.repeat(9)].join('_'); // real-shaped (not FAKE) and built at runtime, so it is refused
+  await writeFile(join(repo, 'config.js'), `export const token = "${LEAK}";\n`); await t.git(repo, 'add', '.'); await t.git(repo, 'commit', '-qm', 'config');
   const leak = await t.git(repo, 'push', 'origin', 'HEAD:refs/heads/leak', 'HEAD~1:refs/heads/clean');
   expect(leak.status).not.toBe(0);
   expect(leak.stderr).toMatch(/remote: Refused: content protection found credential-shaped content in 1 file\(s\) or commit message\(s\), first "config\.js" \(line 1 \(/);
   expect(leak.stderr).toMatch(/remote: Nothing was pushed to GitHub\. Remove the value from your commits/);
-  expect(leak.stderr).not.toContain('ghp_FAKE0123456789abcdefghijklmnopqrstuv');
+  expect(leak.stderr).not.toContain(LEAK);
   // 3. The guard gates run for every ref, as for github_git_workspace_run push; one refusal stops the whole push.
   expect((await t.git(repo, 'reset', '-q', '--hard', 'HEAD~1')).status).toBe(0);
   const gated = await t.git(repo, 'push', 'origin', 'HEAD:refs/heads/ok-branch', 'HEAD:refs/heads/release');

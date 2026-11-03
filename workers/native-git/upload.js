@@ -411,10 +411,12 @@ export function catObjects(root, repo, ids, onObject, { timeoutMs = 120000, env 
   });
 }
 
+const PUSHED_CONTENT = Object.freeze({ fixtures: 'allow' });
 export function findingFor(label, bytes) {
   const text = bytes.toString('utf8');
-  if (!containsCredential(text)) return null;
-  const findings = activeProtectionReport(text).findings;
+  // PUSH-FIXTURE-1: pushed and uploaded content allows documented FAKE test tokens (git remote, direct host, workspace upload).
+  if (!containsCredential(text, PUSHED_CONTENT)) return null;
+  const findings = activeProtectionReport(text, PUSHED_CONTENT).findings;
   const rules = [...new Set(findings.map(f => f.rule))].slice(0, 3);
   // NATIVE-ERGO-1: say where (line and rule, never the value) so a false positive can be found and reported.
   return { path: label, rules, lines: findings.slice(0, 3).map(f => `line ${f.line} (${f.rule})`) };

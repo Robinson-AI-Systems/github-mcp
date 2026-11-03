@@ -250,7 +250,7 @@ export class NativeGitWorker {
       try {
         if (operation === 'write_file') {
           if (typeof args.base64 !== 'string' || args.base64.length > 1400000 || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(args.base64)) throw new TypeError('Supply canonical base64 of at most 1 MiB.');
-          const bytes = Buffer.from(args.base64, 'base64'); if (containsCredential(bytes.toString('utf8'))) throw new TypeError('Credential-shaped file input belongs in protected setup, not tool arguments.');
+          const bytes = Buffer.from(args.base64, 'base64'); if (containsCredential(bytes.toString('utf8'), { fixtures: 'allow' })) throw new TypeError('Credential-shaped file input belongs in protected setup, not tool arguments.');
           started = true; await writeWorkspaceFile(w.repo,args.path,bytes);
           if (!(await readWorkspaceFile(w.repo,args.path)).equals(bytes)) throw new Error('File readback differed.');
           result = { code: 0, file_hash: createHash('sha256').update(bytes).digest('hex') };
