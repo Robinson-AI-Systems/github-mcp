@@ -4,12 +4,16 @@ import {registry} from '../tools/index.js';
 import {createDispatch} from '../tools/dispatch.js';
 import {createGates} from '../tools/gates.js';
 import {loadZone,withTimeZone} from '../core/time-zone.js';
-import {createRtcHttpHandler,rtcError} from './http.js';
+import {createRtcHttpHandler,rtcError,presentsRtcPass} from './http.js';
 import {offeredTools} from '../github/feature-gates.js';
 
 export async function serveRtc(req,res,route){
   if(route==='contract'||route==='openapi')
     return createRtcHttpHandler({db:{},registry,dispatch:async()=>{throw new Error('No public dispatch');}})(req,res,route);
+  // DOOR-DB-1: with no pass-shaped bearer the handler can only refuse, before it reads the store. Run the same handler
+  // over an empty store so the refusal is byte-identical and the database is never opened for a keyless knock.
+  if(!presentsRtcPass(req))
+    return createRtcHttpHandler({db:{},registry,dispatch:async()=>{throw new Error('No keyless dispatch');}})(req,res,route);
   try{
     const {db,credentials}=await getSecretsRuntime();
     const dispatch=createDispatch({credentials,gates:createGates({db}),featureGates:true});

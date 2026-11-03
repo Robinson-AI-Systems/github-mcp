@@ -3,16 +3,26 @@
 // `toConnection(record, env)`: it returns { connection } (a frozen object handed to tools) or { refuse: { status, body } }.
 import { publicOrigin, send } from './http.js';
 
+const BEARER = /^[Bb][Ee][Aa][Rr][Ee][Rr][ \t]+([A-Za-z0-9_-]{30,256})$/;
+const challengeFor = (env) => `Bearer resource_metadata="${publicOrigin(env)}/.well-known/oauth-protected-resource"`;
+
+/** True when the request carries something shaped like an access token. Pure: no store, no I/O (DOOR-DB-1). */
+export const presentsMcpBearer = (req) => BEARER.test(String(req.headers?.authorization || ''));
+
+/** The sign-in challenge for a request with no usable bearer. Needs no store, so an entry point can answer a keyless
+ *  knock before it opens one (DOOR-DB-1); requireMcpToken sends exactly this refusal for the same requests. */
+export function refuseMissingMcpBearer(res, env = process.env) {
+  const challenge = challengeFor(env);
+  res.setHeader('WWW-Authenticate', challenge);
+  send(res, 401, { error: 'unauthorized', error_description: 'A valid connection is required' });
+  return null;
+}
+
 export async function requireMcpToken(req, res, db, env = process.env, { toConnection } = {}) {
   if (typeof toConnection !== 'function') throw new TypeError('requireMcpToken needs a toConnection function.');
-  const origin = publicOrigin(env);
-  const challenge = `Bearer resource_metadata="${origin}/.well-known/oauth-protected-resource"`;
-  const match = /^[Bb][Ee][Aa][Rr][Ee][Rr][ \t]+([A-Za-z0-9_-]{30,256})$/.exec(String(req.headers?.authorization || ''));
-  if (!match) {
-    res.setHeader('WWW-Authenticate', challenge);
-    send(res, 401, { error: 'unauthorized', error_description: 'A valid connection is required' });
-    return null;
-  }
+  const challenge = challengeFor(env);
+  const match = BEARER.exec(String(req.headers?.authorization || ''));
+  if (!match) return refuseMissingMcpBearer(res, env);
   const record = await db.getAccessToken(match[1]);
   const decision = record ? toConnection(record, env) : null;
   if (!decision) {

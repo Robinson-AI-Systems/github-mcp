@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated": "2026-11-02",
+  "updated": "2026-11-03",
   "order": [
     "A",
     "B",
@@ -3248,6 +3248,22 @@
       "budget": 900,
       "units": [
         "WORKER-POOL-1"
+      ],
+      "readiness": "READY",
+      "ownerInputs": []
+    },
+    {
+      "id": "DOOR-DB-1",
+      "title": "Keyless doors answer without waking the database: /api/mcp sign-in challenge, keyless RTC refusals and OAuth discovery documents issue zero SQL; signed-in calls keep every store-backed check",
+      "batch": "FIN",
+      "design": "docs/pr-cards/DOOR-DB-1.md",
+      "dependencies": [],
+      "card": "docs/pr-cards/DOOR-DB-1.md",
+      "status": "MERGED",
+      "migration": "none",
+      "budget": 400,
+      "units": [
+        "DOOR-DB-1"
       ],
       "readiness": "READY",
       "ownerInputs": []
