@@ -27,12 +27,12 @@ describe('home page', () => {
       const b = await open(profile);
       if (!b) return console.warn('browser engine not installed here: ' + profile.engine);
       await b.page.goto(ORIGIN + '/');
-      expect(await b.page.title()).toBe('Robinson MCP for GitHub');
+      expect(await b.page.title()).toBe('GitHub Unleashed by Robinson AI Systems');
       await fitsScreen(b.page);
       expect(await b.page.textContent('#address')).toBe(ORIGIN + '/api/mcp');
       expect(await b.page.locator('#address').count()).toBe(1);
       const text = await b.page.textContent('main');
-      expect(text).toContain('Not affiliated with or endorsed by GitHub.');
+      expect(text).toContain('GitHub Unleashed is a Robinson AI Systems product. It is not affiliated with, endorsed by, or sponsored by GitHub.');
       for (const word of ['Claude', 'ChatGPT', 'Claude Code', 'Cursor', 'VS Code', 'Meta Muse', 'Meta Muse Code']) expect(text).toContain(word);
       expect(text).toContain('claude mcp add --transport http github-robinson ' + ORIGIN + '/api/mcp');
       const museConfig = JSON.parse(await b.page.locator('#muse-code-config').textContent());
@@ -71,7 +71,7 @@ describe('home page', () => {
     await b.page.goto(started.url);
     if (await b.page.title() === 'Authorize Robinson GitHub MCP') await b.page.click('#gh-authorize');
     await b.page.waitForSelector('#approve');
-    expect(await b.page.textContent('header.brand b')).toBe('Robinson MCP for GitHub');
+    expect(await b.page.textContent('header.brand b')).toBe('GitHub Unleashed by Robinson AI Systems');
     await fitsScreen(b.page);
     if (process.env.MARKETPLACE_SHOTS === '1') await shot(b.page, 'approve');
     await b.context.close();

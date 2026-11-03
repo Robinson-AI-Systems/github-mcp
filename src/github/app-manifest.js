@@ -58,7 +58,7 @@ export function buildManifest({ origin, login }) {
   return {
     name: appNameFor(login),
     url: origin,
-    description: `Private Robinson GitHub MCP server access for ${login}. Created from the server's own setup page; owned and installed only by ${login}.`,
+    description: `Private GitHub Unleashed by Robinson AI Systems server access for ${login}. Created from the server's own setup page; owned and installed only by ${login}.`,
     hook_attributes: { url: `${origin}/api/github/webhook`, active: true },
     redirect_url: `${origin}/api/github/manifest-callback`,
     callback_urls: [`${origin}/api/github/user-callback`],

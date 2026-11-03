@@ -3267,6 +3267,25 @@
       ],
       "readiness": "READY",
       "ownerInputs": []
+    },
+    {
+      "id": "BRAND-UNLEASHED-1",
+      "title": "Rename every public surface to GitHub Unleashed by Robinson AI Systems, with disclaimer and Arctic accent",
+      "batch": "FIN",
+      "design": "docs/pr-cards/BRAND-UNLEASHED-1.md",
+      "dependencies": [
+        "BRAND-1"
+      ],
+      "card": "docs/pr-cards/BRAND-UNLEASHED-1.md",
+      "status": "IN_PROGRESS",
+      "migration": "none",
+      "budget": 300,
+      "units": [
+        "BRAND-UNLEASHED-1"
+      ],
+      "readiness": "READY",
+      "ownerInputs": [],
+      "pr": []
     }
   ],
   "gatewayBoundary": {

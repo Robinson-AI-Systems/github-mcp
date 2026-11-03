@@ -24,8 +24,8 @@ describe('the registry file server.json', () => {
   it('the server info reports the same version and the new name', () => {
     expect(VERSION).toBe(pkg.version);
     expect(serverInfo(ORIGIN).version).toBe(pkg.version);
-    expect(serverInfo(ORIGIN).title).toBe('Robinson MCP for GitHub');
-    expect(BRAND.product).toBe('Robinson MCP for GitHub');
+    expect(serverInfo(ORIGIN).title).toBe('GitHub Unleashed by Robinson AI Systems');
+    expect(BRAND.product).toBe('GitHub Unleashed by Robinson AI Systems');
   });
   it('tells agents which release they are talking to (deployed commit)', () => {
     const sha = 'a'.repeat(40);
@@ -41,7 +41,7 @@ describe('the home page', () => {
   it('shows the address, the not-affiliated line and a section for each app, with no scripts', () => {
     const html = renderHome(ORIGIN);
     expect(html).toContain(`<code class="addr" id="address">${ORIGIN}/api/mcp</code>`);
-    expect(html).toContain('Not affiliated with or endorsed by GitHub.');
+    expect(html).toContain('GitHub Unleashed is a Robinson AI Systems product. It is not affiliated with, endorsed by, or sponsored by GitHub.');
     expect(html).toContain('/brand/unleashed-github.png');
     for (const word of ['<h2>Claude (web, desktop and phone app)</h2>', '<h2>ChatGPT</h2>', '<h2>Claude Code</h2>', '<h2>Cursor</h2>', '<h2>VS Code</h2>']) expect(html).toContain(word);
     expect(html).toContain(`claude mcp add --transport http github-robinson ${ORIGIN}/api/mcp`);
@@ -49,13 +49,13 @@ describe('the home page', () => {
     for (const page of ['/connection', '/limits', '/privacy', '/terms', '/security', '/support']) expect(html).toContain(`href="${page}"`);
     for (const source of ['claude.com/docs/connectors', 'developers.openai.com', 'code.claude.com/docs', 'cursor.com/docs', 'code.visualstudio.com/docs']) expect(html).toContain(source);
   });
-  it('every page footer carries the not-affiliated line', () => { expect(brandFooter()).toContain('Not affiliated with or endorsed by GitHub.'); });
+  it('every page footer carries the not-affiliated line', () => { expect(brandFooter()).toContain('GitHub Unleashed is a Robinson AI Systems product. It is not affiliated with, endorsed by, or sponsored by GitHub.'); });
   it('a browser gets the page with a strict policy; a program still gets the plain status', async () => {
     const page = await call(handler, request('GET', {}, { accept: 'text/html,application/xhtml+xml' }));
     expect(page.statusCode).toBe(200);
     expect(page.headers['Content-Type']).toContain('text/html');
     expect(page.headers['Content-Security-Policy']).toContain("default-src 'none'");
-    expect(page.body).toContain('Robinson MCP for GitHub');
+    expect(page.body).toContain('GitHub Unleashed by Robinson AI Systems');
     const plain = await call(handler, request('GET', {}));
     expect(plain.headers['Content-Type'] ?? 'application/json').toMatch(/json/);
   });
@@ -65,7 +65,7 @@ describe('the website pack', () => {
   it('is one paragraph and a link with no scripts or tracking', () => {
     const html = read('docs/website/connect-button.html');
     expect(html).not.toMatch(/<script|<img|<iframe|utm_/i);
-    expect(html).toContain('Not affiliated with or endorsed by GitHub');
+    expect(html).toContain('GitHub Unleashed is a Robinson AI Systems product. It is not affiliated with, endorsed by, or sponsored by GitHub.');
     expect(html).toContain('href="https://github.robinsonaisystems.com/"');
   });
 });

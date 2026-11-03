@@ -1,6 +1,6 @@
 # ras-github 2.1 — verified content uploads and native synchronization
 
-This is the corrected single-file Python CLI for the existing Robinson GitHub MCP connector. It uses the existing connector helper and saved sign-in. It never calls the official GitHub CLI or asks for a credential. Install after the atomic Git-data server release; version 2 refuses uploads against the older contract before sending files.
+This is the corrected single-file Python CLI for the existing GitHub Unleashed connector. It uses the existing connector helper and saved sign-in. It never calls the official GitHub CLI or asks for a credential. Install after the atomic Git-data server release; version 2 refuses uploads against the older contract before sending files.
 
 ## Install on the fleet machine
 

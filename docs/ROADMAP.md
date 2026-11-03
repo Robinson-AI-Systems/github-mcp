@@ -297,3 +297,15 @@ Chris's go-ahead and a design for the two-step flow.
   switch a host off without a release.
 - **Direct git host per pool host.** `GIT_DIRECT_ORIGIN` belongs to the primary; git remote keys placed on another host use
   this service's domain (pushes up to about 25 MB). Per-host direct origins would need one pinned direct-host key per host.
+
+## Push hook blocks files with fake test credentials (found 2026-11-03, BRAND-UNLEASHED-1)
+
+Pushing through this service's own git remote refuses the whole push when a changed file's full contents match a
+credential pattern, including this repository's required fake test values (the FAKE token shapes AGENTS.md prescribes) and
+the harmless `password: token` line in `src/github/wiki-git.js` (rule database-connection-password). Seven files
+cannot currently be changed this way at all: `src/github/wiki-git.js`, `tests/unit/git-direct.test.js`,
+`tests/unit/git-remote.test.js`, `tests/unit/git-remote-edge.test.js`, `tests/unit/god-6-act-as.test.js`,
+`tests/unit/setup-page.test.js`, `tests/unit/root-route.test.js`. Needs a decision: teach the detector to ignore
+the documented `FAKE` fixture shape (with positive/negative regression tests, CONTENT-PROTECTION.md), or a narrow
+exact-blob suppression. Once fixed, finish the BRAND-UNLEASHED-1 leftovers listed in its card.
+

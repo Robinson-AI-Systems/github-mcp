@@ -15,8 +15,8 @@ import { BRAND_CSS, brandHeader, brandFooter } from '../brand/brand.js';
 const CSP = "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; form-action 'self' https://github.com; base-uri 'none'; frame-ancestors 'none'";
 const STYLE = BRAND_CSS + '.row{display:flex;justify-content:space-between;gap:10px;align-items:center;border-top:1px solid var(--border);padding:10px 0}' +
   '.row:first-of-type{border-top:0}.tag{font-size:.8rem;color:var(--muted)}.ok{color:var(--brand)}button.plain{background:none;border:1px solid var(--border);color:var(--text)}' +
-  'a.button{display:block;text-align:center;font:600 16px Inter,-apple-system,sans-serif;color:#fff;background:var(--grad);border-radius:50px;padding:13px 20px;text-decoration:none}' +
-  '.notice{border:1px solid var(--brand);border-radius:12px;padding:12px;margin:0 0 14px}.row>span{min-width:0;overflow-wrap:anywhere}code{overflow-wrap:anywhere}';
+  'a.button{display:block;text-align:center;font:600 16px Inter,-apple-system,sans-serif;color:var(--on-accent);background:var(--accent);border-radius:50px;padding:13px 20px;text-decoration:none}' +
+  '.notice{border:1px solid var(--accent);border-radius:12px;padding:12px;margin:0 0 14px}.row>span{min-width:0;overflow-wrap:anywhere}code{overflow-wrap:anywhere}';
 const STEP = '/api/oauth/authorize';
 
 function page(res, status, title, body) {
@@ -146,7 +146,7 @@ function installPage(res, i) {
     `<p>Signed in to GitHub as <strong>${h(i.signedInAs)}</strong>.</p>` +
     (i.again
       ? '<p>We still cannot see an account you own with the App installed. Install it on your own account, or on an organization where you are an owner. If an organization owner must approve it, ask them, then connect again.</p>'
-      : '<p>The Robinson GitHub MCP App is not installed on any account you own yet. Install it, choose which repositories it may use, and you come straight back here.</p>') +
+      : '<p>The GitHub Unleashed app is not installed on any account you own yet. Install it, choose which repositories it may use, and you come straight back here.</p>') +
     `<p><a class="button" id="install" href="${h(i.url)}">Install the App on GitHub</a></p>` +
     '<p><small>Changed your mind? Close this page; nothing was connected.</small></p>');
 }
@@ -157,7 +157,7 @@ function forgetConfirmPage(res, f) {
 }
 const when = (d) => { try { return new Date(d).toISOString().slice(0, 10); } catch { return ''; } };
 function managePage(res, m) {
-  if (m.none) return page(res, 200, 'Nothing connected yet', `<p>Signed in as <strong>${h(m.signedInAs)}</strong>, but no app has connected to your GitHub through us yet. Add Robinson GitHub MCP in your assistant (ChatGPT, Claude, …) and connect from there first.</p>`);
+  if (m.none) return page(res, 200, 'Nothing connected yet', `<p>Signed in as <strong>${h(m.signedInAs)}</strong>, but no app has connected to your GitHub through us yet. Add GitHub Unleashed in your assistant (ChatGPT, Claude, …) and connect from there first.</p>`);
   const act = (action, text, { value = '', plain = false, id = action } = {}) => `<form method="post" action="${MANAGE_PATH}">${hidden('handle', m.handle)}${hidden('action', action)}${hidden('value', value)}<button type="submit" id="${h(id)}"${plain ? ' class="plain"' : ''}>${text}</button></form>`;
   const anyChanges = m.connections.some((c) => !c.readOnly);
   const label = (c) => c.readOnly ? 'read-only' : c.canChange ? 'can make changes' : 'preview only (changes are off for an account)';
@@ -178,7 +178,7 @@ function managePage(res, m) {
       ? `<p>Added${m.master.expiresAt ? ', runs out ' + h(when(m.master.expiresAt)) : ', never runs out'}. It unlocks what normal sign-in cannot (notifications, packages, gists, organization settings).</p>` +
         (m.master.unlocks?.length ? '<div id="master-unlocks">' + m.master.unlocks.map((u) => `<div class="row"><span>${h(u.area)}</span><span class="tag">${u.unlocked ? 'unlocked' : 'locked — tick “' + h(u.needs) + '”'}</span></div>`).join('') + '</div>' : '') +
         (m.master.actAs ? '<h3>Act as me</h3>' +
-          `<p id="act-as-state">GitHub shows: <strong>${m.master.actAs.on && !m.master.actAs.expired && !m.master.actAs.rejected ? 'you' + (m.master.actAs.login ? ' (' + h(m.master.actAs.login) + ')' : '') : 'the Robinson GitHub MCP app'}</strong>${m.master.actAs.expired ? ' <small>(your master token ran out; add a new one)</small>' : m.master.actAs.rejected ? ' <small>(GitHub rejected your master token; add a new one)</small>' : ''}</p>` +
+          `<p id="act-as-state">GitHub shows: <strong>${m.master.actAs.on && !m.master.actAs.expired && !m.master.actAs.rejected ? 'you' + (m.master.actAs.login ? ' (' + h(m.master.actAs.login) + ')' : '') : 'the GitHub Unleashed app'}</strong>${m.master.actAs.expired ? ' <small>(your master token ran out; add a new one)</small>' : m.master.actAs.rejected ? ' <small>(GitHub rejected your master token; add a new one)</small>' : ''}</p>` +
           act('act_as_me', m.master.actAs.on ? 'Act as me: turn off' : 'Act as me: turn on', { value: m.master.actAs.on ? 'off' : 'on', plain: true, id: 'act-as-me' }) +
           '<p><small>When on, operations use your enrolled GitHub login where supported. Operations that require the App still use it. GitHub enforces your actual permissions and repository rules.</small></p>' +
           `<p id="rule-override-state">Allow overriding branch rules: <strong>${m.master.actAs.ruleOverride ? 'on' : 'off'}</strong></p>` +
@@ -277,7 +277,7 @@ export async function publicForget(req, res, { env = process.env, ...deps } = {}
   try {
     const p = paramsOf(req), connect = make(env, deps);
     if (req.method === 'GET') {
-      return page(res, 200, 'Delete my data', '<p>This removes everything Robinson GitHub MCP stores about you: your sign-in, saved GitHub access, settings, change record and saved results. Your assistants stop working with your accounts straight away. Nothing on GitHub itself is changed or deleted.</p>' +
+      return page(res, 200, 'Delete my data', '<p>This removes everything GitHub Unleashed stores about you: your sign-in, saved GitHub access, settings, change record and saved results. Your assistants stop working with your accounts straight away. Nothing on GitHub itself is changed or deleted.</p>' +
         '<p>First you sign in with GitHub so we know it is you. Then you confirm. This cannot be undone, but you can connect again later as a new person.</p>' +
         `<form method="post" action="${STEP}">${hidden('forget', '1')}${hidden('action', 'start')}<button type="submit" id="forget-start">Sign in with GitHub to continue</button></form>`);
     }
@@ -311,7 +311,7 @@ export async function publicInstallReturn(req, res, { env = process.env, ...deps
 }
 /** An app still using the older private-pilot sign-in: point the person at the one sign-in everyone now uses. */
 export function publicMoved(req, res) {
-  return page(res, 410, 'Connect again', '<p>This connection uses an older sign-in that has been retired. In your app, remove Robinson GitHub MCP and add it again, then connect. It takes one sign-in with GitHub. Nothing on GitHub was changed.</p>' +
+  return page(res, 410, 'Connect again', '<p>This connection uses an older sign-in that has been retired. In your app, remove GitHub Unleashed and add it again, then connect. It takes one sign-in with GitHub. Nothing on GitHub was changed.</p>' +
     `<p><a href="${MANAGE_PATH}">My connection</a> shows what is connected.</p>`);
 }
 export const publicFailure = failure;

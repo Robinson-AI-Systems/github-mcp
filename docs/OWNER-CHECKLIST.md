@@ -21,6 +21,8 @@ Only things that need you (your sign-in, phone or desktop, money, or a decision)
 
 6. **Link this chat to the PC (Claude desktop app → Link to this computer)** (PC-WORKER-1, added 2026-11-03). Lets an agent run the PC worker kit and its checks inside WSL itself instead of through your assistant. Optional: Vivienne can run the same commands over SSH ([PC-WORKER](PC-WORKER.md)). To pause the worker any time, from Windows: `wsl -u root -e /srv/robinson-git/pc-worker pause` (and `resume`). Nothing is bought.
 
+7. **Optional: the GitHub App's own name on GitHub (BRAND-UNLEASHED-1, added 2026-11-03).** Every page, the MCP title and the docs now say "GitHub Unleashed by Robinson AI Systems". The registered GitHub App (and a Marketplace listing, if you publish one) keeps its current name on GitHub, because renaming an App can change its web address and bot name that installs and links rely on. Recommendation: leave it. If you want it renamed anyway, do it in GitHub's App settings yourself after checking GitHub's naming rules (they limit how "GitHub" may appear in names); nothing in this server needs to change.
+
 ## Only if you want them
 
 - **Backups of Git workspaces.** Optional and not needed for production (decision 2026-10-30). No backup exists today. The off-server destination currently returns 401; do not work around it. When you want it: [runbook](NATIVE-GIT-BACKUP-RUNBOOK.md).

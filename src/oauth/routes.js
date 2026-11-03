@@ -58,6 +58,6 @@ export async function handleOAuth(which, req, res, { db, env = process.env, cons
     return await handlers[which](req, res);
   } catch {
     res.setHeader('Cache-Control', 'no-store');
-    return res.status(503).json({ error: 'temporarily_unavailable', error_description: 'GitHub MCP is not configured or its database is unavailable' });
+    return res.status(503).json({ error: 'temporarily_unavailable', error_description: 'GitHub Unleashed is not configured or its database is unavailable' });
   }
 }

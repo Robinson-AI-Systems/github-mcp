@@ -86,6 +86,7 @@ describe('github_server_status', () => {
   it('reports release, deployment time, recent live merges, worker versions and healthy checks in under 2 KB', async () => {
     const w = world();
     const out = await w.run();
+    expect(out.product).toBe('GitHub Unleashed by Robinson AI Systems');
     expect(out.release).toEqual({ version: expect.stringMatching(/\+010101010101$/), commit: RELEASE, source: `https://github.com/Robinson-AI-Systems/github-mcp/commit/${RELEASE}` });
     expect(out.deployed_at).toMatchObject({ utc: '2026-11-03T02:33:40Z', local: 'Nov 2, 2026, 7:33 PM MST', zone: 'America/Denver', source: 'github_deployment_status' });
     expect(out.recent_changes.untrusted).toBe(true);

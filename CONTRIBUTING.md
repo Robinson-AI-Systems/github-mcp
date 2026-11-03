@@ -1,4 +1,4 @@
-# Contributing to Robinson GitHub MCP
+# Contributing to GitHub Unleashed by Robinson AI Systems
 
 The maintainer welcomes proposed improvements from people who have
 permission to access the repository. A pull request is a **proposal**,

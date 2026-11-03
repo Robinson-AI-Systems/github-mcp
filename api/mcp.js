@@ -108,7 +108,7 @@ export async function handleMcp(req, res, { marketplaceAccountId = null } = {}) 
         retry_after_seconds:error.retryAfterSeconds });
     }
     if (!res.headersSent) {
-      return res.status(503).json({ error: 'temporarily_unavailable', error_description: 'GitHub MCP is not configured or its database is unavailable' });
+      return res.status(503).json({ error: 'temporarily_unavailable', error_description: 'GitHub Unleashed is not configured or its database is unavailable' });
     }
   } finally {
     if (tenantSql) {

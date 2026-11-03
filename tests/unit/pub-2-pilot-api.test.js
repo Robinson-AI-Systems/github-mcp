@@ -52,7 +52,7 @@ describe('PUB-2 private browser entry routes',()=>{
     const response=await call((req,res)=>consentPage(req,res,{env,
       consentFactory:()=>({inspect:async()=>({productionAllowed:true})})}),request('GET',params));
     expect(response.statusCode).toBe(200);
-    expect(response.body).toContain('Robinson MCP for GitHub');
+    expect(response.body).toContain('GitHub Unleashed by Robinson AI Systems');
     expect(response.body).toContain('<select name="mode">');
     expect(response.body).toContain('<option value="production">');
     expect(response.body).toContain('<select name="profile">');
