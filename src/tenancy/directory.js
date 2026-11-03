@@ -342,9 +342,18 @@ export function createTenantDirectory(sql) {
       await sql`ALTER TABLE gh_public_clients ADD COLUMN IF NOT EXISTS last_token_at TIMESTAMPTZ`;
       // PUB-10: widen the client_id check on already-deployed stores so a CIMD card address
       // (an https metadata-document URL) can be a public client id, not only pcl_ ids.
-      await sql`ALTER TABLE gh_public_clients DROP CONSTRAINT IF EXISTS gh_public_clients_client_id_check`;
-      await sql`ALTER TABLE gh_public_clients ADD CONSTRAINT gh_public_clients_client_id_check
-        CHECK (client_id ~ '^pcl_[A-Za-z0-9_-]{32,64}$' OR client_id ~ '^https://[^ /@]+/[^ ]*$')`;
+      // CHECK-RACE-1: one statement, and only when the check is still the old one. Two separate DROP/ADD statements raced when
+      // several requests started the schema at once (Postgres 42710 "already exists", so a sign-in registration answered 503).
+      // The DO block swaps the check atomically, is a no-op once widened, and treats a concurrent winner as done.
+      await sql`DO $$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'gh_public_clients'::regclass
+            AND conname = 'gh_public_clients_client_id_check' AND pg_get_constraintdef(oid) LIKE '%https://%') THEN
+          ALTER TABLE gh_public_clients DROP CONSTRAINT IF EXISTS gh_public_clients_client_id_check;
+          ALTER TABLE gh_public_clients ADD CONSTRAINT gh_public_clients_client_id_check
+            CHECK (client_id ~ '^pcl_[A-Za-z0-9_-]{32,64}$' OR client_id ~ '^https://[^ /@]+/[^ ]*$');
+        END IF;
+      EXCEPTION WHEN duplicate_object THEN NULL;
+      END $$`;
       // PUB-8: ONE removal core for a person's tenant, used by the owner tool (github_tenant_remove), the owner setup page and the
       // person's own "Delete my data" page. It removes the row in EVERY shared table that has a tenant_id column (found from the
       // catalog, so a table added later is covered without editing this), the shared Playground pointers (device routes and
