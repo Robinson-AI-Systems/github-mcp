@@ -85,3 +85,13 @@ per key host; git remote setup on the next host with no direct host; the nine wr
 
 Live hosts (no second worker is configured yet), the owner edit surface for the stored setting, a queue, Wake-on-LAN and
 enrolling other people's machines (ROADMAP).
+
+## Drift check
+
+Builds on PC-WORKER-1 (owner pause, `owner_paused` capability, PC as primary with Dokploy as previous), SINGLE-DOMAIN-1
+(relay routes and HMAC tags), GIT-REMOTE-1/GIT-DIRECT-1/-2 (key index, edge, direct host pinning), FLEET-1..7 vocabulary
+(own machines first, placement recorded once). New: `src/native-git/pool-config.js`, `src/native-git/pool.js`, settings
+`NATIVE_GIT_WORKER_POOL` (control plane) and `NATIVE_GIT_MAX_WORKSPACES` (worker), stored setting
+`native_git.worker_pool`, capability fields `active_workspaces`/`max_workspaces`, admission reason `workspace_limit`,
+relay route `h.<host id>`, key-index field `host`, status section `health.worker_pool`, reason code `native_hosts_busy`.
+No database migration, no tool schema change, no protocol version change.
