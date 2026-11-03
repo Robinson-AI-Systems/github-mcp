@@ -29,17 +29,21 @@ services:
     cpus: ${PC_WORKER_CPUS:-4}
     mem_limit: ${PC_WORKER_MEMORY:-6g}
     memswap_limit: ${PC_WORKER_MEMORY:-6g}
-    # Low priority: CPU weight (default 1024), IO weight 100 of 10-1000 (fixed here because compose does
-    # not interpolate it; ignored with a warning where the kernel's IO scheduler has no weights), and the
-    # first to go when memory runs short.
+    # Low priority: CPU weight (default 1024) and the first to go when memory runs short. No blkio weight:
+    # WSL2 kernels ship no BFQ scheduler, so cgroup v2 has no io.weight and runc refuses to start (found
+    # live 2026-11-03); IO priority comes from ionice below instead.
     cpu_shares: ${PC_WORKER_CPU_SHARES:-256}
-    blkio_config:
-      weight: 100
     oom_score_adj: 500
     # nice/ionice for the worker and every git process it starts; an ionice refusal is reported, not fatal.
     command: ["sh", "-c", "ionice -c \"$${PC_WORKER_IO_CLASS:-3}\" -p $$$$ 2>/dev/null || echo 'ionice not applied; continuing' >&2; exec nice -n \"$${PC_WORKER_NICE:-10}\" node workers/native-git/server.js"]
+    # PC-WORKER-2: host networking, listening on loopback only. Docker's published-port rules drop
+    # localhost traffic under WSL "mirrored" networking (packets do not arrive on lo), so the worker binds
+    # 127.0.0.1 directly; Windows reaches it through the shared loopback (mirrored) or localhost forwarding
+    # (NAT), and Tailscale Funnel on Windows proxies to it. Never the LAN.
+    network_mode: host
     environment:
-      PORT: "3000"
+      PORT: ${PC_WORKER_API_PORT:-47300}
+      NATIVE_GIT_BIND_HOST: 127.0.0.1
       NATIVE_GIT_STORAGE_ROOT: /data
       PC_WORKER_NICE: ${PC_WORKER_NICE:-10}
       PC_WORKER_IO_CLASS: ${PC_WORKER_IO_CLASS:-3}
@@ -55,19 +59,14 @@ services:
       # GIT-DIRECT-1: the direct git host is this PC's own Funnel origin; the MCP answers its op=authorize.
       GIT_DIRECT_ORIGIN: ${PC_WORKER_PUBLIC_ORIGIN:?Set PC_WORKER_PUBLIC_ORIGIN to https://<pc>.<tailnet>.ts.net}
       GIT_DIRECT_CONTROL_ORIGIN: ${MCP_ORIGIN:?Set MCP_ORIGIN to the MCP's https origin}
-      GIT_DIRECT_PORT: "3001"
+      GIT_DIRECT_PORT: ${PC_WORKER_GIT_PORT:-47301}
     volumes:
       # A bind mount on WSL's own ext4 disk (never /mnt/c): workspaces, mirrors, receipts, the pause file.
       - ${PC_WORKER_DATA:-/srv/robinson-git/data}:/data
     tmpfs:
       - /tmp:rw,noexec,nosuid,size=64m
-    # Published on localhost only (never the LAN). Windows reaches them through WSL localhost
-    # forwarding; Tailscale Funnel on Windows proxies to http://127.0.0.1:<port>.
-    ports:
-      - "127.0.0.1:${PC_WORKER_API_PORT:-47300}:3000"
-      - "127.0.0.1:${PC_WORKER_GIT_PORT:-47301}:3001"
     healthcheck:
-      test: ["CMD", "node", "-e", "Promise.all([3000,3001].map(p=>fetch('http://127.0.0.1:'+p+'/health'))).then(r=>process.exit(r.every(x=>x.ok)?0:1)).catch(()=>process.exit(1))"]
+      test: ["CMD", "node", "-e", "Promise.all([process.env.PORT,process.env.GIT_DIRECT_PORT].map(p=>fetch('http://127.0.0.1:'+p+'/health'))).then(r=>process.exit(r.every(x=>x.ok)?0:1)).catch(()=>process.exit(1))"]
       interval: 30s
       timeout: 5s
       start_period: 20s

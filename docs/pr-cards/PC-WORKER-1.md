@@ -88,3 +88,9 @@ Builds on GIT-DIRECT-1/-2 (direct door, authorization, environment configuration
 New: worker volume file `.owner-pause`, admission reason `owner_paused`, capability field `owner_paused`, control-plane
 messages for a paused or unreachable host, and `deploy/pc/`. No protocol, tool schema, database or routing change;
 Dokploy and Render deployments are unaffected (no pause file there).
+
+## Follow-up PC-WORKER-2 (2026-11-03, first real install)
+
+Fixes from the owner's PC: host networking bound to loopback (Docker published localhost ports are dropped under WSL
+mirrored networking), no blkio weight (fatal on WSL2), and a clean Docker config when Docker Desktop's credential
+helper is unusable. See `docs/status/2026-11-03-pc-worker-wsl-fixes.md`.

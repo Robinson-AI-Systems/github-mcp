@@ -39,7 +39,22 @@ set_env() {
   chmod 600 "$tmp"; mv "$tmp" "$ENV_FILE"
 }
 
+# PC-WORKER-2: a WSL Docker config that names Docker Desktop's credential store (credsStore: desktop.exe)
+# fails from SSH or service sessions. Use an empty config (anonymous pulls of the public base image) then.
+docker_config_check() {
+  local cfg="${DOCKER_CONFIG:-$HOME/.docker}/config.json" store
+  [[ -f "$cfg" ]] || return 0
+  store="$(python3 -c 'import json,sys
+try: print(json.load(open(sys.argv[1])).get("credsStore",""))
+except Exception: print("")' "$cfg")"
+  if [[ -n "$store" ]] && ! command -v "docker-credential-$store" >/dev/null 2>&1; then
+    DOCKER_CONFIG="$(mktemp -d)"; printf '{}\n' > "$DOCKER_CONFIG/config.json"; export DOCKER_CONFIG
+    printf '%s\n' "  note: credential store docker-credential-$store is not usable here; building with a clean Docker config"
+  fi
+}
+
 compose() {
+  docker_config_check
   docker compose --project-name robinson-git --env-file "$ENV_FILE" -f "$SRC/deploy/pc/compose.yaml" "$@"
 }
 
