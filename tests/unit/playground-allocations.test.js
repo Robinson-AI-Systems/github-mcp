@@ -45,7 +45,7 @@ it('keeps provider configuration protected and missing allocation setup produces
 
 it('operation setup is offered, previews like provision and sends nothing to the runtime without an allocation host',async()=>{
  const tool=tools.tools.find(x=>x.name==='github_playground_workspace');
- expect(tool.inputSchema.properties.operation.enum).toEqual(['setup','provision','attach','resume','preview','dispose']);
+ expect(tool.inputSchema.properties.operation.enum).toEqual(['setup','git_access','provision','attach','resume','preview','dispose']);
  expect(tool.description.length).toBeLessThanOrEqual(160);
  const {w}=await world();
  const result=parse(await tools.handlers.github_playground_workspace({...base,operation:'setup',requestKey:'setup-missing-host'},w.ctx));

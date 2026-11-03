@@ -23,6 +23,25 @@ export class CodingRuntime {
   if(egressProxy!==undefined&&egressProxy!=='http://ingress:3128')throw fail('invalid_configuration','Use only the fixed private egress service.');this.egressProxy=egressProxy;
   Object.assign(this,{root:resolve(root),binding,uid,gid,now,maxLogBytes,idleMs,commandOomScoreAdj:1000});this.cacheRoot=typeof cacheRoot==='string'&&/^\/[A-Za-z0-9_./-]{1,200}$/.test(cacheRoot)&&!cacheRoot.includes('..')?cacheRoot:null;this.authorityRequired=authorityRequired;this.authorityLease=null;this.active=new Map();this.admitting=new Set();this.lastActivity=now();this.expired=false;this.stopping=false;this.leaseWrites=Promise.resolve();this.resources=resources??createResourceMonitor({root:this.root});const reader=typeof oomKills==='function'?oomKills:readOomKills;this.oomKills=()=>Promise.resolve().then(reader).then(n=>Number.isSafeInteger(n)?n:null,()=>null);
  }
+ // Read-only Git key for ONE https address, written where only the command user can read it (never logged,
+ // never returned). Lets commands run git clone/fetch against this service's own Git address from a scratch
+ // folder; the attached repository's .git stays read-only by design. It stops working at expiresAt.
+ async setGitCredential({url,username,key,expiresAt}={}){
+  let u;try{u=new URL(url);}catch{u=null;}
+  if(!u||u.protocol!=='https:'||u.username||u.password||u.search||u.hash||!/^[a-z0-9.-]{1,253}$/.test(u.hostname)||!/^\/git\/[A-Za-z0-9._-]{1,100}\/[A-Za-z0-9._-]{1,100}\.git$/.test(u.pathname))throw fail('invalid_git_credential','Git address is not an allowed https address.');
+  if(!/^[A-Za-z0-9._-]{1,64}$/.test(username??'')||!/^[A-Za-z0-9_-]{20,200}$/.test(key??''))throw fail('invalid_git_credential','Git credential has an invalid shape.');
+  if(!Number.isSafeInteger(expiresAt)||expiresAt<=this.now()||expiresAt>this.now()+24*3600000)throw fail('invalid_git_credential','Git credential expiry is not allowed.');
+  const {writeFile,chown}=await import('node:fs/promises');
+  const home=join(this.root,'home'),store=join(home,'.git-credentials-robinson'),config=join(home,'.gitconfig');
+  const line=`https://${encodeURIComponent(username)}:${key}@${u.host}${u.pathname}\n`;
+  await writeFile(store,line,{mode:0o600});await chown(store,this.uid,this.gid);
+  const section=`[credential "https://${u.host}"]\n\thelper = store --file=${store}\n\tuseHttpPath = true\n`;
+  let existing='';try{existing=await readFile(config,'utf8');}catch{existing='';}
+  if(!existing.includes(`[credential "https://${u.host}"]`)){await writeFile(config,existing+section,{mode:0o600});await chown(config,this.uid,this.gid);}
+  this.gitCredentialUntil=expiresAt;await this.touch?.();
+  return {configured:true,address:`https://${u.host}${u.pathname}`,expires_at:expiresAt};
+ }
+
  async init(){
   const {chown}=await import('node:fs/promises');
   await mkdir(this.root,{recursive:true,mode:0o755});if(await realpath(this.root)!==this.root||(await stat(this.root)).uid!==0||((await stat(this.root)).mode&0o022)!==0)throw fail('invalid_storage','Runtime storage must not be a symlink.');

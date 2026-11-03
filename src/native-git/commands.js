@@ -162,3 +162,10 @@ export function nativeOperationHelp(operation) {
   const examples = {branch_create:{branch:'topic',ref:'HEAD'},switch:{branch:'topic'},branch_rename:{branch:'new-name',ref:'old-name'},branch_delete:{branch:'topic'},merge:{ref:'origin/main'},add:{all:true},remove_file:{paths:['old.txt','docs/old.md']},fetch:{branch:'feature'},changed_files:{ref:'origin/main'}};
   return {operation,allowed_options:[...OPTIONS[operation],'worktree'],required:required[operation]??[],...(examples[operation]?{example:examples[operation]}:{}),note:'Only listed options are accepted. branch_create does not switch branches; ref is its starting reference. switch with create: true makes and switches to a new branch (from = start point); switch to a branch made on GitHub after fetch with options.branch. Reads use workspace_id; mutations also require expectedGeneration. read_file uses explicit top-level byteLength. Keep one requestKey per intent.'};
 }
+
+/** Every native operation with the options it accepts, compact enough for one capabilities answer (NATIVE-ERGO-2). */
+export function allOperationOptions() {
+  const out = {};
+  for (const name of Object.keys(OPTIONS)) out[name] = nativeOperationHelp(name).allowed_options;
+  return out;
+}
