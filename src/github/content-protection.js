@@ -123,5 +123,6 @@ export function containsCredential(value) {
  }
  return false;
 }
-export const redactExcerpt = value => redact(value).replace(/rtc_pass_[A-Za-z0-9_-]+/g,HIDDEN);
+// GIT-REMOTE-1: git remote session keys and setup codes are hidden in every excerpt too.
+export const redactExcerpt = value => redact(value).replace(/rtc_pass_[A-Za-z0-9_-]+/g,HIDDEN).replace(/\brg[kc]_[a-f0-9]{32}_[A-Za-z0-9_-]{43}/g,HIDDEN);
 export const redactPreservingLines = value => redactRanges(value,effectiveRanges(String(value)),true);

@@ -70,7 +70,7 @@ export async function startWorld() {
   const handlers = {};
   for (const [path, file] of Object.entries({
     '/api/oauth/authorize': 'oauth/authorize.js', '/api/oauth/token': 'oauth/token.js', '/api/oauth/register': 'oauth/register.js',
-    '/api/github/[action]': 'github/[action].js', '/api/tenant/optional': 'tenant/optional.js', '/api/mcp': 'mcp.js', '/api/index': 'index.js',
+    '/api/github/[action]': 'github/[action].js', '/api/tenant/optional': 'tenant/optional.js', '/api/mcp': 'mcp.js', '/api/index': 'index.js', '/api/git-remote': 'git-remote.js',
     '/api/well-known/oauth-authorization-server': 'well-known/oauth-authorization-server.js',
     '/api/well-known/oauth-protected-resource': 'well-known/oauth-protected-resource.js'
   })) handlers[path] = (await import('../../api/' + file)).default;

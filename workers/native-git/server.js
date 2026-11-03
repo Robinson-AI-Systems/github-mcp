@@ -17,8 +17,13 @@ import { pathToFileURL } from 'node:url';
 import {createResourceMonitor,resourcePolicyFromEnv} from './resources.js';
 import {uploadHttp,beginUpload,uploadStatus,applyUpload,pruneUploads} from './upload.js';
 import {downloadHttp,beginDownload,downloadStatus,pruneDownloads} from './download.js';
+import {remoteHttp,pruneRemotes} from './remote.js';
 
-export function nativeGitServer({ root, key, now = Date.now, allowLocalFixtures = false, fixtureRemote, resources, resourcePolicy = {}, singleWorkspaceId, singleBinding, authorityUrl, cloneTimeoutMs = 900000, cloneWaitMs = 30000 } = {}) {
+// GIT-REMOTE-1: `remote` overrides are for local tests only (allowLocalFixtures); production always
+// fetches and pushes https://github.com/<owner>/<repo>.git and calls the broker on the claim's own origin.
+const GITHUB_REMOTE = (owner, repo) => `https://github.com/${owner}/${repo}.git`;
+const BROKER_URL = control => new URL('/api/git-remote?op=broker', control).href;
+export function nativeGitServer({ root, key, now = Date.now, allowLocalFixtures = false, fixtureRemote, resources, resourcePolicy = {}, singleWorkspaceId, singleBinding, authorityUrl, cloneTimeoutMs = 900000, cloneWaitMs = 30000, remote = {} } = {}) {
  workerKey(key); const busy = new Set();
  const monitor=resources??createResourceMonitor({root,policy:resourcePolicy});
  const gitVersion=execFileSync('git',['--version'],{encoding:'utf8',timeout:2000}).trim();
@@ -26,6 +31,7 @@ export function nativeGitServer({ root, key, now = Date.now, allowLocalFixtures 
  const server = createServer({ requestTimeout: 330000, headersTimeout: 10000, maxHeaderSize: 8192 }, async (req, res) => withProtectionContext(async () => {
   // Never let an unexpected upload failure escape the handler (no paths or details leave it).
   if (req.url?.startsWith('/v1/upload/')) return uploadHttp(req, res, { root, key, now, monitor }).catch(() => { if (res.headersSent) res.destroy(); else { res.statusCode = 500; res.setHeader('Content-Type', 'text/plain; charset=utf-8'); res.end('The upload did not finish. Begin a new upload.\n'); } });
+  if (req.url?.startsWith('/v1/remote/') && !singleWorkspaceId) return remoteHttp(req, res, { root, key, now, monitor, local: allowLocalFixtures, githubRemote: allowLocalFixtures && remote.github ? remote.github : GITHUB_REMOTE, brokerUrl: allowLocalFixtures && remote.broker ? remote.broker : BROKER_URL, fetchImpl: allowLocalFixtures && remote.fetch ? remote.fetch : fetch }).catch(() => { if (res.headersSent) res.destroy(); else { res.statusCode = 500; res.setHeader('Content-Type', 'text/plain; charset=utf-8'); res.end('The git remote could not finish this request. Run the git command again.\n'); } });
   if (req.url?.startsWith('/v1/download/')) return downloadHttp(req, res, { root, key, now, monitor }).catch(() => { if (res.headersSent) res.destroy(); else { res.statusCode = 500; res.setHeader('Content-Type', 'text/plain; charset=utf-8'); res.end('The download did not finish. Begin a new download.\n'); } });
   const bodyDeadline = setTimeout(() => req.destroy(), 15000); bodyDeadline.unref(); req.once('end', () => clearTimeout(bodyDeadline)); res.once('close', () => clearTimeout(bodyDeadline));
   res.setHeader('Cache-Control', 'no-store'); res.setHeader('Content-Type', 'application/json');
@@ -40,7 +46,7 @@ export function nativeGitServer({ root, key, now = Date.now, allowLocalFixtures 
    const chunks = []; let bytes = 0;
    for await (const chunk of req) { bytes += chunk.length; if (bytes > 2 * 1024 * 1024) return send(413, { error: 'request_too_large' }); const admitted=monitor.body(bytes);if(!admitted.allowed){res.setHeader('Retry-After','2');return send(429,{error:'worker_resource_pressure',reason:admitted.reason,phase:'admission',no_operation_started:true});}chunks.push(chunk); }
    claim = verifyWorkerBody(Buffer.concat(chunks).toString('utf8'), req.headers['x-robinson-signature'], key, now());
-   if (claim.action === 'capabilities') return send(200, { ready: true, protocol: WORKER_PROTOCOL, native_git:gitVersion,max_concurrent:null,capacity_mode:'resource-aware',resource_policy:monitor.policy,admission:await monitor.check(),workspace_lease:'idle-v1',repository_attachment:'sealed-mounted-v1',direct_upload:'quarantine-v1',direct_download:'one-time-v1',native_options:NATIVE_OPTIONS_VERSION,upload_apply:'delete-v1',upload_chunks:'chunks-v1',...(singleWorkspaceId?{repository:await repositoryMounts(join(root,singleWorkspaceId,'repo'))}:{}) });
+   if (claim.action === 'capabilities') return send(200, { ready: true, protocol: WORKER_PROTOCOL, native_git:gitVersion,max_concurrent:null,capacity_mode:'resource-aware',resource_policy:monitor.policy,admission:await monitor.check(),workspace_lease:'idle-v1',repository_attachment:'sealed-mounted-v1',direct_upload:'quarantine-v1',direct_download:'one-time-v1',native_options:NATIVE_OPTIONS_VERSION,upload_apply:'delete-v1',upload_chunks:'chunks-v1',...(singleWorkspaceId?{}:{git_remote:'v1'}),...(singleWorkspaceId?{repository:await repositoryMounts(join(root,singleWorkspaceId,'repo'))}:{}) });
    if(!claim.scannerPolicy||!Number.isSafeInteger(claim.scannerPolicy.revision)||claim.scannerPolicy.revision<0)throw new TypeError('Protocol 2 requires the current repository scanner policy; update the control plane and worker together.');
    const policy=scannerSettings(claim.scannerPolicy?.settings??defaultScannerSettings());
    return await withRepositoryProtection(policy.additionalRules.filter(r=>!policy.disabledRules.includes(r.id)),async()=>{
@@ -90,7 +96,7 @@ export function nativeGitServer({ root, key, now = Date.now, allowLocalFixtures 
  // No fixed connection/request ceiling: bounded bodies and measured memory admission remain.
  const maintenance = new NativeGitWorker({ root, authorize: async () => false, now });
  maintenance.recoverInterruptedClones().catch(() => process.stderr.write('Native Git clone recovery failed; inspect storage.\n'));
- const timer = setInterval(() => singleWorkspaceId?Promise.resolve():maintenance.prune({ skip: busy }).then(()=>pruneUploads(root,now())).then(()=>pruneDownloads(root,now())).catch(() => process.stderr.write('Native Git cleanup failed; inspect storage permissions and capacity.\n')), 60000); timer.unref();
+ const timer = setInterval(() => singleWorkspaceId?Promise.resolve():maintenance.prune({ skip: busy }).then(()=>pruneUploads(root,now())).then(()=>pruneDownloads(root,now())).then(()=>pruneRemotes(root,now())).catch(() => process.stderr.write('Native Git cleanup failed; inspect storage permissions and capacity.\n')), 60000); timer.unref();
  server.on('close', () => {clearInterval(timer);monitor.close();});
  return server;
 }

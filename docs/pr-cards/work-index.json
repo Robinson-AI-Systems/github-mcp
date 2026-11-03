@@ -3035,6 +3035,30 @@
       ]
     },
     {
+      "id": "GIT-REMOTE-1",
+      "title": "Plain git clone/pull/push on the service's own domain: one-time setup command, hash-only session keys per repository, guarded pushes through the native worker",
+      "batch": "FIN",
+      "design": "docs/pr-cards/GIT-REMOTE-1.md",
+      "dependencies": [
+        "SINGLE-DOMAIN-1",
+        "GIT-UPLOAD-1",
+        "GIT-DOWNLOAD-1",
+        "CHUNK-UPLOAD-1"
+      ],
+      "card": "docs/pr-cards/GIT-REMOTE-1.md",
+      "status": "IN_PROGRESS",
+      "migration": "additive tables git_remote_keys, git_remote_uses (per tenant database)",
+      "budget": 2400,
+      "units": [
+        "GIT-REMOTE-1"
+      ],
+      "readiness": "READY",
+      "ownerInputs": [],
+      "pr": [
+        552
+      ]
+    },
+    {
       "id": "NATIVE-ERGO-1",
       "title": "github_repo_change commits and pushes (and opens the PR) in one call; native Git accepts the options agents pass; conflicts and refusals are definite outcomes",
       "batch": "FIN",

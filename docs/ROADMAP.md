@@ -2,6 +2,15 @@
 
 # ROADMAP — ideas not being built now
 
+## 2026-11-02 — Git remote follow-ups (found while building GIT-REMOTE-1)
+
+Not built, each needs Chris's go-ahead as new scope: git remote keys for service passes (passes are refused today with a
+pointer to the download/change tools); a Playground-attached runtime as the remote's backing copy (the remote uses its
+own mirror on the shared worker); Git LFS, partial-clone filters and protocol v2 through the remote; a content-scanner
+rule for leaked `rgk_` keys in repositories (they are already redacted in every excerpt); an owner page control for the
+`git_remote.lifetime` setting (defaults 8 h / 24 h apply until one exists); measuring Vercel's live limit for one large
+push request.
+
 ## 2026-11-02 — "Run this for me" / short alias for one-time transfer links (owner list item 21)
 
 Owner's agent: upload and download links are long one-time URLs pasted into curl by hand. The service cannot run commands

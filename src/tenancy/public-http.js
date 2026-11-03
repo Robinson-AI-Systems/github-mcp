@@ -221,6 +221,10 @@ function managePage(res, m) {
         (d.status==='pending_canary'&&d.transport!=='dial-out'&&d.transportVerifiedAt ? act('canary_pair','Verify my fixed local runtime test receipt (no commands)',{value:d.deviceId,id:'canary-' + d.deviceId}) : '') +
         (!['revoked','revocation_pending'].includes(d.status) ? act('revoke_pair','Revoke enrollment',{value:d.deviceId,plain:true,id:'revoke-' + d.deviceId}) : '')).join('') :
         '<p class="muted">No computers or servers added yet.</p>')) +
+    // GIT-REMOTE-1: each live git remote key, with a button that cancels it at once.
+    '<h2>Git remote keys</h2>' + ((m.gitKeys ?? []).length ? '<div id="git-keys">' + m.gitKeys.map((k) => `<div class="row"><span>${h(k.repo)} <span class="tag">${k.access === 'write' ? 'read and push' : 'read only'}</span><br><small>${h(k.app)} · ${k.ready ? 'in use' : 'waiting for setup'} · ends ${h(new Date(k.expiresAt).toISOString().slice(0, 16).replace('T', ' '))} UTC${k.lastUsedAt ? ' · last used ' + h(new Date(k.lastUsedAt).toISOString().slice(0, 16).replace('T', ' ')) + ' UTC' : ''}</small></span></div>` +
+      act('revoke_git_key', `Cancel the git key for ${h(k.repo)}`, { value: k.id, plain: true, id: 'revoke-git-key-' + k.id })).join('') + '</div>' : '<p class="muted">No git keys right now.</p>') +
+      '<p><small>Your AI gets one with github_git_remote_setup so it can use plain git clone, pull and push here. Each key works for one repository, ends by itself (8 hours unless you asked for up to 24), and never reveals your GitHub sign-in.</small></p>' +
     '<h2>Time zone</h2>' +
     `<form method="post" action="${MANAGE_PATH}">${hidden('handle', m.handle)}${hidden('action', 'time_zone')}<label>Show times in<select name="value">` +
       COMMON_ZONES.map((z) => `<option value="${h(z)}"${z === m.timeZone ? ' selected' : ''}>${h(z.replace('_', ' '))}</option>`).join('') + '</select></label><button type="submit" id="save-zone">Save</button></form>' +

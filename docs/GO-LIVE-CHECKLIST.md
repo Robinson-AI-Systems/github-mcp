@@ -51,6 +51,8 @@ Settings (names only): `NATIVE_GIT_WORKER_KEY`, `PLAYGROUND_DOKPLOY_ORIGIN`, `PL
 
 Single domain (SINGLE-DOMAIN-1): transfers use `PUBLIC_BASE_URL` (already set). Optional switch `NATIVE_GIT_TRANSFER_RELAY=off` returns worker-host addresses. Runtime transfers need the runtime image rebuilt from a commit that includes SINGLE-DOMAIN-1 (new `ingress.js`); older runtimes get a plain fallback.
 
+Git remote (GIT-REMOTE-1): no new setting. The control plane release brings `/git/*` (Routing Middleware), `/git-remote/exchange` and `/api/git-remote`; the two tables are created on first use. Redeploy the native worker from a commit that includes GIT-REMOTE-1 (capability `git_remote: "v1"`; until then `github_git_remote_setup` answers "the native Git worker must be updated"). No runtime image change. Optional stored setting `git_remote.lifetime` `{ "default_hours": 8, "max_hours": 24 }` (defaults apply when absent).
+
 ## 7. Appliance Desk and other repos (Agent can check)
 
 Run `github_workflow_app_readiness` for `appliance-desk` ([APP-NEEDS-APPLIANCE-DESK](APP-NEEDS-APPLIANCE-DESK.md)). Done 2026-10-09: `main` requires `ci` only. Not verified: force-push and deletion blocked, secret scanning, fork-PR approval, a `live` branch. Same ruleset wanted on `stripe-mcp`, `google-workspace-mcp`, `robinsons-toolkit-hub`, `vercel-mcp`, `neon-mcp`; not verified.

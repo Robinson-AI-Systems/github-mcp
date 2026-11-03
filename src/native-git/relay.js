@@ -48,7 +48,7 @@ function ingressAddresses(env) {
  try { for (const pool of JSON.parse(env?.PLAYGROUND_POOLS ?? '[]')) if (typeof pool?.ingress === 'string') out.add(pool.ingress); } catch { /* invalid pools allow no broker */ }
  return [...out].filter(ip => /^\d{1,3}(?:\.\d{1,3}){3}$/.test(ip));
 }
-const workerOrigin = (env, previous) => {
+export const workerOrigin = (env, previous) => {
  const raw = previous ? env?.NATIVE_GIT_PREVIOUS_WORKER_URL : env?.NATIVE_GIT_WORKER_URL;
  if (!raw) return null;
  try { return new URL(workerUrl({ ...env, NATIVE_GIT_WORKER_URL: raw })).origin; } catch { return null; }

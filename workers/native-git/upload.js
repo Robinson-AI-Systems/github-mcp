@@ -378,9 +378,10 @@ function runGit(root, cwd, args, { timeoutMs = 45000, input, maxOutputBytes = 8 
 }
 
 // Streams `git cat-file --batch` so each object is scanned once without loading them all.
-function catObjects(root, repo, ids, onObject, { timeoutMs = 120000 } = {}) {
+// GIT-REMOTE-1: a pre-receive hook passes its own environment (it carries Git's quarantine object directory).
+export function catObjects(root, repo, ids, onObject, { timeoutMs = 120000, env = gitEnvironment(root) } = {}) {
   return new Promise((resolve, reject) => {
-    const child = spawn('git', [...gitPrefix(), 'cat-file', '--batch'], { cwd: repo, env: gitEnvironment(root), stdio: ['pipe', 'pipe', 'ignore'], detached: true });
+    const child = spawn('git', [...gitPrefix(), 'cat-file', '--batch'], { cwd: repo, env, stdio: ['pipe', 'pipe', 'ignore'], detached: true });
     const pending = []; let pendingBytes = 0, want = null, header = null, failure = null;
     const kill = () => { try { process.kill(-child.pid, 'SIGKILL'); } catch { /* ended */ } };
     const timer = setTimeout(() => { failure = refusal('Content scanning took too long; upload fewer or smaller files.'); kill(); }, timeoutMs);
@@ -408,7 +409,7 @@ function catObjects(root, repo, ids, onObject, { timeoutMs = 120000 } = {}) {
   });
 }
 
-function findingFor(label, bytes) {
+export function findingFor(label, bytes) {
   const text = bytes.toString('utf8');
   if (!containsCredential(text)) return null;
   const findings = activeProtectionReport(text).findings;
