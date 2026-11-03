@@ -81,3 +81,10 @@ landed (git reports an error; fetch to see). Documented in `docs/PC-WORKER.md`.
 
 Building the image and running it on Docker (no daemon in the build sandbox; CI's native image workflow builds the same
 Dockerfile), and the live PC install, Funnel and Vercel switch (owner-side operator; recorded in the status note).
+
+## Drift check
+
+Builds on GIT-DIRECT-1/-2 (direct door, authorization, environment configuration) and SRV-STATUS-1 (`SOURCE_COMMIT`).
+New: worker volume file `.owner-pause`, admission reason `owner_paused`, capability field `owner_paused`, control-plane
+messages for a paused or unreachable host, and `deploy/pc/`. No protocol, tool schema, database or routing change;
+Dokploy and Render deployments are unaffected (no pause file there).
