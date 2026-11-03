@@ -19,6 +19,8 @@ import {uploadHttp,beginUpload,uploadStatus,applyUpload,pruneUploads} from './up
 import {downloadHttp,beginDownload,downloadStatus,pruneDownloads} from './download.js';
 import {remoteHttp,pruneRemotes} from './remote.js';
 import {gitDirectServer,directHost,directIdentity,readDirectFile} from './direct.js';
+import {transportSettings,removeLeftoverKeys} from './github-ssh.js';
+import {callBroker} from './remote.js';
 
 // GIT-REMOTE-1: `remote` overrides are for local tests only (allowLocalFixtures); production always
 // fetches and pushes https://github.com/<owner>/<repo>.git and calls the broker on the claim's own origin.
@@ -45,7 +47,7 @@ export function workspaceLimitFromEnv(env = process.env) {
  if (!Number.isSafeInteger(n) || n < 1 || n > 1000) throw new TypeError('NATIVE_GIT_MAX_WORKSPACES must be a whole number from 1 to 1000.');
  return n;
 }
-export function nativeGitServer({ root, key, now = Date.now, allowLocalFixtures = false, fixtureRemote, resources, resourcePolicy = {}, singleWorkspaceId, singleBinding, authorityUrl, cloneTimeoutMs = 900000, cloneWaitMs = 30000, remote = {}, direct = null, buildCommit = workerBuildCommit(), pauseFile = root ? join(root, OWNER_PAUSE_FILE) : null, maxWorkspaces = null } = {}) {
+export function nativeGitServer({ root, key, now = Date.now, allowLocalFixtures = false, fixtureRemote, resources, resourcePolicy = {}, singleWorkspaceId, singleBinding, authorityUrl, cloneTimeoutMs = 900000, cloneWaitMs = 30000, remote = {}, githubTransport = transportSettings({}), direct = null, buildCommit = workerBuildCommit(), pauseFile = root ? join(root, OWNER_PAUSE_FILE) : null, maxWorkspaces = null } = {}) {
  workerKey(key); const busy = new Set();
  // WORKER-POOL-1: an optional limit on workspaces held on this host (NATIVE_GIT_MAX_WORKSPACES); null = resources only.
  if (maxWorkspaces !== null && !(Number.isSafeInteger(maxWorkspaces) && maxWorkspaces > 0 && maxWorkspaces <= 1000)) throw new TypeError('Invalid native workspace limit.');
@@ -54,7 +56,7 @@ export function nativeGitServer({ root, key, now = Date.now, allowLocalFixtures 
  // PC-WORKER-1: `<storage>/.owner-pause` (deploy/pc/pc-worker pause) refuses new work; admitted work finishes.
  const monitor=resources??createResourceMonitor({root,policy:resourcePolicy,pauseFile});
  const host = direct && !singleWorkspaceId ? directHost({ root, identity: direct.identity, env: direct.env ?? {}, local: allowLocalFixtures, stored: direct.stored ?? null, listen: direct.listen ?? listenDirect }) : null;
- const remoteCtx = () => ({ root, key, now, monitor, local: allowLocalFixtures, githubRemote: allowLocalFixtures && remote.github ? remote.github : GITHUB_REMOTE, brokerUrl: allowLocalFixtures && remote.broker ? remote.broker : BROKER_URL, fetchImpl: allowLocalFixtures && remote.fetch ? remote.fetch : fetch, ...(allowLocalFixtures && remote.limits ? { limits: remote.limits } : {}), ...(allowLocalFixtures && remote.freeDisk ? { freeDisk: remote.freeDisk } : {}) });
+ const remoteCtx = () => ({ root, key, now, monitor, local: allowLocalFixtures, githubRemote: allowLocalFixtures && remote.github ? remote.github : GITHUB_REMOTE, brokerUrl: allowLocalFixtures && remote.broker ? remote.broker : BROKER_URL, fetchImpl: allowLocalFixtures && remote.fetch ? remote.fetch : fetch, githubTransport: allowLocalFixtures && remote.transport ? remote.transport : githubTransport, ...(allowLocalFixtures && remote.githubSsh ? { githubSshRemote: remote.githubSsh } : {}), ...(allowLocalFixtures && remote.limits ? { limits: remote.limits } : {}), ...(allowLocalFixtures && remote.freeDisk ? { freeDisk: remote.freeDisk } : {}) });
  const gitVersion=execFileSync('git',['--version'],{encoding:'utf8',timeout:2000}).trim();
  // One-time upload bodies may take minutes; every other route keeps its own 15-second body deadline.
  const server = createServer({ requestTimeout: 330000, headersTimeout: 10000, maxHeaderSize: 8192 }, async (req, res) => withProtectionContext(async () => {
@@ -133,14 +135,14 @@ export function nativeGitServer({ root, key, now = Date.now, allowLocalFixtures 
  // No fixed connection/request ceiling: bounded bodies and measured memory admission remain.
  const maintenance = new NativeGitWorker({ root, authorize: async () => false, now });
  maintenance.recoverInterruptedClones().catch(() => process.stderr.write('Native Git clone recovery failed; inspect storage.\n'));
- const timer = setInterval(() => singleWorkspaceId?Promise.resolve():maintenance.prune({ skip: busy }).then(()=>pruneUploads(root,now())).then(()=>pruneDownloads(root,now())).then(()=>pruneRemotes(root,now())).catch(() => process.stderr.write('Native Git cleanup failed; inspect storage permissions and capacity.\n')), 60000); timer.unref();
+ const timer = setInterval(() => singleWorkspaceId?Promise.resolve():maintenance.prune({ skip: busy }).then(()=>pruneUploads(root,now())).then(()=>pruneDownloads(root,now())).then(()=>pruneRemotes(root,now())).then(()=>removeLeftoverKeys(root,{callBroker:(url,claim,body)=>callBroker(url,claim,body,{fetchImpl:allowLocalFixtures&&remote.fetch?remote.fetch:fetch}),now:now()})).catch(() => process.stderr.write('Native Git cleanup failed; inspect storage permissions and capacity.\n')), 60000); timer.unref();
  server.on('close', () => {clearInterval(timer);monitor.close();if(host?.server?.listening)host.server.close();});
  // The direct git host shares the volume, resource monitor and remote core; it listens on its own port.
  if (host) {
   host.server = gitDirectServer({ ...remoteCtx(), config: () => host.config, identity: direct.identity, ...(allowLocalFixtures && remote.limiter ? { limiter: remote.limiter } : {}), ...(allowLocalFixtures && remote.directFetch ? { fetchImpl: remote.directFetch } : {}) });
   host.server.on('error', () => process.stderr.write('The direct git host listener failed; check GIT_DIRECT_PORT.\n'));
  }
- server.direct = host?.server ?? null; server.directHost = host;
+ server.direct = host?.server ?? null; server.directHost = host; server.githubTransport = githubTransport;
  return server;
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
@@ -148,7 +150,9 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
  if (!root) throw new TypeError('Set NATIVE_GIT_STORAGE_ROOT to the mounted persistent volume.');
  // The direct git host's key and stored configuration (not for a dedicated single-workspace broker).
  const direct=process.env.NATIVE_GIT_SINGLE_WORKSPACE_ID?null:{identity:await directIdentity(root),env:process.env,stored:await readDirectFile(root).catch(()=>{process.stderr.write('The stored direct git host configuration could not be read; configure it again.\n');return null;})};
- const server=nativeGitServer({root,direct,key:process.env.NATIVE_GIT_CONTROL_PUBLIC_KEY??process.env.NATIVE_GIT_WORKER_KEY,resourcePolicy:resourcePolicyFromEnv(process.env),singleWorkspaceId:process.env.NATIVE_GIT_SINGLE_WORKSPACE_ID,singleBinding:process.env.NATIVE_GIT_SINGLE_BINDING,authorityUrl:process.env.NATIVE_GIT_AUTHORITY_URL,cloneTimeoutMs:Math.min(Math.max(Number(process.env.NATIVE_GIT_CLONE_TIMEOUT_MS??900000)||900000,45000),3600000),maxWorkspaces:workspaceLimitFromEnv(process.env)});
+ const server=nativeGitServer({root,direct,key:process.env.NATIVE_GIT_CONTROL_PUBLIC_KEY??process.env.NATIVE_GIT_WORKER_KEY,resourcePolicy:resourcePolicyFromEnv(process.env),singleWorkspaceId:process.env.NATIVE_GIT_SINGLE_WORKSPACE_ID,singleBinding:process.env.NATIVE_GIT_SINGLE_BINDING,authorityUrl:process.env.NATIVE_GIT_AUTHORITY_URL,cloneTimeoutMs:Math.min(Math.max(Number(process.env.NATIVE_GIT_CLONE_TIMEOUT_MS??900000)||900000,45000),3600000),maxWorkspaces:workspaceLimitFromEnv(process.env),githubTransport:transportSettings(process.env)});
+ // GIT-SSH-LEG-1: a mistyped transport setting keeps HTTPS and says so once.
+ for(const problem of server.githubTransport.problems)process.stderr.write(`GitHub transport setting ignored: ${problem}.\n`);
  server.listen(Number(process.env.PORT??3000),bindHost());
  server.directHost?.start().catch(()=>process.stderr.write('The direct git host could not listen on its port; check GIT_DIRECT_PORT.\n'));
  for(const signal of ['SIGTERM','SIGINT'])process.once(signal,()=>server.close(()=>{process.exitCode=0;}));

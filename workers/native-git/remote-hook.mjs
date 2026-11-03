@@ -18,6 +18,12 @@
 // refs and deletes the temporary ones. Git answers "ok" only after that last push; if any part fails,
 // the person's refs on GitHub are unchanged, temporary refs are removed, and exactly what GitHub has is
 // reported.
+//
+// GIT-SSH-LEG-1: with NATIVE_GIT_GITHUB_TRANSPORT=ssh on the worker, step 3 goes over SSH with a temporary write deploy
+// key for exactly this repository (github-ssh.js): added through the broker after the scan, removed through the broker
+// right after the push (success or failure) and read back as gone; HTTPS when the key cannot be added, saying why. The
+// read-back stays on HTTPS. Per-step timings and the transport go to the change log; one `remote:` line says how long
+// sending to GitHub took. NATIVE_GIT_GITHUB_HTTP_VERSION adds `-c http.version=…` to the HTTPS git commands.
 import { readFileSync } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import { redactExcerpt, withProtectionContext, withRepositoryProtection } from '../../src/github/content-protection.js';
@@ -25,6 +31,7 @@ import { scannerSettings, defaultScannerSettings } from '../../src/github/scanne
 import { catObjects, findingFor } from './upload.js';
 import { callBroker, remotePrefix, runGit, tokenEnvironment } from './remote.js';
 import { gitPrefix } from './engine.js';
+import { ephemeralKey, httpVersionArgs, rememberLeftover, sshGitArgs, sshProblem } from './github-ssh.js';
 
 const ZERO = '0'.repeat(40);
 const MiB = 1024 * 1024;
@@ -47,6 +54,12 @@ const say = (...lines) => { for (const line of lines) process.stderr.write(Strin
 const nameOf = ref => ref.replace(/^refs\/(heads|tags)\//, '');
 const describe = u => `${u.new === ZERO ? 'deleted' : u.old === ZERO ? 'created' : 'updated'} ${u.ref.startsWith('refs/tags/') ? 'tag' : 'branch'} ${nameOf(u.ref)}`;
 // Text from GitHub can carry repository-controlled words (rule names, custom messages): shown as data only.
+const HTTP_ARGS = httpVersionArgs(env.ROBINSON_REMOTE_HTTP_VERSION);
+const WANT_SSH = env.ROBINSON_REMOTE_TRANSPORT === 'ssh' && /^ssh:\/\/git@(ssh\.)?github\.com(:443)?\//.test(String(env.ROBINSON_REMOTE_GITHUB_SSH ?? '')) || (local && env.ROBINSON_REMOTE_TRANSPORT === 'ssh' && Boolean(env.ROBINSON_REMOTE_GITHUB_SSH));
+const seconds = ms => `${(ms / 1000).toFixed(ms < 10000 ? 1 : 0)} s`;
+const started = Date.now(), timing = {};
+/** How this push reaches GitHub: `transport` actually used, `note` why SSH was not (plain words, no secrets). */
+const leg = { transport: 'https', note: null, keyRemoved: undefined };
 const untrusted = text => redactExcerpt(String(text)).replace(/[\x00-\x1f\x7f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 200);
 
 async function main() {
@@ -59,11 +72,14 @@ async function main() {
  const answer = await callBroker(broker, claim, { phase: 'push', updates });
  if (answer.allow !== true || typeof answer.credential !== 'string') { say('Refused by GitHub Unleashed before anything reached GitHub:', untrusted(answer.message ?? 'not allowed'), 'Nothing was pushed.'); return 1; }
  const credential = answer.credential, journal = answer.journal, actedAs = answer.acted_as;
- const report = (outcome, extra = {}) => callBroker(broker + (broker.includes('?') ? '&' : '?') + 'op=report', claim, { journal, outcome, updates, actedAs, ...extra }).catch(() => null);
+ const report = (outcome, extra = {}) => callBroker(broker + (broker.includes('?') ? '&' : '?') + 'op=report', claim, { journal, outcome, updates, actedAs,
+  transport: leg.transport, ...(leg.note ? { transportNote: leg.note } : {}), ...(HTTP_ARGS.length ? { httpVersion: env.ROBINSON_REMOTE_HTTP_VERSION } : {}),
+  ...(leg.keyRemoved !== undefined ? { deployKeyRemoved: leg.keyRemoved } : {}), timing: { ...timing, total_ms: Date.now() - started }, ...extra }).catch(() => null);
  // 2. Content protection on every new object (the quarantine is visible through this hook's environment).
  const settings = scannerSettings(answer.scanner_policy?.settings ?? defaultScannerSettings());
  const rules = settings.additionalRules.filter(r => !settings.disabledRules.includes(r.id));
  const created = updates.filter(u => u.new !== ZERO).map(u => u.new);
+ const scanStart = Date.now();
  if (created.length) {
   let findings;
   try { findings = await withProtectionContext(() => withRepositoryProtection(rules, () => scan(created))); }
@@ -77,40 +93,67 @@ async function main() {
    return 1;
   }
  }
+ timing.scan_ms = Date.now() - scanStart;
  // 3. One atomic push to GitHub with a lease on what the client saw (in parts when it is over GitHub's limit).
  const remote = String(env.ROBINSON_REMOTE_GITHUB);
  const auth = { credential, at: Date.now(), renewals: 0 };
- const git = (args, timeoutMs = PUSH_TIMEOUT_MS) => runGit([...remotePrefix(local), ...args], { cwd: process.cwd(), env: tokenEnvironment(env, remote, auth.credential), timeoutMs });
+ const git = (args, timeoutMs = PUSH_TIMEOUT_MS) => runGit([...remotePrefix(local), ...HTTP_ARGS, ...args], { cwd: process.cwd(), env: tokenEnvironment(env, remote, auth.credential), timeoutMs });
  let plan = null;
  if (DIRECT && created.length) {
   try { plan = await planParts(updates); }
   catch (error) { await report('refused', { reason: error?.reason ?? 'push could not be measured' }); say(...(error?.lines ?? ['Refused: the size of this push could not be measured, so nothing was pushed to GitHub. Run git push again.'])); return 1; }
  }
+ const keyUrl = broker + (broker.includes('?') ? '&' : '?') + 'op=key';
+ let ssh = WANT_SSH ? await openSsh({ keyUrl, claim, journal, actedAs }) : null;
+ /** Pushes (not read-backs) go over the leg in use; every push's time counts as sending to GitHub. */
+ const push = async (args, timeoutMs = PUSH_TIMEOUT_MS) => {
+  const start = Date.now();
+  try { return ssh ? await runGit([...remotePrefix(local), ...sshGitArgs(), ...args.map(a => a === remote ? ssh.remote : a)], { cwd: process.cwd(), env: { ...env, ...ssh.env }, timeoutMs }) : await git(args, timeoutMs); }
+  finally { timing.push_ms = (timing.push_ms ?? 0) + Date.now() - start; }
+ };
+ /** Removes the temporary deploy key (once); called right after the last push and again, as a backstop, at the end. */
+ const leave = async () => { if (ssh) leg.keyRemoved = await ssh.close(); };
+ try { return await send({ git, push, leave, report, updates, plan, created, auth, broker, claim, journal, actedAs, remote, swapToHttps: () => { ssh = null; } , usingSsh: () => Boolean(ssh) }); }
+ finally { await leave(); }
+}
+
+async function send({ git, push, leave, report, updates, plan, auth, broker, claim, journal, actedAs, remote, swapToHttps, usingSsh }) {
  if (plan) {
   // Every part goes to its own temporary ref; nothing the person sees changes until the last push.
   const tag = randomBytes(6).toString('hex');
   const temps = [];
   for (let i = 0; i < plan.cuts.length; i++) {
    const temp = { ref: `${TEMP_PREFIX}${tag}/${i + 1}`, id: plan.cuts[i] };
-   if (i > 0 && !await renew(auth, broker, claim, journal, actedAs)) return await partFailed({ git, report, updates, temps, part: i + 1, parts: plan.cuts.length + 1, reason: 'GitHub authorization could not be renewed', pushed: null });
-   let pushed; try { pushed = await git(['push', '--porcelain', '--no-verify', `--force-with-lease=${temp.ref}:`, '--', remote, `${temp.id}:${temp.ref}`]); } catch { pushed = null; }
-   if (!acceptedBy(pushed, 1)) return await partFailed({ git, report, updates, temps, part: i + 1, parts: plan.cuts.length + 1, pushed });
+   if (i > 0 && !await renew(auth, broker, claim, journal, actedAs)) return await partFailed({ git, push, leave, report, updates, temps, part: i + 1, parts: plan.cuts.length + 1, reason: 'GitHub authorization could not be renewed', pushed: null });
+   let pushed; try { pushed = await push(['push', '--porcelain', '--no-verify', `--force-with-lease=${temp.ref}:`, '--', remote, `${temp.id}:${temp.ref}`]); } catch { pushed = null; }
+   if (!acceptedBy(pushed, 1)) return await partFailed({ git, push, leave, report, updates, temps, part: i + 1, parts: plan.cuts.length + 1, pushed });
    temps.push(temp);
    say(`Sent part ${i + 1} of ${plan.cuts.length + 1} to GitHub (up to commit ${short(temp.id)}, about ${sizeOf(plan.sizes[i])}).`);
   }
-  if (!await renew(auth, broker, claim, journal, actedAs)) return await partFailed({ git, report, updates, temps, part: plan.cuts.length + 1, parts: plan.cuts.length + 1, reason: 'GitHub authorization could not be renewed', pushed: null });
+  if (!await renew(auth, broker, claim, journal, actedAs)) return await partFailed({ git, push, leave, report, updates, temps, part: plan.cuts.length + 1, parts: plan.cuts.length + 1, reason: 'GitHub authorization could not be renewed', pushed: null });
   const specs = [...updates.map(u => (u.new === ZERO ? '' : u.new) + ':' + u.ref), ...temps.map(t => ':' + t.ref)];
   const leases = [...updates.map(u => `--force-with-lease=${u.ref}:${u.old === ZERO ? '' : u.old}`), ...temps.map(t => `--force-with-lease=${t.ref}:${t.id}`)];
-  let pushed; try { pushed = await git(['push', '--atomic', '--porcelain', '--no-verify', ...leases, '--', remote, ...specs]); } catch { pushed = null; }
-  if (!acceptedBy(pushed, specs.length)) return await partFailed({ git, report, updates, temps, part: plan.cuts.length + 1, parts: plan.cuts.length + 1, pushed, final: true });
-  return finish({ git, report, updates, note: ` (sent in ${plan.cuts.length + 1} parts, each under GitHub's ${sizeOf(GITHUB_LIMIT)} per-push limit)` });
+  let pushed; try { pushed = await push(['push', '--atomic', '--porcelain', '--no-verify', ...leases, '--', remote, ...specs]); } catch { pushed = null; }
+  if (!acceptedBy(pushed, specs.length)) return await partFailed({ git, push, leave, report, updates, temps, part: plan.cuts.length + 1, parts: plan.cuts.length + 1, pushed, final: true });
+  return finish({ git, leave, report, updates, note: ` (sent in ${plan.cuts.length + 1} parts, each under GitHub's ${sizeOf(GITHUB_LIMIT)} per-push limit)` });
  }
  const specs = updates.map(u => (u.new === ZERO ? '' : u.new) + ':' + u.ref);
  const leases = updates.map(u => `--force-with-lease=${u.ref}:${u.old === ZERO ? '' : u.old}`);
- let pushed;
- try { pushed = await git(['push', '--atomic', '--porcelain', '--no-verify', ...leases, '--', remote, ...specs]); }
- catch { pushed = null; }
+ const once = run => { try { return run(['push', '--atomic', '--porcelain', '--no-verify', ...leases, '--', remote, ...specs]); } catch { return null; } };
+ let pushed = await once(push).catch(() => null);
+ // The SSH leg did not get an answer: if GitHub still has exactly what the client saw, send the same leased push over HTTPS.
+ if (usingSsh() && !acceptedBy(pushed, updates.length) && !whyRefused(pushed).known) {
+  const problem = sshProblem(pushed?.stderr);
+  await leave(); swapToHttps();
+  const now = await lsRemote(git, updates.map(u => u.ref));
+  if (now && updates.every(u => (now.get(u.ref) ?? ZERO) === u.new)) return finish({ git, leave, report, updates, note: '' });
+  if (now && updates.every(u => (now.get(u.ref) ?? ZERO) === u.old)) {
+   Object.assign(leg, { transport: 'https', note: `${problem}; sent over HTTPS instead` });
+   pushed = await once(push).catch(() => null);
+  }
+ }
  if (!acceptedBy(pushed, updates.length)) {
+  await leave();
   const { known, reasons, fromGithub, stale } = whyRefused(pushed);
   await report(known ? 'rejected' : 'uncertain', { reason: (reasons[0] ?? fromGithub[0] ?? 'no answer').slice(0, 200) });
   if (!known) { say(`GitHub could not be reached or did not answer the push to ${slug}; its outcome is unknown.`, 'Run git fetch to see what GitHub has, then push again if needed.'); return 1; }
@@ -118,7 +161,39 @@ async function main() {
   explain(reasons, fromGithub, stale);
   return 1;
  }
- return finish({ git, report, updates, note: '' });
+ return finish({ git, leave, report, updates, note: '' });
+}
+
+/**
+ * GIT-SSH-LEG-1: a temporary key pair, its public half added through the broker as a write deploy key on this one
+ * repository. Null (HTTPS, with `leg.note` saying why) when either step does not work.
+ */
+async function openSsh({ keyUrl, claim, journal, actedAs }) {
+ const start = Date.now();
+ let key;
+ try { key = await ephemeralKey({ binary: local && env.ROBINSON_REMOTE_SSH_BINARY ? env.ROBINSON_REMOTE_SSH_BINARY : 'ssh', base: local && env.ROBINSON_REMOTE_SSH_TMP ? env.ROBINSON_REMOTE_SSH_TMP : null }); }
+ catch { leg.note = 'a temporary SSH key could not be made on this worker (ssh-keygen missing?)'; timing.key_ms = Date.now() - start; return null; }
+ const answer = await callBroker(keyUrl, claim, { action: 'add', journal, actedAs, public_key: key.publicKey, marker: key.id });
+ timing.key_ms = Date.now() - start;
+ if (answer.allow !== true || !Number.isSafeInteger(answer.key_id)) { await key.dispose(); leg.note = untrusted(answer.message ?? 'the temporary deploy key was not added'); return null; }
+ leg.transport = 'ssh';
+ const keyId = answer.key_id; let closing = null;
+ const remove = async () => {
+  const begun = Date.now();
+  await key.dispose(); // the private key file is gone before the key is taken off GitHub
+  try {
+   for (let n = 0; n < 3; n++) {
+    if (n) await new Promise(r => setTimeout(r, local ? 20 : n * 1500));
+    const done = await callBroker(keyUrl, claim, { action: 'remove', journal, key_id: keyId, actedAs, n });
+    if (done.removed === true) return true;
+    if (done.refused === true) break;
+   }
+   await rememberLeftover(env.ROBINSON_REMOTE_ROOT, { broker: keyUrl, claim, journal, keyId, actedAs, n: 3, at: Date.now() }).catch(() => {});
+   say('The temporary deploy key could not be removed from GitHub yet; this worker keeps retrying, and the next push to this repository removes it too.');
+   return false;
+  } finally { timing.key_ms += Date.now() - begun; }
+ };
+ return { env: key.env, remote: String(env.ROBINSON_REMOTE_GITHUB_SSH), close: () => (closing ??= remove()) };
 }
 
 const statusLines = pushed => pushed ? pushed.stdout.split('\n').filter(l => /^[ +\-*=!]\t/.test(l)) : [];
@@ -146,8 +221,13 @@ async function lsRemote(git, refs) {
 }
 
 // 4. Read back exactly what GitHub has now.
-async function finish({ git, report, updates, note }) {
+async function finish({ git, leave, report, updates, note }) {
+ await leave();
+ const readStart = Date.now();
  const actual = await lsRemote(git, updates.map(u => u.ref));
+ timing.readback_ms = Date.now() - readStart;
+ say(`Sent to GitHub over ${leg.transport === 'ssh' ? 'SSH' : 'HTTPS'} in ${seconds(timing.push_ms ?? 0)}.`);
+ if (WANT_SSH && leg.transport !== 'ssh' && leg.note) say(`SSH was not used for this push: ${leg.note}.`);
  const verified = Boolean(actual) && updates.every(u => (actual.get(u.ref) ?? ZERO) === u.new || (u.ref.startsWith('refs/tags/') && actual.has(u.ref + '^{}') && actual.get(u.ref) === u.new));
  await report('applied', { remoteVerified: verified });
  say(`Pushed to GitHub ${slug}: ${updates.map(describe).join(', ')}${note}.${verified ? '' : ' (GitHub accepted it; the read-back did not confirm it yet — run git fetch to check.)'}`);
@@ -155,12 +235,13 @@ async function finish({ git, report, updates, note }) {
 }
 
 /** A part of a large push failed: remove the temporary refs, say exactly what GitHub has, refuse. */
-async function partFailed({ git, report, updates, temps, part, parts, pushed, reason = null, final = false }) {
+async function partFailed({ git, push, leave, report, updates, temps, part, parts, pushed, reason = null, final = false }) {
  const why = pushed === null && !reason ? { known: false, reasons: [], fromGithub: [], stale: false } : whyRefused(pushed);
  let left = temps;
  if (temps.length) {
-  try { await git(['push', '--porcelain', '--no-verify', ...temps.map(t => `--force-with-lease=${t.ref}:${t.id}`), '--', String(env.ROBINSON_REMOTE_GITHUB), ...temps.map(t => ':' + t.ref)], 600000); } catch { /* read back below */ }
+  try { await push(['push', '--porcelain', '--no-verify', ...temps.map(t => `--force-with-lease=${t.ref}:${t.id}`), '--', String(env.ROBINSON_REMOTE_GITHUB), ...temps.map(t => ':' + t.ref)], 600000); } catch { /* read back below */ }
  }
+ await leave();
  const actual = await lsRemote(git, [...updates.map(u => u.ref), ...temps.map(t => t.ref)]);
  if (actual) left = temps.filter(t => actual.has(t.ref));
  const outcome = final && !why.known && !reason ? 'uncertain' : 'rejected';
