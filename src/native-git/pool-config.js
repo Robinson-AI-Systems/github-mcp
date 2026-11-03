@@ -79,7 +79,7 @@ export function configuredHosts(env) {
   if (entry.maxWorkspaces !== null) host.maxWorkspaces = entry.maxWorkspaces;
   if (entry.enabled !== undefined) host.enabled = entry.enabled;
  }
- const sorted = hosts.sort((a, b) => a.priority - b.priority || a.order - b.order).map(({ order, ...h }) => Object.freeze(h));
+ const sorted = hosts.sort((a, b) => a.priority - b.priority || a.order - b.order).map(({ order: _order, ...h }) => Object.freeze(h));
  return Object.freeze(Object.assign(sorted, { invalid }));
 }
 
