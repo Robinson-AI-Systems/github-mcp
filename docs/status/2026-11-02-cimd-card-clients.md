@@ -16,3 +16,5 @@
 - **Branch/PR:** `ai/vivienne/cimd-client-resolution` (see the PR for head SHA and CI).
 - **Next:** after release, replay both real knocks against production and record the
   result here; Chris's own final proof is re-adding the connector in Claude/ChatGPT.
+
+- **Landed:** PR #555 merged (merge commit `bd85c63be26546791c5e8015eaa9be5eb333aa0d`); CI + release-policy green at head `6beb9f78abcd6cb3bb6873dc21cd441ba92a0c68`. Live re-probe still owed after the daily release.

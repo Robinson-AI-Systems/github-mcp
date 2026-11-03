@@ -3108,7 +3108,7 @@
         "PUB-6"
       ],
       "card": "docs/pr-cards/PUB-10.md",
-      "status": "IN_PROGRESS",
+      "status": "MERGED",
       "migration": "additive: gh_public_clients client_id CHECK widened for https CIMD addresses",
       "budget": 800,
       "units": [
