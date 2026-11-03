@@ -1,7 +1,7 @@
 // Dependency-free image acceptance; real Git, no provider token, outside unit catalog.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
@@ -54,5 +54,14 @@ test('packaged image includes the direct git host and makes its signing key as t
   const config = directConfig({ GIT_DIRECT_ORIGIN: 'https://git.example.test', GIT_DIRECT_CONTROL_ORIGIN: 'https://mcp.example.test' });
   assert.equal(config.port, 3001);
   assert.equal(typeof gitDirectServer, 'function');
+  // GIT-DIRECT-2: the control plane's signed action stores the origins on the volume as the image user (0600).
+  const { directHost, readDirectFile } = await import('./direct.js');
+  const opened = [];
+  const host = directHost({ root: dir, identity, env: {}, listen: (_server, port) => { opened.push(port); } });
+  host.server = {};
+  const report = await host.configure({ origin: 'https://git.example.test', control: 'https://mcp.example.test' });
+  assert.equal(report.source, 'file'); assert.deepEqual(opened, [3001]);
+  assert.deepEqual(await readDirectFile(dir), { origin: 'https://git.example.test', control: 'https://mcp.example.test' });
+  assert.equal((await stat(join(dir, '.git-direct', 'config.json'))).mode & 0o777, 0o600);
  } finally { await rm(dir, { recursive: true, force: true }); }
 });

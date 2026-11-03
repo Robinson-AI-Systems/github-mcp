@@ -141,6 +141,9 @@ domain on port 3001 with HTTPS, Traefik's entry-point `readTimeout` raised for l
 (owner steps: `docs/OWNER-CHECKLIST.md`, `docs/GO-LIVE-CHECKLIST.md`). Then call `github_git_remote_setup` once (it
 pins the worker key). No new secret, no table, no GitHub API version, permission, plan or spend change.
 
+Follow-up: [GIT-DIRECT-2](GIT-DIRECT-2.md) lets the control plane configure the worker (signed `direct_configure`),
+so the worker environment values above are optional and no Dokploy environment edit is needed.
+
 ## Drift check
 
 Builds on GIT-REMOTE-1/-2 (same keys, exchange, broker, hook, mirror and claim purpose; Routing Middleware's check moved

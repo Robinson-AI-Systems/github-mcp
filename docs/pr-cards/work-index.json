@@ -3067,14 +3067,17 @@
         "GIT-REMOTE-1"
       ],
       "card": "docs/pr-cards/GIT-DIRECT-1.md",
-      "status": "IN_PROGRESS",
+      "status": "MERGED",
       "migration": "none (root settings git_remote.direct_worker, git_remote.push_limit)",
       "budget": 2400,
       "units": [
         "GIT-DIRECT-1"
       ],
       "readiness": "READY",
-      "ownerInputs": []
+      "ownerInputs": [],
+      "pr": [
+        556
+      ]
     },
     {
       "id": "NATIVE-ERGO-1",
@@ -3158,6 +3161,24 @@
       "pr": [
         558
       ]
+    },
+    {
+      "id": "GIT-DIRECT-2",
+      "title": "The control plane configures the worker's direct git host (signed direct_configure action, stored on the volume, live listener; setup configures once, then uses the direct URL or falls back with a note)",
+      "batch": "FIN",
+      "design": "docs/pr-cards/GIT-DIRECT-2.md",
+      "dependencies": [
+        "GIT-DIRECT-1"
+      ],
+      "card": "docs/pr-cards/GIT-DIRECT-2.md",
+      "status": "MERGED",
+      "migration": "none (worker volume file .git-direct/config.json)",
+      "budget": 900,
+      "units": [
+        "GIT-DIRECT-2"
+      ],
+      "readiness": "READY",
+      "ownerInputs": []
     }
   ],
   "gatewayBoundary": {
