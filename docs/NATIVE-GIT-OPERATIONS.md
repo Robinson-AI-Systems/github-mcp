@@ -469,3 +469,7 @@ Unit tests use real local Git/bare repositories, signed HTTP and fake GitHub ide
 disposable PostgreSQL. Exact-head `ci`/`release-policy` and the native Git image workflow must pass. A production claim
 additionally needs a real service-issued connection, the deployed worker/MCP source, a disposable owned repository,
 clone/edit/commit/push with independent GitHub readback, denial/replay/conflict/recovery and cleanup.
+
+## Preferred workflow and operation options (AGENT-FB-3)
+
+Native Git is the preferred engineering path. `github_git_workspace_read` `capabilities` returns `operation_options` (every operation and the options it accepts) in one answer; `options.name` still gives one operation's required options and an example. The REST commit tools (`github_content_push_files`, `github_content_commit_git_data`) and the REST Git fallback remain for small one-off changes and recovery; none is removed.

@@ -318,3 +318,7 @@ cookies, app/API/WebSocket traffic, anonymous denial, shared edits, read-only Gi
 container termination and exact volume absence; its heartbeat-free fixture is not live revocation proof. Full
 current-grant/browser/lifecycle acceptance on the real host is still required before PLAY-1 is complete. Earlier wording
 of this page is in git history; incident notes are in `docs/status/2026-10-30-playground-*.md`.
+
+## Ready report and Git access (AGENT-FB-3, 2026-11-03)
+
+`setup` ends with a `ready` block once the repository is attached: `execution_ready`, `active_branch`, `limits` and runtime facts, taken from the runtime's signed capabilities answer. It never runs a command (`command_run: false`); start one with `github_playground_execute`. `git_access` (1 to 4 hours, default 2) mints a read-only key for this one repository and hands it to the runtime over the signed channel; commands then `git clone` or `git fetch` from the service's Git address into a scratch folder (the attached repository's `.git` is read-only). The key is never shown, is revocable on My connection and is cancelled if the runtime refuses it. The runtime image must include the `git_credential` action.

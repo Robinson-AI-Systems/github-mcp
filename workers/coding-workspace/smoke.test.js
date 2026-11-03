@@ -118,3 +118,18 @@ test('resource deferral survives restart, resumes only on an authorized retry, a
   restored.resources.check=async()=>({allowed:true});assert.equal((await restored.start(cancelledArgs)).state,'failed');assert.equal(await readFile(join(r.root,'repo/deferred-once'),'utf8'),'1');
  }finally{if(restored)await restored.shutdown();await cleanup(r);}
 });
+test('a read-only Git key is validated and stored only for the command user with a credential helper entry',async()=>{
+ const r=await fixture();
+ try{
+  const key='rgk_'+'a'.repeat(32)+'_'+'B'.repeat(43),expiresAt=Date.now()+3600000;
+  await assert.rejects(r.setGitCredential({url:'http://x.example/git/o/r.git',username:'u',key,expiresAt}),/invalid_git_credential|allowed https/);
+  await assert.rejects(r.setGitCredential({url:'https://x.example/git/o/r.git',username:'u',key:'short',expiresAt}),/invalid shape|invalid_git_credential/);
+  await assert.rejects(r.setGitCredential({url:'https://x.example/git/o/r.git',username:'u',key,expiresAt:Date.now()-1}),/expiry/);
+  const done=await r.setGitCredential({url:'https://x.example/git/o/r.git',username:'x-robinson-git',key,expiresAt});
+  assert.equal(done.configured,true);assert.equal(JSON.stringify(done).includes(key),false);
+  const store=join(r.root,'home','.git-credentials-robinson'),info=await stat(store);
+  assert.equal(info.mode&0o777,0o600);assert.equal(info.uid,1000);
+  assert.match(await readFile(store,'utf8'),/x\.example\/git\/o\/r\.git/);
+  const cfg=await readFile(join(r.root,'home','.gitconfig'),'utf8');assert.match(cfg,/\[credential "https:\/\/x\.example"\]/);assert.match(cfg,/useHttpPath = true/);
+ }finally{await cleanup(r);}
+});
