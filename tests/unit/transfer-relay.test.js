@@ -113,7 +113,8 @@ describe('middleware', () => {
  });
  it('is configured to run only on transfer paths, without the request body, and transfers are never cached', async () => {
   const { config } = await import('../../middleware.js');
-  expect(config).toEqual({ matcher: ['/v1/transfer/:path*'], runtime: 'nodejs' });
+  // GIT-REMOTE-1 adds the git remote's own path; transfers are unchanged.
+  expect(config).toEqual({ matcher: ['/v1/transfer/:path*', '/git/:path*'], runtime: 'nodejs' });
   const vercel = JSON.parse(await (await import('node:fs/promises')).readFile(new URL('../../vercel.json', import.meta.url), 'utf8'));
   expect(vercel.skipMiddlewareRequestBody).toBe(true);
   expect(vercel.headers).toContainEqual({ source: '/v1/transfer/(.*)', headers: expect.arrayContaining([{ key: 'x-vercel-enable-rewrite-caching', value: '0' }]) });
