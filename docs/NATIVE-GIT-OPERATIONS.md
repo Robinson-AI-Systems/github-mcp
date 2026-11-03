@@ -406,6 +406,7 @@ autoscaling pool.
 | `GIT_DIRECT_ORIGIN` | both | GIT-DIRECT-1 direct git host, e.g. `https://git.<domain>` (https origin, no path). On the worker it turns the direct host on and is its only accepted host name; on the MCP it makes setup prefer it when the worker reports the same origin. Unset = off |
 | `GIT_DIRECT_CONTROL_ORIGIN` | worker | The MCP's own origin (`https://<PUBLIC_BASE_URL host>`), where the direct host asks `op=authorize`. Required with `GIT_DIRECT_ORIGIN` |
 | `GIT_DIRECT_PORT` (3001) | worker | Port of the direct git host (the Dokploy domain points here) |
+| `SOURCE_COMMIT` (build argument) → `NATIVE_GIT_BUILD_COMMIT` | worker image | SRV-STATUS-1: the full live commit the image is built from; reported as `build_commit` in signed capabilities so `github_server_status` can warn when the worker is older than the control plane. Empty = not reported. Render's `RENDER_GIT_COMMIT` is used when set |
 | `NATIVE_GIT_CLONE_TIMEOUT_MS` (900000) | worker | Background clone watchdog, clamped to 45 s–60 min |
 | `NATIVE_GIT_OBJECT_CACHE` | Playground broker on a person's own machine | Per-machine Git object cache used by lean attachment (set by the host agent) |
 | `NATIVE_GIT_MEMORY_LIMIT` (2g), `NATIVE_GIT_CPUS` (2.0) | worker compose | Whole-container ceilings shared by every workspace |
