@@ -24,7 +24,7 @@ export async function grantGitAccess(ctx,record,{hours=GIT_ACCESS_DEFAULT_HOURS,
  if(!done)throw refuse('The Git key could not be created. Nothing was sent to the runtime.','git_access_unavailable');
  const url=`${origin}/${remotePath(owner,repo)}`;
  try{await callRuntime(ctx,record,'git_credential',{url,username:GIT_USERNAME,key,expiresAt});}
- catch(error){await ctx.db.revokeGitRemoteKey(id,{connection:ctx.connection.client_id}).catch(()=>{});
+ catch{await ctx.db.revokeGitRemoteKey(id,{connection:ctx.connection.client_id}).catch(()=>{});
   throw refuse('The runtime did not accept the Git key (it may need updating). The key was cancelled; Git work in the workspace is unaffected.','git_access_runtime_refused');}
  return {key_id:id,remote_url:url,expires_at:new Date(expiresAt).toISOString(),access:'read'};
 }
