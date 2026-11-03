@@ -13,6 +13,8 @@
 
 **VER-1 visible release (2026-11-02):** `github_whoami` returns `server_release` (`version` `<package>+<commit12>`, the deployed `commit`, its GitHub `source` link, and how to read recent changes on the `live` branch); the MCP `initialize` serverInfo `version` carries the same `+<commit12>`, so an agent can tell whether a fix it needs is live.
 
+**SRV-STATUS-1 server status (2026-11-02):** `github_server_status` (compact list, every audience) answers in one read under 2 KB: `release`; `deployed_at` from GitHub's deployment-status record for the exact commit (Vercel reports each deployment there; Vercel has no deployment-time variable), falling back to the commit's date on `live`, with `source` named; `recent_changes` = the last 5 first-parent PR merges on `live` (`untrusted: true`, read with the app's own read-only installation token for this public repository when the connection includes its owner, otherwise anonymously; cached 5 minutes); `workers` (native Git protocol, `build_commit` from the worker's new capabilities field, feature switches, runtime image tag/digest, manager phase); `health` checks in parallel within 7 s; `warnings` with a plain next step. Never returns addresses, keys, environment values or provider error text. `github_whoami` keeps `server_release` and adds a `server_status` pointer. To fit the 6,000-token compact budget, compact read listings also leave out string length limits (validation unchanged).
+
 **ERR-REF-1 missing branch wording (2026-11-02):** every tool's GitHub error explanation reports a missing branch or ref (404 "Branch not found"/"No commit found for the ref", 422 "Reference does not exist", or a plain 404 on a branch/ref URL) as kind `ref_not_found` naming the branch, with "list branches or create it first", instead of the access/App-installation wording a generic 404 keeps.
 
 **C-13 pinned ZIP and universal read selectors (2026-10-27, PR #440):** `github_content_snapshot` fetches a repository ZIP at an exact commit SHA into the existing 24-hour tenant-scoped result store. `github_get_result({handle,byteOffset,byteLength})` returns ≤32768 original bytes in base64 with total length, next offset, SHA-256 and EOF; a metadata-only read never returns ZIP base64. ZIPs are checked against path, entry count, expansion, symlink and credential scanner limits before storage. Generic read tools gain dotted `fields` projection; server tools retain their existing handler-owned selectors. Rate metadata #435 is not implemented by this PR; no release or real-client acceptance is claimed.
@@ -53,13 +55,14 @@ copy code) · `F` the old toolkit had it **with a bug or a missing guard**, fixe
 never collides with the Vercel or Neon server's tools in the same chat; `scripts/count-catalog.py` enforces it.
 
 
-## Server about itself (`github_*`) — 27
+## Server about itself (`github_*`) — 28
 
 Card(s): A-5, B-2, B-3, B-8, C-1, C-2, R-1, O-1, X-1, PUB-7. Meta-tools, connection and safety settings. Compact listing (`docs/designs/BATCH-C.md`) starts here.
 
 | Tool | What it does | Safety | Origin | Cred | Audience | Profile | Card |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `github_whoami` | Which GitHub accounts this connection can use, mode (PREVIEW/PRODUCTION), profile, credential types present, API version, rate budget left (read concurrently), who calls act as (`acting_as`: you or the app), spend limit; for public sign-ins also the My connection page link; `fine_grained_tokens` (owner, status, expiry, repositories, permissions, unlocked areas) only once one is added (PUB-9) | — | N | I | B,O,Op | R | A-5 built #13 |
+| `github_server_status` | This server's release (`<package>+<commit12>`, commit, link), when it went live (saved zone + UTC, source named), the last 5 PRs merged onto `live` (`untrusted`), native Git worker protocol/build commit/features, Playground runtime image and manager, and parallel health checks (database, worker, direct git host, Playground pool: ok/degraded/down, about 8 s bound) with mismatch warnings; `fields`/`detail` | — | N | — | B,O,Op | R | SRV-STATUS-1 |
 | `github_master_token_link` | Private one-use link (10 minutes) to add or remove your optional master token, with plain steps; no reconnecting | — | N | — | B,O,Op | R | PUB-6 built |
 | `github_credential_revoke` | Private one-use link (10 minutes) to cancel leaked GitHub tokens on a protected page; takes no token and returns none | — | N | — | B,O,Op | R | GOD-4 |
 | `github_list_accounts` | Accounts (orgs and users) connected to the server: app installation, repo selection, user authorization, optional classic token, production on/off | — | N | I | O | R | A-5 built #13 |
@@ -940,15 +943,15 @@ Metered actions with no published per-use price (larger runners, Copilot agent a
 
 ## Totals
 
-**Totals:** 512 tools: 506 hand-built + 6 universal (`github_api_*`, `github_graphql_*`), plus guided settings for every
-dashboard-only owner setting. By profile (lowest profile that has the tool): read_only 161, everyday adds 85
-(everyday lists 246), full adds 118 (full lists 406; `github_tenant_remove` only on the owner's own direct connection, so everyone else sees 403). In compact mode (`docs/designs/BATCH-C.md`) an agent
+**Totals:** 513 tools: 507 hand-built + 6 universal (`github_api_*`, `github_graphql_*`), plus guided settings for every
+dashboard-only owner setting. By profile (lowest profile that has the tool): read_only 162, everyday adds 85
+(everyday lists 247), full adds 118 (full lists 407; `github_tenant_remove` only on the owner's own direct connection, so everyone else sees 403). In compact mode (`docs/designs/BATCH-C.md`) an agent
 loads only about 25 tools up front (meta-tools, whoami, universal search, workflows) and reaches the rest through
 `github_search_tools` / `github_call`.
 
 | Section | Tools |
 | --- | --- |
-| Server about itself | 27 |
+| Server about itself | 28 |
 | Repositories | 22 |
 | Files, commits and git data | 28 |
 | Branches and tags | 9 |
@@ -993,7 +996,7 @@ loads only about 25 tools up front (meta-tools, whoami, universal search, workfl
 | Code quality and GitHub help | 4 |
 | Robinson Playground commands | 5 |
 | CAP-6 gated families: merge queue, Copilot coding agent, feature check | 5 |
-| **Total** | **512** |
+| **Total** | **513** |
 
 <!-- #108: experimental RTC HTTPS reader bridges only server/meta read tools using existing guarded dispatch; RTC 1 certification is not claimed. -->
 

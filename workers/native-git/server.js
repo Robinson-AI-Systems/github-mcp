@@ -26,7 +26,10 @@ const GITHUB_REMOTE = (owner, repo) => `https://github.com/${owner}/${repo}.git`
 const BROKER_URL = control => new URL('/api/git-remote?op=broker', control).href;
 // GIT-DIRECT-1: `direct` = { config: directConfig(env), identity: await directIdentity(root) } when the
 // worker's own git host is configured; capabilities then report it so setup can pin the worker key.
-export function nativeGitServer({ root, key, now = Date.now, allowLocalFixtures = false, fixtureRemote, resources, resourcePolicy = {}, singleWorkspaceId, singleBinding, authorityUrl, cloneTimeoutMs = 900000, cloneWaitMs = 30000, remote = {}, direct = null } = {}) {
+// SRV-STATUS-1: the commit this image was built from (Dockerfile build argument SOURCE_COMMIT, or Render's RENDER_GIT_COMMIT),
+// reported in signed capabilities so github_server_status can warn when the worker is older than the control plane.
+export const workerBuildCommit = (env = process.env) => [env.NATIVE_GIT_BUILD_COMMIT, env.RENDER_GIT_COMMIT].find((v) => /^[0-9a-f]{40}$/.test(String(v ?? ''))) ?? null;
+export function nativeGitServer({ root, key, now = Date.now, allowLocalFixtures = false, fixtureRemote, resources, resourcePolicy = {}, singleWorkspaceId, singleBinding, authorityUrl, cloneTimeoutMs = 900000, cloneWaitMs = 30000, remote = {}, direct = null, buildCommit = workerBuildCommit() } = {}) {
  workerKey(key); const busy = new Set();
  const monitor=resources??createResourceMonitor({root,policy:resourcePolicy});
  const gitDirect = direct && !singleWorkspaceId ? { version: 'v1', origin: direct.config.origin, worker_key: direct.identity.publicKey } : null;
@@ -51,7 +54,7 @@ export function nativeGitServer({ root, key, now = Date.now, allowLocalFixtures 
    const chunks = []; let bytes = 0;
    for await (const chunk of req) { bytes += chunk.length; if (bytes > 2 * 1024 * 1024) return send(413, { error: 'request_too_large' }); const admitted=monitor.body(bytes);if(!admitted.allowed){res.setHeader('Retry-After','2');return send(429,{error:'worker_resource_pressure',reason:admitted.reason,phase:'admission',no_operation_started:true});}chunks.push(chunk); }
    claim = verifyWorkerBody(Buffer.concat(chunks).toString('utf8'), req.headers['x-robinson-signature'], key, now());
-   if (claim.action === 'capabilities') return send(200, { ready: true, protocol: WORKER_PROTOCOL, native_git:gitVersion,max_concurrent:null,capacity_mode:'resource-aware',resource_policy:monitor.policy,admission:await monitor.check(),workspace_lease:'idle-v1',repository_attachment:'sealed-mounted-v1',direct_upload:'quarantine-v1',direct_download:'one-time-v1',native_options:NATIVE_OPTIONS_VERSION,upload_apply:'delete-v1',upload_chunks:'chunks-v1',...(singleWorkspaceId?{}:{git_remote:'v1'}),...(gitDirect?{git_direct:gitDirect}:{}),...(singleWorkspaceId?{repository:await repositoryMounts(join(root,singleWorkspaceId,'repo'))}:{}) });
+   if (claim.action === 'capabilities') return send(200, { ready: true, protocol: WORKER_PROTOCOL, ...(buildCommit?{build_commit:buildCommit}:{}), native_git:gitVersion,max_concurrent:null,capacity_mode:'resource-aware',resource_policy:monitor.policy,admission:await monitor.check(),workspace_lease:'idle-v1',repository_attachment:'sealed-mounted-v1',direct_upload:'quarantine-v1',direct_download:'one-time-v1',native_options:NATIVE_OPTIONS_VERSION,upload_apply:'delete-v1',upload_chunks:'chunks-v1',...(singleWorkspaceId?{}:{git_remote:'v1'}),...(gitDirect?{git_direct:gitDirect}:{}),...(singleWorkspaceId?{repository:await repositoryMounts(join(root,singleWorkspaceId,'repo'))}:{}) });
    if(!claim.scannerPolicy||!Number.isSafeInteger(claim.scannerPolicy.revision)||claim.scannerPolicy.revision<0)throw new TypeError('Protocol 2 requires the current repository scanner policy; update the control plane and worker together.');
    const policy=scannerSettings(claim.scannerPolicy?.settings??defaultScannerSettings());
    return await withRepositoryProtection(policy.additionalRules.filter(r=>!policy.disabledRules.includes(r.id)),async()=>{

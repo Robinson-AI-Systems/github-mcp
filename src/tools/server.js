@@ -104,7 +104,7 @@ async function whoami(args, ctx) {
     : { mode: 'app', login: null, ...(me.reason ? { reason: me.reason } : {}) };
   return {
     mode: ctx.connection.mode.toUpperCase(), profile: ctx.connection.profile, listing: ctx.connection.listing, acting_as,
-    default_account: ctx.connection.default_account, api_version: GITHUB_API_VERSION, server_release: serverRelease(ctx.env ?? process.env),
+    default_account: ctx.connection.default_account, api_version: GITHUB_API_VERSION, server_release: serverRelease(ctx.env ?? process.env), server_status: 'github_server_status: deploy time, recent live changes, worker versions and health checks.',
     credential_types: { I: ownerFine ? 'installation token (or fine-grained token)' : 'installation token', U: 'your sign-in for personal settings', K: 'notifications-only classic token', P: 'package-only classic token', ...(master ? { M: 'your master token (everything your GitHub login can do, used only when the App cannot)' } : {}),
       ...(fine.length ? { F: 'your fine-grained token (only for the extra place it opens, with the permissions you gave it on GitHub)' } : {}) },
     ...(fine.length ? { fine_grained_tokens: fine.map((f) => ({ ...f, how_to_change: 'Add, re-check or remove it on My connection. Its permissions are changed on GitHub (Settings, Developer settings, Fine-grained tokens), then tap Re-check.' })) } : {}),
