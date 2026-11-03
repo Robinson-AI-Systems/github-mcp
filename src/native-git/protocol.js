@@ -29,7 +29,7 @@ export function verifyWorkerBody(body, signature, key, now = Date.now()) {
  if (![2, WORKER_PROTOCOL].includes(data.version) || !Number.isSafeInteger(data.expiresAt) || data.expiresAt <= now || data.expiresAt > now + 90000) throw new TypeError('Expired or invalid worker lease.');
  // Purpose-separated claims (uploads, previews, coding) are never request leases.
  if (Object.hasOwn(data, 'purpose')) throw new TypeError('Unsupported worker action.');
- if (!['capabilities', 'open', 'inspect', 'read', 'run', 'close', 'attachment_export', 'attachment_import', 'upload_begin', 'upload_status', 'upload_apply', 'download_begin', 'download_status'].includes(data.action)) throw new TypeError('Unsupported worker action.');
+ if (!['capabilities', 'direct_configure', 'open', 'inspect', 'read', 'run', 'close', 'attachment_export', 'attachment_import', 'upload_begin', 'upload_status', 'upload_apply', 'download_begin', 'download_status'].includes(data.action)) throw new TypeError('Unsupported worker action.');
  return data;
 }
 

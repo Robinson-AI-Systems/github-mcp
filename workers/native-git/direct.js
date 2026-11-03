@@ -13,9 +13,15 @@
 // every GIT-REMOTE-1 rail: mirror, quarantine and pre-receive hook, guard gates, scanner, change log,
 // acting-as attribution, atomic leased push with read-back. Only the fixed Git paths are served; the
 // worker never proxies, follows a redirect or contacts anything named by the request.
+//
+// GIT-DIRECT-2: the two origins can also come from the control plane instead of the worker
+// environment. Its signed `direct_configure` worker action (verified with the pinned control key like
+// every other worker action) stores them in `.git-direct/config.json` on the volume (atomic, 0600),
+// starts the direct listener at once and is read again at boot. When both environment variables are
+// set they win and the stored file is never consulted or changed.
 import { createServer } from 'node:http';
 import { generateKeyPairSync, createPrivateKey, createPublicKey, randomBytes, sign } from 'node:crypto';
-import { mkdir, readFile, realpath, writeFile, rename } from 'node:fs/promises';
+import { mkdir, readFile, realpath, writeFile, rename, rm, lstat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { DIRECT_HEADER, GIT_REALM, KEY_PREFIX, basicPassword, cleanOrigin, directPayload, parseGitRequest, parseSecret } from '../../src/git-remote/wire.js';
 import { serveRemote } from './remote.js';
@@ -27,11 +33,16 @@ const plainText = (res, status, message, headers = {}) => {
 };
 const challenge = (res, message) => plainText(res, 401, message, { 'WWW-Authenticate': `Basic realm="${GIT_REALM}", charset="UTF-8"` });
 
-/** This worker's direct-host signing key: generated once on the volume (0600), never sent anywhere. */
-export async function directIdentity(root) {
+async function directDir(root) {
  const dir = join(root, '.git-direct');
  await mkdir(dir, { recursive: true, mode: 0o700 });
  if (await realpath(dir) !== dir) throw new TypeError('Direct host storage must not be a symlink.');
+ return dir;
+}
+
+/** This worker's direct-host signing key: generated once on the volume (0600), never sent anywhere. */
+export async function directIdentity(root) {
+ const dir = await directDir(root);
  const file = join(dir, 'identity.pem');
  let pem;
  try { pem = await readFile(file, 'utf8'); }
@@ -46,13 +57,93 @@ export async function directIdentity(root) {
  return Object.freeze({ publicKey, sign: data => sign(null, data, privateKey).toString('base64url') });
 }
 
+/** The direct host's port (GIT_DIRECT_PORT, default 3001). */
+export function directPort(env = process.env) {
+ const port = Number(env.GIT_DIRECT_PORT ?? 3001);
+ if (!Number.isSafeInteger(port) || port < 1 || port > 65535) throw new TypeError('GIT_DIRECT_PORT must be a port number.');
+ return port;
+}
+
 /** The direct host's configuration from the worker environment, or null when it is not configured. */
 export function directConfig(env = process.env, { local = false } = {}) {
  const origin = cleanOrigin(env.GIT_DIRECT_ORIGIN, { local }), control = cleanOrigin(env.GIT_DIRECT_CONTROL_ORIGIN, { local });
  if (!origin || !control) return null;
- const port = Number(env.GIT_DIRECT_PORT ?? 3001);
- if (!Number.isSafeInteger(port) || port < 1 || port > 65535) throw new TypeError('GIT_DIRECT_PORT must be a port number.');
- return Object.freeze({ origin, control, port });
+ return Object.freeze({ origin, control, port: directPort(env) });
+}
+
+// ---- GIT-DIRECT-2: the configuration stored by the control plane's signed action ----------------
+const CONFIG_FILE = 'config.json';
+/** Both origins checked as one pair: https, no credentials, path, query or fragment, and not the same host. */
+export function directOrigins({ origin, control } = {}, { local = false } = {}) {
+ const o = cleanOrigin(origin, { local }), c = cleanOrigin(control, { local });
+ if (!o || !c) throw new TypeError('The direct git host and the control plane must each be an https origin with no user name, password, path, query or fragment.');
+ if (new URL(o).host === new URL(c).host) throw new TypeError('The direct git host must be a different address from the control plane.');
+ return { origin: o, control: c };
+}
+/** The stored configuration (`.git-direct/config.json`), or null when there is none or it is not valid. */
+export async function readDirectFile(root, { local = false } = {}) {
+ const file = join(await directDir(root), CONFIG_FILE);
+ let text;
+ try { if (!(await lstat(file)).isFile()) return null; text = await readFile(file, 'utf8'); }
+ catch (error) { if (error.code === 'ENOENT') return null; throw error; }
+ try { const data = JSON.parse(text); return data?.version === 1 ? directOrigins(data, { local }) : null; } catch { return null; }
+}
+/** Stores the configuration atomically (0600), or removes it with `null`. */
+export async function writeDirectFile(root, value) {
+ const file = join(await directDir(root), CONFIG_FILE);
+ if (value === null) return rm(file, { force: true });
+ const temp = `${file}.${randomBytes(6).toString('hex')}`;
+ try { await writeFile(temp, JSON.stringify({ version: 1, origin: value.origin, control: value.control }) + '\n', { mode: 0o600, flag: 'wx' }); await rename(temp, file); }
+ catch (error) { await rm(temp, { force: true }).catch(() => {}); throw error; }
+}
+
+/**
+ * The direct host's live configuration and listener. The environment (both GIT_DIRECT_ORIGIN and
+ * GIT_DIRECT_CONTROL_ORIGIN) wins; otherwise the stored file (`stored`, read at boot). `configure` is
+ * reached only through the signed `direct_configure` worker action.
+ * @param {object} o `{ root, identity, env, local, stored, listen }`; `listen(server, port)` returns a promise.
+ */
+export function directHost({ root, identity, env = {}, local = false, stored = null, listen }) {
+ const fromEnv = directConfig(env, { local });
+ const port = () => fromEnv?.port ?? directPort(env);
+ let config = fromEnv ?? (stored ? Object.freeze({ ...stored, port: port() }) : null);
+ let listening = null, queue = Promise.resolve();
+ const source = () => fromEnv ? 'environment' : config ? 'file' : null;
+ const host = {
+  server: null,
+  get config() { return config; },
+  /** What the signed capabilities call reports (setup pins `worker_key` from it). */
+  report() { return config ? { version: 'v1', origin: config.origin, control: config.control, worker_key: identity.publicKey, source: source() } : null; },
+  /** Starts listening once, when configured. Resolves when the port is open; rejects (and may be retried) when it cannot be. */
+  start() {
+   if (!config || !host.server) return Promise.resolve(false);
+   listening ??= Promise.resolve(listen(host.server, config.port)).then(() => true, error => { listening = null; throw error; });
+   return listening;
+  },
+  /** The signed `direct_configure` action: `{ origin, control }`, or `{ origin: null }` to turn the stored host off. */
+  configure(options) {
+   const run = async () => {
+    if (options?.origin === null) {
+     if (fromEnv) throw new TypeError('The direct git host is set in the worker environment (GIT_DIRECT_ORIGIN); remove it there to turn it off.');
+     await writeDirectFile(root, null); config = null;
+     return host.report();
+    }
+    const wanted = directOrigins(options, { local });
+    if (fromEnv) {
+     if (wanted.origin !== fromEnv.origin || wanted.control !== fromEnv.control) throw new TypeError('The direct git host is set in the worker environment (GIT_DIRECT_ORIGIN and GIT_DIRECT_CONTROL_ORIGIN), which wins; change it there or remove both to configure it from the control plane.');
+    } else if (wanted.origin !== config?.origin || wanted.control !== config?.control) {
+     await writeDirectFile(root, wanted);
+     config = Object.freeze({ ...wanted, port: port() });
+    }
+    try { await host.start(); }
+    catch { throw new TypeError(`The direct git host is configured but could not listen on port ${config.port}. Check GIT_DIRECT_PORT and that nothing else uses it.`); }
+    return host.report();
+   };
+   const result = queue.then(run, run); queue = result.catch(() => {});
+   return result;
+  }
+ };
+ return host;
 }
 
 // ---- Failed sign-in attempts per source ---------------------------------------------------------
@@ -104,18 +195,22 @@ export async function authorizeDirect({ control, identity, fetchImpl = fetch, no
  * The direct git host: its own HTTP server (a separate port, so the worker's other routes keep their own
  * timeouts). No total request deadline: a slow link may stream a large push for hours, while a
  * connection that sends nothing for `idleMs` is closed.
- * @param {object} o `{ root, key, now, monitor, local, githubRemote, brokerUrl, fetchImpl, limits, freeDisk, config, identity, limiter, idleMs }`
+ * @param {object} o `{ root, key, now, monitor, local, githubRemote, brokerUrl, fetchImpl, limits, freeDisk, config, identity, limiter, idleMs }`; `config` is an object or a function returning one (or null: off)
  */
 export function gitDirectServer(o) {
- const { config, identity, now = Date.now, idleMs = 120000 } = o;
+ const { identity, now = Date.now, idleMs = 120000 } = o;
+ // `config` may be a function (GIT-DIRECT-2: configured or changed at run time by the signed action).
+ const current = typeof o.config === 'function' ? o.config : () => o.config;
  const limiter = o.limiter ?? createAttemptLimiter({ now });
- const host = new URL(config.origin).host;
  const ctx = { root: o.root, key: o.key, now, monitor: o.monitor, local: o.local, githubRemote: o.githubRemote, brokerUrl: o.brokerUrl, fetchImpl: o.fetchImpl ?? fetch, limits: o.limits, freeDisk: o.freeDisk };
  const server = createServer({ requestTimeout: 0, headersTimeout: 15000, maxHeaderSize: 8192 }, async (req, res) => {
   try {
    req.socket.setTimeout(idleMs, () => req.socket.destroy());
    let url; try { url = new URL(req.url, 'http://direct.invalid'); } catch { req.resume(); return plainText(res, 404, 'Not found.'); }
    if (req.method === 'GET' && url.pathname === '/health') return plainText(res, 200, 'ok');
+   const config = current();
+   if (!config) { req.resume(); return plainText(res, 404, 'The direct git host is turned off on this worker. Ask your AI to call github_git_remote_setup and use the address it gives.'); }
+   const host = new URL(config.origin).host;
    // Only this worker's own configured name (a stray host name never reaches the git routes).
    if (String(req.headers.host ?? '').toLowerCase() !== host.toLowerCase()) { req.resume(); return plainText(res, 421, `This address serves git only at ${config.origin}/git/<owner>/<repository>.git`); }
    const wanted = parseGitRequest(req.method, url);
