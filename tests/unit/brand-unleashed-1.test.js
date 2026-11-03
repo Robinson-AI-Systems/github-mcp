@@ -6,6 +6,10 @@ import { BRAND, BRAND_CSS, brandFooter, brandHeader, serverInfo } from '../../sr
 import { renderHome } from '../../src/brand/home-page.js';
 import { createGithubPolicy } from '../../src/oauth/policy.js';
 import { registry } from '../../src/tools/index.js';
+import { renderSetup } from '../../src/github/setup-html.js';
+import { actingAsText } from '../../src/github/act-as.js';
+import { GIT_REALM } from '../../src/git-remote/wire.js';
+import { publicInfo } from '../../api/index.js';
 
 const PRODUCT = 'GitHub Unleashed by Robinson AI Systems';
 const DISCLAIMER = 'GitHub Unleashed is a Robinson AI Systems product. It is not affiliated with, endorsed by, or sponsored by GitHub.';
@@ -45,6 +49,18 @@ describe('BRAND-UNLEASHED-1 product name', () => {
     expect(consent).toContain(`<h1>Connect ${PRODUCT}</h1>`);
     expect(consent).toContain(DISCLAIMER);
     expect(consent).not.toMatch(OLD);
+  });
+
+  it('the private setup page, /api status, acting_as words and git remote texts use the new name', () => {
+    const setup = renderSetup({ csrf: 'x'.repeat(43) });
+    expect(setup).toContain(`<title>${PRODUCT} — private setup</title>`);
+    expect(setup).toContain(DISCLAIMER);
+    expect(setup).not.toMatch(OLD);
+    expect(publicInfo().name).toBe(PRODUCT);
+    expect(actingAsText({ as: 'app', viaUser: false }, 'octo')).toBe('GitHub Unleashed app');
+    expect(GIT_REALM).toBe('GitHub Unleashed git');
+    expect(read('workers/native-git/remote-hook.mjs')).toContain('Refused by GitHub Unleashed before anything reached GitHub:');
+    expect(read('workers/native-git/remote-hook.mjs')).not.toMatch(OLD);
   });
 
   it('the website button and the docs front page carry the disclaimer', () => {

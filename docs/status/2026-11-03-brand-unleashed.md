@@ -10,6 +10,6 @@ Unchanged on purpose: `serverInfo.name`, tool names, package/server.json names, 
 database and environment names. Owner row 7 (optional App rename on GitHub) added. Takes effect on the next `live`
 release; no owner step needed for the rename itself.
 
-Not renamed (the push hook refuses edits to files holding fake test credentials; see the card's last section and the
-ROADMAP item): private setup page title, `/api` status `name`, `acting_as` words in tool results, Git realm and push
-refusal text, wiki commit author.
+After PUSH-FIXTURE-1 (#568) these are renamed too: private setup page title (plus its disclaimer), `/api` status `name`,
+`acting_as` words in tool results, Git login prompt name and push-refusal text. Still on the old name: the wiki commit
+author (`src/github/wiki-git.js` trips a separate content-gate false positive; ROADMAP "Content protection follow-ups").

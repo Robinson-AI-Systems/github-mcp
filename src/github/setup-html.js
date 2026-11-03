@@ -4,6 +4,7 @@
 import { escapeHtml as h } from '../core/http.js';
 import { installUrl } from './app-manifest.js';
 import { unlockSection } from './unlock-html.js';
+import { BRAND, disclaimerHtml } from '../brand/brand.js';
 
 const STYLE = 'body{font:16px system-ui,sans-serif;max-width:640px;margin:4vh auto;padding:16px;line-height:1.5}form,.card{display:grid;gap:10px;margin:18px 0;padding:14px;border:1px solid #ccc;border-radius:10px}.card{display:block}input,select,button,textarea{font:inherit;padding:8px}textarea{width:100%;box-sizing:border-box}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f4f4f4;padding:10px;border-radius:6px}button{cursor:pointer}.ok{color:#116611}.todo{color:#8a5200}small{color:#555}';
 
@@ -64,8 +65,8 @@ export function renderSetup({ csrf, result = '', revealed = null, show = '', acc
   const secretKind = '<label>Which secret<select name="kind"><option value="private_key">Private key</option><option value="client_secret">Client secret</option><option value="webhook_secret">Webhook secret</option></select></label>';
   const type = '<label>Account type<select name="accountType"><option value="Organization">Organization</option><option value="User">Personal user</option></select></label>';
   return '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
-    `<title>Robinson GitHub MCP — private setup</title><style>${STYLE}</style></head><body>` +
-    '<h1 id="setup-feedback">Robinson GitHub MCP — private setup</h1>' +
+    `<title>${BRAND.product} — private setup</title><style>${STYLE}</style></head><body>` +
+    `<h1 id="setup-feedback">${BRAND.product} — private setup</h1>` +
     '<p>Everything secret about GitHub is entered or created here, never in a chat. Each step asks for your administrator passphrase.</p>' +
     (blocked ? `<p role="alert"><strong>${h(blocked)}</strong></p>` : '') +
     (keyHelp ? `<p role="alert"><strong>${h(keyHelp)}</strong></p>` : '') +
@@ -167,7 +168,7 @@ export function renderSetup({ csrf, result = '', revealed = null, show = '', acc
     form('set-time-zone', '<label>Time zone<input name="zone" maxlength="64" autocomplete="off" placeholder="UTC"></label>', 'Save time zone') +
     unlockSection({ form, login }) +
     (show ? `<h2>Reveal a one-time secret</h2>${form('reveal', '', 'Reveal this one-time secret', hidden('id', show))}` : '') +
-    '</body></html>';
+    disclaimerHtml() + '</body></html>';
 }
 
 export const resultPage = ({ title, message, installSlug = null, back = true }) =>

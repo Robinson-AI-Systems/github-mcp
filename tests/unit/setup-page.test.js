@@ -62,7 +62,9 @@ describe('the setup page', () => {
     expect(res.headers['Set-Cookie']).toMatch(/HttpOnly; Secure; SameSite=Strict/);
     expect(res.headers['Content-Security-Policy']).toContain("default-src 'none'");
     expect(res.headers['Content-Security-Policy']).toContain("form-action 'self' https://github.com");
-    expect(res.body).toContain('Robinson GitHub MCP');
+    expect(res.body).toContain('<title>GitHub Unleashed by Robinson AI Systems — private setup</title>');
+    expect(res.body).toContain('It is not affiliated with, endorsed by, or sponsored by GitHub.');
+    expect(res.body).not.toContain('Robinson GitHub MCP');
     expect(res.body).not.toMatch(/<script/i);
     expect(t.page.csrf).toHaveLength(43);
   });

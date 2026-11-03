@@ -57,7 +57,7 @@ describe('who makes the call', () => {
     const w = await setup({ status: { enrolled: false } }); arrangeIssue(w.gh);
     const r = await call(w, 'github_issue_create', create);
     expect(r.body.done).toBe(true);
-    expect(r.body.acting_as).toBe('Robinson GitHub MCP app');
+    expect(r.body.acting_as).toBe('GitHub Unleashed app');
     expect(r.body.acting_as_note).toBeUndefined();
     expect(w.gh.calls.every((c) => who(c) === 'app')).toBe(true);
   });

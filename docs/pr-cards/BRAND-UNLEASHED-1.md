@@ -32,13 +32,17 @@ Presentation and text only: no new tool, setting, credential, request shape or d
 field: `github_server_status` adds `product` (the display name). The accent is the spec's claimed colour; pages that
 have their own plain style (consent, setup) gain the disclaimer but no new colours.
 
-## Left unchanged in this PR (content-protection push block)
+## Surfaces restored after PUSH-FIXTURE-1
 
-The service's push hook refuses any push that changes a file whose full contents match a credential pattern, even the
-repository's deliberate fake test values and one harmless `password: token` line. Seven such files would
-have needed edits, so their text stays as it was: the private owner setup page title (`src/github/setup-html.js` +
-`tests/unit/setup-page.test.js`), the `/api` status JSON `name` (`api/index.js` + `tests/unit/root-route.test.js`), the
-`acting_as` words in tool results (`src/github/act-as.js` + `tests/unit/god-6-act-as.test.js`), the Git basic-auth realm
-and push-refusal text (`src/git-remote/wire.js`, `workers/native-git/remote-hook.mjs` + the git-direct/git-remote tests),
-and the wiki commit author (`src/github/wiki-git.js`). Follow-up: docs/ROADMAP.md "Push hook blocks files with fake test
-credentials".
+The push gate first refused files that hold the repository's documented FAKE test tokens. PUSH-FIXTURE-1 (#568) fixed
+that, so this PR also renames: the private owner setup page title and heading, plus the disclaimer at its foot
+(`src/github/setup-html.js`); the `/api` status JSON `name` (`api/index.js`); the `acting_as` words in tool results
+("GitHub Unleashed app", `src/github/act-as.js`); the Git login prompt name (`GIT_REALM`, now "GitHub Unleashed git",
+`src/git-remote/wire.js`) and the push refusal text (`workers/native-git/remote-hook.mjs`). The tests for each were
+updated, and tests/unit/brand-unleashed-1.test.js covers them.
+
+## Still on the old name (follow-up)
+
+The wiki commit author name in `src/github/wiki-git.js`. That file still trips a separate false positive in the gate (an
+auth callback line that the database-password rule reads as a password), so its text is left unchanged. See
+docs/ROADMAP.md, "Content protection follow-ups".

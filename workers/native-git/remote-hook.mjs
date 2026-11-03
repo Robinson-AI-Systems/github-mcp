@@ -57,7 +57,7 @@ async function main() {
  if (odd) { say('Refused: only branches (refs/heads/...) and tags (refs/tags/...) can be pushed through the git remote.'); return 1; }
  const claim = String(env.ROBINSON_REMOTE_CLAIM ?? ''), broker = String(env.ROBINSON_REMOTE_BROKER ?? '');
  const answer = await callBroker(broker, claim, { phase: 'push', updates });
- if (answer.allow !== true || typeof answer.credential !== 'string') { say('Refused by the Robinson GitHub MCP before anything reached GitHub:', untrusted(answer.message ?? 'not allowed'), 'Nothing was pushed.'); return 1; }
+ if (answer.allow !== true || typeof answer.credential !== 'string') { say('Refused by GitHub Unleashed before anything reached GitHub:', untrusted(answer.message ?? 'not allowed'), 'Nothing was pushed.'); return 1; }
  const credential = answer.credential, journal = answer.journal, actedAs = answer.acted_as;
  const report = (outcome, extra = {}) => callBroker(broker + (broker.includes('?') ? '&' : '?') + 'op=report', claim, { journal, outcome, updates, actedAs, ...extra }).catch(() => null);
  // 2. Content protection on every new object (the quarantine is visible through this hook's environment).
