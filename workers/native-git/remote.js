@@ -26,6 +26,7 @@ import { createGunzip } from 'node:zlib';
 import { redactExcerpt } from '../../src/github/content-protection.js';
 import { GITHUB_FILE_LIMIT_BYTES, GITHUB_PUSH_LIMIT_BYTES, REMOTE_MAX_PUSH_BYTES, verifyRemoteClaim } from '../../src/native-git/protocol.js';
 import { gitEnvironment, gitPrefix } from './engine.js';
+import { refusalText } from './resources.js';
 
 const MiB = 1024 * 1024;
 export const REMOTE_LIMITS = Object.freeze({ requestBytes: 4 * MiB, refreshWaitMs: 90000, refreshTimeoutMs: 900000, serveMs: 900000, idleMs: 48 * 3600000, brokerMs: 20000, directServeMs: 12 * 3600000 });
@@ -164,7 +165,7 @@ export async function serveRemote(req, res, ctx, { route, search, claimToken, di
  if (!ctx.local && new URL(claim.control).protocol !== 'https:') { req.resume(); return reply(res, 403, 'This git request was not issued by this service.'); }
  const limits = { ...REMOTE_DEFAULT_LIMITS, ...(ctx.limits ?? {}) };
  const brokerUrl = ctx.brokerUrl(claim.control);
- if (ctx.monitor) { const check = await ctx.monitor.check({ needsDisk: step === 'refs' || service === 'git-receive-pack' }); if (!check.allowed) { req.resume(); return reply(res, 503, 'The git remote is short of memory or storage right now; nothing was changed. Run the same git command again shortly.', { 'Retry-After': '5' }); } }
+ if (ctx.monitor) { const check = await ctx.monitor.check({ needsDisk: step === 'refs' || service === 'git-receive-pack' }); if (!check.allowed) { req.resume(); return reply(res, 503, refusalText(check, 'The git remote is short of memory or storage right now; nothing was changed. Run the same git command again shortly.'), { 'Retry-After': String(check.reason === 'owner_paused' ? check.retryAfterSeconds : 5) }); } }
  let m; try { m = await mirrorDir(ctx.root, claim.mirror); } catch { req.resume(); return reply(res, 500, 'The git remote storage is unavailable. Run the git command again later.'); }
  await touch(m.dir, claim, ctx.now());
  const env = gitEnvironment(ctx.root);

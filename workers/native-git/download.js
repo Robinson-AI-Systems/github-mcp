@@ -17,6 +17,7 @@ import { value } from '../../src/native-git/commands.js';
 import { DOWNLOAD_MAX_BYTES, DOWNLOAD_SESSION_MS, DOWNLOAD_TTL_MS, verifyDownloadCapability } from '../../src/native-git/protocol.js';
 import { bindingHash, gitEnvironment, gitPrefix, json, save } from './engine.js';
 import { workspaceEntry } from './safe-files.js';
+import { refusalText } from './resources.js';
 
 const MiB = 1024 * 1024;
 const WORKSPACE = /^git_[a-f0-9]{32}$/, DOWNLOAD = /^[a-f0-9]{32}$/;
@@ -282,7 +283,7 @@ export async function downloadHttp(req, res, { root, key, now = Date.now, monito
   const at = now();
   if (stored.state === 'awaiting') {
     if (claim.expiresAt <= at) { req.resume(); return reply(res, 403, 'This download address has expired. Begin a new download.'); }
-    if (monitor) { const check = await monitor.check({ needsDisk: false }); if (!check.allowed) { req.resume(); return reply(res, 503, 'The worker is short of memory; nothing was sent. Retry the same command shortly.', { 'Retry-After': '2' }); } }
+    if (monitor) { const check = await monitor.check({ needsDisk: false }); if (!check.allowed) { req.resume(); return reply(res, 503, refusalText(check, 'The worker is short of memory; nothing was sent. Retry the same command shortly.'), { 'Retry-After': String(check.retryAfterSeconds ?? 2) }); } }
     // The first request of a session claims the address exactly once (O_EXCL).
     try { const handle = await open(p.claimed, 'wx', 0o600); await handle.close(); } catch { return gone(); }
     stored = { ...stored, state: 'serving', sessionStartedAt: at, requests: 0, servedBytes: 0 };

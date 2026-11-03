@@ -1,13 +1,23 @@
 import { statfs } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { monitorEventLoopDelay } from 'node:perf_hooks';
 
 const MiB=1024*1024;
 export const RESOURCE_DEFAULTS=Object.freeze({minMemoryBytes:32*MiB,minDiskBytes:64*MiB,maxLoopDelayMs:250});
 const pressure=(reason)=>({allowed:false,reason,retryAfterSeconds:2});
-export function createResourceMonitor({root,policy={},memory=()=>process.availableMemory(),filesystem=statfs,delay}={}) {
+// PC-WORKER-1 (owner decision 2026-11-03, "my own use of this PC always wins instantly"): an owner pause
+// is a file on the volume (`<storage>/.owner-pause`, written by deploy/pc/pc-worker pause). While it
+// exists every admission check refuses new work before anything starts; work already admitted finishes.
+export const OWNER_PAUSE_FILE='.owner-pause';
+export const OWNER_PAUSED=Object.freeze({allowed:false,reason:'owner_paused',retryAfterSeconds:60});
+export const OWNER_PAUSED_TEXT='This worker is paused by its owner (the computer is in use); nothing was started. Try again later.';
+/** The plain sentence for a refused admission: the owner pause, or the given resource-pressure text. */
+export const refusalText=(check,pressureText)=>check?.reason==='owner_paused'?OWNER_PAUSED_TEXT:pressureText;
+export function createResourceMonitor({root,policy={},memory=()=>process.availableMemory(),filesystem=statfs,delay,pauseFile=null,paused=existsSync}={}) {
  const limits={...RESOURCE_DEFAULTS,...policy};
  for(const [key,value] of Object.entries(limits)) if(!Object.hasOwn(RESOURCE_DEFAULTS,key)||!Number.isSafeInteger(value)||value<=0)throw new TypeError('Invalid native resource policy.');
+ const isPaused=()=>{if(!pauseFile)return false;try{return paused(pauseFile)===true;}catch{return true;}};
  const histogram=delay??monitorEventLoopDelay({resolution:20});histogram.enable?.();
  const reset=setInterval(()=>histogram.reset?.(),1000);reset.unref();
  const memoryCheck=(extra=0,floor=limits.minMemoryBytes)=>{
@@ -18,7 +28,10 @@ export function createResourceMonitor({root,policy={},memory=()=>process.availab
  return {
   policy:limits,
   body(bytes){return memoryCheck(bytes*3,Math.min(limits.minMemoryBytes,2*MiB));},
+  /** True while the owner pause file exists (a check that cannot tell counts as paused: never defended). */
+  paused:isPaused,
   async check({needsDisk=true}={}){
+   if(isPaused())return OWNER_PAUSED;
    const mem=memoryCheck();if(!mem.allowed)return mem;
    const lag=histogram.percentile(99)/1e6;
    if(!Number.isFinite(lag)||lag<0)return pressure('responsiveness_observation_unavailable');
