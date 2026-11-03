@@ -3116,6 +3116,27 @@
       "pr": [
         554
       ]
+    },
+    {
+      "id": "PUB-10",
+      "title": "CIMD card clients: Claude and ChatGPT connect with their own ID cards",
+      "batch": "PUB",
+      "design": "docs/designs/PUBLIC-SCALE.md",
+      "dependencies": [
+        "PUB-6"
+      ],
+      "card": "docs/pr-cards/PUB-10.md",
+      "status": "IN_PROGRESS",
+      "migration": "additive: gh_public_clients client_id CHECK widened for https CIMD addresses",
+      "budget": 800,
+      "units": [
+        "PUB-10"
+      ],
+      "readiness": "READY",
+      "ownerInputs": [],
+      "pr": [
+        555
+      ]
     }
   ],
   "gatewayBoundary": {

@@ -8,6 +8,7 @@ import { neon } from '@neondatabase/serverless';
 import { createDb, SCHEMA_TABLES } from '../db.js';
 import { initTenantRuntimeSchema } from './runtime-limits.js';
 import { initMarketplaceSchema, createMarketplaceStore } from '../marketplace/store.js';
+import { isCimdClientId } from './cimd-client.js';
 
 /** Postgres refuses two sessions replacing the same function at once ("tuple concurrently updated", SQLSTATE XX000).
  * Many first-time sign-ins can run this setup together, so that one refusal is retried a few times; anything else is raised. */
@@ -281,7 +282,7 @@ export function createTenantDirectory(sql) {
         added_at TIMESTAMPTZ NOT NULL DEFAULT now()
       )`;
       await sql`CREATE TABLE IF NOT EXISTS gh_public_clients (
-        client_id TEXT PRIMARY KEY CHECK (client_id ~ '^pcl_[A-Za-z0-9_-]{32,64}$'),
+        client_id TEXT PRIMARY KEY CHECK (client_id ~ '^pcl_[A-Za-z0-9_-]{32,64}$' OR client_id ~ '^https://[^ /@]+/[^ ]*$'),
         secret_hash TEXT NOT NULL,
         redirect_uris TEXT[] NOT NULL CHECK (cardinality(redirect_uris) BETWEEN 1 AND 8),
         auth_method TEXT NOT NULL DEFAULT 'client_secret_post' CHECK (auth_method IN ('none', 'client_secret_post')),
@@ -339,6 +340,11 @@ export function createTenantDirectory(sql) {
       )`;
       // PUB-5 B: when an app registration last got a token, so registrations nobody uses can be cleaned away.
       await sql`ALTER TABLE gh_public_clients ADD COLUMN IF NOT EXISTS last_token_at TIMESTAMPTZ`;
+      // PUB-10: widen the client_id check on already-deployed stores so a CIMD card address
+      // (an https metadata-document URL) can be a public client id, not only pcl_ ids.
+      await sql`ALTER TABLE gh_public_clients DROP CONSTRAINT IF EXISTS gh_public_clients_client_id_check`;
+      await sql`ALTER TABLE gh_public_clients ADD CONSTRAINT gh_public_clients_client_id_check
+        CHECK (client_id ~ '^pcl_[A-Za-z0-9_-]{32,64}$' OR client_id ~ '^https://[^ /@]+/[^ ]*$')`;
       // PUB-8: ONE removal core for a person's tenant, used by the owner tool (github_tenant_remove), the owner setup page and the
       // person's own "Delete my data" page. It removes the row in EVERY shared table that has a tenant_id column (found from the
       // catalog, so a table added later is covered without editing this), the shared Playground pointers (device routes and
@@ -1027,7 +1033,7 @@ export function createTenantDirectory(sql) {
     },
     /** PUB-5 B: marks an app registration as in use (at most once a day, one cheap statement). */
     async touchPublicClient(clientId) {
-      if (!/^pcl_[A-Za-z0-9_-]{32,64}$/.test(String(clientId))) return false;
+      if (!/^pcl_[A-Za-z0-9_-]{32,64}$/.test(String(clientId)) && !isCimdClientId(clientId)) return false;
       const rows = await sql`UPDATE gh_public_clients SET last_token_at = now() WHERE client_id = ${clientId}
         AND (last_token_at IS NULL OR last_token_at < now() - interval '1 day') RETURNING client_id`;
       return rows.length === 1;
@@ -1043,7 +1049,7 @@ export function createTenantDirectory(sql) {
       return rows.length;
     },
     async getPublicClient(clientId) {
-      if (!/^pcl_[A-Za-z0-9_-]{32,64}$/.test(String(clientId))) return null;
+      if (!/^pcl_[A-Za-z0-9_-]{32,64}$/.test(String(clientId)) && !isCimdClientId(clientId)) return null;
       const rows = await sql`SELECT client_id,secret_hash,redirect_uris,auth_method,client_name
         FROM gh_public_clients WHERE client_id=${clientId}`;
       const r = rows[0];
@@ -1225,6 +1231,21 @@ export function createTenantDirectory(sql) {
       await sql`INSERT INTO gh_public_clients (client_id, secret_hash, redirect_uris, auth_method, client_name)
         VALUES (${clientId}, ${secretHash}, ${[redirectUri]}::text[], 'none', 'Meta Muse')
         ON CONFLICT (client_id) DO NOTHING`;
+    },
+    /** CIMD card client (PUB-10): the client_id is the https address of the app's own metadata
+     * document, already fetched and validated by the resolver. The row mirrors the document's
+     * redirect list as a public ("none") client; its display name is the document's HOST, never
+     * the document's self-asserted client_name. The placeholder secret hash is random and
+     * unknown - a "none" client never presents a secret. Re-resolving refreshes the list. */
+    async ensureCimdPublicClient(clientId, redirectUris, secretHash) {
+      if (!isCimdClientId(clientId) || !/^[a-f0-9]{64}$/.test(String(secretHash)) ||
+          !Array.isArray(redirectUris) || redirectUris.length < 1 || redirectUris.length > 8)
+        throw new TypeError('Invalid CIMD registration.');
+      const name = new URL(clientId).hostname;
+      await sql`INSERT INTO gh_public_clients (client_id, secret_hash, redirect_uris, auth_method, client_name)
+        VALUES (${clientId}, ${secretHash}, ${redirectUris}::text[], 'none', ${name})
+        ON CONFLICT (client_id) DO UPDATE SET redirect_uris = EXCLUDED.redirect_uris,
+          auth_method = 'none', client_name = EXCLUDED.client_name`;
     },
     /** Deletes one public person's tenant completely (see gh_forget_public_tenant). False when it does not exist. */
     async forgetPublicTenant(tenantId) {

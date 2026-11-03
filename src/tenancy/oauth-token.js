@@ -12,6 +12,7 @@ import { createGithubPolicy } from '../oauth/policy.js';
 import { paramsOf, send } from '../core/http.js';
 import { admitTenantOAuth, TenantCapacityError, recordTenantMetric } from './runtime-limits.js';
 import { isPublicClientId, parsePublicCode } from './public-code.js';
+import { isCimdClientId } from './cimd-client.js';
 import { marketplaceResource } from '../marketplace/resource.js';
 
 export async function privateTenantToken(req, res, {
@@ -25,7 +26,7 @@ export async function privateTenantToken(req, res, {
   try { params = paramsOf(req); } catch { return send(res, 400, { error: 'invalid_request' }); }
   // PUB-6: a public (pcl_) client carries no tenant. Its code or refresh token selects the tenant; the tenant's own
   // mirrored client row (secret hash, redirect list), single-use code and live membership still decide.
-  const publicClient = isPublicClientId(params.client_id);
+  const publicClient = isPublicClientId(params.client_id) || isCimdClientId(params.client_id);
   // Internal log only (no secrets, no codes): what kind of token request arrived and how it ended.
   const note = (stage) => { try { console.error('[oauth-token]', stage, 'grant=' + redact(String(params.grant_type ?? '-')).slice(0, 24),
     'client=' + (publicClient ? 'pcl' : 'other'), 'secret=' + (typeof params.client_secret === 'string' && params.client_secret ? 'yes' : 'no'),

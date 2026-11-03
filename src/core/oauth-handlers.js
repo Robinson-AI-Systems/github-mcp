@@ -131,6 +131,9 @@ export function createOAuthHandlers({ db, env = process.env, policy, scopesSuppo
       grant_types_supported: ['authorization_code', 'refresh_token'], code_challenge_methods_supported: ['S256'],
       authorization_response_iss_parameter_supported: true,
       token_endpoint_auth_methods_supported: ['client_secret_post', 'none'],
+      // PUB-10: advertised only when the public-connect CIMD resolver is live on this
+      // deployment; the resolver itself is built and tested before this line ships.
+      ...(env.GITHUB_PUBLIC_CONNECT === 'enabled' ? { client_id_metadata_document_supported: true } : {}),
       ...(scopesSupported?{scopes_supported:scopesSupported}:{})
     });
   }
