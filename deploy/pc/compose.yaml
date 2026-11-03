@@ -71,4 +71,4 @@ services:
       start_period: 20s
       retries: 3
     labels:
-      com.robinsonaisystems.role: native-git-worker
+      robinson-git.role: native-git-worker
