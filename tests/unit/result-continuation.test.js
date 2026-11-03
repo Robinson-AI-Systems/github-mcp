@@ -4,7 +4,6 @@ import { mergeNamespaces } from '../../src/core/registry.js';
 import { registry as realRegistry } from '../../src/tools/index.js';
 import { defineRead } from '../../src/tools/define-read.js';
 import { createFakeDb } from '../../test/helpers/fake-db.js';
-import { sizeOf } from '../../src/core/result-rules.js';
 
 const pr = (n, extra = {}) => ({ number: n, title: `PR ${n}`, state: 'open', draft: false, merged: false, user: { login: 'octo', id: 1 }, head: { ref: 'h', sha: 's' }, base: { ref: 'main' },
   mergeable_state: 'clean', labels: [{ name: 'bug', color: 'f' }], updated_at: '2026-10-10T18:00:00Z', html_url: 'u', body: 'x'.repeat(300), author_association: 'NONE', ...extra });

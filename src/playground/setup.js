@@ -54,7 +54,7 @@ export async function setupAllocation(ctx, record, {size, availability = null, d
 }
 
 /** What the person or agent reads next, in plain words, from the allocation after setup. */
-export function setupNext(allocation, steps) {
+export function setupNext(allocation) {
   if (allocation?.phase === 'attached' && allocation.repositoryAttached === true)
     return 'The runtime is attached to this workspace. Read availability to confirm commands can run; setup does not run or verify a command.';
   if (allocation && DISPOSING.includes(allocation.phase))

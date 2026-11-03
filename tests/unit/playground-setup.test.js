@@ -79,9 +79,9 @@ describe('github_playground_workspace operation setup',()=>{
   expect((await run(starting)).steps).toEqual([]);expect(starting.calls).toEqual([]);
  });
  it('reads back in plain words what to do next',()=>{
-  expect(setupNext({phase:'attached',repositoryAttached:true},[])).toMatch(/availability/);
-  expect(setupNext({phase:'deploying'},['provision'])).toMatch(/operation setup again with the same requestKey/);
-  expect(setupNext({phase:'stopped'},[])).toMatch(/being removed/);
-  expect(setupNext(null,[])).toMatch(/not started/);
+  expect(setupNext({phase:'attached',repositoryAttached:true})).toMatch(/availability/);
+  expect(setupNext({phase:'deploying'})).toMatch(/operation setup again with the same requestKey/);
+  expect(setupNext({phase:'stopped'})).toMatch(/being removed/);
+  expect(setupNext(null)).toMatch(/not started/);
  });
 });
