@@ -42,7 +42,7 @@ set_env() {
 # PC-WORKER-2: a WSL Docker config that names Docker Desktop's credential store (credsStore: desktop.exe)
 # fails from SSH or service sessions. Use an empty config (anonymous pulls of the public base image) then.
 docker_config_check() {
-  local cfg="${DOCKER_CONFIG:-$HOME/.docker}/config.json" store
+  local cfg="${DOCKER_CONFIG:-${HOME:-/root}/.docker}/config.json" store
   [[ -f "$cfg" ]] || return 0
   store="$(python3 -c 'import json,sys
 try: print(json.load(open(sys.argv[1])).get("credsStore",""))

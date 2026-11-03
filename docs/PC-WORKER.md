@@ -125,6 +125,9 @@ on. Then `pause` stops the container gracefully (`PC_WORKER_PAUSE_GRACE_SECONDS`
 connections on SIGTERM and finishes open requests). Once stopped, the Funnel answers 502 and agents are told the worker
 "is not answering … its host may be paused by its owner, restarting or offline". A stopped container stays stopped
 across reboots (`restart: unless-stopped`) until `resume`.
+Re-running `install.sh` or `pc-worker update` while paused or stopped builds the new image but leaves it stopped
+(the owner's pause wins); run `pc-worker resume` afterwards. Both scripts work from a bare systemd unit or SSH session
+without a `HOME` variable.
 
 **Kill is always safe, with these honest limits** (checked against the code and its tests):
 

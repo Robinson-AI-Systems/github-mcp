@@ -25,6 +25,8 @@ describe('PC-WORKER-2: the PC kit works on WSL2 with mirrored networking (found 
     for (const script of [install, pcWorker]) {
       expect(script).toMatch(/docker_config_check\(\) \{/);
       expect(script).toMatch(/compose\(\) \{\n  docker_config_check\n  docker compose/);
+      expect(script).toContain('${DOCKER_CONFIG:-${HOME:-/root}/.docker}/config.json');
+      expect(script).not.toMatch(/\$HOME\/\.docker/);
     }
   });
 });
