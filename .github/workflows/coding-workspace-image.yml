@@ -6,6 +6,7 @@ on:
       - 'src/playground/**'
       - 'src/tools/playground.js'
       - 'src/native-git/**'
+      - 'src/git-remote/wire.js'
       - 'test/helpers/playground-world.js'
       - 'workers/native-git/resources.js'
       - 'src/github/content-protection.js'

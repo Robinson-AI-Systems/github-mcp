@@ -14,10 +14,13 @@ COPY package.json ./package.json
 COPY src/github/content-protection.js src/github/open-secret-rules.js src/github/secret-literals.js src/github/custom-secret-rules.js src/github/scanner-policy.js src/github/file-protection.js ./src/github/
 COPY vendor/gitleaks/ ./vendor/gitleaks/
 COPY src/native-git/commands.js src/native-git/protocol.js ./src/native-git/
+# GIT-DIRECT-1: the git remote's shared wire format (no database, no credentials).
+COPY src/git-remote/wire.js ./src/git-remote/
 COPY workers/native-git/ ./workers/native-git/
 USER node
 ENV NODE_ENV=production PORT=3000 NATIVE_GIT_STORAGE_ROOT=/data
-EXPOSE 3000
+# 3001: the optional direct git host (GIT_DIRECT_ORIGIN; see docs/NATIVE-GIT-OPERATIONS.md).
+EXPOSE 3000 3001
 VOLUME ["/data"]
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s CMD node -e "fetch('http://127.0.0.1:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 CMD ["node", "workers/native-git/server.js"]

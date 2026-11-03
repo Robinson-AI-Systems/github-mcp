@@ -129,17 +129,29 @@ export const REMOTE_REFS_TTL_MS = 120000;
 /** A push's pack step may take minutes to upload before the guarded push runs. */
 export const REMOTE_PACK_TTL_MS = 900000;
 export const REMOTE_MAX_PUSH_BYTES = 100 * 1024 * 1024;
+// GIT-DIRECT-1: the worker's own direct git host. Its claims are version 2 (`door: "direct"`); a pack
+// step there may stream for hours on a slow link, so its claim lasts longer. Version 1 is unchanged.
+export const REMOTE_DIRECT_PACK_TTL_MS = 8 * 3600000;
+/** GitHub's documented limits: 2 GB per push, 100 MiB per file (Git LFS beyond that). */
+export const GITHUB_PUSH_LIMIT_BYTES = 2 * 1024 * 1024 * 1024;
+export const GITHUB_FILE_LIMIT_BYTES = 100 * 1024 * 1024;
+/** A report only closes a change-log row (no credential), so it is accepted this long after the claim expired. */
+export const REMOTE_REPORT_GRACE_MS = 24 * 3600000;
 const REMOTE_FIELDS = ['access', 'control', 'expiresAt', 'key', 'mirror', 'nonce', 'owner', 'purpose', 'repo', 'service', 'step', 'version'];
-export function verifyRemoteClaim(token, key, now = Date.now()) {
- const claim = decodeCapability(token, key, REMOTE_FIELDS, 'git remote');
- if (claim.purpose !== REMOTE_PURPOSE || claim.version !== 1 || !['git-upload-pack', 'git-receive-pack'].includes(claim.service) || !['refs', 'pack'].includes(claim.step) || !['read', 'write'].includes(claim.access)) throw new TypeError('Invalid git remote claim.');
+const REMOTE_DIRECT_FIELDS = [...REMOTE_FIELDS, 'door'].sort();
+export function verifyRemoteClaim(token, key, now = Date.now(), { graceMs = 0 } = {}) {
+ let fields = REMOTE_FIELDS;
+ try { const [encoded] = String(token).split('.'); if (Object.hasOwn(JSON.parse(Buffer.from(encoded, 'base64url').toString('utf8')) ?? {}, 'door')) fields = REMOTE_DIRECT_FIELDS; } catch { /* decodeCapability refuses it */ }
+ const claim = decodeCapability(token, key, fields, 'git remote');
+ const direct = fields === REMOTE_DIRECT_FIELDS;
+ if (claim.purpose !== REMOTE_PURPOSE || claim.version !== (direct ? 2 : 1) || (direct && claim.door !== 'direct') || !['git-upload-pack', 'git-receive-pack'].includes(claim.service) || !['refs', 'pack'].includes(claim.step) || !['read', 'write'].includes(claim.access)) throw new TypeError('Invalid git remote claim.');
  if (claim.service === 'git-receive-pack' && claim.access !== 'write') throw new TypeError('Invalid git remote claim.');
  if (!/^[a-f0-9]{32}$/.test(claim.key) || !/^[a-f0-9]{64}$/.test(claim.mirror) || !/^[a-f0-9]{32}$/.test(claim.nonce)) throw new TypeError('Invalid git remote claim.');
  if (!/^[A-Za-z0-9-]{1,39}$/.test(claim.owner) || !/^[A-Za-z0-9_.-]{1,100}$/.test(claim.repo) || ['.', '..'].includes(claim.repo)) throw new TypeError('Invalid git remote claim.');
  let control; try { control = new URL(claim.control); } catch { throw new TypeError('Invalid git remote claim.'); }
  if (!['https:', 'http:'].includes(control.protocol) || control.username || control.password || control.pathname !== '/' || control.search || control.hash || control.origin !== claim.control) throw new TypeError('Invalid git remote claim.');
- const ttl = claim.step === 'pack' ? REMOTE_PACK_TTL_MS : REMOTE_REFS_TTL_MS;
+ const ttl = claim.step === 'pack' ? (direct ? REMOTE_DIRECT_PACK_TTL_MS : REMOTE_PACK_TTL_MS) : REMOTE_REFS_TTL_MS;
  if (!Number.isSafeInteger(claim.expiresAt) || claim.expiresAt > now + ttl + 30000) throw new TypeError('Invalid git remote claim.');
- if (claim.expiresAt <= now) throw new TypeError('This git remote request has expired. Run the git command again.');
+ if (claim.expiresAt <= now - Math.min(Math.max(graceMs, 0), REMOTE_REPORT_GRACE_MS)) throw new TypeError('This git remote request has expired. Run the git command again.');
  return claim;
 }

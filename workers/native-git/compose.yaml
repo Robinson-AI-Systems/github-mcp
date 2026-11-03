@@ -21,10 +21,14 @@ services:
       NATIVE_GIT_MIN_AVAILABLE_DISK_MB: ${NATIVE_GIT_MIN_AVAILABLE_DISK_MB:-64}
       NATIVE_GIT_MAX_LOOP_DELAY_MS: ${NATIVE_GIT_MAX_LOOP_DELAY_MS:-250}
       NATIVE_GIT_CONTROL_PUBLIC_KEY: ${NATIVE_GIT_CONTROL_PUBLIC_KEY:?Pin the MCP public verification key from its native-git-key endpoint}
+      # GIT-DIRECT-1 (optional): the worker's own git host. Both empty = off (the MCP domain keeps working).
+      GIT_DIRECT_ORIGIN: ${GIT_DIRECT_ORIGIN:-}
+      GIT_DIRECT_CONTROL_ORIGIN: ${GIT_DIRECT_CONTROL_ORIGIN:-}
+      GIT_DIRECT_PORT: "3001"
     volumes:
       - native-git-data:/data
     tmpfs:
       - /tmp:rw,noexec,nosuid,size=64m
-    expose: ["3000"]
+    expose: ["3000", "3001"]
 volumes:
   native-git-data:

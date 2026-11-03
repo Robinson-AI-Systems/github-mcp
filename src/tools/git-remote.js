@@ -5,6 +5,9 @@
 // The person's GitHub credentials never leave the server: git sends a short-lived session key that is
 // stored only as a hash, bound to this connection + one repository + one access level, expires on its
 // own and can be revoked on My connection. See src/git-remote/*.js and docs/pr-cards/GIT-REMOTE-1.md.
+// GIT-DIRECT-1: when GIT_DIRECT_ORIGIN is configured and the worker reports the same direct git host,
+// remote_url is on that host (no hosting-proxy limits) and the MCP-domain address is the fallback;
+// the credential is stored for both. The worker's reported signing key is pinned for op=authorize.
 import { defineGithubWrite } from './define-github-write.js';
 import { authorizeNativeRepo, callNativeWorker } from '../native-git/client.js';
 import { workerUrl, workerKey } from '../native-git/protocol.js';
@@ -13,6 +16,8 @@ import { blockedNote, fitDigest } from '../native-git/relay.js';
 import { publicOrigin } from '../core/http.js';
 import { rootAllocationDb } from '../playground/index.js';
 import { CODE_TTL_MS, indexKey, keyLifetime, newExchangeCode, sha256 } from '../git-remote/keys.js';
+import { DIRECT_WORKER_SETTING, directOrigin, pushLimit } from '../git-remote/api.js';
+import { DIRECT_WORKER_KEY } from '../git-remote/wire.js';
 
 const safe = (message, safeCode, extra = {}) => Object.assign(new TypeError(message), { safeMessage: true, safeCode, ...extra });
 const OWNER = { type: 'string', minLength: 1, maxLength: 39, pattern: '^[A-Za-z0-9-]+$' };
@@ -22,11 +27,34 @@ const REPO = { type: 'string', minLength: 1, maxLength: 100, pattern: '^[A-Za-z0
  *  and 40 MB was cut off. The setup command sets postBuffer for this one address. */
 export const PUSH_NOTE = 'Pushes up to about 25 MB each work through this domain (the setup command sets git http.postBuffer for it); larger ones may be cut off by the hosting proxy. For huge binary files use github_git_workspace_upload (chunked) or push in smaller commits.';
 
-/** The setup command: stores the key for this one address only (no other git host or helper sees it) and never prints it. */
-export function setupCommand(origin, code, remoteUrl) {
- const scope = `credential.${origin}`;
- return `git config --global --replace-all ${scope}.helper '' && git config --global --add ${scope}.helper 'store --file="$HOME/.git-credentials-robinson"' && git config --global ${scope}.useHttpPath true && git config --global http.${origin}.postBuffer 209715200` +
-  ` && K="$(curl -fsS --proto =https --max-redirs 0 --data-urlencode 'code=${code}' ${origin}/git-remote/exchange)" && printf '%s\\n' "$K" | git credential approve && unset K && echo "git remote ready: ${remoteUrl}"`;
+const MiB = 1024 * 1024;
+const sizeText = n => n >= 1024 * MiB ? `${Math.round(n / (1024 * MiB) * 10) / 10} GB` : `${Math.round(n / MiB)} MB`;
+/** GIT-DIRECT-1: pushes through the worker's own git host never pass the hosting proxy. */
+export const directPushNote = limit => `Pushes through remote_url (the direct git host) stream to the worker: up to ${sizeText(limit)} each (stored setting git_remote.push_limit); over GitHub's 2 GB limit they are sent on in parts. Files over 100 MB need Git LFS. Through fallback_url pushes up to about 25 MB work.`;
+
+const credentialFor = (origin, file) => `git config --global --replace-all credential.${origin}.helper '' && git config --global --add credential.${origin}.helper 'store --file="${file}"' && git config --global credential.${origin}.useHttpPath true`;
+/**
+ * The setup command: stores the key for this one address (and the direct git host, when there is one)
+ * only — no other git host or helper sees it — and never prints it. With a direct host it runs in a
+ * subshell with `set -e` (so the key variable never reaches the person's shell) and loops over both
+ * hosts, which keeps it short enough for the always-visible digest.
+ */
+export function setupCommand(origin, code, remoteUrl, direct = null) {
+ const file = '$HOME/.git-credentials-robinson';
+ const exchange = `curl -fsS --proto =https --max-redirs 0 --data-urlencode 'code=${code}' ${origin}/git-remote/exchange`;
+ if (!direct) return `${credentialFor(origin, file)} && git config --global http.${origin}.postBuffer 209715200` +
+  ` && K="$(${exchange})" && printf '%s\\n' "$K" | git credential approve && unset K && echo "git remote ready: ${remoteUrl}"`;
+ return `(set -e; S='store --file="${file}"'; for O in ${origin} ${direct}; do git config --global --replace-all credential.$O.helper ''; git config --global --add credential.$O.helper "$S"; git config --global credential.$O.useHttpPath true; done; ` +
+  `git config --global http.${origin}.postBuffer 209715200; K="$(${exchange})"; for H in ${new URL(origin).host} ${new URL(direct).host}; do printf '%s\\n' "$K" | sed "s/^host=.*/host=$H/" | git credential approve; done; echo "git remote ready: ${remoteUrl}")`;
+}
+
+/** Which domains a sandbox must allow, with a wildcard hint only when both share a parent domain. */
+export function networkNote(origin, direct) {
+ const a = new URL(origin).hostname, b = new URL(direct).hostname;
+ const la = a.split('.').reverse(), lb = b.split('.').reverse(), common = [];
+ for (let i = 0; i < Math.min(la.length, lb.length) && la[i] === lb[i]; i++) common.unshift(la[i]);
+ const wildcard = common.length >= 2 && common.length < Math.min(la.length, lb.length) ? ` If your AI's allowlist accepts wildcard entries, *.${common.join('.')} covers both (check its documentation first).` : '';
+ return `Allow ${a} (the setup command, and every git command through fallback_url) and ${b} (remote_url: large pushes, no hosting-proxy limit) in the sandbox network allowlist (for Claude: the Capabilities / network access allowed-domains setting).${wildcard} With only ${a} allowed, use fallback_url.`;
 }
 
 async function readyCheck(c, a) {
@@ -35,45 +63,58 @@ async function readyCheck(c, a) {
  catch { throw safe('The git remote is not configured on this service yet. Use github_repo_download and github_repo_change meanwhile.', 'git_remote_unconfigured'); }
  const cap = await callNativeWorker(c, { action: 'capabilities' });
  if (cap.git_remote !== 'v1') throw safe('The native Git worker must be updated before the git remote works. Use github_repo_download and github_repo_change meanwhile.', 'native_worker_update_required');
+ // The direct host only when this service names it AND the worker (answering this signed call) serves it.
+ const configured = directOrigin(c.env), offered = cap.git_direct;
+ const direct = configured && offered?.version === 'v1' && offered.origin === configured && DIRECT_WORKER_KEY.test(offered.worker_key ?? '') ? { origin: configured, worker_key: offered.worker_key } : null;
  const repo = await authorizeNativeRepo(c, a.owner ?? c.connection.default_account, a.repo);
  const [owner, name] = String(repo.full_name).split('/');
  const access = a.access ?? 'read';
  if (access === 'write' && repo.permissions && repo.permissions.push === false) throw safe(`GitHub says this connection can read ${repo.full_name} but not push to it. Ask for access "read", or ask the repository owner for write access.`, 'git_remote_no_push');
  const lifetime = await keyLifetime(c.db);
  if (a.hours !== undefined && a.hours > lifetime.maxHours) throw safe(`A session key lasts at most ${lifetime.maxHours} hours.`, 'git_remote_hours');
- return { owner, repo: name, access, hours: a.hours ?? lifetime.defaultHours, default_branch: repo.default_branch ?? null };
+ return { owner, repo: name, access, hours: a.hours ?? lifetime.defaultHours, default_branch: repo.default_branch ?? null, direct };
 }
 
 async function createKey(c, before) {
  const { id, code } = newExchangeCode();
+ let direct = null;
+ if (before.direct) {
+  const root = rootAllocationDb(c), pinned = await root.getSetting(DIRECT_WORKER_SETTING).catch(() => null);
+  // Pins the worker's public signing key (from its signed capabilities answer) for op=authorize.
+  if (pinned?.origin !== before.direct.origin || pinned?.worker_key !== before.direct.worker_key)
+   await root.setSetting(DIRECT_WORKER_SETTING, { kind: 'git-direct-worker', origin: before.direct.origin, worker_key: before.direct.worker_key });
+  direct = { origin: before.direct.origin, push_bytes: await pushLimit(root) };
+ }
  const at = (c.now ?? Date.now)();
  const expiresAt = new Date(at + before.hours * 3600000), codeExpiresAt = new Date(at + CODE_TTL_MS);
  // The root index names only which database holds the row (this tenant, or the owner's own).
  await rootAllocationDb(c).setSetting(indexKey(id), { kind: 'git-remote-index', id, scope: c.db.playgroundScope ?? { legacy: true } });
  await c.db.createGitRemoteKey({ id, connection: c.connection.client_id, owner: before.owner, repo: before.repo, access: before.access, codeHash: sha256(code), codeExpiresAt, expiresAt });
- return { key_id: id, code, owner: before.owner, repo: before.repo, access: before.access, expires_at: expiresAt.toISOString(), code_expires_at: codeExpiresAt.toISOString() };
+ return { key_id: id, code, owner: before.owner, repo: before.repo, access: before.access, expires_at: expiresAt.toISOString(), code_expires_at: codeExpiresAt.toISOString(), ...(direct ? { direct } : {}) };
 }
 const view = row => row ? { key_id: row.id, owner: row.owner, repo: row.repo, access: row.access, state: row.revoked_at ? 'revoked' : row.exchanged_at ? 'active' : 'awaiting_setup',
  expires_at: new Date(row.expires_at).toISOString(), setup_shown_once: true } : null;
 
 function present(c, after, response) {
  if (typeof response?.code !== 'string') return { ...after, next: 'The setup command is shown only once. Call github_git_remote_setup again with a fresh requestKey for a new one.' };
- const origin = publicOrigin(c.env), remoteUrl = `${origin}/git/${response.owner}/${response.repo}.git`;
- return { ...after, remote_url: remoteUrl, command: setupCommand(origin, response.code, remoteUrl),
+ const origin = publicOrigin(c.env), path = `/git/${response.owner}/${response.repo}.git`, domainUrl = origin + path;
+ const direct = response.direct?.origin ?? null, remoteUrl = direct ? direct + path : domainUrl;
+ return { ...after, remote_url: remoteUrl, ...(direct ? { fallback_url: domainUrl } : {}), command: setupCommand(origin, response.code, remoteUrl, direct),
   then: `git clone ${remoteUrl}   (or, in an existing clone: git remote set-url origin ${remoteUrl}); then git pull / git push as usual`,
-  code_expires_at: response.code_expires_at, platforms: 'The same command works on Linux and macOS (sh, curl, git). It stores the key in ~/.git-credentials-robinson for this address only.',
-  ...(response.access === 'write' ? { push_note: PUSH_NOTE } : {}), if_blocked: blockedNote(remoteUrl),
+  code_expires_at: response.code_expires_at, platforms: `The same command works on Linux and macOS (sh, curl, git). It stores the key in ~/.git-credentials-robinson for ${direct ? 'these two addresses' : 'this address'} only.`,
+  ...(response.access === 'write' ? { push_note: direct ? directPushNote(response.direct.push_bytes) : PUSH_NOTE } : {}), if_blocked: direct ? networkNote(origin, direct) : blockedNote(remoteUrl),
   revoke: `Cancel it any time on My connection (${origin}/connection). It expires on its own at ${response.expires_at}.`,
   next: 'Run command within 10 minutes (it works once; the key is never printed). Do not publish the command. Refusals come back as git "remote:" lines with a next step.' };
 }
 const essentials = shaped => shaped?.command
- ? fitDigest({ command: shaped.command, remote_url: shaped.remote_url, expires_at: shaped.expires_at, if_blocked: blockedNote(shaped.remote_url, { short: true }), next: 'Run command within 10 minutes, then git clone remote_url. Do not publish it.' }, ['next', 'expires_at'])
+ ? fitDigest({ command: shaped.command, remote_url: shaped.remote_url, ...(shaped.fallback_url ? { fallback_url: shaped.fallback_url } : {}), expires_at: shaped.expires_at,
+  if_blocked: shaped.fallback_url ? `If remote_url is unreachable, allow ${new URL(shaped.remote_url).hostname} in the sandbox network allowlist or use fallback_url.` : blockedNote(shaped.remote_url, { short: true }), next: 'Run command within 10 minutes, then git clone remote_url. Do not publish it.' }, ['next', 'expires_at', 'if_blocked', 'fallback_url'])
  : shaped?.next ? fitDigest({ next: shaped.next }) : null;
 
 const setup = defineGithubWrite({
  name: 'github_git_remote_setup', area: 'git', audience: ['B', 'O', 'Op'],
  description: 'Use plain git clone/pull/push on this service\'s domain: returns a one-time setup command that stores a short-lived key for one repository.',
- guidance: 'For coding agents with a shell: instead of upload/apply/commit calls, use normal git. Call with owner, repo and access (read: clone/fetch/pull; write: also push) and optional hours (default 8, at most 24). Run the returned command once within 10 minutes: it swaps the one-time code for a session key straight into git\'s credential store for this one address (never printed). Then `git clone <remote_url>` (or set it as origin) and use git as usual. Works for every repository this connection can reach, including collaborator repositories and extra places. Pushes go through the same checks as github_git_workspace_run push (branch rules and protected branches on GitHub, content protection, change log, Act as me attribution); a refusal shows as git "remote:" lines with a next step. ' + PUSH_NOTE + ' The key works only for this repository and access, expires on its own and can be cancelled on My connection. If the sandbox cannot reach the domain, add that one domain to its network allowlist once (for Claude: the Capabilities / network access allowed-domains setting).',
+ guidance: 'For coding agents with a shell: instead of upload/apply/commit calls, use normal git. Call with owner, repo and access (read: clone/fetch/pull; write: also push) and optional hours (default 8, at most 24). Run the returned command once within 10 minutes: it swaps the one-time code for a session key straight into git\'s credential store for this one address (never printed). Then `git clone <remote_url>` (or set it as origin) and use git as usual. Works for every repository this connection can reach, including collaborator repositories and extra places. Pushes go through the same checks as github_git_workspace_run push (branch rules and protected branches on GitHub, content protection, change log, Act as me attribution); a refusal shows as git "remote:" lines with a next step. ' + PUSH_NOTE + ' The key works only for this repository and access, expires on its own and can be cancelled on My connection. If the sandbox cannot reach the domain, add that one domain to its network allowlist once (for Claude: the Capabilities / network access allowed-domains setting). When the service has a direct git host, remote_url uses it (large pushes, no hosting-proxy limit) and fallback_url is the same repository on this domain.',
  properties: { owner: { ...OWNER, description: 'Repository owner (default: the connection\'s default account).' }, repo: REPO,
   access: { type: 'string', enum: ['read', 'write'], description: 'read = clone, fetch, pull; write = also push (default read).' },
   hours: { type: 'integer', minimum: 1, maximum: 24, description: 'Key lifetime in hours (default 8).' } },

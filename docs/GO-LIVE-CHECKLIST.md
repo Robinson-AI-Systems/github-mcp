@@ -53,6 +53,15 @@ Single domain (SINGLE-DOMAIN-1): transfers use `PUBLIC_BASE_URL` (already set). 
 
 Git remote (GIT-REMOTE-1): no new setting. The control plane release brings `/git/*` (Routing Middleware), `/git-remote/exchange` and `/api/git-remote`; the two tables are created on first use. Redeploy the native worker from a commit that includes GIT-REMOTE-1 (capability `git_remote: "v1"`; until then `github_git_remote_setup` answers "the native Git worker must be updated"). No runtime image change. Optional stored setting `git_remote.lifetime` `{ "default_hours": 8, "max_hours": 24 }` (defaults apply when absent).
 
+Direct git host (GIT-DIRECT-1, optional; until it is done everything keeps working through the MCP domain). Placeholders: `<domain>` is your domain, `<server-ip>` the Dokploy server's public IPv4 (the address your current worker domain already points to).
+1. **DNS** (your DNS provider): record type `A`, name `git` (giving `git.<domain>`), value `<server-ip>`, TTL default; add an `AAAA` too only if the server has IPv6. If the provider can proxy traffic (for example Cloudflare's orange cloud), leave it **DNS only**: such proxies cap upload size, which is what this host avoids. (A `CNAME` from `git.<domain>` to the worker's existing host name works the same.)
+2. **Dokploy, worker app → Environment**: `GIT_DIRECT_ORIGIN=https://git.<domain>`, `GIT_DIRECT_CONTROL_ORIGIN=https://<MCP domain>` (the same origin as `PUBLIC_BASE_URL`), `GIT_DIRECT_PORT=3001`. Redeploy the worker from a commit that includes GIT-DIRECT-1.
+3. **Dokploy, worker app → Domains → Add domain**: host `git.<domain>`, path `/`, container port `3001`, HTTPS on, certificate Let's Encrypt. Check `https://git.<domain>/health` answers `ok`.
+4. **Dokploy → Traefik configuration** (`traefik.yml`): on the HTTPS entry point (`websecure`) set `transport.respondingTimeouts.readTimeout: 0s` (or a long value such as `6h`) and reload Traefik. Traefik's default (60 s since v2.11.2) stops any upload that takes longer. This applies to every app on that server, so the server's admin decides.
+5. **Vercel** (production environment): `GIT_DIRECT_ORIGIN=https://git.<domain>`; it takes effect with the next release.
+6. **Agent**: call `github_git_remote_setup` once (it pins the worker's signing key) and run live acceptance: clone, a push of ~100 MB and of ~1 GB to the scratch repository through `remote_url`, then the same key on `fallback_url`.
+Optional stored setting `git_remote.push_limit` `{ "max_push_bytes": n }` (default 2 GiB = GitHub's limit; raise it to accept larger single pushes, which are then sent on to GitHub in parts; mind the worker volume).
+
 ## 7. Appliance Desk and other repos (Agent can check)
 
 Run `github_workflow_app_readiness` for `appliance-desk` ([APP-NEEDS-APPLIANCE-DESK](APP-NEEDS-APPLIANCE-DESK.md)). Done 2026-10-09: `main` requires `ci` only. Not verified: force-push and deletion blocked, secret scanning, fork-PR approval, a `live` branch. Same ruleset wanted on `stripe-mcp`, `google-workspace-mcp`, `robinsons-toolkit-hub`, `vercel-mcp`, `neon-mcp`; not verified.

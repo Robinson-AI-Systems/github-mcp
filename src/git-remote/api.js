@@ -10,10 +10,19 @@
 //    repository-scoped App token for fetches; the push uses the same credential choice as the native
 //    push, so "Act as me" attribution is kept). Each claim step works once (nonce).
 //    op=report closes the push's change-log row with the outcome the worker observed on GitHub.
+//    phase=renew (GIT-DIRECT-1) mints a fresh credential for the next batch of a very large push whose
+//    change-log row is still open.
+//  POST /api/git-remote?op=authorize        — GIT-DIRECT-1: the native worker's direct git host asks
+//    here, signed by the worker key pinned at setup, whether one Git request may be served. It sends
+//    the session key's id and SHA-256 (never the key); the answer is the same signed claim Routing
+//    Middleware forwards on the domain door, plus the stored per-push limit.
+import { createPublicKey, verify as verifySignature } from 'node:crypto';
 import { CODE_PREFIX, GIT_USERNAME, checkKey, liveConnection, newSessionKey, openKeyScope, parseSecret, remotePath, sha256 } from './keys.js';
 import { publicOrigin, paramsOf } from '../core/http.js';
-import { verifyRemoteClaim } from '../native-git/protocol.js';
+import { GITHUB_PUSH_LIMIT_BYTES, REMOTE_REPORT_GRACE_MS, verifyRemoteClaim } from '../native-git/protocol.js';
 import { nativeWorkerPublicKey } from '../native-git/signing.js';
+import { authorizeGitRequest } from './authorize.js';
+import { DIRECT_HEADER, DIRECT_SKEW_MS, DIRECT_WORKER_KEY, cleanOrigin, directPayload } from './wire.js';
 
 const plain = (res, status, message) => { res.statusCode = status; res.setHeader('Content-Type', 'text/plain; charset=utf-8'); res.setHeader('Cache-Control', 'no-store'); res.end(message + '\n'); };
 const json = (res, status, value) => { res.statusCode = status; res.setHeader('Content-Type', 'application/json'); res.setHeader('Cache-Control', 'no-store'); res.end(JSON.stringify(value)); };
@@ -82,16 +91,19 @@ export async function broker(req, res, { env = process.env, openScope = openKeyS
  if (req.method !== 'POST') return json(res, 405, { error: 'method_not_allowed' });
  let body; try { body = paramsOf(req); } catch { return json(res, 400, { error: 'invalid_request' }); }
  const op = req.query?.op === 'report' ? 'report' : 'broker';
- let claim; try { claim = verifyRemoteClaim(String(req.headers?.['x-robinson-git-claim'] ?? ''), verifierKey(env), now()); }
+ let claim; try { claim = verifyRemoteClaim(String(req.headers?.['x-robinson-git-claim'] ?? ''), verifierKey(env), now(), { graceMs: op === 'report' ? REMOTE_REPORT_GRACE_MS : 0 }); }
  catch (error) { return json(res, 401, { error: 'invalid_claim', message: /expired/.test(error?.message) ? 'This git request took too long; run the git command again.' : 'Invalid git remote claim.' }); }
  const phase = op === 'report' ? 'report' : body.phase;
- if (!['fetch', 'push', 'report'].includes(phase) || (phase === 'fetch') !== (claim.step === 'refs') || (phase !== 'fetch' && claim.service !== 'git-receive-pack')) return json(res, 400, { error: 'invalid_phase' });
+ if (!['fetch', 'push', 'renew', 'report'].includes(phase) || (phase === 'fetch') !== (claim.step === 'refs') || (phase !== 'fetch' && claim.service !== 'git-receive-pack')) return json(res, 400, { error: 'invalid_phase' });
  const refuse = (message, status = 200) => json(res, status, { allow: false, message });
  let scope; try { scope = await openScope(claim.key, { env, withCredentials: phase !== 'report' }); } catch { return refuse('The service could not check this key right now. Run the git command again in a minute.', 503); }
  if (!scope) return refuse('This git session key is no longer valid. Ask for a new one with github_git_remote_setup.');
  const { db } = scope;
  // Each broker step of one claim works once.
- if (!await db.recordGitRemoteUse({ keyId: claim.key, service: 'broker.' + phase, outcome: 'started', nonce: `${claim.nonce}.${phase}` })) return json(res, 409, { error: 'replayed_claim' });
+ // Renewals of one push are numbered (at most 26 per push: one per batch).
+ const renewal = phase === 'renew' ? (Number.isSafeInteger(body.n) && body.n >= 0 && body.n < 26 ? String.fromCharCode(97 + body.n) : null) : '';
+ if (renewal === null) return json(res, 400, { error: 'invalid_phase' });
+ if (!await db.recordGitRemoteUse({ keyId: claim.key, service: 'broker.' + phase, outcome: 'started', nonce: `${claim.nonce}.${phase}${renewal}` })) return json(res, 409, { error: 'replayed_claim' });
  const row = await db.getGitRemoteKey(claim.key);
  if (!row || !row.key_hash) return refuse('This git session key is no longer valid. Ask for a new one with github_git_remote_setup.');
  const verdict = checkKey(row, row.key_hash, { service: claim.service, owner: claim.owner, repo: claim.repo, now: now() });
@@ -128,6 +140,17 @@ export async function broker(req, res, { env = process.env, openScope = openKeyS
   if (typeof credential !== 'string' || !credential) return refuse('GitHub network authorization is unavailable for this repository right now.');
   return json(res, 200, { allow: true, credential, default_branch: typeof repoData.default_branch === 'string' ? repoData.default_branch : null });
  }
+ if (phase === 'renew') {
+  // Only for a push whose change-log row this claim opened and that is still pending.
+  const journal = Number(body.journal);
+  const change = Number.isSafeInteger(journal) ? await db.getChange(journal) : null;
+  if (!change || change.requestKey !== requestKey || change.tool !== PUSH_JOURNAL_TOOL || change.confirmed !== null) return json(res, 409, { error: 'unknown_journal' });
+  if (connection.profile !== 'full') return refuse('This connection cannot push through the git remote (it needs the Full profile).');
+  let credential;
+  try { const c = await credentialFor(ctx, { owner, ...narrowed }); credential = body.actedAs === 'you' ? c.personal?.token : (c.personal?.token ? null : c.token); } catch { credential = null; }
+  if (typeof credential !== 'string' || !credential) return refuse('GitHub network authorization is unavailable for this repository right now (or it changed who the push acts as).');
+  return json(res, 200, { allow: true, credential });
+ }
  let updates; try { updates = updatesOf(body.updates); } catch (error) { return refuse(error.message); }
  if (connection.profile !== 'full') return refuse('This connection cannot push through the git remote (it needs the Full profile).');
  if (repoData.permissions && repoData.permissions.push === false) return refuse(`GitHub says this connection cannot push to ${slug}.`);
@@ -151,4 +174,51 @@ export async function broker(req, res, { env = process.env, openScope = openKeyS
   return refuse('GitHub network authorization is unavailable for this repository right now; nothing was pushed.');
  }
  return json(res, 200, { allow: true, credential, journal: journal.id, acted_as: actedAs, scanner_policy: { settings: policy.settings, revision: policy.revision } });
+}
+
+// ---- GIT-DIRECT-1: the worker's direct git host ------------------------------------------------
+export const DIRECT_WORKER_SETTING = 'git_remote.direct_worker';
+export const PUSH_LIMIT_SETTING = 'git_remote.push_limit';
+const MiB = 1024 * 1024;
+export const PUSH_LIMIT_BOUNDS = Object.freeze({ min: 1 * MiB, max: 64 * 1024 * MiB });
+
+/** The stored per-push limit for the direct host (`{ "max_push_bytes": n }`); GitHub's 2 GB when absent. */
+export async function pushLimit(root) {
+ let stored = null; try { stored = await root.getSetting(PUSH_LIMIT_SETTING); } catch { stored = null; }
+ const n = stored?.max_push_bytes;
+ return Number.isSafeInteger(n) && n >= PUSH_LIMIT_BOUNDS.min && n <= PUSH_LIMIT_BOUNDS.max ? n : GITHUB_PUSH_LIMIT_BYTES;
+}
+/** The configured direct origin on this control plane, or null. */
+export const directOrigin = env => cleanOrigin(env?.GIT_DIRECT_ORIGIN);
+
+async function rootDb() {
+ const { createDb, productionSql } = await import('../db.js');
+ return createDb(productionSql());
+}
+const canonical = b => JSON.stringify([b.id, b.hash, b.owner, b.repo, b.service, b.step]);
+const GITISH = { owner: /^[A-Za-z0-9-]{1,39}$/, repo: /^[A-Za-z0-9_.-]{1,100}$/ };
+
+/** POST /api/git-remote?op=authorize (worker's direct host → control plane). */
+export async function directAuthorize(req, res, { env = process.env, openScope = openKeyScope, now = Date.now, root } = {}) {
+ if (req.method !== 'POST') return json(res, 405, { error: 'method_not_allowed' });
+ const origin = directOrigin(env);
+ if (!origin) return json(res, 404, { error: 'direct_host_not_configured' });
+ let body; try { body = paramsOf(req); } catch { return json(res, 400, { error: 'invalid_request' }); }
+ if (!body || !/^[a-f0-9]{32}$/.test(body.id ?? '') || !/^[a-f0-9]{64}$/.test(body.hash ?? '') || !GITISH.owner.test(body.owner ?? '') || !GITISH.repo.test(body.repo ?? '') || ['.', '..'].includes(body.repo)
+  || !['git-upload-pack', 'git-receive-pack'].includes(body.service) || !['refs', 'pack'].includes(body.step)) return json(res, 400, { error: 'invalid_request' });
+ // The worker's signature, by the key it reported to this service's signed capabilities call at setup.
+ const m = /^(\d{13})\.([a-f0-9]{32})\.([A-Za-z0-9_-]{86})$/.exec(String(req.headers?.[DIRECT_HEADER] ?? ''));
+ if (!m || Math.abs(Number(m[1]) - now()) > DIRECT_SKEW_MS) return json(res, 401, { error: 'invalid_worker_signature' });
+ let pinned; root = root ?? await rootDb();
+ try { pinned = await root.getSetting(DIRECT_WORKER_SETTING); } catch { return json(res, 503, { error: 'unavailable' }); }
+ if (pinned?.kind !== 'git-direct-worker' || pinned.origin !== origin || !DIRECT_WORKER_KEY.test(pinned.worker_key ?? '')) return json(res, 401, { error: 'invalid_worker_signature' });
+ let good = false;
+ try { good = verifySignature(null, directPayload(m[1], m[2], canonical(body)), createPublicKey({ key: Buffer.from(pinned.worker_key.slice(8), 'base64'), format: 'der', type: 'spki' }), Buffer.from(m[3], 'base64url')); } catch { good = false; }
+ if (!good) return json(res, 401, { error: 'invalid_worker_signature' });
+ // One worker signature serves one request (replays are refused, in the key's own database).
+ let scope; try { scope = await openScope(body.id, { env }); } catch { scope = undefined; }
+ if (scope && !await scope.db.recordGitRemoteUse({ keyId: body.id, service: 'direct.authorize', outcome: 'started', nonce: `${m[2]}.direct` }).catch(() => false)) return json(res, 409, { error: 'replayed_request' });
+ const verdict = await authorizeGitRequest({ parsed: { id: body.id, hash: body.hash }, wanted: { owner: body.owner, repo: body.repo, service: body.service, step: body.step }, env, now, openScope, door: 'direct' });
+ if (!verdict.ok) return json(res, 200, { allow: false, status: verdict.status, challenge: verdict.challenge, reason: verdict.reason, message: verdict.message, ...(verdict.retryAfter ? { retry_after: verdict.retryAfter } : {}) });
+ return json(res, 200, { allow: true, claim: verdict.claim, limits: { push_bytes: await pushLimit(root) } });
 }
