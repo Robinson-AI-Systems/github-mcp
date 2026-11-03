@@ -9,7 +9,7 @@ export const HOME_CSP = "default-src 'none'; img-src 'self'; style-src 'unsafe-i
 export const SERVER_ADDRESS = (origin) => `${origin}/api/mcp`;
 
 const STYLE = BRAND_CSS + 'main{max-width:640px}.addr{display:block;background:var(--surface);border:1px solid var(--brand);border-radius:12px;padding:14px;margin:10px 0 18px;font:600 15px/1.4 ui-monospace,Menlo,Consolas,monospace;word-break:break-all;user-select:all}' +
-  'pre{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px;overflow-x:auto;white-space:pre-wrap;word-break:break-all;margin:8px 0 14px;font:14px/1.5 ui-monospace,Menlo,Consolas,monospace}' +
+  'code{word-break:break-all}pre{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px;overflow-x:auto;white-space:pre-wrap;word-break:break-all;margin:8px 0 14px;font:14px/1.5 ui-monospace,Menlo,Consolas,monospace}' +
   'section{border-top:1px solid var(--border);padding-top:14px;margin-top:18px}h2{font:700 19px/1.3 Inter,-apple-system,sans-serif;margin:0 0 8px}ol{padding-left:22px;margin:0 0 12px}li{margin:4px 0}' +
   'a.button{display:block;text-align:center;font:600 16px Inter,-apple-system,sans-serif;color:#fff;background:var(--grad);border-radius:50px;padding:13px 20px;text-decoration:none;margin:14px 0}ul.links{list-style:none;padding:0;display:flex;flex-wrap:wrap;gap:6px 18px}';
 

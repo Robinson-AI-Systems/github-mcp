@@ -16,7 +16,7 @@
   and cancel (local Chrome). Measured locally: 60 MiB push ≈ 9.4 s, its clone ≈ 2.4 s.
 - **Not verified:** Vercel's live proxy with a large single push request (about 20 MB is the stated caution); the live
   tenant (public sign-in) database path end to end; macOS (the command uses only sh, curl and git).
-- **Branch/PR:** `ai/claude/git-remote` (see the PR for number, head SHA and CI).
+- **Branch/PR:** `ai/claude/git-remote`, PR #552 (see the PR for head SHA and CI).
 - **Release needs:** control plane (daily release); native worker redeploy. No new environment variable, no runtime
   image change.
 - **Next (live acceptance after release):** from a sandbox that allows only the MCP domain, `github_git_remote_setup`
