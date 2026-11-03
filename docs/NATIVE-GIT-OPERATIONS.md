@@ -273,6 +273,47 @@ for this origin only. The key is never printed; only its SHA-256 is stored (`git
 - **Cancel.** My connection (tenant) or the setup page (owner's own connection) lists live keys with a cancel button;
   the next git request is refused. Disconnecting the app ends its keys.
 - **Worker.** Capability `git_remote: "v1"`; no new setting. Not served by dedicated (single-workspace) brokers.
+- **Direct host.** For pushes beyond about 25 MB, configure the [direct git host](#direct-git-host-git-direct-1).
+
+## Direct git host (GIT-DIRECT-1)
+
+[Card](pr-cards/GIT-DIRECT-1.md). Optional: the worker serves the same `/git/<owner>/<repo>.git` smart-HTTP endpoints
+itself on `GIT_DIRECT_ORIGIN` (for example `https://git.<domain>`), so git traffic no longer passes Vercel's proxy (live
+there: about 25 MB per push at most). Until it is configured, everything works through the MCP domain unchanged.
+
+- **Setup.** With `GIT_DIRECT_ORIGIN` on the MCP and the worker reporting the same origin (`git_direct` in its signed
+  capabilities answer), `github_git_remote_setup` returns `remote_url` on the direct host and `fallback_url` on the MCP
+  domain; the command stores the key for both hosts only. The call also pins the worker's public signing key
+  (root setting `git_remote.direct_worker`). The sandbox must allow the MCP domain (setup, fallback) and the direct
+  domain; `*.<parent domain>` covers both only if that AI's allowlist accepts wildcards.
+- **Every request is authorized by the control plane.** The worker hashes the HTTP Basic key and sends only its id and
+  SHA-256, signed with its own Ed25519 key (`<storage>/.git-direct/identity.pem`, generated once), to
+  `/api/git-remote?op=authorize` on `GIT_DIRECT_CONTROL_ORIGIN`. The control plane checks the signature (pinned key,
+  ±60 s, single-use nonce) and runs the same key check as Routing Middleware, then returns a signed claim (version 2)
+  and the per-push limit. From there the GIT-REMOTE-1 core serves it: mirror, quarantine, pre-receive hook, guard gates,
+  scanner, change log, "Act as me" attribution, atomic leased push, `ls-remote` read-back, `remote:` refusals.
+- **Failed attempts.** 20 failed keys per source per 10 minutes, then 429 with `Retry-After`. Behind the reverse proxy
+  the source is the last `X-Forwarded-For` entry (trusted only from a private or loopback peer).
+- **Size and storage.** Pushes stream to the quarantine on disk with backpressure (never held in memory). Per push:
+  stored setting `git_remote.push_limit` `{ "max_push_bytes": n }`, 1 MiB–64 GiB, default 2 GiB (GitHub's limit).
+  512 MiB of the volume is kept free: a push is refused at its ref advertisement when free space is already below that,
+  before streaming when its declared length does not fit, and while streaming (checked every 16 MiB). Refusals arrive
+  as `remote:` lines plus `[remote rejected] … (push-too-large|storage-full)`.
+- **Over GitHub's 2 GB per push.** When the new history is over 90 % of GitHub's limit (only possible after raising
+  `git_remote.push_limit`, or for a push close to 2 GB), the hook sends first-parent ranges, each under 90 % of the
+  limit, to temporary refs `refs/robinson-git-remote/<random>/<n>`, renewing the GitHub credential between parts, then
+  one atomic leased push moves the person's refs and deletes the temporary refs. A failed part removes the temporary
+  refs and reports what GitHub has for every ref; nothing the person pushed changes. A single commit over the limit, more
+  than 26 parts, or merged-in history over the limit is refused before anything is sent.
+- **Files over 100 MiB** (both doors): refused before GitHub with the file name, its size and a Git LFS explanation
+  (GitHub LFS beyond its free quota is paid; this remote does not carry LFS).
+- **Time.** No total request deadline on the direct port; an idle connection closes after 2 minutes; receive-pack plus
+  hook stop after 12 h; a direct claim's pack step lasts 8 h.
+- **Measured locally:** 256 MiB push through a TLS terminator to the direct port in 47.9 s (5.3 MiB/s including the
+  content scan and the push on to the GitHub stand-in), its clone 9.8 s, no measurable memory growth. Live: not yet.
+- **Reverse proxy.** Dokploy's Traefik must not cut long uploads: its entry point's
+  `transport.respondingTimeouts.readTimeout` defaults to 60 s since Traefik v2.11.2 (also v3), which would stop any push
+  that takes longer to upload. Set it to `0s` (or several hours) on the HTTPS entry point (owner step).
 
 ## Branch switching and parallel agents
 
@@ -362,6 +403,9 @@ autoscaling pool.
 | `NATIVE_GIT_WORKER_KEY` | both | Legacy shared-key fixtures only |
 | `NATIVE_GIT_CONTROL_PUBLIC_KEY` | worker | Pinned MCP verification key |
 | `NATIVE_GIT_STORAGE_ROOT`, `PORT` (3000) | worker | Data root and port |
+| `GIT_DIRECT_ORIGIN` | both | GIT-DIRECT-1 direct git host, e.g. `https://git.<domain>` (https origin, no path). On the worker it turns the direct host on and is its only accepted host name; on the MCP it makes setup prefer it when the worker reports the same origin. Unset = off |
+| `GIT_DIRECT_CONTROL_ORIGIN` | worker | The MCP's own origin (`https://<PUBLIC_BASE_URL host>`), where the direct host asks `op=authorize`. Required with `GIT_DIRECT_ORIGIN` |
+| `GIT_DIRECT_PORT` (3001) | worker | Port of the direct git host (the Dokploy domain points here) |
 | `NATIVE_GIT_CLONE_TIMEOUT_MS` (900000) | worker | Background clone watchdog, clamped to 45 s–60 min |
 | `NATIVE_GIT_OBJECT_CACHE` | Playground broker on a person's own machine | Per-machine Git object cache used by lean attachment (set by the host agent) |
 | `NATIVE_GIT_MEMORY_LIMIT` (2g), `NATIVE_GIT_CPUS` (2.0) | worker compose | Whole-container ceilings shared by every workspace |

@@ -3059,6 +3059,24 @@
       ]
     },
     {
+      "id": "GIT-DIRECT-1",
+      "title": "Direct git host on the native worker (no hosting-proxy limits): worker-signed per-request authorization, streamed pushes with a stored per-push limit and volume reserve, parts beyond GitHub's 2 GB, plain Git LFS refusal over 100 MiB",
+      "batch": "FIN",
+      "design": "docs/pr-cards/GIT-DIRECT-1.md",
+      "dependencies": [
+        "GIT-REMOTE-1"
+      ],
+      "card": "docs/pr-cards/GIT-DIRECT-1.md",
+      "status": "IN_PROGRESS",
+      "migration": "none (root settings git_remote.direct_worker, git_remote.push_limit)",
+      "budget": 2400,
+      "units": [
+        "GIT-DIRECT-1"
+      ],
+      "readiness": "READY",
+      "ownerInputs": []
+    },
+    {
       "id": "NATIVE-ERGO-1",
       "title": "github_repo_change commits and pushes (and opens the PR) in one call; native Git accepts the options agents pass; conflicts and refusals are definite outcomes",
       "batch": "FIN",

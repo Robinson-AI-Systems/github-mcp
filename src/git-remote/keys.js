@@ -9,20 +9,17 @@
 //   (default 8 hours, at most 24; a stored setting) and can be revoked on My connection.
 // - Rows live in the connection's own (tenant) database; a small root index names only the key's
 //   tenant scope so a request can be routed to that database. No credential is in the index.
-import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
+import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { createDb, productionSql, GIT_REMOTE_ID } from '../db.js';
+import { CODE_PREFIX, KEY_PREFIX, parseSecret, sha256 } from './wire.js';
 
-export const KEY_PREFIX = 'rgk_';
-export const CODE_PREFIX = 'rgc_';
+export { CODE_PREFIX, KEY_PREFIX, parseSecret, sha256 };
 export const CODE_TTL_MS = 600000;
 export const DEFAULT_HOURS = 8;
 export const MAX_HOURS = 24;
 export const LIFETIME_SETTING = 'git_remote.lifetime';
 /** The username git sends with the key (any value works; this one makes logs readable). */
 export const GIT_USERNAME = 'x-robinson-git';
-const SECRET = /^[A-Za-z0-9_-]{43}$/;
-
-export const sha256 = value => createHash('sha256').update(value).digest('hex');
 export const indexKey = id => 'git_remote.' + id;
 
 /** A fresh row id and its one-time exchange code. */
@@ -33,13 +30,6 @@ export function newExchangeCode() {
 /** A fresh 256-bit session key for row `id`. */
 export const newSessionKey = id => `${KEY_PREFIX}${id}_${randomBytes(32).toString('base64url')}`;
 
-/** `{ id, hash }` of a well-formed code or key, else null. Nothing about the secret is kept but its hash. */
-export function parseSecret(value, prefix) {
- if (typeof value !== 'string' || value.length !== prefix.length + 32 + 1 + 43 || !value.startsWith(prefix)) return null;
- const id = value.slice(prefix.length, prefix.length + 32), secret = value.slice(prefix.length + 33);
- if (!GIT_REMOTE_ID.test(id) || value[prefix.length + 32] !== '_' || !SECRET.test(secret)) return null;
- return { id, hash: sha256(value) };
-}
 export function sameHash(stored, candidate) {
  if (typeof stored !== 'string' || typeof candidate !== 'string' || stored.length !== 64 || candidate.length !== 64) return false;
  return timingSafeEqual(Buffer.from(stored, 'hex'), Buffer.from(candidate, 'hex'));

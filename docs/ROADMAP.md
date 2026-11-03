@@ -2,6 +2,14 @@
 
 # ROADMAP — ideas not being built now
 
+## 2026-11-02 — Direct git host follow-ups (found while building GIT-DIRECT-1)
+
+Owner-decision scope, not built: **Git LFS through the git remote** (serve `/info/lfs` and relay LFS objects to GitHub;
+GitHub LFS storage and bandwidth beyond the free quota are paid, so this needs Chris's go-ahead and a cost decision; today
+files over 100 MiB are refused with a plain explanation); an owner page control for `git_remote.push_limit`; a live >2 GB
+push to measure GitHub's real per-push behaviour with parts; serving the setup code exchange on the direct host too (today
+the sandbox needs the MCP domain for setup); a health alert when the worker volume nears its reserve.
+
 ## 2026-11-02 — Git remote follow-ups (found while building GIT-REMOTE-1)
 
 Not built, each needs Chris's go-ahead as new scope: git remote keys for service passes (passes are refused today with a
