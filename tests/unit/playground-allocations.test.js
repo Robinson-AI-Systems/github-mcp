@@ -43,6 +43,15 @@ it('keeps provider configuration protected and missing allocation setup produces
  expect(()=>dokployConfig({})).toThrow(/protected/);const {w}=await world();const result=parse(await tools.handlers.github_playground_workspace({...base,operation:'provision',requestKey:'setup-missing'},w.ctx));expect(result.done).toBe(false);expect(w.playgroundRequests).toHaveLength(0);
 });
 
+it('operation setup is offered, previews like provision and sends nothing to the runtime without an allocation host',async()=>{
+ const tool=tools.tools.find(x=>x.name==='github_playground_workspace');
+ expect(tool.inputSchema.properties.operation.enum).toEqual(['setup','provision','attach','resume','preview','dispose']);
+ expect(tool.description.length).toBeLessThanOrEqual(160);
+ const {w}=await world();
+ const result=parse(await tools.handlers.github_playground_workspace({...base,operation:'setup',requestKey:'setup-missing-host'},w.ctx));
+ expect(result.done).toBe(false);expect(w.playgroundRequests).toHaveLength(0);
+});
+
 it('starts the trusted manager even while resource admission queues the first workspace',async()=>{
  const {w,record}=await world(),provider=fixtureProvider();delete w.ctx.env.PLAYGROUND_ADMISSION;let managers=0;
  const result=await ensureAllocation(w.ctx,record,{provider,config,manager:async()=>{managers++;}});

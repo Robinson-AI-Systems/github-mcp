@@ -3179,6 +3179,24 @@
       ],
       "readiness": "READY",
       "ownerInputs": []
+    },
+    {
+      "id": "AGENT-FB-1",
+      "title": "Agent feedback fixes: read-only fetch bridge for session:prepare --publish, one Playground setup operation, ready-to-call continuations and line windows for kept results",
+      "batch": "FIN",
+      "design": "docs/pr-cards/AGENT-FB-1.md",
+      "dependencies": [
+        "GIT-DIRECT-2"
+      ],
+      "card": "docs/pr-cards/AGENT-FB-1.md",
+      "status": "IN_PROGRESS",
+      "migration": "none",
+      "budget": 700,
+      "units": [
+        "AGENT-FB-1"
+      ],
+      "readiness": "READY",
+      "ownerInputs": []
     }
   ],
   "gatewayBoundary": {
@@ -3222,7 +3240,7 @@
       "docs/pr-cards/RESULT-OWN-KEYS.md",
       "docs/pr-cards/RESULT-OFFSET-METADATA.md"
     ],
-    "sourceAndAutomated": "All five #151\u2013#155 source implementations accepted by the complete seven exact-head CI/release gates; #155 merger/final-main CI must still be observed independently.",
+    "sourceAndAutomated": "All five #151–#155 source implementations accepted by the complete seven exact-head CI/release gates; #155 merger/final-main CI must still be observed independently.",
     "deployedExactRevision": "UNVERIFIED for this batch; last independently observed production source #146",
     "authenticatedCustomMcp": "UNVERIFIED",
     "directOAuth": "UNVERIFIED",

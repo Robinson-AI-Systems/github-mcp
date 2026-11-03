@@ -55,10 +55,30 @@ function invoke(root, args) {
   return r;
 }
 
-export function publication(root, git = args => invoke(root, args)) {
+// A native Git workspace is cloned from a single-use address, so `origin` cannot fetch again later
+// (the workspace itself still can). The read-only bridge: get a fresh one-time fetch address from this
+// server (github_repo_download or github_git_workspace_download, mode git), put it in SESSION_FETCH_URL
+// and rerun. The address carries no GitHub credential; it is never printed, logged or stored in config.
+export function fetchSource(value) {
+  if (value === undefined || value === '') return null;
+  let url;
+  try { url = new URL(value); } catch { throw Error('SESSION_FETCH_URL is not a valid address; get a fresh read-only fetch address and retry. No fresh publication check.'); }
+  if (url.protocol !== 'https:' || url.username || url.password)
+    throw Error('SESSION_FETCH_URL must be an https address without a username or password. No fresh publication check.');
+  return url.href;
+}
+
+export function publication(root, git = args => invoke(root, args), fetchUrl = process.env.SESSION_FETCH_URL) {
+  const source = fetchSource(fetchUrl);
   const required = args => { const r = git(args); if (r.status !== 0) throw Error('Git ' + args[0] + ' failed; reconcile privately. No fresh publication check.'); return r.stdout.trim(); };
   // Refresh only the actual target tracking ref; do not move local branches or live.
-  required(['fetch', 'origin', 'main:refs/remotes/origin/main']);
+  if (source) {
+    const r = git(['-c', 'http.followRedirects=false', 'fetch', source, '+main:refs/remotes/origin/main']);
+    if (r.status !== 0) throw Error('The fresh fetch address did not work (it is single-use and expires in minutes). Get a new one with github_repo_download (mode git) and retry. No fresh publication check.');
+  } else {
+    const r = git(['fetch', 'origin', 'main:refs/remotes/origin/main']);
+    if (r.status !== 0) throw Error('Git fetch failed. In a native Git workspace the clone address was single-use: get a fresh read-only fetch address with github_repo_download (mode git), set it as SESSION_FETCH_URL and rerun. Otherwise reconcile privately. No fresh publication check.');
+  }
   if (required(['status', '--porcelain'])) throw Error('Commit the coherent local checkpoint or resolve edits/conflicts before the publication comparison.');
   const head = required(['rev-parse', 'HEAD']), main = required(['rev-parse', 'origin/main']);
   const base = required(['merge-base', head, main]);
