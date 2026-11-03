@@ -3283,6 +3283,24 @@
       ],
       "readiness": "READY",
       "ownerInputs": []
+    },
+    {
+      "id": "PUSH-FIXTURE-2",
+      "title": "Push and write gates accept evident placeholder words assigned to secret-named keys in file content; random values, argument checks, redaction and scanner reports unchanged",
+      "batch": "FIN",
+      "design": "docs/pr-cards/PUSH-FIXTURE-2.md",
+      "dependencies": [
+        "PUSH-FIXTURE-1"
+      ],
+      "card": "docs/pr-cards/PUSH-FIXTURE-2.md",
+      "status": "IN_PROGRESS",
+      "migration": "none",
+      "budget": 300,
+      "units": [
+        "PUSH-FIXTURE-2"
+      ],
+      "readiness": "READY",
+      "ownerInputs": []
     }
   ],
   "gatewayBoundary": {
