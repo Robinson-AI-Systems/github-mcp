@@ -412,6 +412,8 @@ autoscaling pool.
 | `NATIVE_GIT_CONTROL_PUBLIC_KEY` | worker | Pinned MCP verification key |
 | `NATIVE_GIT_STORAGE_ROOT`, `PORT` (3000) | worker | Data root and port |
 | `GIT_DIRECT_ORIGIN` | both | GIT-DIRECT-1 direct git host, e.g. `https://git.<domain>` (https origin, no path). On the worker it turns the direct host on and is its only accepted host name (with `GIT_DIRECT_CONTROL_ORIGIN`; both win over the stored file); on the MCP it makes setup prefer it when the worker reports the same origin, and (GIT-DIRECT-2) configure a worker that does not yet serve it. Unset on both = off |
+| `GIT_DIRECT_HOST` | MCP | PUSH-EXIT-1: which pool host serves `GIT_DIRECT_ORIGIN` (the push exit), by host name (`dokploy`) or role (`previous`). Unset = the primary. A name matching no configured host = no direct host (setup uses this domain; `github_server_status` says why) |
+| `GIT_PUSH_EXIT_HOST` | Dokploy compose | PUSH-EXIT-1: host name the `push-exit` front door answers (Traefik SNI rule and Caddy certificate); default `git.robinsonaisystems.com`; must equal the host of the MCP's `GIT_DIRECT_ORIGIN` |
 | `GIT_DIRECT_CONTROL_ORIGIN` | worker | The MCP's own origin (`https://<PUBLIC_BASE_URL host>`), where the direct host asks `op=authorize`. Required with the worker's `GIT_DIRECT_ORIGIN`; not needed when the control plane configures the worker (GIT-DIRECT-2) |
 | `GIT_DIRECT_PORT` (3001) | worker | Port of the direct git host (the Dokploy domain points here) |
 | `SOURCE_COMMIT` (build argument) → `NATIVE_GIT_BUILD_COMMIT` | worker image | SRV-STATUS-1: the full live commit the image is built from; reported as `build_commit` in signed capabilities so `github_server_status` can warn when the worker is older than the control plane. Empty = not reported. Render's `RENDER_GIT_COMMIT` is used when set |
@@ -474,8 +476,9 @@ settings, with the HMAC tag binding the destination origin.
 
 **Git remote:** a `github_git_remote_setup` key's mirror lives on the first available pool host that serves the git
 remote (the primary unless it is paused, busy, full or offline), recorded in the key's index; the key stays there for its
-life (at most 24 hours). The direct git host (`GIT_DIRECT_ORIGIN`) belongs to the primary; a key placed on another host
-uses this service's own domain and says so. Keys made before the pool use the primary.
+life (at most 24 hours). The direct git host (`GIT_DIRECT_ORIGIN`) belongs to one pool host, the push exit
+(PUSH-EXIT-1: `GIT_DIRECT_HOST` names it by host name or role; unset = the primary). Every caller allowed on the exit is
+placed there first; a key placed on another host uses this service's own domain and says so. Keys made before the pool use the primary.
 
 **Visibility:** `github_server_status` (health) lists each host by name with its state (`available`, `paused`, `busy`,
 `full`, `update_required`, `unavailable`, `disabled`, `draining`) and workspace counts, never an address.

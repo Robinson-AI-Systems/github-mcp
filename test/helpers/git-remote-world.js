@@ -96,7 +96,9 @@ export async function startGitRemote(w, { gates = [], direct = false, githubPush
  const openScope = async (id, { withCredentials = false } = {}) => {
   const index = await w.db.getSetting(indexKey(id));
   if (index?.kind !== 'git-remote-index' || index.id !== id) return null;
-  return { db: w.db, env, scope: index.scope, ...(withCredentials ? { credentials: w.credentials } : {}) };
+  // As in production (src/git-remote/keys.js openKeyScope): the pool host the key's mirror lives on, when recorded.
+ const host = typeof index.host === 'string' && /^[a-f0-9]{32}$/.test(index.host) ? index.host : null;
+ return { db: w.db, env, scope: index.scope, host, ...(withCredentials ? { credentials: w.credentials } : {}) };
  };
  const api = { calls: [], authorize: [] };
  const functions = createServer(async (req, res) => {

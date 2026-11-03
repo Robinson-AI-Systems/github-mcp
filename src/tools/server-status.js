@@ -8,7 +8,7 @@ import { BRAND, serverRelease } from '../brand/brand.js';
 import { currentZone, formatLocal } from '../core/time-zone.js';
 import { projectFields } from '../core/result-rules.js';
 import { callNativeWorker } from '../native-git/client.js';
-import { configuredHosts } from '../native-git/pool-config.js';
+import { configuredHosts, directHostOf } from '../native-git/pool-config.js';
 import { hostAllowed } from '../native-git/pool-audience.js';
 import { poolStatus } from '../native-git/pool.js';
 import { WORKER_PROTOCOL } from '../native-git/protocol.js';
@@ -169,18 +169,21 @@ const directOrigin = (env) => {
 async function checkDirect(ctx, env, budget, slow) {
   const origin = directOrigin(env);
   if (!origin) return null;
-  // WORKER-POOL-2: the direct git host is the primary's; a caller who may not use an owner-only primary is not told about it.
-  const primary = configuredHosts(env).find((h) => h.role === 'primary');
-  if (primary && !hostAllowed(ctx, primary)) return null;
+  // PUSH-EXIT-1: the direct git host is the push exit (GIT_DIRECT_HOST, unset = the primary). WORKER-POOL-2: a caller who
+  // may not use an owner-only exit is not told about it.
+  const exit = directHostOf(env);
+  if (!exit) return { status: 'down', reason: 'GIT_DIRECT_HOST names no configured worker host, so no push exit is in use; git goes through this service\'s own domain (pushes up to about 25 MB).' };
+  if (!hostAllowed(ctx, exit)) return null;
   const start = performance.now();
   const r = await bounded((async () => {
     const res = await ctx.fetch(`${origin}/health`, { redirect: 'error', signal: AbortSignal.timeout(budget) });
     return { ok: res.status === 200 };
   })(), budget);
   const ms = elapsed(start);
-  if (r.timeout) return { status: 'down', reason: `The direct git host did not answer within ${Math.round(budget / 1000)} s.` };
-  if (r.error || !r.value.ok) return { status: 'down', reason: 'The direct git host did not report healthy. git over this service\'s own domain still works.' };
-  return ms > slow.direct_git ? { status: 'degraded', ms, reason: 'The direct git host answered, but slowly.' } : { status: 'ok', ms };
+  const named = { exit: exit.name };
+  if (r.timeout) return { status: 'down', ...named, reason: `The push exit (direct git host) did not answer within ${Math.round(budget / 1000)} s.` };
+  if (r.error || !r.value.ok) return { status: 'down', ...named, reason: 'The push exit (direct git host) did not report healthy. git over this service\'s own domain still works.' };
+  return ms > slow.direct_git ? { status: 'degraded', ...named, ms, reason: 'The push exit (direct git host) answered, but slowly.' } : { status: 'ok', ...named, ms };
 }
 
 const managerCommit = (source) => {

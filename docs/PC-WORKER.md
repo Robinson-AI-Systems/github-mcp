@@ -154,7 +154,7 @@ After install and Funnel, and once `https://<pc>.<tailnet>.ts.net/health` answer
 | `NATIVE_GIT_WORKER_URL` | `https://<pc>.<tailnet>.ts.net` | new workspaces, capabilities and the git remote go to the PC |
 | `NATIVE_GIT_PREVIOUS_WORKER_URL` | `<dokploy-worker-origin>` (today's `NATIVE_GIT_WORKER_URL`) | workspaces created on Dokploy keep routing there (each stores a hash of its worker origin) |
 | `NATIVE_GIT_WORKER_CUTOVER_AT` | the UTC switch time, `YYYY-MM-DDTHH:MM:SSZ` | required whenever a previous worker is set (used only for old rows without a stored origin) |
-| `GIT_DIRECT_ORIGIN` | `https://<pc>.<tailnet>.ts.net` | the direct git host moves to the PC |
+| `GIT_DIRECT_ORIGIN` | `https://<pc>.<tailnet>.ts.net` | the direct git host moves to the PC (superseded 2026-11-03 by PUSH-EXIT-1: the PC's onward push to GitHub measured ~0.4 MB/s, so big pushes use the Dokploy push exit, `GIT_DIRECT_ORIGIN=https://git.<domain>` + `GIT_DIRECT_HOST=previous`; the PC stays primary for the owner's workspaces) |
 
 Unchanged: `NATIVE_GIT_CONTROL_PUBLIC_KEY` lives on the worker only (the installer pins it); the MCP's signing key,
 `PUBLIC_BASE_URL` and everything else stay. The settings take effect with the next Vercel deployment (normal release

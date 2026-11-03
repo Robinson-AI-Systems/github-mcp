@@ -33,5 +33,45 @@ services:
     tmpfs:
       - /tmp:rw,noexec,nosuid,size=64m
     expose: ["3000", "3001"]
+  # PUSH-EXIT-1 (optional front door; docs/pr-cards/PUSH-EXIT-1.md): this worker as the replaceable "push exit" near
+  # GitHub. Traefik hands the push-exit host name to Caddy by SNI with TLS passthrough (no 60 s HTTP cut) and PROXY
+  # protocol (real client address); Caddy terminates TLS (its own TLS-ALPN-01 certificate) and streams to the direct
+  # git port above. GIT_PUSH_EXIT_HOST must equal the host of the control plane's GIT_DIRECT_ORIGIN.
+  push-exit:
+    image: caddy:2.8.4-alpine
+    restart: unless-stopped
+    command: ["caddy", "run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]
+    read_only: true
+    cap_drop: [ALL]
+    # The image's caddy binary carries this file capability; without it in the bounding set exec fails.
+    cap_add: [NET_BIND_SERVICE]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 64
+    mem_limit: 256m
+    environment:
+      GIT_PUSH_EXIT_HOST: ${GIT_PUSH_EXIT_HOST:-git.robinsonaisystems.com}
+    volumes:
+      - ./push-exit.Caddyfile:/etc/caddy/Caddyfile:ro
+      - push-exit-data:/data
+      - push-exit-config:/config
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=8m
+    expose: ["8443"]
+    depends_on: [native-git]
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=dokploy-network
+      - traefik.tcp.routers.robinson-push-exit.rule=HostSNI(`${GIT_PUSH_EXIT_HOST:-git.robinsonaisystems.com}`)
+      - traefik.tcp.routers.robinson-push-exit.entrypoints=websecure
+      - traefik.tcp.routers.robinson-push-exit.tls.passthrough=true
+      - traefik.tcp.routers.robinson-push-exit.service=robinson-push-exit
+      - traefik.tcp.services.robinson-push-exit.loadbalancer.server.port=8443
+      - traefik.tcp.services.robinson-push-exit.loadbalancer.proxyprotocol.version=2
+    networks: [dokploy-network, default]
 volumes:
   native-git-data:
+  push-exit-data:
+  push-exit-config:
+networks:
+  dokploy-network:
+    external: true

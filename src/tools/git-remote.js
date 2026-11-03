@@ -12,13 +12,16 @@
 // does not yet serve it, the first applied setup sends the worker the signed `direct_configure` action
 // ({ origin: GIT_DIRECT_ORIGIN, control: PUBLIC_BASE_URL's origin }) once, reads its capabilities again
 // and then pins and uses the direct address. Any failure falls back to this domain with a plain note.
+// PUSH-EXIT-1: the direct git host is the "push exit": one configured pool host (GIT_DIRECT_HOST, unset = the primary)
+// serving one configured origin (GIT_DIRECT_ORIGIN). Every caller allowed on that host gets its key placed there, so
+// big pushes land through it; swapping the exit for another near-GitHub host is those two settings.
 import { defineGithubWrite } from './define-github-write.js';
 import { authorizeNativeRepo, callNativeWorker } from '../native-git/client.js';
 import { workerUrl, workerKey } from '../native-git/protocol.js';
 import { nativeWorkerPublicKey } from '../native-git/signing.js';
 import { blockedNote, fitDigest } from '../native-git/relay.js';
 import { placeWorkspace, forgetHost } from '../native-git/pool.js';
-import { configuredHosts } from '../native-git/pool-config.js';
+import { configuredHosts, directHostOf } from '../native-git/pool-config.js';
 import { hostAllowed } from '../native-git/pool-audience.js';
 import { publicOrigin } from '../core/http.js';
 import { rootAllocationDb } from '../playground/index.js';
@@ -80,8 +83,10 @@ const DIRECT_FALLBACK = 'remote_url uses this service\'s own domain for now (pus
 async function configureDirect(c, pending) {
  if (!pending.supported) return { direct: null, note: `The direct git host (${pending.origin}) is set on this service, but the native Git worker must be updated before it can serve it. ${DIRECT_FALLBACK}` };
  try {
-  await callNativeWorker(c, { action: 'direct_configure', options: { origin: pending.origin, control: pending.control }, allowWrite: true });
-  const cap = await callNativeWorker(c, { action: 'capabilities' });
+  // Pinned to the exit host (not a workspace job: no lease to renew).
+  const job = pending.host ? { host: pending.host } : undefined;
+  await callNativeWorker(c, { action: 'direct_configure', options: { origin: pending.origin, control: pending.control }, allowWrite: true, job, renewLease: false });
+  const cap = await callNativeWorker(c, { action: 'capabilities', job });
   const direct = directFrom(pending.origin, pending.control, cap.git_direct);
   if (direct) return { direct, note: null };
   return { direct: null, note: `The native Git worker did not confirm the direct git host ${pending.origin} after it was configured. ${DIRECT_FALLBACK} Call github_git_remote_setup again later.` };
@@ -97,29 +102,37 @@ async function readyCheck(c, a) {
  catch { throw safe('The git remote is not configured on this service yet. Use github_repo_download and github_repo_change meanwhile.', 'git_remote_unconfigured'); }
  // WORKER-POOL-1: the key's mirror lives on the first available pool host that serves the git remote (the primary
  // unless it is paused, busy, full or offline); the key stays on that host for its whole life (recorded in its index).
- let host;
- try { host = await placeWorkspace(c, { needs: cap => cap?.git_remote === 'v1', workspace: false }); }
- catch (error) {
-  if (error?.safeCode === 'native_worker_update_required') throw safe('The native Git worker must be updated before the git remote works. Use github_repo_download and github_repo_change meanwhile.', 'native_worker_update_required');
-  throw error;
+ // PUSH-EXIT-1: the push exit (the pool host serving GIT_DIRECT_ORIGIN) is tried first for every caller allowed on it;
+ // when it cannot take the key, ordinary placement (WORKER-POOL-1/-2) applies and the key uses this service's domain.
+ const needs = cap => cap?.git_remote === 'v1';
+ const hosts = configuredHosts(c.env), exit = directOrigin(c.env) ? directHostOf(c.env, hosts) : null;
+ const exitUsable = !!exit && hostAllowed(c, exit);
+ let host = null;
+ if (exitUsable) host = await placeWorkspace(c, { needs, workspace: false, exclude: hosts.filter(h => h.id !== exit.id).map(h => h.id) }).catch(() => null);
+ if (!host) {
+  try { host = await placeWorkspace(c, { needs, workspace: false }); }
+  catch (error) {
+   if (error?.safeCode === 'native_worker_update_required') throw safe('The native Git worker must be updated before the git remote works. Use github_repo_download and github_repo_change meanwhile.', 'native_worker_update_required');
+   throw error;
+  }
  }
  const cap = host.capabilities;
- // The direct host only when this service names it AND the worker (answering this signed call) serves it. It belongs to
- // the primary host (GIT_DIRECT_ORIGIN); a key placed on another host uses this service's own domain.
- const configured = host.role === 'primary' ? directOrigin(c.env) : null, control = publicOrigin(c.env);
+ // The direct host only when this service names it AND the exit host (answering this signed call) serves it; a key
+ // placed on another host uses this service's own domain.
+ const configured = exitUsable && host.id === exit.id ? directOrigin(c.env) : null, control = publicOrigin(c.env);
  const direct = directFrom(configured, control, cap.git_direct);
  // GIT-DIRECT-2: named here but not (or not this one) served by the worker: the applied setup configures it.
- const pending = configured && !direct ? { origin: configured, control, supported: cap.git_direct_configure === 'v1' } : null;
- // WORKER-POOL-2: a caller who may not use the primary (owner-only) is simply on this service's domain: no note that
- // would name the owner's machine, and never its direct address.
- const away = host.role !== 'primary' && directOrigin(c.env) && hostAllowed(c, configuredHosts(c.env).find(h => h.role === 'primary')) ? `The primary worker is not taking new work just now, so this key uses the ${host.name} host through this service's own domain (no direct git host).` : null;
+ const pending = configured && !direct ? { origin: configured, control, host: host.id, supported: cap.git_direct_configure === 'v1' } : null;
+ // WORKER-POOL-2: a caller who may not use an owner-only exit is simply on this service's domain: no note that would
+ // name the owner's machine, and never its direct address.
+ const away = exitUsable && host.id !== exit.id ? `The push exit (${exit.name}) is not taking new work just now, so this key uses the ${host.name} host through this service's own domain (no direct git host; pushes up to about 25 MB). Call github_git_remote_setup again later for the push exit.` : null;
  const repo = await authorizeNativeRepo(c, a.owner ?? c.connection.default_account, a.repo);
  const [owner, name] = String(repo.full_name).split('/');
  const access = a.access ?? 'read';
  if (access === 'write' && repo.permissions && repo.permissions.push === false) throw safe(`GitHub says this connection can read ${repo.full_name} but not push to it. Ask for access "read", or ask the repository owner for write access.`, 'git_remote_no_push');
  const lifetime = await keyLifetime(c.db);
  if (a.hours !== undefined && a.hours > lifetime.maxHours) throw safe(`A session key lasts at most ${lifetime.maxHours} hours.`, 'git_remote_hours');
- return { owner, repo: name, access, hours: a.hours ?? lifetime.defaultHours, default_branch: repo.default_branch ?? null, direct, host: host.id, ...(away ? { host_note: away } : {}), ...(pending ? { direct_pending: pending } : {}) };
+ return { owner, repo: name, access, hours: a.hours ?? lifetime.defaultHours, default_branch: repo.default_branch ?? null, direct, host: host.id, ...(configured ? { exit: exit.name } : {}), ...(away ? { host_note: away } : {}), ...(pending ? { direct_pending: pending } : {}) };
 }
 
 async function createKey(c, before) {
@@ -132,7 +145,7 @@ async function createKey(c, before) {
   // Pins the worker's public signing key (from its signed capabilities answer) for op=authorize.
   if (pinned?.origin !== served.origin || pinned?.worker_key !== served.worker_key)
    await root.setSetting(DIRECT_WORKER_SETTING, { kind: 'git-direct-worker', origin: served.origin, worker_key: served.worker_key });
-  direct = { origin: served.origin, push_bytes: await pushLimit(root) };
+  direct = { origin: served.origin, push_bytes: await pushLimit(root), ...(before.exit ? { exit: before.exit } : {}) };
  }
  const at = (c.now ?? Date.now)();
  const expiresAt = new Date(at + before.hours * 3600000), codeExpiresAt = new Date(at + CODE_TTL_MS);
@@ -151,6 +164,7 @@ function present(c, after, response) {
  return { ...after, remote_url: remoteUrl, ...(direct ? { fallback_url: domainUrl } : {}), command: setupCommand(origin, response.code, remoteUrl, direct),
   then: `git clone ${remoteUrl}   (or, in an existing clone: git remote set-url origin ${remoteUrl}); then git pull / git push as usual`,
   code_expires_at: response.code_expires_at, platforms: `The same command works on Linux and macOS (sh, curl, git). It stores the key in ~/.git-credentials-robinson for ${direct ? 'these two addresses' : 'this address'} only.`,
+  ...(direct && response.direct.exit ? { push_exit: `${response.direct.exit} (${new URL(direct).hostname})` } : {}),
   ...(response.access === 'write' ? { push_note: direct ? directPushNote(response.direct.push_bytes) : PUSH_NOTE } : {}), if_blocked: direct ? networkNote(origin, direct) : blockedNote(remoteUrl),
   ...(!direct && typeof response.direct_note === 'string' ? { direct_note: response.direct_note } : {}),
   revoke: `Cancel it any time on My connection (${origin}/connection). It expires on its own at ${response.expires_at}.`,

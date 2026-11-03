@@ -22,7 +22,7 @@ import { publicOrigin, paramsOf } from '../core/http.js';
 import { GITHUB_PUSH_LIMIT_BYTES, REMOTE_REPORT_GRACE_MS, verifyRemoteClaim } from '../native-git/protocol.js';
 import { nativeWorkerPublicKey } from '../native-git/signing.js';
 import { authorizeGitRequest } from './authorize.js';
-import { configuredHosts } from '../native-git/pool-config.js';
+import { directHostOf } from '../native-git/pool-config.js';
 import { noteStray } from '../native-git/pool-audience.js';
 import { DIRECT_HEADER, DIRECT_SKEW_MS, DIRECT_WORKER_KEY, cleanOrigin, directPayload } from './wire.js';
 
@@ -220,12 +220,13 @@ export async function directAuthorize(req, res, { env = process.env, openScope =
  // One worker signature serves one request (replays are refused, in the key's own database).
  let scope; try { scope = await openScope(body.id, { env }); } catch { scope = undefined; }
  if (scope && !await scope.db.recordGitRemoteUse({ keyId: body.id, service: 'direct.authorize', outcome: 'started', nonce: `${m[2]}.direct` }).catch(() => false)) return json(res, 409, { error: 'replayed_request' });
- // WORKER-POOL-2: the direct git host is the primary's. A key whose mirror was placed on another pool host (always the
- // case for a person whose primary is the owner's own machine) is never served there; its remote_url is this domain.
- const primaryHost = configuredHosts(env).find(h => h.role === 'primary');
- if (scope?.host && primaryHost && scope.host !== primaryHost.id) return json(res, 200, { allow: false, status: 403, challenge: false, reason: 'other_host', message: 'This git session key belongs to another worker host, not this direct git host. Use the remote_url github_git_remote_setup returned (this service\'s own domain).' });
+ // WORKER-POOL-2 / PUSH-EXIT-1: the direct git host belongs to one pool host, the push exit (GIT_DIRECT_HOST; unset = the
+ // primary). A key whose mirror was placed on another pool host is never served there; its remote_url is this domain.
+ const exitHost = directHostOf(env);
+ if (!exitHost) return json(res, 404, { error: 'direct_host_not_configured' });
+ if (scope?.host && scope.host !== exitHost.id) return json(res, 200, { allow: false, status: 403, challenge: false, reason: 'other_host', message: 'This git session key belongs to another worker host, not this direct git host. Use the remote_url github_git_remote_setup returned (this service\'s own domain).' });
  const verdict = await authorizeGitRequest({ parsed: { id: body.id, hash: body.hash }, wanted: { owner: body.owner, repo: body.repo, service: body.service, step: body.step }, env, now, openScope, door: 'direct' });
  if (!verdict.ok) return json(res, 200, { allow: false, status: verdict.status, challenge: verdict.challenge, reason: verdict.reason, message: verdict.message, ...(verdict.retryAfter ? { retry_after: verdict.retryAfter } : {}) });
- if (!verdict.ownerKey && primaryHost?.audience === 'owner') noteStray(primaryHost, 'git_direct'); // a pre-pool key: served, counted
+ if (!verdict.ownerKey && exitHost.audience === 'owner') noteStray(exitHost, 'git_direct'); // a pre-pool key: served, counted
  return json(res, 200, { allow: true, claim: verdict.claim, limits: { push_bytes: await pushLimit(root) } });
 }

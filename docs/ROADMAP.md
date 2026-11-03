@@ -315,3 +315,8 @@ Chris's go-ahead and a design for the two-step flow.
 - **The scanner's own file could not pass its own gate.** Comments in `src/github/content-protection.js` named the npm
   package for Postgres password files with a version as an assignment and quoted token shapes. PUSH-FIXTURE-1 reworded
   them; a CI check that scans the repository's own source with the gate would stop this coming back.
+- **Faster push exit than Dokploy's link (PUSH-EXIT-1, 2026-11-03).** The Dokploy push exit's inbound link measured
+  ~2.2 MB/s (parallel streams no faster), which puts ~1 GB at about 6–8 minutes of upload alone. A host with a faster
+  link near GitHub can replace it with two settings (`GIT_DIRECT_HOST`, `GIT_DIRECT_ORIGIN`) plus the same worker and a
+  long-request TLS front. A chunked, resumable bundle push (each request under 60 s) is not needed while the front door
+  carries long requests; it would only help on an exit that limits each connection.
