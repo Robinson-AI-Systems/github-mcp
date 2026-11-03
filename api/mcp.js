@@ -14,6 +14,7 @@ import { neon } from '@neondatabase/serverless';
 import { isPublicClientId } from '../src/tenancy/public-code.js';
 import { createPublicUsage, publicUsageLimits } from '../src/tenancy/public-usage.js';
 import { offeredRegistry } from '../src/github/feature-gates.js';
+import { presentsMcpBearer, refuseMissingMcpBearer } from '../src/core/mcp-auth.js';
 
 const safeOrigin = () => { try { return publicOrigin(); } catch { return null; } };
 
@@ -29,6 +30,10 @@ export async function handleMcp(req, res, { marketplaceAccountId = null } = {}) 
     // Tenant-marked access tokens are NEVER retried against the owner database.
     // When the closed pilot is disabled or its grant is revoked, return 401.
     const tenantRoute = isPrivateTenantBearer(req.headers?.authorization);
+    // DOOR-DB-1: a request with no usable bearer can only be refused, and the refusal needs no store. Answer it before
+    // the store is opened, so keyless health/discovery knocks never wake the database (byte-identical to the challenge
+    // requireMcpToken sends). Any request that presents a bearer still goes through the full store-backed checks below.
+    if (!tenantRoute && marketplaceAccountId === null && !presentsMcpBearer(req)) return refuseMissingMcpBearer(res);
     const context = tenantRoute
       ? await resolvePrivateTenantMcpBearer({ authorization: req.headers.authorization })
       : await getSecretsRuntime();

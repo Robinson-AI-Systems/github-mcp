@@ -95,8 +95,11 @@ function parseToolsQuery(query={}) {
     !['catalog','compact'].includes(listing))return null;
   return {limit,page,q:q.toLowerCase(),area,audience,listing};
 }
+const RTC_BEARER=/^Bearer (rtc_pass_[A-Za-z0-9_-]{43})$/;
+/** True when the request carries something shaped like an RTC pass. Pure: no store, no I/O (DOOR-DB-1). */
+export const presentsRtcPass=req=>RTC_BEARER.test(String(req.headers?.authorization??''));
 async function authenticate(req,res,db,{consumeRate=true,expectedAuthority=null}={}){
-  const bearer=/^Bearer (rtc_pass_[A-Za-z0-9_-]{43})$/.exec(String(req.headers?.authorization??''));
+  const bearer=RTC_BEARER.exec(String(req.headers?.authorization??''));
   if(!bearer)return deny(res,401,rtcError('permission'));
   const row=await db.getRtcPass(bearer[1]);
   if(!row)return deny(res,401,rtcError('permission'));

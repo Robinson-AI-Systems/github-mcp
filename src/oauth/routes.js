@@ -12,6 +12,9 @@ import { publicConnectEnabled } from '../tenancy/public-connect.js';
 import { publicApprove, publicAuthorize, publicForget, publicLimits, publicManage, publicTrust, publicMoved, publicRegister } from '../tenancy/public-http.js';
 import { TRUST_PAGES } from '../tenancy/trust-pages.js';
 
+// DOOR-DB-1: the discovery documents are built from configuration alone; serving them never opens the store.
+const STORELESS = Object.freeze(['metadata', 'resourceMetadata']);
+
 /** Runs one OAuth handler. Any failure answers 503 with no detail (never SQL, tokens, passphrases or stack text). */
 export async function handleOAuth(which, req, res, { db, env = process.env, consentFactory } = {}) {
   try {
@@ -50,7 +53,7 @@ export async function handleOAuth(which, req, res, { db, env = process.env, cons
           isTenantRoutedCredential(params.code))
         return send(res, 401, { error: 'invalid_client' });
     }
-    const handlers = createOAuthHandlers({ db: db ?? await getDb(), env, policy: createGithubPolicy({ env }),
+    const handlers = createOAuthHandlers({ db: db ?? (STORELESS.includes(which) ? null : await getDb()), env, policy: createGithubPolicy({ env }),
       ...(env.GITHUB_PRIVATE_TENANT_PILOT==='enabled'?{scopesSupported:['github.notifications.read']}:{}) });
     return await handlers[which](req, res);
   } catch {
