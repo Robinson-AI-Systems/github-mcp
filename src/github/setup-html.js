@@ -58,7 +58,7 @@ const publicUsageSection = (u) => {
     publicCostLine(u.cost) + signLine + top;
 };
 
-export function renderSetup({ csrf, result = '', revealed = null, show = '', accounts = null, manifestForm = null, installLink = null, blocked = '', keyHelp = '', productionNames = null, protectedList = null, spendLimits = null, ownPeopleExtra = null, secretEntry = null, oauthReadiness = null, connections = null, publicUsage = null, publicInvites = null }) {
+export function renderSetup({ csrf, result = '', revealed = null, show = '', accounts = null, manifestForm = null, installLink = null, blocked = '', keyHelp = '', productionNames = null, protectedList = null, spendLimits = null, ownPeopleExtra = null, secretEntry = null, oauthReadiness = null, connections = null, publicUsage = null, publicInvites = null, gitKeys = null }) {
   const form = (action, inner, button, extra = '') => `<form method="post" action="#setup-feedback" autocomplete="off">${hidden('csrf', csrf)}${hidden('action', action)}${extra}${inner}${passphrase}<button type="submit">${h(button)}</button></form>`;
   const login = '<label>GitHub account name (for example your organization or user name)<input name="login" required maxlength="39" autocomplete="off"></label>';
   const secretKind = '<label>Which secret<select name="kind"><option value="private_key">Private key</option><option value="client_secret">Client secret</option><option value="webhook_secret">Webhook secret</option></select></label>';
@@ -84,6 +84,9 @@ export function renderSetup({ csrf, result = '', revealed = null, show = '', acc
       <p>${h(oauthReadiness.next_action)}</p>
       <p><small>These are counts only. No client IDs or bearer secrets are shown. Recorded sessions are not proof of real custom-MCP acceptance. Production permissions stay independently controlled.</small></p></div>` : '') +
     (connections ? `<div class="card"><h2>Custom MCP connections (owner only)</h2><p>These identifiers are not passwords. Select the exact existing ChatGPT connection.</p><ul>${connections.map((c) => `<li><strong>${h(c.name)}</strong> — <code>${h(c.id)}</code> — ${h(c.mode.toUpperCase())} / ${h(c.profile)} — accounts: ${h(c.accounts.join(', '))}</li>`).join('')}</ul></div>` : '') +
+    // GIT-REMOTE-1: the owner's own git remote session keys, each cancellable at once.
+    (gitKeys ? `<div class="card"><h2>Git remote keys</h2>${gitKeys.length ? gitKeys.map((k) => `<p><strong>${h(k.owner)}/${h(k.repo)}</strong> — ${k.access === 'write' ? 'read and push' : 'read only'} — ends ${h(new Date(k.expires_at).toISOString())}</p>` +
+      form('revoke-git-key', hidden('keyId', k.id), `Cancel the git key for ${k.owner}/${k.repo}`)).join('') : '<p>No git keys right now.</p>'}<p><small>Issued by github_git_remote_setup for plain git clone/pull/push on this service's domain; each works for one repository and ends by itself.</small></p></div>` : '') +
     form('status', '', 'Show my accounts and check them with GitHub') +
     '<h2>1. Create the GitHub App for an account</h2><p>Private to that account. You will do this once for each account (your organization, and your personal account).</p>' +
     form('start-app', login + type, 'Prepare the GitHub App') +

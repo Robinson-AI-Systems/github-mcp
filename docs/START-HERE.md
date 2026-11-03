@@ -29,6 +29,7 @@ Notes:
 - Adding the connector from the phone app itself: unverified. The owner reported it worked on 2026-10-24 (comment in `src/brand/home-page.js:30`), but Claude's help article says it is not supported.
 - Use a full browser (Chrome, Safari), not an app's built-in browser, for the sign-in and setup pages.
 - Whole-repository downloads and uploads: the AI gets a one-time `git clone`/download command on `github.robinsonaisystems.com`, the same domain for every repository. If Claude's sandbox refuses it (host not allowed, a proxy 403, a DNS error), add `github.robinsonaisystems.com` once to the allowed domains in Claude's Capabilities / network access setting, then ask again. Nothing is lost.
+- Plain git (GIT-REMOTE-1): an AI with a shell can ask for `github_git_remote_setup`; it runs one setup command once, then uses normal `git clone https://github.robinsonaisystems.com/git/<owner>/<repo>.git`, `git pull` and `git push`. The key it stores works for that one repository, ends by itself (8 hours, at most 24) and never reveals your GitHub sign-in. Cancel any key at `/connection` (owner: the setup page). Same one domain to allow.
 - Disconnect or change permissions later at `/connection` (public sign-in only).
 
 ## For agents

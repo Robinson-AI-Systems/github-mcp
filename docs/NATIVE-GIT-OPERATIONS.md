@@ -247,6 +247,33 @@ keeps bodies out of the middleware. Commands never follow redirects.
   upload result's `direct_command` (the worker's own host).
 - `NATIVE_GIT_TRANSFER_RELAY=off` (protected setting) returns the worker-host addresses instead.
 
+## Git remote (GIT-REMOTE-1)
+
+[Card](pr-cards/GIT-REMOTE-1.md). `https://<PUBLIC_BASE_URL host>/git/<owner>/<repo>.git` is a normal git remote for
+any repository the connection can reach. `github_git_remote_setup` (owner, repo, `access` read|write, `hours` 1–24,
+default 8) returns `remote_url` and a one-time `command` (works once, within 10 minutes; the same on Linux and macOS)
+that exchanges a code for a session key straight into `git credential approve`, with a store helper and `useHttpPath`
+for this origin only. The key is never printed; only its SHA-256 is stored (`git_remote_keys`, per tenant database).
+
+- **Requests.** Routing Middleware checks every Git request's key (hash, expiry, revocation, repository, access, live
+  connection) before forwarding; the worker gets only a signed claim on `/v1/remote/*`. No key → 401 with a Basic
+  challenge. Every check and broker step is a row in `git_remote_uses`.
+- **Fetch.** The worker refreshes its per-connection bare mirror (`.remotes/<id>/mirror.git`) from GitHub with a
+  credential the broker (`/api/git-remote?op=broker`) mints for that request (short-lived repository App token when
+  available), then serves upload-pack. A first copy of a big repository that takes over 90 s answers 503 "run again in
+  a minute" while it continues. Mirrors idle 48 h are removed.
+- **Push.** Objects wait in Git's quarantine while the worker's own pre-receive hook runs: broker (guard gates per ref
+  as `github_git_workspace_run push`, change-log row `github_git_remote_push`, credential with "Act as me" attribution),
+  content protection on every new object, one `--atomic` push to GitHub leased on what the client saw (GitHub decides
+  branch rules, protected branches and force pushes), read-back, outcome recorded. Only then does git get "ok".
+  Refusals arrive as `remote:` lines with a next step; GitHub's own words are marked as repository text.
+- **Size.** 100 MiB per push. Measured locally: 60 MiB push ≈ 9 s, its clone ≈ 2 s through the edge stand-in. Through
+  Vercel's proxy a single push above about 20 MB may be cut off (a git push cannot be chunked); use
+  `github_git_workspace_upload` (chunked) for huge binary payloads. Fetches stream.
+- **Cancel.** My connection (tenant) or the setup page (owner's own connection) lists live keys with a cancel button;
+  the next git request is refused. Disconnecting the app ends its keys.
+- **Worker.** Capability `git_remote: "v1"`; no new setting. Not served by dedicated (single-workspace) brokers.
+
 ## Branch switching and parallel agents
 
 Switch with `operation:"switch", options:{branch:"topic"}` after creating the branch (`name`/`ref` are accepted aliases;

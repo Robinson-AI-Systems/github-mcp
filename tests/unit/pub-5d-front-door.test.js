@@ -75,3 +75,11 @@ it('SINGLE-DOMAIN-1: the home page tells people the one domain to allow for whol
  expect(html).toMatch(/add <b>mcp\.example\.test<\/b> once to your AI's network allowlist/);
  expect(html).toContain('Capabilities / network access allowed-domains');
 });
+
+it('GIT-REMOTE-1: the home page explains plain git on the same domain, with the key limits and where to cancel', () => {
+ const html = renderHome('https://mcp.example.test');
+ expect(html).toContain('id="plain-git"');
+ expect(html).toContain('git clone https://mcp.example.test/git/&lt;owner&gt;/&lt;repository&gt;.git');
+ expect(html).toMatch(/ends by itself \(after 8 hours unless you ask for up to 24\)/);
+ expect(html).toContain('<a href="/connection">My connection</a>');
+});

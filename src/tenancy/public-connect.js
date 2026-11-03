@@ -521,7 +521,11 @@ export function createPublicConnect({ env = process.env, fetchImpl = fetch, root
     ))).flat();
     // PUB-5 B: "used today: 312 of 5,000" (numbers only; a counting problem just hides the line).
     const usage = await createPublicUsage(rootSql(), usageLimits).usedToday(tenantId).catch(() => null);
-    return { handle, signedInAs, accounts, places, connections, usage, marketplaceAccountId:marketplace?.accountId ?? null, offers: offers ?? [], timeZone: (await db.getSetting(ZONE_SETTING)) ?? 'UTC',
+    // GIT-REMOTE-1: live git remote session keys (never the key; hashes stay in the database).
+    const names = new Map(connections.map((c) => [c.clientId, c.name]));
+    const gitKeys = (await db.listGitRemoteKeys({ limit: 50 }).catch(() => [])).map((k) => ({ id: k.id, repo: `${k.owner}/${k.repo}`, access: k.access,
+      app: names.get(k.connection) ?? 'An app', expiresAt: k.expires_at, lastUsedAt: k.last_used_at ?? null, uses: Number(k.uses ?? 0), ready: !!k.exchanged_at }));
+    return { handle, signedInAs, accounts, places, connections, usage, gitKeys, marketplaceAccountId:marketplace?.accountId ?? null, offers: offers ?? [], timeZone: (await db.getSetting(ZONE_SETTING)) ?? 'UTC',
       master: master ? { added: true, expiresAt: master.expires_at ?? null, unlocks: masterUnlocks(master.scopes ?? []), actAs } : { added: false, unlocks: [] }, fine, notice,
       pairing, pairingGrants: pairingGrants.map(c=>({clientId:c.client_id,name:c.client_name??'An app'})),devices };
   }
@@ -529,11 +533,11 @@ export function createPublicConnect({ env = process.env, fetchImpl = fetch, root
   async function manageAction({ handle, action, value }) {
     active();
     if (!STATE.test(String(handle ?? '')) ||
-        !['refresh', 'read_only', 'allow_changes', 'time_zone', 'disconnect', 'add', 'master', 'fine', 'fine_recheck', 'fine_remove', 'add_place', 'place_changes', 'remove_place', 'act_as_me', 'rule_override', 'begin_pair', 'approve_pair', 'revoke_pair','probe_pair','canary_pair'].includes(action)) throw refused('r33');
+        !['refresh', 'read_only', 'allow_changes', 'time_zone', 'disconnect', 'add', 'master', 'fine', 'fine_recheck', 'fine_remove', 'add_place', 'place_changes', 'remove_place', 'act_as_me', 'rule_override', 'begin_pair', 'approve_pair', 'revoke_pair','probe_pair','canary_pair','revoke_git_key'].includes(action)) throw refused('r33');
     const flow = await directory().consumePublicFlow(sha(handle), 'god');
     if (!flow || flow.purpose !== 'manage' || !flow.tenantId || !flow.identityId || !flow.accountLogin) throw refused('r34');
     const { db, dir, tenant } = await scopeOf(flow);
-    if (await dir.marketplaceBinding(flow.tenantId) && !['refresh','read_only','allow_changes','time_zone','disconnect'].includes(action)) throw refused('marketplace-action');
+    if (await dir.marketplaceBinding(flow.tenantId) && !['refresh','read_only','allow_changes','time_zone','disconnect','revoke_git_key'].includes(action)) throw refused('marketplace-action');
     const view = (notice,pairing=null) => manageView({ tenantId: flow.tenantId, identityId: flow.identityId, signedInAs: flow.accountLogin, offers: flow.offers, db, notice, pairing });
     // The user just authenticated with GitHub to reach this one-use management handle.
     // Never accept a device origin or secret here as an assistant tool argument.
@@ -565,6 +569,12 @@ export function createPublicConnect({ env = process.env, fetchImpl = fetch, root
       }
       const revoked=await hosts.revoke(value);
       return {manage:await view(revoked.cleanupConfirmed?'Enrollment revoked. No runtime had been admitted.':'Enrollment revoked. Runtime termination is pending independent device evidence.')};
+    }
+    if (action === 'revoke_git_key') {
+      // GIT-REMOTE-1: stops one git remote session key at once (the next git request is refused).
+      if (!/^[a-f0-9]{32}$/.test(String(value ?? ''))) throw refused('git-key');
+      const revoked = await db.revokeGitRemoteKey(String(value));
+      return { manage: await view(revoked ? `Cancelled the git key for ${revoked.owner}/${revoked.repo}. Git commands using it stop working now.` : 'That git key had already ended.') };
     }
     if (action === 'read_only') {
       const n = await db.setConnectionsReadOnly(true);

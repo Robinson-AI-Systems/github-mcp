@@ -46,7 +46,7 @@ export async function startFakeGithubGit({ owner = 'example-org', repo = 'hello'
  gitIn(seed, 'push', '-q', 'origin', 'main:refs/heads/protected');
  // GitHub's own branch protection, as GitHub reports it.
  await mkdir(join(bare, 'hooks'), { recursive: true });
- await writeFile(join(bare, 'hooks', 'pre-receive'), '#!/bin/sh\nwhile read old new ref; do if [ "$ref" = "refs/heads/protected" ]; then echo "error: GH006: Protected branch update failed for refs/heads/protected." >&2; echo "error: Changes must be made through a pull request." >&2; exit 1; fi; done\nexit 0\n');
+ await writeFile(join(bare, 'hooks', 'pre-receive'), '#!/bin/sh\nwhile read old new ref; do if [ "$ref" = "refs/heads/protected" ]; then echo "error: GH006: Protected branch update failed for refs/heads/protected." >&2; echo "error: Changes must be made through a pull request." >&2; printf "error: \\033[2Jrule text from the repository\\n" >&2; exit 1; fi; done\nexit 0\n');
  await chmod(join(bare, 'hooks', 'pre-receive'), 0o755);
  const backend = join(gitIn(root, '--exec-path'), 'git-http-backend');
  const seen = [];

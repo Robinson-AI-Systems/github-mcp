@@ -130,7 +130,15 @@ export function createSetupHandlers({ db, credentials, oneTimeStore, env = proce
         await db.getConnectorOAuthReadiness(),{mcpUrl:`${expectedOrigin}/api/mcp`});
       return page(200, { accounts, oauthReadiness, connections: (await db.listUpgradeableConnections()).filter((c) => c.kind === 'connector').map((c) => ({
         id: c.client_id, name: c.client_name || 'Custom MCP login', mode: c.mode, profile: c.profile, accounts: c.accounts
-      })), productionNames: await productionNames(db), protectedList: await protectedList(db), spendLimits: await spendView(), ownPeopleExtra: await extraOwnPeople(db), publicUsage: await publicUsage(), publicInvites: await publicInvites() });
+      })), productionNames: await productionNames(db), protectedList: await protectedList(db), spendLimits: await spendView(), ownPeopleExtra: await extraOwnPeople(db), publicUsage: await publicUsage(), publicInvites: await publicInvites(), gitKeys: await db.listGitRemoteKeys({ limit: 50 }).catch(() => []) });
+    }
+    if (action === 'revoke-git-key') {
+      // GIT-REMOTE-1: the owner cancels one of their git remote session keys; the next git request is refused.
+      const keyId = String(p.keyId || '');
+      if (!/^[a-f0-9]{32}$/.test(keyId)) return page(400, { result: 'Choose a git key from the list.' });
+      const revoked = await db.revokeGitRemoteKey(keyId);
+      if (revoked) await db.recordChange({ account: revoked.owner, repo: `${revoked.owner}/${revoked.repo}`, mode: 'setup', tool: 'setup_revoke_git_key', target: keyId, summary: `Cancelled the git remote key for ${revoked.owner}/${revoked.repo}`, confirmed: true, production: false }).catch(() => {});
+      return page(revoked ? 200 : 404, { result: revoked ? `Cancelled the git key for ${revoked.owner}/${revoked.repo}. Git commands using it stop working now.` : 'That git key had already ended.' });
     }
     if (action === 'reveal') {
       if (!isProduction()) return page(403, { blocked: NOT_PRODUCTION });

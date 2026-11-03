@@ -3,6 +3,10 @@
 // These are the checks that used to need Chris's phone.
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 vi.mock('@neondatabase/serverless', async () => { const h = await import('./harness.js'); return { neon: () => h.fakeNeon() }; });
+// GIT-REMOTE-1: this harness cannot mint App installation tokens (its App key is a fake), so the git remote's
+// GitHub repository check answers for the person's own repository here; unit tests cover the real check.
+vi.mock('../../src/native-git/client.js', async (importOriginal) => ({ ...await importOriginal(),
+  authorizeNativeRepo: async (_ctx, owner, repo) => ({ full_name: `${owner}/${repo}`, default_branch: 'main', permissions: { pull: true, push: true } }) }));
 import { randomBytes } from 'node:crypto';
 import { PROFILES, ORIGIN, appFinishes, appStartsSignIn, browserFor, mcpTool, startWorld } from './setup.js';
 
@@ -369,6 +373,39 @@ describe('My connection', () => {
     const gone = await world.call({ method: 'POST', path: '/api/mcp', headers: { authorization: 'Bearer ' + tokens.access_token,
       accept: 'application/json, text/event-stream', 'content-type': 'application/json' }, body: { jsonrpc: '2.0', id: 1, method: 'tools/list' } });
     expect(gone.status).toBe(401);
+    await b.context.close();
+  });
+
+  it('GIT-REMOTE-1: My connection lists git remote keys (fits a phone) and cancels one at once', async () => {
+    const b = await open(PROFILES[0], { cookies: false });
+    if (!b) return;
+    const p = person({ authorized: true });
+    const { tokens } = await connect(b.page, { appName: 'Claude' });
+    // The native Git worker answers its capabilities; nothing else of it is needed to issue a key.
+    const saved = { url: process.env.NATIVE_GIT_WORKER_URL, key: process.env.NATIVE_GIT_WORKER_KEY }, realFetch = globalThis.fetch;
+    process.env.NATIVE_GIT_WORKER_URL = 'https://native-worker.example.test/'; process.env.NATIVE_GIT_WORKER_KEY = 'FAKE-browser-git-remote-worker-key-0123456789';
+    globalThis.fetch = async (url, init) => String(url).startsWith('https://native-worker.example.test/')
+      ? new Response(JSON.stringify({ ready: true, git_remote: 'v1' }), { headers: { 'content-type': 'application/json' } }) : realFetch(url, init);
+    let issued;
+    try { issued = (await mcpTool(world, tokens.access_token, 'github_git_remote_setup', { owner: p.login, repo: 'notes', access: 'write' })).content; }
+    finally { globalThis.fetch = realFetch; for (const [k, v] of [['NATIVE_GIT_WORKER_URL', saved.url], ['NATIVE_GIT_WORKER_KEY', saved.key]]) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } }
+    expect(issued, JSON.stringify(issued)).toMatchObject({ status: 'applied', result: { owner: p.login, repo: 'notes', access: 'write', state: 'awaiting_setup' } });
+    await b.page.goto(ORIGIN + '/connection');
+    await b.page.click('#manage-sign-in');
+    await b.page.waitForSelector('#git-keys');
+    const listed = await b.page.textContent('#git-keys');
+    expect(listed).toContain(p.login + '/notes'); expect(listed).toContain('read and push'); expect(listed).toContain('waiting for setup');
+    expect(listed).not.toMatch(/rg[kc]_/);
+    await fitsScreen(b.page);
+    await b.page.click('#revoke-git-key-' + issued.result.key_id);
+    await b.page.waitForSelector('.notice');
+    expect(await b.page.textContent('.notice')).toContain('Cancelled the git key for ' + p.login + '/notes');
+    expect(await b.page.textContent('main')).toContain('No git keys right now.');
+    await fitsScreen(b.page);
+    // The one-time setup code no longer works: the key was cancelled before it was ever set up.
+    const code = /code=(rgc_[a-f0-9]{32}_[A-Za-z0-9_-]{43})/.exec(issued.result.command)[1];
+    const answer = await world.call({ method: 'POST', path: '/git-remote/exchange', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: 'code=' + code });
+    expect(answer.status).toBe(410);
     await b.context.close();
   });
 

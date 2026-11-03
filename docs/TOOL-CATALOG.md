@@ -124,7 +124,7 @@ Agent-facing runtime operations through the existing search/describe/call contra
 | `github_playground_workspace` | Provision (optional `size` small/medium/large), attach, resume, privately preview or dispose the exact owned allocation with independent readback | P | N | I | B,O,Op | F | PLAY-1 |
 | `github_playground_run` | One command at a branch/tag/SHA in a fresh right-sized runtime: open, provision, run, return exit code and log tail, dispose; resumable by requestKey | P·Prod* | N | I | B,O,Op | F | FLEET-2 |
 
-## Files, commits and git data (`github_content_*, github_commit_*, github_git_*`) — 27
+## Files, commits and git data (`github_content_*, github_commit_*, github_git_*`) — 28
 
 Card(s): D-2.
 
@@ -138,6 +138,7 @@ Card(s): D-2.
 | `github_git_workspace_upload` | Bulk files into a workspace (worker or attached runtime): begin returns a one-time URL on this service's own domain (no GitHub credential, first use within 10 minutes) with a resumable chunked `command` (4 MiB requests via split/curl, size and SHA-256 checked at finish; git mode sends a git bundle) and a `single_command` (`git push` / `curl --upload-file` with `X-Content-SHA256`), plus a labelled worker-host fallback; apply fast-forwards or extracts after safety and secret checks; archive apply also takes `deletePaths` and `mirror`. Compact list | P | N | I | B,O,Op | F | GIT-UPLOAD-1 |
 | `github_git_workspace_download` | Whole workspace at once (worker or attached runtime): a one-time, 10-minute `git clone` URL (branches/tags or one ref) or `curl` .tar.gz of a ref or the uncommitted worktree, on this service's own domain (no GitHub credential). Compact list | P | N | I | B,O,Op | F | GIT-DOWNLOAD-1 |
 | `github_repo_download` | Whole repository in one call: reuses the open workspace of that repository (or clones a Git-only one) and returns a one-time `git clone` or `curl` .tar.gz command on this service's own domain; `state: opening` while a large clone runs. Compact list | P | N | I | B,O,Op | F | SINGLE-DOMAIN-1 |
+| `github_git_remote_setup` | Plain `git clone` / `pull` / `push` on this service's own domain (`https://<origin>/git/<owner>/<repo>.git`) for any repository the connection reaches: returns a one-time, 10-minute setup command that swaps a code for a session key straight into git's credential store for that one address (never printed). Key: stored as a hash, one repository, read or write, 8 h default / 24 h max, revocable on My connection and the setup page, every use logged. Pushes run the native push's guard gates, content protection, change log (`github_git_remote_push`) and an atomic leased push to GitHub; refusals are git `remote:` lines. Compact list | P | N | I | B,O,Op | F | GIT-REMOTE-1 |
 | `github_repo_change` | One call: write/delete files (or apply an upload) on a new or existing branch, commit, push with a lease and readback, optionally open the PR through `github_workflow_open_pr`; `expectedHead`/`allowMoved`; the same call again resumes and never commits twice. Compact list | P·Prod* | N | I | B,O,Op | F | NATIVE-ERGO-1 |
 | `github_content_get` | A file or directory at any ref; compact text by default (a cut-short file says plainly how to read it whole with `fullText`, up to 1 MB, or by `startLine`/`endLine` windows of up to 500 lines returned whole with a `next_start_line` cursor), byte-exact base64 via `byteOffset`/`byteLength` (up to 32 KiB per explicit call) and a retained handle for overflow | — | F | I | B,Op | R | D-2 built #30 |
 | `github_content_protection_check` | Explain matching rules and locations without values; provide a safe false-positive report and exact local-Git retrieval guidance | — | N | I | B,O,Op | R | PAR-2 |
@@ -935,7 +936,7 @@ Metered actions with no published per-use price (larger runners, Copilot agent a
 
 ## Totals
 
-**Totals:** 511 tools: 505 hand-built + 6 universal (`github_api_*`, `github_graphql_*`), plus guided settings for every
+**Totals:** 512 tools: 506 hand-built + 6 universal (`github_api_*`, `github_graphql_*`), plus guided settings for every
 dashboard-only owner setting. By profile (lowest profile that has the tool): read_only 161, everyday adds 85
 (everyday lists 246), full adds 118 (full lists 406; `github_tenant_remove` only on the owner's own direct connection, so everyone else sees 403). In compact mode (`docs/designs/BATCH-C.md`) an agent
 loads only about 25 tools up front (meta-tools, whoami, universal search, workflows) and reaches the rest through
@@ -945,7 +946,7 @@ loads only about 25 tools up front (meta-tools, whoami, universal search, workfl
 | --- | --- |
 | Server about itself | 27 |
 | Repositories | 22 |
-| Files, commits and git data | 27 |
+| Files, commits and git data | 28 |
 | Branches and tags | 9 |
 | Pull requests | 15 |
 | Reviews and review threads | 10 |
@@ -988,7 +989,7 @@ loads only about 25 tools up front (meta-tools, whoami, universal search, workfl
 | Code quality and GitHub help | 4 |
 | Robinson Playground commands | 5 |
 | CAP-6 gated families: merge queue, Copilot coding agent, feature check | 5 |
-| **Total** | **511** |
+| **Total** | **512** |
 
 <!-- #108: experimental RTC HTTPS reader bridges only server/meta read tools using existing guarded dispatch; RTC 1 certification is not claimed. -->
 
@@ -1079,6 +1080,8 @@ Close/attach robustness (2026-11-01): close readback retries a briefly busy work
 Chunked uploads (2026-11-02, CHUNK-UPLOAD-1): `github_git_workspace_upload` begin (and `github_repo_change` upload) return a resumable chunked `command` when the worker reports `upload_chunks: "chunks-v1"` (and a runtime ingress reports `upload_chunks: "v1"`): `PUT <url>/chunk?offset=N` (≤8 MiB), `GET <url>/status` (present ranges), `POST <url>/finish?size=N&sha256=H`; `single_command` keeps the one request. A refused apply no longer corrupts the next one. `github_check_wait` answers `no_ci` for a repository that runs no checks. See [native operations](NATIVE-GIT-OPERATIONS.md#chunked-resumable-uploads-chunk-upload-1).
 
 Upload essentials (2026-11-01): `github_git_workspace_upload` begin/apply results carry a small always-visible `progress` (the one-time command; the apply summary) so compact clients can use the feature.
+
+Git remote (2026-11-02, GIT-REMOTE-1): `github_git_remote_setup` (owner, repo, `access` read|write, optional `hours`) returns `remote_url`, a one-time setup `command` (curl to `/git-remote/exchange`, piped into `git credential approve` with a store helper and `useHttpPath` scoped to this origin only), `then` (`git clone`), `push_note`, `if_blocked` and `revoke`. Routing Middleware (`/git/:path*`) checks the HTTP Basic session key (hash, expiry, revocation, repository, access, live connection) before forwarding to the worker's `/v1/remote/*` with a signed claim only; the worker serves a per-connection mirror refreshed from GitHub through the broker (`/api/git-remote?op=broker`), and pushes land in Git's quarantine behind the worker's own pre-receive hook. Change-log rows use tool `github_git_remote_push`; uses are in `git_remote_uses`. See [native operations](NATIVE-GIT-OPERATIONS.md#git-remote-git-remote-1).
 
 Single domain (2026-11-02, SINGLE-DOMAIN-1): one-time transfer URLs use `https://<PUBLIC_BASE_URL host>/v1/transfer/…`; Routing Middleware (`middleware.js`) checks the HMAC-bound route and the capability, forwards only transfer headers, and rewrites to the configured worker or a configured-ingress runtime broker (never a host from the request). Workspaces attached to a Playground runtime download/upload from the runtime's copy (runtime image with the new ingress required; older runtimes and own-computer runtimes get a plain fallback). Every transfer result and its `progress` carry `if_blocked`: add that one domain to the AI's network allowlist once (for Claude: the Capabilities / network access allowed-domains setting). `NATIVE_GIT_TRANSFER_RELAY=off` restores worker-host URLs. `github_repo_download`, `github_git_workspace_download` and `github_git_workspace_upload` are in the compact list (budget 6,000 tokens).
 
