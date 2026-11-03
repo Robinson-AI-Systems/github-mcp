@@ -145,6 +145,6 @@ pins the worker key). No new secret, no table, no GitHub API version, permission
 
 Builds on GIT-REMOTE-1/-2 (same keys, exchange, broker, hook, mirror and claim purpose; Routing Middleware's check moved
 into `src/git-remote/authorize.js` unchanged; `src/git-remote/wire.js` holds the parsing both doors share and is copied
-into the worker image). New: worker route set on a second port, worker identity file, root settings
+into the worker image and the coding-workspace image, which packages the worker as the dedicated broker). New: worker route set on a second port, worker identity file, root settings
 `git_remote.direct_worker` and `git_remote.push_limit`, broker phase `renew`, report accepted up to 24 h after its claim
 expired (it only closes a change-log row), claim version 2.

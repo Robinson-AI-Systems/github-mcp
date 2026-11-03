@@ -19,7 +19,8 @@
 - **Release needs:** control plane (daily release); worker redeploy with the new environment values; owner steps (DNS
   record, Dokploy domain on port 3001 with HTTPS, Traefik read timeout, Vercel `GIT_DIRECT_ORIGIN`) in
   [GO-LIVE-CHECKLIST](../GO-LIVE-CHECKLIST.md) and [OWNER-CHECKLIST](../OWNER-CHECKLIST.md). No secret, no table.
-- **Branch/PR:** `ai/claude/git-direct` (see the PR for number, head SHA and CI).
+- **Branch/PR:** `ai/claude/git-direct`, PR #556 (see the PR for head SHA and CI). The coding-workspace (dedicated broker)
+  image also packages the worker, so it now copies `src/git-remote/wire.js` too (its image check caught it).
 - **Next (live acceptance after the owner steps):** setup on `robinson-ai-scratch/upload-probe` (write); clone through
   `remote_url`; push ~100 MB and ~1 GB of scratch data; confirm on GitHub; the same key on `fallback_url`; cancel the key
   and see the next fetch refused on the direct host.
