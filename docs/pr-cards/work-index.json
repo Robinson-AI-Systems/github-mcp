@@ -3259,7 +3259,7 @@
       "design": "docs/pr-cards/DOOR-DB-1.md",
       "dependencies": [],
       "card": "docs/pr-cards/DOOR-DB-1.md",
-      "status": "IN_PROGRESS",
+      "status": "MERGED",
       "migration": "none",
       "budget": 400,
       "units": [
