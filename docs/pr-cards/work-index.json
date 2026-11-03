@@ -3087,7 +3087,7 @@
       "design": "docs/pr-cards/BRAND-1.md",
       "dependencies": [],
       "card": "docs/pr-cards/BRAND-1.md",
-      "status": "IN_PROGRESS",
+      "status": "MERGED",
       "migration": "none",
       "budget": 100,
       "units": [
@@ -3095,7 +3095,9 @@
       ],
       "readiness": "READY",
       "ownerInputs": [],
-      "pr": []
+      "pr": [
+        554
+      ]
     }
   ],
   "gatewayBoundary": {
