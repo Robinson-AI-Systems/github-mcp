@@ -13,6 +13,7 @@
 // never reused: those answers are fast, so a host the owner resumes takes work again at once.
 import { callNativeWorker } from './client.js';
 import { configuredHosts, applyPoolSetting } from './pool-config.js';
+import { hostAllowed, ownerCaller } from './pool-audience.js';
 import { rootAllocationDb } from '../playground/index.js';
 
 export const POOL_SETTING = 'native_git.worker_pool';
@@ -79,16 +80,20 @@ export function noteOpened(ctx, id) {
  if (hit?.cap && Number.isSafeInteger(hit.cap.active_workspaces)) hit.cap = { ...hit.cap, active_workspaces: hit.cap.active_workspaces + 1 };
 }
 
-/** Every host's state for github_server_status: names and states only, never an address. */
+/**
+ * Every host's state for github_server_status: names, audience and states only, never an address. WORKER-POOL-2: a
+ * non-owner caller sees an owner-only host by name and audience only (state `owner_only`; it is not asked).
+ */
 export async function poolStatus(ctx, { call = callNativeWorker } = {}) {
  const hosts = await poolHosts(ctx);
  const states = await Promise.all(hosts.map(async h => {
+  if (!hostAllowed(ctx, h)) return { name: h.name, role: h.role, audience: h.audience, state: 'owner_only', active_workspaces: null, max_workspaces: null };
   const cap = h.enabled ? await hostCapabilities(ctx, h, { call, refresh: true }) : null;
   const judged = judgeHost(h, cap);
   const state = cap?.draining ? 'draining' : judged.state;
-  return { name: h.name, role: h.role, state, ...(judged.reason ? { reason: judged.reason } : {}), active_workspaces: judged.active, max_workspaces: judged.max };
+  return { name: h.name, role: h.role, audience: h.audience, state, ...(judged.reason ? { reason: judged.reason } : {}), active_workspaces: judged.active, max_workspaces: judged.max };
  }));
- return Object.assign(states, { invalid: configuredHosts(ctx.env).invalid === true });
+ return Object.assign(states, { invalid: configuredHosts(ctx.env).invalid === true, owner: ownerCaller(ctx) });
 }
 
 const BUSY = 'All workspace hosts are busy or paused; try again in a minute. No operation was started (nothing was cloned).';
@@ -111,10 +116,13 @@ export function poolRefusal(tried, { download = false } = {}) {
  * this open definitely (no operation started); `needs(capabilities)` adds a feature the host must report;
  * `workspace: false` (the git remote) does not require resource-based admission, only no explicit refusal.
  * Returns the host (with the capabilities it answered); throws the plain refusal when none can take it.
+ * WORKER-POOL-2: an owner-only host is never considered for a non-owner caller (not asked, not listed in the refusal),
+ * so with no shared host available the caller gets the same plain retryable refusal, never the owner's machine.
  */
 export async function placeWorkspace(ctx, { download = false, exclude = [], call = callNativeWorker, needs = null, workspace = true } = {}) {
- const hosts = await poolHosts(ctx);
- if (!hosts.length) throw Object.assign(new TypeError('Native Git worker is not configured. Set NATIVE_GIT_WORKER_URL (docs/NATIVE-GIT-OPERATIONS.md). Existing GitHub API tools remain available.'), { safeMessage: true, safeCode: 'native_worker_unconfigured', noOperationStarted: true });
+ const all = await poolHosts(ctx);
+ const hosts = all.filter(h => hostAllowed(ctx, h));
+ if (!all.length) throw Object.assign(new TypeError('Native Git worker is not configured. Set NATIVE_GIT_WORKER_URL (docs/NATIVE-GIT-OPERATIONS.md). Existing GitHub API tools remain available.'), { safeMessage: true, safeCode: 'native_worker_unconfigured', noOperationStarted: true });
  const tried = [];
  for (const host of hosts) {
   if (exclude.includes(host.id)) { tried.push({ name: host.name, state: 'busy' }); continue; }

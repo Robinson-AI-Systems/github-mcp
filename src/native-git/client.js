@@ -3,6 +3,7 @@ import { transportFetch } from '../fleet/relay.js';
 import { createHash } from 'node:crypto';
 import { githubFor, credentialFor, requestKey } from '../github/client.js';
 import { WORKER_PROTOCOL, nativeWorkerRoute, workerUrl } from './protocol.js';
+import { routeJobFor, hostByOrigin, hostAllowed, noteStray } from './pool-audience.js';
 import { signNativeWorkerBody } from './signing.js';
 import { redactExcerpt } from '../github/content-protection.js';
 import { explainGithubError } from '../tools/errors.js';
@@ -57,7 +58,14 @@ export async function callNativeWorker(ctx, { binding, action, workspace_id, ope
  // without sliding the lease; an explicit renewLease:false inspect stays metadata-only.
  const renewLease = renewRequested ?? action !== 'inspect';
  if (action === 'inspect' && renewRequested === undefined) options = { ...(options ?? {}), includeRepository: true };
- const url = nativeWorkerRoute(ctx.env, job);
+ // WORKER-POOL-2: an unpinned call from a non-owner never goes to an owner-only host; a pinned one keeps its host
+ // (nothing breaks) and is counted when it is a non-owner's on an owner-only host.
+ const routed = routeJobFor(ctx, job);
+ const url = nativeWorkerRoute(ctx.env, routed);
+ if (job && routed === job && !job.brokerOrigin && ctx.connection?.profile !== undefined) {
+  const pinnedHost = hostByOrigin(ctx.env, new URL(url).origin);
+  if (pinnedHost && !hostAllowed(ctx, pinnedHost)) noteStray(pinnedHost, action);
+ }
  if(ctx.env?.NATIVE_GIT_WORKER_DRAINING==='true'&&url===workerUrl(ctx.env))throw Object.assign(new TypeError('The native Git worker is temporarily draining for an update. No worker request was sent; existing files are retained. Retry after maintenance completes.'),{safeMessage:true,safeCode:'native_worker_maintenance',safeRetryable:true,status:503});
  const scannerPolicy=binding?await loadScannerPolicy(ctx.db,binding.owner,binding.repo):null;
  let credential;

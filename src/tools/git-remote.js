@@ -18,6 +18,8 @@ import { workerUrl, workerKey } from '../native-git/protocol.js';
 import { nativeWorkerPublicKey } from '../native-git/signing.js';
 import { blockedNote, fitDigest } from '../native-git/relay.js';
 import { placeWorkspace, forgetHost } from '../native-git/pool.js';
+import { configuredHosts } from '../native-git/pool-config.js';
+import { hostAllowed } from '../native-git/pool-audience.js';
 import { publicOrigin } from '../core/http.js';
 import { rootAllocationDb } from '../playground/index.js';
 import { CODE_TTL_MS, indexKey, keyLifetime, newExchangeCode, sha256 } from '../git-remote/keys.js';
@@ -108,7 +110,9 @@ async function readyCheck(c, a) {
  const direct = directFrom(configured, control, cap.git_direct);
  // GIT-DIRECT-2: named here but not (or not this one) served by the worker: the applied setup configures it.
  const pending = configured && !direct ? { origin: configured, control, supported: cap.git_direct_configure === 'v1' } : null;
- const away = host.role !== 'primary' && directOrigin(c.env) ? `The primary worker is not taking new work just now, so this key uses the ${host.name} host through this service's own domain (no direct git host).` : null;
+ // WORKER-POOL-2: a caller who may not use the primary (owner-only) is simply on this service's domain: no note that
+ // would name the owner's machine, and never its direct address.
+ const away = host.role !== 'primary' && directOrigin(c.env) && hostAllowed(c, configuredHosts(c.env).find(h => h.role === 'primary')) ? `The primary worker is not taking new work just now, so this key uses the ${host.name} host through this service's own domain (no direct git host).` : null;
  const repo = await authorizeNativeRepo(c, a.owner ?? c.connection.default_account, a.repo);
  const [owner, name] = String(repo.full_name).split('/');
  const access = a.access ?? 'read';

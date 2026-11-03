@@ -297,6 +297,10 @@ Chris's go-ahead and a design for the two-step flow.
   switch a host off without a release.
 - **Direct git host per pool host.** `GIT_DIRECT_ORIGIN` belongs to the primary; git remote keys placed on another host use
   this service's domain (pushes up to about 25 MB). Per-host direct origins would need one pinned direct-host key per host.
+- **Chris's own passes and Hub (RTC) calls on his PC (from WORKER-POOL-2).** "Only my work on my PC" is enforced by
+  counting only his direct connector as the owner; service passes (even his own) and RTC/HTTPS door calls go to Dokploy,
+  because a pass can be handed to someone else. If Chris wants his own agents' passes or Hub calls on the PC too, a pass
+  would need an issuer-set "owner's own" flag (never widened by migration).
 
 ## 2026-11-03 — Content protection follow-ups (from PUSH-FIXTURE-1, not built; need Chris's say-so)
 

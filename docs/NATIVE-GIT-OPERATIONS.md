@@ -447,7 +447,7 @@ and spill to the next one when it is busy, paused or offline. Agents call the sa
 |---|---|
 | `NATIVE_GIT_WORKER_URL` | The primary host (name `primary`, priority 10). Unchanged. |
 | `NATIVE_GIT_PREVIOUS_WORKER_URL` | The previous host (name `previous`, priority 90). Still routes its old workspaces and now also takes new work when the hosts before it cannot. |
-| `NATIVE_GIT_WORKER_POOL` | Optional JSON list `[{"name":"workshop","origin":"https://<host>","priority":50,"maxWorkspaces":4,"enabled":true}]`. `name`: 1–32 of `a-z 0-9 -`. `priority`: 0–1000, **lower is tried first** (default 50). `maxWorkspaces`: 1–1000 (default: resources only). An entry whose `origin` is the primary's or previous host's only renames it or sets its priority, limit or `enabled`. Invalid entries are skipped and reported by `github_server_status`. At most 16 hosts. |
+| `NATIVE_GIT_WORKER_POOL` | Optional JSON list `[{"name":"workshop","origin":"https://<host>","priority":50,"maxWorkspaces":4,"enabled":true,"audience":"shared"}]` (`audience`: WORKER-POOL-2, below). `name`: 1–32 of `a-z 0-9 -`. `priority`: 0–1000, **lower is tried first** (default 50). `maxWorkspaces`: 1–1000 (default: resources only). An entry whose `origin` is the primary's or previous host's only renames it or sets its priority, limit or `enabled`. Invalid entries are skipped and reported by `github_server_status`. At most 16 hosts. |
 
 On each worker host, optionally set `NATIVE_GIT_MAX_WORKSPACES` (1–1000): the worker reports it in its signed
 capabilities with `active_workspaces`, and refuses a new clone over it with `no_operation_started` (the control plane then
@@ -479,6 +479,17 @@ uses this service's own domain and says so. Keys made before the pool use the pr
 
 **Visibility:** `github_server_status` (health) lists each host by name with its state (`available`, `paused`, `busy`,
 `full`, `update_required`, `unavailable`, `disabled`, `draining`) and workspace counts, never an address.
+
+**Audience (WORKER-POOL-2):** each host is `owner` (only the service owner's own connections: the operator's direct
+connector on this service's own database) or `shared` (anyone). Set it with `"audience": "owner"` or `"shared"` on the
+host's `NATIVE_GIT_WORKER_POOL` entry (an entry for the primary's or previous host's origin sets theirs); the stored
+setting cannot change it. Default: the primary is `owner` whenever another configured host is `shared`; every other host,
+and a primary alone, is `shared`. A non-owner (public-connect or tenant person, Marketplace connection, service pass,
+RTC/HTTPS door call) is never placed on, probed on or given the address of an `owner` host; with no `shared` host
+available they get the plain retryable refusal. Workspaces and git remote keys already pinned to a host keep it; a
+non-owner one on an `owner` host is served, counted and logged (`[worker-pool] non-owner request served on owner-only
+host`). The direct git host (the primary's) refuses a key recorded on another host. `github_server_status` shows each
+host's `audience`; a non-owner sees an `owner` host by name and audience only (state `owner_only`).
 
 **Add a host:** deploy `workers/native-git` there with persistent storage and the same control-plane public key
 (`/api/native-git-key`, or the same shared `NATIVE_GIT_WORKER_KEY`), check it from outside as below, then add an entry to

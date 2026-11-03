@@ -14,6 +14,15 @@
 //   NATIVE_GIT_WORKER_POOL          optional JSON list: [{"name":"workshop","origin":"https://…","priority":50,
 //                                   "maxWorkspaces":4,"enabled":true}]; an entry whose origin is the primary's or the
 //                                   previous host's only renames it or sets its priority, limit or enabled flag.
+//                                   WORKER-POOL-2: optional "audience": "owner" | "shared" (see below).
+//
+// WORKER-POOL-2 (owner decision 2026-11-03, "Only my work on my PC"): each host has an audience. `owner` hosts serve
+// only the service owner's own connections; `shared` hosts serve anyone. The audience comes only from protected
+// configuration (the "audience" field above), never from the stored setting. Default without any audience set: the
+// primary host (NATIVE_GIT_WORKER_URL, Chris's PC) is `owner` whenever another host is `shared`; every other host is
+// `shared`. A one-host pool stays `shared` (otherwise nobody else could use native Git at all), unless it says
+// "audience": "owner" explicitly. Who may use which host: src/native-git/pool-audience.js (control plane only; this
+// file is also copied into the worker images and imports nothing outside src/native-git).
 //
 // Lower priority numbers are tried first. A workspace is pinned for life to the host it was opened on by the
 // host id below (the same 32-hex origin hash every existing workspace already stores), so a pool host stays
@@ -24,6 +33,7 @@ export const MAX_POOL_HOSTS = 16;
 export const HOST_NAME = /^[a-z0-9][a-z0-9-]{0,31}$/;
 const DEFAULT_PRIORITY = Object.freeze({ primary: 10, previous: 90, pool: 50 });
 const PRIORITY_MAX = 1000, LIMIT_MAX = 1000;
+export const AUDIENCES = Object.freeze(['owner', 'shared']);
 
 /** The compact, non-secret id a workspace stores to stay pinned to its host (unchanged since PC-WORKER-1). */
 export const hostId = origin => createHash('sha256').update(origin).digest('hex').slice(0, 32);
@@ -49,15 +59,16 @@ function poolList(env) {
   const ok = item && typeof item === 'object' && HOST_NAME.test(item.name ?? '') && origin
    && (item.priority === undefined || intIn(item.priority, 0, PRIORITY_MAX))
    && (item.maxWorkspaces === undefined || item.maxWorkspaces === null || intIn(item.maxWorkspaces, 1, LIMIT_MAX))
-   && (item.enabled === undefined || typeof item.enabled === 'boolean');
+   && (item.enabled === undefined || typeof item.enabled === 'boolean')
+   && (item.audience === undefined || AUDIENCES.includes(item.audience));
   if (!ok) { invalid = true; continue; }
-  entries.push({ name: item.name, origin, priority: item.priority, maxWorkspaces: item.maxWorkspaces ?? null, enabled: item.enabled });
+  entries.push({ name: item.name, origin, priority: item.priority, maxWorkspaces: item.maxWorkspaces ?? null, enabled: item.enabled, audience: item.audience });
  }
  return { entries, invalid };
 }
 
 /**
- * Every configured worker host, preferred first: [{ id, name, origin, priority, maxWorkspaces, enabled, role }].
+ * Every configured worker host, preferred first: [{ id, name, origin, priority, maxWorkspaces, enabled, role, audience }].
  * An invalid NATIVE_GIT_WORKER_POOL entry is skipped (reported as `invalid`), never guessed at; the primary and
  * previous hosts always keep working from their own settings.
  */
@@ -65,7 +76,7 @@ export function configuredHosts(env) {
  const hosts = [];
  const add = (origin, role, name) => {
   if (!origin || hosts.some(h => h.origin === origin)) return;
-  hosts.push({ id: hostId(origin), name, origin, priority: DEFAULT_PRIORITY[role], maxWorkspaces: null, enabled: true, role, order: hosts.length });
+  hosts.push({ id: hostId(origin), name, origin, priority: DEFAULT_PRIORITY[role], maxWorkspaces: null, enabled: true, role, audience: undefined, order: hosts.length });
  };
  add(workerOriginOf(env?.NATIVE_GIT_WORKER_URL), 'primary', 'primary');
  add(workerOriginOf(env?.NATIVE_GIT_PREVIOUS_WORKER_URL), 'previous', 'previous');
@@ -78,7 +89,11 @@ export function configuredHosts(env) {
   if (entry.priority !== undefined) host.priority = entry.priority;
   if (entry.maxWorkspaces !== null) host.maxWorkspaces = entry.maxWorkspaces;
   if (entry.enabled !== undefined) host.enabled = entry.enabled;
+  if (entry.audience !== undefined) host.audience = entry.audience;
  }
+ // WORKER-POOL-2 default: the primary is owner-only whenever another host serves everyone.
+ const sharedOther = hosts.some(h => h.role !== 'primary' && (h.audience ?? 'shared') === 'shared');
+ for (const h of hosts) if (h.audience === undefined) h.audience = h.role === 'primary' && sharedOther ? 'owner' : 'shared';
  const sorted = hosts.sort((a, b) => a.priority - b.priority || a.order - b.order).map(({ order: _order, ...h }) => Object.freeze(h));
  return Object.freeze(Object.assign(sorted, { invalid }));
 }
@@ -99,3 +114,4 @@ export function applyPoolSetting(hosts, stored) {
  });
  return Object.freeze(out.map((h, order) => ({ h, order })).sort((a, b) => a.h.priority - b.h.priority || a.order - b.order).map(x => x.h));
 }
+

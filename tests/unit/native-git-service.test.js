@@ -418,6 +418,8 @@ it('does not clear an existing mutation lock when idle renewal is refused',async
 });
 
 it.each([false,true])('keeps real Git bytes, replay and disposal on their own worker across cutover (pre-pin=%s)',async legacy=>{
+ // WORKER-POOL-2: after the cutover two hosts are configured and the new primary is owner-only; this is the owner.
+ w.connection=Object.freeze({...w.connection,operator:true});
  const args={owner:'example-org',repo:'hello',requestKey:'old-host-clone'};
  const old=parse(await invoke('github_git_workspace_open',args)).result.workspace_id;
  const row=await w.db.getJob(old,nativeConnection(w.ctx));
