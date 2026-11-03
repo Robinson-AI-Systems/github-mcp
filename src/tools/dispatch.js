@@ -11,6 +11,7 @@ import { randomBytes } from 'node:crypto';
 import { validateArgs } from '../core/validate.js';
 import {RetainedResultNotFound} from '../core/result-errors.js';
 import { capText, describeBody, fitToBudget, projectFields } from '../core/result-rules.js';
+import { textContinueCall } from '../core/continuation.js';
 import { deduplicateLargeEnvelope, KEEP_WHOLE } from '../core/result-envelope.js';
 import { summarize } from './summaries.js';
 import { isToolVisible } from '../core/registry.js';
@@ -46,6 +47,16 @@ function projected(value, fields) {
  * The reply for a read tool (C-1): summary/fields, shaping, then the text caps and the size budget. Anything cut or left out is kept
  * whole behind a handle (24 hours, this connection only) that `github_get_result` pages through.
  */
+// The exact next call for a cut result, so an agent never has to work it out: the next page of a list, and the
+// call that reads whatever a long text (a log, a body) left out.
+function continueFor(handle, fit, cut) {
+  const out = {};
+  if (fit?.fitted && fit.of !== null && fit.shown > 0 && fit.shown < fit.of)
+    out.continue = { tool: 'github_get_result', arguments: { handle, page: 2, pageSize: fit.shown }, remaining: fit.of - fit.shown };
+  const text = cut?.length ? textContinueCall(handle, cut[0]) : null;
+  if (text) out.text_continue = text;
+  return out;
+}
 async function readReply({ tool, args, raw, connection, db, mode }) {
   const shaped = shapeResult(summarized(tool, args, raw), { mode });
   const { value, unknown } = Array.isArray(args?.fields) && args.fields.length && tool.area !== 'server'
@@ -63,8 +74,10 @@ async function readReply({ tool, args, raw, connection, db, mode }) {
   // A requested line window (up to 500 lines) may be as large as a byte window; it is the caller's explicit choice.
   const lineWindow = tool.name === 'github_content_get' && (args?.startLine !== undefined || args?.endLine !== undefined) && typeof value?.content === 'string' && Buffer.byteLength(value.content) <= 48000;
   const boundedWindow=tool.boundedWindow===true&&Buffer.byteLength(JSON.stringify(value))<=8192;
-  const capped = boundedWindow?{value,cut:[]}:capText(value, fullFile ? { textLimit: 1_000_000 } : (byteWindow || lineWindow) ? { textLimit: 48000 } : {});
-  const fit = fitToBudget(capped.value, fullFile ? 2_000_000 : (byteWindow || lineWindow) ? 48000 : undefined);
+  // A requested line window of a kept text field (github_get_result startLine/endLine) is the caller's explicit choice too.
+  const keptLines = tool.name === 'github_get_result' && (args?.startLine !== undefined || args?.endLine !== undefined) && typeof value?.text === 'string' && Buffer.byteLength(value.text) <= 48000;
+  const capped = boundedWindow?{value,cut:[]}:capText(value, fullFile ? { textLimit: 1_000_000 } : (byteWindow || lineWindow || keptLines) ? { textLimit: 48000 } : {});
+  const fit = fitToBudget(capped.value, fullFile ? 2_000_000 : (byteWindow || lineWindow || keptLines) ? 48000 : undefined);
   const notes = {};
   if (unknown.length) notes.unknown_fields = unknown.slice(0, 10);
   if (capped.cut.length || fit.fitted) {
@@ -89,12 +102,13 @@ async function readReply({ tool, args, raw, connection, db, mode }) {
     }
     notes.kept_result = kept
       ? { handle, what: describeBody(value), ...(fit.fitted && fit.of !== null ? { shown: fit.shown, of: fit.of, ...(fit.shown > 0 ? { next: { page: 2, pageSize: fit.shown } } : {}) } : {}), ...(capped.cut.length ? { text_cut: capped.cut.slice(0, 10) } : {}),
-        how: 'Call github_get_result with this handle to read the rest (page, fields, offset). It is kept for 24 hours.' }
+        how: 'Call github_get_result with this handle to read the rest (page, fields, offset, or startLine/endLine for a long text). It is kept for 24 hours.',
+        ...continueFor(handle, fit, capped.cut) }
       : { note: 'This result was cut and could not be kept. Ask for less (fields, a smaller page) or a narrower search.', ...(capped.cut.length ? { text_cut: capped.cut.slice(0, 10) } : {}) };
   }
   const body = Array.isArray(fit.value) ? { items: fit.value, ...notes } : isObject(fit.value) ? { ...fit.value, ...notes } : fit.value;
   // An explicitly requested whole file or window stays whole in structuredContent too: many clients show only that channel.
-  return { content: [{ type: 'text', text: JSON.stringify(body) }], structuredContent: body, ...(fullFile || lineWindow || byteWindow ? { [KEEP_WHOLE]: true } : {}) };
+  return { content: [{ type: 'text', text: JSON.stringify(body) }], structuredContent: body, ...(fullFile || lineWindow || byteWindow || keptLines ? { [KEEP_WHOLE]: true } : {}) };
 }
 
 // PUB-5 B: a real change is one that was applied, or whose result is not certain (unconfirmed, uncertain). Previews and refusals are not.

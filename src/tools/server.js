@@ -14,6 +14,7 @@ import { spendStatus } from './spend-guard.js';
 import { oneTimeStore } from '../dev/forwarders.js';
 import { validateGrant } from '../rtc/pass-scope.js';
 import { RULES, capText, fitToBudget, listKeyOf, pageOfBody, projectFields } from '../core/result-rules.js';
+import { findText, lineWindow, nextPageCall, nextWindowCall, textContinueCall } from '../core/continuation.js';
 import { MASTER_AREAS, masterUnlocks } from '../github/master-areas.js';
 import { actAsFor, loginFor } from '../github/act-as.js';
 
@@ -235,6 +236,20 @@ async function getResult(args, ctx) {
       next_byte_offset: offset + bytes.length, complete: offset + bytes.length === original.length,
       expires: when(row.expires_at) };
   }
+  // A line window reads one long text field (a build log, a long body) in whole lines, from any line: the way to reach
+  // lines a cut result left out. It fits one reply, and says exactly which call reads the next window.
+  if (args.startLine !== undefined || args.endLine !== undefined) {
+    if (args.page !== undefined || args.pageSize !== undefined || args.offset !== undefined)
+      throw new TypeError('A line window cannot be combined with pages or a character offset.');
+    if (args.fields?.length !== 1) throw new TypeError('A line window reads one long text field: pass its name in fields, for example ["log"].');
+    if (args.startLine !== undefined && args.endLine !== undefined && args.endLine < args.startLine) throw new TypeError('endLine must not be before startLine.');
+    const field = args.fields[0];
+    const text = findText(row.body, field);
+    if (text === null) throw new TypeError(`No text field named "${field}" is kept in this result.`);
+    const window = lineWindow(text, { startLine: args.startLine ?? 1, endLine: args.endLine });
+    const next = nextWindowCall(args.handle, field, window, { endLine: args.endLine });
+    return { handle: args.handle, what: row.summary, field, ...window, ...(next ? { next_window: next } : {}), expires: when(row.expires_at) };
+  }
   // A page that would not fit gets a smaller page size (halved until it does); page_info says which size was used, so paging stays consistent.
   const keep = { alsoKeep: ['untrusted', 'page_info'], twins: ['_local', '_display'] };
   const listName = listKeyOf(row.body) === '' ? 'items' : listKeyOf(row.body);
@@ -256,8 +271,15 @@ async function getResult(args, ctx) {
   let { capped, unknown, fit } = build(size);
   while (size > 1 && fit.fitted) { size = Math.ceil(size / 2); ({ capped, unknown, fit } = build(size)); }
   const reduced = size !== wanted;
+  // Every page says whether it was the last and, if not, the exact call for the next one (plus the call for any cut text).
+  const info = typeof fit.value === 'object' && fit.value !== null ? fit.value.page_info : null;
+  const nextPage = nextPageCall(args.handle, info, { fields: args.fields, pageSize: size });
+  const textNext = capped.cut.length ? textContinueCall(args.handle, capped.cut[0], { offset: args.offset ?? 0 }) : null;
   return {
     handle: args.handle, what: row.summary, ...(typeof fit.value === 'object' && !Array.isArray(fit.value) ? fit.value : { value: fit.value }),
+    ...(info && Number.isInteger(info.page) && Number.isInteger(info.pages) ? { complete: info.page >= info.pages && !fit.fitted && !capped.cut.length } : {}),
+    ...(nextPage ? { continue: nextPage } : {}),
+    ...(textNext ? { text_continue: textNext } : {}),
     ...(unknown.length ? { unknown_fields: unknown.slice(0, 10) } : {}),
     ...(capped.cut.length ? { text_cut: capped.cut.slice(0, 10), more_text: 'Ask for that one field with fields and add the number of characters shown to offset.' } : {}),
     ...(reduced ? { note: `Pages were made smaller to fit (${size} per page). Keep using pageSize ${size} to continue.` } : {}),
@@ -330,13 +352,15 @@ const readTools = [
   {
     name: 'github_get_result',
     area: 'server', audience: ['B', 'O', 'Op'], compact: true, byteWindow: true,
-    description: 'Resume a kept result by page, fields, text offset or exact file bytes. Retained 24 hours.',
+    description: 'Resume a kept result by page, fields, text offset, line window or exact file bytes. Retained 24 hours.',
     inputSchema: {
       type: 'object',
       properties: {
         handle: { type: 'string', pattern: '^res_[A-Za-z0-9_-]{20,64}$', maxLength: 70 }, page: { type: 'integer', minimum: 1, maximum: 100000 },
         pageSize: { type: 'integer', minimum: 1, maximum: RULES.maxPageSize, description: `Default ${RULES.pageSize}` }, fields: FIELDS,
         offset: { type: 'integer', minimum: 0, maximum: 100000000, description: 'Start long text this many characters in' },
+        startLine: { type: 'integer', minimum: 1, description: 'First line of one long text field (give its name in fields), for lines a cut result left out' },
+        endLine: { type: 'integer', minimum: 1, description: 'Last line (up to 500 lines a call)' },
         byteOffset: { type: 'integer', minimum: 0, description: 'Exact byte offset of retained file or repository ZIP (zero-based)' },
         byteLength: { type: 'integer', minimum: 1, maximum: 32768, description: 'Exact bytes to read, up to 32768 (default 32768)' }
       },

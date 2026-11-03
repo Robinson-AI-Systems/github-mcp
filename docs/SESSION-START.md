@@ -62,6 +62,10 @@ npm run test:db / test:shapes -- tests/shapes/<area>.test.js / test:browser   # 
 npm run session:prepare -- --publish                                # predicts merge conflicts before the CI cycle
 ```
 
+In a native Git workspace `origin` is a single-use address and cannot fetch again. Get a fresh read-only one with
+`github_repo_download` (mode `git`) and pass it as `SESSION_FETCH_URL=<address> npm run session:prepare -- --publish`;
+it must be `https` without a username or password and is never printed or saved.
+
 Then push once and open the PR (PLAYBOOK Step 6). Shared local sandbox: cap Vitest workers (`--maxWorkers=2`), at most two
 full suites at once. File changes invalidate affected proof; do not rerun unchanged passing checks.
 

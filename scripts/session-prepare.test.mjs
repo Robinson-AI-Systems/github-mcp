@@ -4,7 +4,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { resourceProfile, prepare, publication } from './session-prepare.mjs';
+import { resourceProfile, prepare, publication, fetchSource } from './session-prepare.mjs';
 
 test('resource report honors container limits and never assumes host RAM is available', () => {
   const mib = 1048576;
@@ -49,4 +49,25 @@ test('real concurrent-main conflict is found before publication without changing
     wgit('merge','origin/main','-s','ours','-m','fixture reconciliation');
     assert.equal(publication(work).status,'PUBLICATION_BASE_CURRENT');
   } finally {rmSync(root,{recursive:true,force:true});}
+});
+
+test('read-only fetch bridge: a fresh https address is used for the fetch and never printed', () => {
+  const secretPath='https://git.example.invalid/v1/transfer/d/w/ONETIMETOKEN123/abc';
+  const calls=[];
+  const git=args=>{calls.push(args);return {status:0,stdout:args[0]==='status'?'':'abc'};};
+  publication('.',git,secretPath);
+  assert.deepEqual(calls[0],['-c','http.followRedirects=false','fetch',secretPath,'+main:refs/remotes/origin/main']);
+  // A failed bridge fetch explains what to do without echoing the address.
+  assert.throws(()=>publication('.',()=>({status:128,stderr:secretPath}),secretPath),
+    error=>!error.message.includes('ONETIMETOKEN123')&&/github_repo_download/.test(error.message)&&/No fresh publication/.test(error.message));
+});
+test('read-only fetch bridge: only credential-free https addresses are accepted', () => {
+  assert.equal(fetchSource(undefined),null);
+  assert.equal(fetchSource(''),null);
+  assert.throws(()=>fetchSource('http://git.example.invalid/x'),/https/);
+  assert.throws(()=>fetchSource('https://user:pw@git.example.invalid/x'),error=>!/pw/.test(error.message)&&/without a username/.test(error.message));
+  assert.throws(()=>fetchSource('not a url'),error=>!/not a url/.test(error.message));
+});
+test('without a bridge address a failed origin fetch tells the agent how to get one', () => {
+  assert.throws(()=>publication('.',()=>({status:128}),undefined),/SESSION_FETCH_URL/);
 });

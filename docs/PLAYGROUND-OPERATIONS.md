@@ -164,7 +164,7 @@ requested → (waiting_resources) → creating → created → exposing → expo
           → attaching → attached → [execute/read/cancel] → cleanup_requested → stopped → deleting → disposed
 ```
 
-- **Who advances it:** an agent call (`github_playground_workspace` `provision`/`attach`/`resume`/`dispose`) or the
+- **Who advances it:** an agent call (`github_playground_workspace` `setup` — which chooses provision, replace, attach or resume itself — or `provision`/`attach`/`resume`/`dispose`) or the
   **project manager** — a tiny compose (`ras-pg-manager-…`, 0.1 CPU / 128 MiB) created automatically by the first
   provision, which POSTs `/api/playground/sweep` every 30 s with its derived sweep key. Each sweep handles up to 50 rows
   in a ~20 s budget. The manager holds only a cleanup/re-check capability; it cannot bypass authorization or read volumes.
