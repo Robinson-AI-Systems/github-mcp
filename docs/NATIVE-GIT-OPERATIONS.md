@@ -431,10 +431,59 @@ is created implicitly.
 
 Each new workspace stores a compact hash of the worker origin it was created on; the full origin never appears in tool
 arguments. Routing, in order: a Playground-attached workspace goes to its dedicated broker; a pinned workspace goes to
-whichever of `NATIVE_GIT_WORKER_URL` / `NATIVE_GIT_PREVIOUS_WORKER_URL` matches its pin; an unpinned legacy row uses the
-cutover time. Unknown or removed pins refuse **before** any credential or request — no silent cross-host retry or
-re-clone. **At most two shared worker origins are routable today** (current + previous). Retire an old host only after its
-workspaces finished or were migrated, with independent proof, counting jobs across every tenant schema.
+whichever configured pool host (below) matches its pin; an unpinned legacy row uses the cutover time. Unknown or removed
+pins refuse **before** any credential or request — no silent cross-host retry or re-clone. Retire an old host only after
+its workspaces finished or were migrated, with independent proof, counting jobs across every tenant schema.
+
+## Worker pool: more than one host (WORKER-POOL-1)
+
+Every execution site (Chris's PC, the Dokploy worker, later the Workshop machine or another enrolled computer) runs its
+own `workers/native-git` behind this one control plane. New workspaces go to the preferred host while it has headroom
+and spill to the next one when it is busy, paused or offline. Agents call the same tools; nothing changes for them.
+
+**Configure (protected Vercel settings, names only):**
+
+| Setting | Meaning |
+|---|---|
+| `NATIVE_GIT_WORKER_URL` | The primary host (name `primary`, priority 10). Unchanged. |
+| `NATIVE_GIT_PREVIOUS_WORKER_URL` | The previous host (name `previous`, priority 90). Still routes its old workspaces and now also takes new work when the hosts before it cannot. |
+| `NATIVE_GIT_WORKER_POOL` | Optional JSON list `[{"name":"workshop","origin":"https://<host>","priority":50,"maxWorkspaces":4,"enabled":true}]`. `name`: 1–32 of `a-z 0-9 -`. `priority`: 0–1000, **lower is tried first** (default 50). `maxWorkspaces`: 1–1000 (default: resources only). An entry whose `origin` is the primary's or previous host's only renames it or sets its priority, limit or `enabled`. Invalid entries are skipped and reported by `github_server_status`. At most 16 hosts. |
+
+On each worker host, optionally set `NATIVE_GIT_MAX_WORKSPACES` (1–1000): the worker reports it in its signed
+capabilities with `active_workspaces`, and refuses a new clone over it with `no_operation_started` (the control plane then
+tries the next host). The smaller of the worker's and the pool entry's limit applies.
+
+Host addresses come **only** from these protected settings, never from the database: a host receives signed leases and
+short-lived GitHub credentials. The stored owner setting `native_git.worker_pool` (`{"hosts":{"<name>":{"enabled":false,
+"priority":20,"maxWorkspaces":2}}}` in `server_settings`) can switch a configured host off for new work or change its
+priority or limit; it can never add an address. A disabled host keeps serving its existing workspaces.
+
+**Placement** (`github_git_workspace_open`, `github_repo_download`, `github_repo_change`, `github_playground_run`): hosts
+are asked in priority order; the first that is enabled, answers its signed capabilities, is not paused by its owner,
+admits new work by its measured resources and is under its limit is chosen and recorded in the workspace's job. Every
+later call (Git operations, uploads, downloads, Playground attach) goes to that host for life; there is no live
+migration. When none can take it, the open is refused before any clone: "All workspace hosts are busy or paused; try
+again in a minute. No operation was started" (retryable, with each host's state). A host that refuses at the moment of the
+clone (no operation started) is skipped for the next one; an uncertain clone is never re-run anywhere — inspect the same
+intent instead. A host that is off counts as unavailable until it answers again (its silence is remembered for 20 s);
+an available answer is reused for 20 s; a paused, busy or full answer is never reused, so a resumed host takes work at once.
+
+**Transfers:** one-time upload/download addresses on this service's domain keep the `w` (primary) and `p` (previous)
+routes; any other pool host is `h.<host id>` (the same id its workspaces store), resolved only against the protected
+settings, with the HMAC tag binding the destination origin.
+
+**Git remote:** a `github_git_remote_setup` key's mirror lives on the first available pool host that serves the git
+remote (the primary unless it is paused, busy, full or offline), recorded in the key's index; the key stays there for its
+life (at most 24 hours). The direct git host (`GIT_DIRECT_ORIGIN`) belongs to the primary; a key placed on another host
+uses this service's own domain and says so. Keys made before the pool use the primary.
+
+**Visibility:** `github_server_status` (health) lists each host by name with its state (`available`, `paused`, `busy`,
+`full`, `update_required`, `unavailable`, `disabled`, `draining`) and workspace counts, never an address.
+
+**Add a host:** deploy `workers/native-git` there with persistent storage and the same control-plane public key
+(`/api/native-git-key`, or the same shared `NATIVE_GIT_WORKER_KEY`), check it from outside as below, then add an entry to
+`NATIVE_GIT_WORKER_POOL` and release. To stop new work there, set `enabled` false (or pause it on the machine); remove the
+entry only after its workspaces are gone.
 
 Before sending credentials to a new host, verify from outside it: `curl --fail --show-error "$WORKER_ORIGIN/health"`
 (expect 200, protocol 3), then `github_git_workspace_read` operation `capabilities` and require `worker.ready=true`. A
