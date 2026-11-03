@@ -64,6 +64,17 @@ function isDocumentedFixture(value,rule){
  const skip=FIXTURE_PREFIX[rule];if(skip===undefined)return false;
  const payload=value.slice(skip);return payload.startsWith('FAKE')&&!OTHER_CREDENTIAL_PREFIX.test(payload.slice(4));
 }
+// PUSH-FIXTURE-2: under the same opt-in, a generic key/value match whose whole literal is an evident placeholder is test
+// text, not a credential. Evident means either (a) lowercase words joined by hyphens or underscores, at least one word being
+// a stop word below, no word longer than 20 characters and no run of more than 4 digits; or (b) the literal starts with the
+// word FAKE or fake and holds none of the credential prefixes above. Mixed-case random text never qualifies under (a).
+// Redaction and the scanner report never pass the option, so outputs still hide these values.
+const PLACEHOLDER_WORDS=new Set(['fake','fixture','example','dummy','placeholder','wrong','test','sample','changeme','redacted']);
+function isEvidentPlaceholder(literal){
+ if(/^(?:FAKE|fake)/.test(literal))return !OTHER_CREDENTIAL_PREFIX.test(literal);
+ if(!/^[a-z0-9]+(?:[-_][a-z0-9]+)*$/.test(literal)||/\d{5}/.test(literal))return false;
+ const words=literal.split(/[-_]/);return words.every(w=>w.length<=20)&&words.some(w=>PLACEHOLDER_WORDS.has(w));
+}
 function* credentialMatches(text,options={}) {
  const seen=text.length<=1000000?new Set():null,fixtures=allowsFixtures(options);
  function* remember(matches){for(const r of matches){seen?.add(`${r.index}:${r.length}`);yield r;}}
@@ -74,7 +85,7 @@ function* credentialMatches(text,options={}) {
   yield* remember([{index:m.index,length:m[0].length,rule:RULE_INFO[index][0],description:RULE_INFO[index][1]}]);
  }
  yield* remember(databaseMatches(text));yield* remember(openSecretMatches(text));
- for(const m of text.matchAll(GENERIC_ASSIGNMENT)){const value=assignedLiteral(text,m.index+m[0].length);if(value.length>=10&&!seen?.has(`${value.index}:${value.length}`)&&entropy(text.slice(value.index,value.index+value.length))>=3.5)yield {...value,rule:'generic-credential-assignment',description:'High-entropy literal assigned to an explicit credential key'};}
+ for(const m of text.matchAll(GENERIC_ASSIGNMENT)){const value=assignedLiteral(text,m.index+m[0].length),literal=text.slice(value.index,value.index+value.length);if(value.length>=10&&!seen?.has(`${value.index}:${value.length}`)&&entropy(literal)>=3.5&&!(fixtures&&isEvidentPlaceholder(literal)))yield {...value,rule:'generic-credential-assignment',description:'High-entropy literal assigned to an explicit credential key'};}
 }
 function reportMatches(text,matches,{maxFindings=30}={}) {
  const findings=[];let total=0;

@@ -3285,6 +3285,27 @@
       "ownerInputs": []
     },
     {
+      "id": "PUSH-FIXTURE-2",
+      "title": "Push and write gates accept evident placeholder words assigned to secret-named keys in file content; random values, argument checks, redaction and scanner reports unchanged",
+      "batch": "FIN",
+      "design": "docs/pr-cards/PUSH-FIXTURE-2.md",
+      "dependencies": [
+        "PUSH-FIXTURE-1"
+      ],
+      "card": "docs/pr-cards/PUSH-FIXTURE-2.md",
+      "status": "MERGED",
+      "migration": "none",
+      "budget": 300,
+      "units": [
+        "PUSH-FIXTURE-2"
+      ],
+      "readiness": "READY",
+      "ownerInputs": [],
+      "pr": [
+        569
+      ]
+    },
+    {
       "id": "BRAND-UNLEASHED-1",
       "title": "Rename every public surface to GitHub Unleashed by Robinson AI Systems, with disclaimer and Arctic accent",
       "batch": "FIN",
