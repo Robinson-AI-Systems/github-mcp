@@ -1,4 +1,4 @@
-# 2026-11-02 — github_server_status (SRV-STATUS-1)
+# 2026-11-02 — github_server_status (SRV-STATUS-1, PR #558)
 
 Owner request (20:48 MST): keep VER-1 `server_release` and add one compact tool for build version, deployment time,
 recent release notes, worker versions and health. Built `github_server_status` (compact list, every audience) in

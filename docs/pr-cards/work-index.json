@@ -3147,7 +3147,7 @@
         "VER-1"
       ],
       "card": "docs/pr-cards/SRV-STATUS-1.md",
-      "status": "IN_PROGRESS",
+      "status": "MERGED",
       "migration": "none",
       "budget": 600,
       "units": [
@@ -3155,7 +3155,9 @@
       ],
       "readiness": "READY",
       "ownerInputs": [],
-      "pr": []
+      "pr": [
+        558
+      ]
     }
   ],
   "gatewayBoundary": {
