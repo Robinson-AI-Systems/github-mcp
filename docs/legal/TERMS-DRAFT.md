@@ -2,7 +2,7 @@
 
 Effective: 2026-10-25. Approved by the owner.
 
-**1. Service and operator.** Robinson AI Systems operates Robinson GitHub MCP. The service lets a compatible assistant you choose access GitHub through permissions you authorize. We are independent of GitHub and your assistant provider; their services have separate terms.
+**1. Service and operator.** Robinson AI Systems operates GitHub Unleashed by Robinson AI Systems ("GitHub Unleashed"). The service lets a compatible assistant you choose access GitHub through permissions you authorize. We are independent of GitHub and your assistant provider; their services have separate terms.
 
 **2. Your authority and responsibility.** Connect only accounts you are authorized to use. You are responsible for instructions and permissions you give your assistant and for reviewing consequential actions. Tools provide previews, read-only options and confirmation controls, but these do not guarantee that an assistant's request is correct. Authorized operations may modify or delete GitHub resources and may cause provider charges. Keep appropriate backups and protect your credentials.
 

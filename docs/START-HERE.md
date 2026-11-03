@@ -1,6 +1,6 @@
 # Start here
 
-Robinson GitHub MCP lets your AI (Claude and others) work in your GitHub accounts. It is live at `https://github.robinsonaisystems.com`. Nothing here needs you to code.
+GitHub Unleashed by Robinson AI Systems lets your AI (Claude and others) work in your GitHub accounts. It is live at `https://github.robinsonaisystems.com`. Nothing here needs you to code.
 
 ## What to read
 

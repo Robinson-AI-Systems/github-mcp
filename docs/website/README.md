@@ -1,4 +1,4 @@
-# Website button for Robinson MCP for GitHub
+# Website button for GitHub Unleashed by Robinson AI Systems
 
 `connect-button.html` is one paragraph and one link button, with no scripts and no tracking. Paste it into the page on
 robinsonaisystems.com where the product should appear. The button opens the home page of the service, which shows the address

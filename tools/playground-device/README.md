@@ -1,6 +1,6 @@
 # Add your own computer or server to Robinson's Playground
 
-Anyone who signs in to Robinson GitHub MCP can let their AI run builds and tests on machines **they** own or administer —
+Anyone who signs in to GitHub Unleashed can let their AI run builds and tests on machines **they** own or administer —
 a desktop PC, a laptop, a VPS, a home server, a Dokploy or any other Docker host, machines on a private network or
 tailnet. Each machine only ever runs **your own** work, under your own connection. It only makes **outbound** HTTPS
 check-ins to the server, so it needs no tunnel, no public IP and no open port.

@@ -38,7 +38,7 @@ export async function handleGithub(action, req, res, { runtime, env = process.en
     return await handlers[name](req, res);
   } catch {
     res.setHeader('Cache-Control', 'no-store');
-    return res.status(503).json({ error: 'temporarily_unavailable', description: 'GitHub MCP is not configured or its database is unavailable' });
+    return res.status(503).json({ error: 'temporarily_unavailable', description: 'GitHub Unleashed is not configured or its database is unavailable' });
   }
 }
 

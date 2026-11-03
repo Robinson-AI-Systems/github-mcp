@@ -1,7 +1,7 @@
 import { redact } from './content-protection.js';
 import { isOwnerConnection } from '../core/authority.js';
 // GOD-6 "Act as me". With a master token added and the switch on, every GitHub call is made with the person's own token, so
-// GitHub records the person (not the Robinson GitHub MCP app). This module decides WHEN that happens (actAsFor), records who
+// GitHub records the person (not the GitHub Unleashed app). This module decides WHEN that happens (actAsFor), records who
 // acted (createActorLog), keeps branch rules from being skipped by accident (mustUseAppForBranch) and lets an owner or admin
 // skip them on purpose (overrideAllowed, OVERRIDE_ARGS). Every "me" fact is per person (their numeric GitHub id), never per
 // tenant: a tenant can hold several people. No token ever passes through here; only whether to use one.
@@ -88,7 +88,7 @@ export function actingAsText(summary, login) {
   if (summary.as === 'you') return login ? `${login} (you)` : 'you';
   if (summary.as === 'mixed') return login ? `${login} (you); some steps by the app` : 'you; some steps by the app';
   if (summary.viaUser) return login ? `${login} (you, through the app)` : 'you, through the app';
-  return 'Robinson GitHub MCP app';
+  return 'GitHub Unleashed app';
 }
 
 /** `{ acting_as, acting_as_note? }` for a result. Reads the person's login once if it was never saved. */

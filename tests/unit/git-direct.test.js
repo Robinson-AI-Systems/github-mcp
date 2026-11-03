@@ -138,7 +138,7 @@ describe('the direct git host', () => {
   const t = await world();
   const none = await direct(t, '/git/example-org/hello.git/info/refs?service=git-upload-pack');
   expect(none.status).toBe(401);
-  expect(none.headers['www-authenticate']).toBe('Basic realm="Robinson GitHub MCP git", charset="UTF-8"');
+  expect(none.headers['www-authenticate']).toBe('Basic realm="GitHub Unleashed git", charset="UTF-8"');
   expect(none.body).toMatch(/Sign-in needed: this git address uses a session key from github_git_remote_setup/);
   expect(t.r.api.authorize).toEqual([]); // no key: nothing asked
   for (const [path, method] of [['/v1/workspace', 'POST'], ['/v1/remote/info/refs?service=git-upload-pack', 'GET'], ['/git/example-org/hello.git/HEAD', 'GET'], ['/git/example-org/hello.git/info/refs?service=git-upload-pack&x=https://evil.example', 'GET']])

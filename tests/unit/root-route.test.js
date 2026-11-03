@@ -22,7 +22,7 @@ describe('public informational root route', () => {
     expect(result.headers['Cache-Control']).toBe('no-store');
     expect(result.headers['X-Content-Type-Options']).toBe('nosniff');
     expect(body).toMatchObject({
-      name: 'Robinson GitHub MCP', status: 'service-online',
+      name: 'GitHub Unleashed by Robinson AI Systems', status: 'service-online',
       connected_provider: 'not_assessed', custom_mcp_acceptance: 'not_assessed',
       source_sha_independently_verified: false,
       oauth: '/.well-known/oauth-authorization-server', endpoint: '/api/mcp'

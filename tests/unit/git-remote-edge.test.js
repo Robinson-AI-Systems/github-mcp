@@ -67,7 +67,7 @@ describe('Routing Middleware', () => {
    [await t.ask('/git/example-org/hello.git/info/refs?service=git-receive-pack'), 403, /read-only, so git push is refused/]];
   for (const [answer, status, text] of cases) {
    expect(answer.status).toBe(status); expect(await answer.text()).toMatch(text); expect(answer.headers.get('x-middleware-rewrite')).toBeNull();
-   if (status === 401) expect(answer.headers.get('www-authenticate')).toBe('Basic realm="Robinson GitHub MCP git", charset="UTF-8"');
+   if (status === 401) expect(answer.headers.get('www-authenticate')).toBe('Basic realm="GitHub Unleashed git", charset="UTF-8"');
   }
   await t.w.db.revokeConnection('client-1');
   const ended = await t.ask('/git/example-org/hello.git/info/refs?service=git-upload-pack');

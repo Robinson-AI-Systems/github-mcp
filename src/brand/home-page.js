@@ -8,10 +8,10 @@ import { MUSE_PUBLIC_CLIENT_ID } from '../tenancy/muse-client.js';
 export const HOME_CSP = "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'";
 export const SERVER_ADDRESS = (origin) => `${origin}/api/mcp`;
 
-const STYLE = BRAND_CSS + 'main{max-width:640px}.addr{display:block;background:var(--surface);border:1px solid var(--brand);border-radius:12px;padding:14px;margin:10px 0 18px;font:600 15px/1.4 ui-monospace,Menlo,Consolas,monospace;word-break:break-all;user-select:all}' +
+const STYLE = BRAND_CSS + 'main{max-width:640px}.addr{display:block;background:var(--surface);border:1px solid var(--accent);border-radius:12px;padding:14px;margin:10px 0 18px;font:600 15px/1.4 ui-monospace,Menlo,Consolas,monospace;word-break:break-all;user-select:all}' +
   'code{word-break:break-all}pre{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px;overflow-x:auto;white-space:pre-wrap;word-break:break-all;margin:8px 0 14px;font:14px/1.5 ui-monospace,Menlo,Consolas,monospace}' +
   'section{border-top:1px solid var(--border);padding-top:14px;margin-top:18px}h2{font:700 19px/1.3 Inter,-apple-system,sans-serif;margin:0 0 8px}ol{padding-left:22px;margin:0 0 12px}li{margin:4px 0}' +
-  'a.button{display:block;text-align:center;font:600 16px Inter,-apple-system,sans-serif;color:#fff;background:var(--grad);border-radius:50px;padding:13px 20px;text-decoration:none;margin:14px 0}ul.links{list-style:none;padding:0;display:flex;flex-wrap:wrap;gap:6px 18px}';
+  'a.button{display:block;text-align:center;font:600 16px Inter,-apple-system,sans-serif;color:var(--on-accent);background:var(--accent);border-radius:50px;padding:13px 20px;text-decoration:none;margin:14px 0}ul.links{list-style:none;padding:0;display:flex;flex-wrap:wrap;gap:6px 18px}';
 
 /** @param {string} origin the public https address of this service, no trailing slash */
 export function renderHome(origin = 'https://github.robinsonaisystems.com') {
@@ -23,7 +23,7 @@ export function renderHome(origin = 'https://github.robinsonaisystems.com') {
 <ul><li>Read and manage repositories, files, branches, pull requests, issues and Actions.</li>
 <li>Read-only mode prevents all changes. Sensitive changes involving production, access, notifications or spending require preview and confirmation; routine permitted changes may execute directly.</li>
 <li>Free. You can disconnect and delete your data at any time.</li></ul>
-<p><small>Not affiliated with or endorsed by GitHub.</small></p>
+<p><small>${h(BRAND.disclaimer)}</small></p>
 <section id="connect"><h2>Connect your AI app</h2><p>Paste this address into your AI app when it asks for a server or connector address:</p>
 <code class="addr" id="address">${address}</code>
 <!-- Steps below checked on 2026-10-24 against each client's official documentation:
@@ -53,7 +53,7 @@ export function renderHome(origin = 'https://github.robinsonaisystems.com') {
 <code class="addr" id="muse-client-id">${h(MUSE_PUBLIC_CLIENT_ID)}</code>
 <p><b>Client Secret: leave blank.</b> Then choose Add. Muse should open GitHub sign-in, where each person signs in to <em>their own GitHub account</em>, approves the App installation on their chosen repositories if needed, and approves Muse. The browser returns to Muse automatically. Never enter a GitHub password, access token, or the service owner's credentials in Muse.</p>
 <p>You can also ask Muse to create the connector for you:</p>
-<pre id="muse-connector-request">Create a custom connector named Robinson MCP for GitHub.
+<pre id="muse-connector-request">Create a custom connector named ${h(BRAND.product)}.
 Service: ${address}
 Protocol: remote Streamable HTTP MCP.
 Authentication: OAuth authorization code with S256 PKCE (public client, no secret).

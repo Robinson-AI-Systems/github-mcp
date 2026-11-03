@@ -121,7 +121,7 @@ describe('the git remote: setup, clone, pull and push with plain git', () => {
   // No key: 401 with a Basic challenge so git asks its credential helper, and a plain sentence.
   const none = await plainCurl('/git/example-org/hello.git/info/refs?service=git-upload-pack');
   expect(none.stdout).toMatch(/Sign-in needed: this git address uses a session key from github_git_remote_setup/);
-  expect(none.stdout).toMatch(/\n401 Basic realm="Robinson GitHub MCP git", charset="UTF-8"$/);
+  expect(none.stdout).toMatch(/\n401 Basic realm="GitHub Unleashed git", charset="UTF-8"$/);
   const anonymous = await t.git(t.work, 'clone', 'https://mcp.example.test/git/example-org/hello.git', 'anon');
   expect(anonymous.status).not.toBe(0);
   expect(t.r.seen).toEqual([]); // nothing reached the worker
@@ -191,7 +191,7 @@ describe('the git remote: setup, clone, pull and push with plain git', () => {
   expect((await t.git(repo, 'reset', '-q', '--hard', 'HEAD~1')).status).toBe(0);
   const gated = await t.git(repo, 'push', 'origin', 'HEAD:refs/heads/ok-branch', 'HEAD:refs/heads/release');
   expect(gated.status).not.toBe(0);
-  expect(gated.stderr).toMatch(/remote: Refused by the Robinson GitHub MCP before anything reached GitHub:/);
+  expect(gated.stderr).toMatch(/remote: Refused by GitHub Unleashed before anything reached GitHub:/);
   expect(gated.stderr).toMatch(/remote: release: refused by project ownership: "release" is managed by the release workflow\./);
   expect(gateCalls).toContainEqual({ name: 'github_git_workspace_run', operation: 'push', ref: 'ok-branch', production: expect.stringMatching(/push changes exact GitHub remote refs/) });
   // Nothing at all reached GitHub from the three refused pushes (atomic, scanned before sending).

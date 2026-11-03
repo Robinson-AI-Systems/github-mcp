@@ -12,7 +12,7 @@ import { createHash } from 'node:crypto';
 export const KEY_PREFIX = 'rgk_';
 export const CODE_PREFIX = 'rgc_';
 export const GIT_PREFIX = '/git/';
-export const GIT_REALM = 'Robinson GitHub MCP git';
+export const GIT_REALM = 'GitHub Unleashed git';
 const ID = /^[a-f0-9]{32}$/;
 const SECRET = /^[A-Za-z0-9_-]{43}$/;
 const PATH = /^\/git\/([A-Za-z0-9-]{1,39})\/([A-Za-z0-9_.-]{1,100})\/(info\/refs|git-upload-pack|git-receive-pack)$/;

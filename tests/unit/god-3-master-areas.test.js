@@ -19,7 +19,7 @@ describe('GOD-3 master areas', () => {
     for (const a of MASTER_AREAS) for (const t of a.tools) expect(names.has(t), t).toBe(true);
   });
   it('master link is unchanged without options and adds enterprise once when asked', () => {
-    const old = 'https://github.com/settings/tokens/new?description=' + encodeURIComponent('Robinson GitHub MCP master token') +
+    const old = 'https://github.com/settings/tokens/new?description=' + encodeURIComponent('GitHub Unleashed master token') +
       '&scopes=' + MASTER_SCOPES.map(encodeURIComponent).join(',');
     expect(masterTokenLink()).toBe(old);
     const link = masterTokenLink({ enterprise: true });

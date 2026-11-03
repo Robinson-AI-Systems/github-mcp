@@ -1,6 +1,6 @@
 import { registry } from '../src/tools/index.js';
 import { profileCounts } from '../src/core/registry.js';
-import { iconBytes, productMarkBytes } from '../src/brand/brand.js';
+import { BRAND, iconBytes, productMarkBytes } from '../src/brand/brand.js';
 import { HOME_CSP, renderHome } from '../src/brand/home-page.js';
 import { publicOrigin } from '../src/core/http.js';
 
@@ -10,7 +10,7 @@ export function publicInfo(buildSha = process.env.VERCEL_GIT_COMMIT_SHA) {
   const sourceSha = typeof buildSha === 'string' && /^[a-f0-9]{40}$/.test(buildSha)
     ? buildSha : null;
   return {
-    name: 'Robinson GitHub MCP', status: 'service-online',
+    name: BRAND.product, status: 'service-online',
     connected_provider: 'not_assessed', custom_mcp_acceptance: 'not_assessed',
     deployed_source_sha: sourceSha, source_sha_independently_verified: false,
     tools: registry.tools.length, tools_by_profile: profileCounts(registry),

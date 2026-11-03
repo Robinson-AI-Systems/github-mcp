@@ -2,6 +2,7 @@
 // and what a stored token means to the MCP endpoint. Plugs into the contract-generic handlers in src/core/.
 import { CONNECTION_FIELDS, CONNECTION_LISTINGS, CONNECTION_MODES, CONNECTION_PROFILES, connectionSettings } from '../db.js';
 import { escapeHtml } from '../core/http.js';
+import { disclaimerHtml } from '../brand/brand.js';
 
 /** Account checkboxes post as `acct:<login>=on`, so a plain form body (one value per name) can carry several accounts. */
 export const ACCOUNT_FIELD_PREFIX = 'acct:';
@@ -44,9 +45,9 @@ export function createGithubPolicy({ env = process.env } = {}) {
         ? '<small>Production is the default on this deployment; choose preview for a dry run.</small>'
         : '<small>This is a preview deployment: production mode is not available here.</small>';
       return '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
-        '<title>Connect Robinson GitHub MCP</title><style>body{font:16px system-ui,sans-serif;max-width:430px;margin:6vh auto;padding:20px}form{display:grid;gap:14px}' +
+        '<title>Connect GitHub Unleashed</title><style>body{font:16px system-ui,sans-serif;max-width:430px;margin:6vh auto;padding:20px}form{display:grid;gap:14px}' +
         'input,select,button{font:inherit;padding:10px}button{cursor:pointer}p{line-height:1.5}.row{display:flex;gap:8px;align-items:center}.row input{padding:0}small{opacity:.7}</style></head><body>' +
-        '<h1>Connect GitHub MCP</h1>' + (error ? `<p role="alert">${escapeHtml(error)}</p>` : '') + intro +
+        '<h1>Connect GitHub Unleashed by Robinson AI Systems</h1>' + (error ? `<p role="alert">${escapeHtml(error)}</p>` : '') + intro +
         `<form method="post">${hidden}` +
         `<fieldset><legend>GitHub accounts</legend>${rows}</fieldset>` +
         `<label>Default account<select name="default_account">${defaults}</select></label>` +
@@ -54,7 +55,7 @@ export function createGithubPolicy({ env = process.env } = {}) {
         `<label>Profile<select name="profile">${profiles}</select></label>${profileNote}` +
         `<label>Tool listing<select name="listing">${listings}</select></label>` +
         '<label>Administrator passphrase<input type="password" name="passphrase" required autocomplete="current-password"></label>' +
-        `<button type="submit"${accounts.length ? '' : ' disabled'}>Authorize this connection</button></form></body></html>`;
+        `<button type="submit"${accounts.length ? '' : ' disabled'}>Authorize this connection</button></form>` + disclaimerHtml() + '</body></html>';
     },
 
     /** The login's choices, checked against the real account list. Production needs the production deployment. */

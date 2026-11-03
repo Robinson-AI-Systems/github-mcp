@@ -253,7 +253,7 @@ describe('routes and home page', () => {
   it('serves a home page with the tool count and nothing secret', async () => {
     const res = await call(indexHandler, request('GET', {}));
     expect(res.statusCode).toBe(200);
-    expect(json(res)).toMatchObject({ name: 'Robinson GitHub MCP', tools: builtRegistry.tools.length, endpoint: '/api/mcp', oauth: '/.well-known/oauth-authorization-server' });
+    expect(json(res)).toMatchObject({ name: 'GitHub Unleashed by Robinson AI Systems', tools: builtRegistry.tools.length, endpoint: '/api/mcp', oauth: '/.well-known/oauth-authorization-server' });
     expect(res.headers['Cache-Control']).toBe('no-store');
   });
 });
