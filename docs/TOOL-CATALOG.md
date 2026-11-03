@@ -7,7 +7,7 @@
 
 **GIT-REMOTE-2 (2026-11-03):** the `github_git_remote_setup` command also sets git `http.<origin>.postBuffer` for this address, so pushes declare their length; live, pushes up to about 25 MB work through the domain (they all got 502 above ~4 MB without it).
 
-**GIT-DIRECT-1 (2026-11-02):** with a direct git host configured (`GIT_DIRECT_ORIGIN`, worker reporting `git_direct`), `github_git_remote_setup` returns `remote_url` on that host (pushes stream straight to the worker: up to the stored `git_remote.push_limit`, default 2 GiB; over GitHub's 2 GB they are sent on in parts) and `fallback_url` on the MCP domain; files over 100 MiB are refused with a Git LFS explanation. Unchanged otherwise.
+**GIT-DIRECT-1 (2026-11-02):** with a direct git host configured (`GIT_DIRECT_ORIGIN`, worker reporting `git_direct`), `github_git_remote_setup` returns `remote_url` on that host (pushes stream straight to the worker: up to the stored `git_remote.push_limit`, default 2 GiB; over GitHub's 2 GB they are sent on in parts) and `fallback_url` on the MCP domain; files over 100 MiB are refused with a Git LFS explanation. Unchanged otherwise. **GIT-DIRECT-2:** when only the MCP names the direct host, the first applied setup configures the worker (signed `direct_configure`) and then returns the direct URL; on failure `remote_url` stays on the MCP domain and `direct_note` says why.
 
 **CHECK-WAIT-2 (2026-11-03):** `github_check_wait` also answers `no_ci` (`reason: none_ran`) when workflows exist but no check suite ran on a commit older than 10 minutes and no check is required (for example manual-only workflows); a missing required check keeps it waiting. Empty, permanently queued suites that GitHub creates for installed apps are ignored.
 

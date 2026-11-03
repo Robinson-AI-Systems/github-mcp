@@ -286,6 +286,13 @@ there: about 25 MB per push at most). Until it is configured, everything works t
   domain; the command stores the key for both hosts only. The call also pins the worker's public signing key
   (root setting `git_remote.direct_worker`). The sandbox must allow the MCP domain (setup, fallback) and the direct
   domain; `*.<parent domain>` covers both only if that AI's allowlist accepts wildcards.
+- **Configured by the control plane (GIT-DIRECT-2, [card](pr-cards/GIT-DIRECT-2.md)).** With only the MCP's
+  `GIT_DIRECT_ORIGIN` set, the first applied setup sends the worker the signed `direct_configure` action
+  (`{ origin: GIT_DIRECT_ORIGIN, control: PUBLIC_BASE_URL origin }`, a write lease verified with the pinned control key).
+  The worker checks both origins (https, no credentials/path/query, different hosts), stores them in
+  `<storage>/.git-direct/config.json` (atomic, 0600), starts the listener on `GIT_DIRECT_PORT` at once and reads the file
+  again at boot. Worker environment values win when both are set. `{ origin: null }` turns a stored host off. Setup
+  then pins the key and returns the direct URL, or falls back to the MCP domain with `direct_note`.
 - **Every request is authorized by the control plane.** The worker hashes the HTTP Basic key and sends only its id and
   SHA-256, signed with its own Ed25519 key (`<storage>/.git-direct/identity.pem`, generated once), to
   `/api/git-remote?op=authorize` on `GIT_DIRECT_CONTROL_ORIGIN`. The control plane checks the signature (pinned key,
@@ -403,8 +410,8 @@ autoscaling pool.
 | `NATIVE_GIT_WORKER_KEY` | both | Legacy shared-key fixtures only |
 | `NATIVE_GIT_CONTROL_PUBLIC_KEY` | worker | Pinned MCP verification key |
 | `NATIVE_GIT_STORAGE_ROOT`, `PORT` (3000) | worker | Data root and port |
-| `GIT_DIRECT_ORIGIN` | both | GIT-DIRECT-1 direct git host, e.g. `https://git.<domain>` (https origin, no path). On the worker it turns the direct host on and is its only accepted host name; on the MCP it makes setup prefer it when the worker reports the same origin. Unset = off |
-| `GIT_DIRECT_CONTROL_ORIGIN` | worker | The MCP's own origin (`https://<PUBLIC_BASE_URL host>`), where the direct host asks `op=authorize`. Required with `GIT_DIRECT_ORIGIN` |
+| `GIT_DIRECT_ORIGIN` | both | GIT-DIRECT-1 direct git host, e.g. `https://git.<domain>` (https origin, no path). On the worker it turns the direct host on and is its only accepted host name (with `GIT_DIRECT_CONTROL_ORIGIN`; both win over the stored file); on the MCP it makes setup prefer it when the worker reports the same origin, and (GIT-DIRECT-2) configure a worker that does not yet serve it. Unset on both = off |
+| `GIT_DIRECT_CONTROL_ORIGIN` | worker | The MCP's own origin (`https://<PUBLIC_BASE_URL host>`), where the direct host asks `op=authorize`. Required with the worker's `GIT_DIRECT_ORIGIN`; not needed when the control plane configures the worker (GIT-DIRECT-2) |
 | `GIT_DIRECT_PORT` (3001) | worker | Port of the direct git host (the Dokploy domain points here) |
 | `SOURCE_COMMIT` (build argument) → `NATIVE_GIT_BUILD_COMMIT` | worker image | SRV-STATUS-1: the full live commit the image is built from; reported as `build_commit` in signed capabilities so `github_server_status` can warn when the worker is older than the control plane. Empty = not reported. Render's `RENDER_GIT_COMMIT` is used when set |
 | `NATIVE_GIT_CLONE_TIMEOUT_MS` (900000) | worker | Background clone watchdog, clamped to 45 s–60 min |
