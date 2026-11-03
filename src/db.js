@@ -40,8 +40,13 @@ export const SCHEMA_TABLES = Object.freeze([
   'dev_run_intents',
   'dev_repo_birth_labels',
   'dev_forwarders',
-  'dev_cleanup_executions'
+  'dev_cleanup_executions',
+  'git_remote_keys',
+  'git_remote_uses'
 ]);
+/** GIT-REMOTE-1: a git remote session key / exchange code names its row by this public id (never secret). */
+export const GIT_REMOTE_ID = /^[a-f0-9]{32}$/;
+const GIT_REMOTE_HASH = /^[a-f0-9]{64}$/;
 /** KEY-ROTATION: the three App secrets that can be replaced one at a time (the column is `<kind>_enc` in gh_apps). */
 export const APP_SECRET_KINDS = Object.freeze(['private_key', 'client_secret', 'webhook_secret']);
 export const RESULT_HANDLE = /^res_[A-Za-z0-9_-]{20,64}$/;
@@ -526,6 +531,94 @@ export function createDb(sql = productionSql()) {
         executor_id UUID NOT NULL,
         acquired_at TIMESTAMPTZ NOT NULL DEFAULT now()
       )`;
+      // GIT-REMOTE-1: per-connection git remote session keys. Only SHA-256 hashes of the one-time exchange code
+      // and of the session key are stored; the key itself exists only in the person's git credential store.
+      await sql`CREATE TABLE IF NOT EXISTS git_remote_keys (
+        id TEXT PRIMARY KEY,
+        connection TEXT NOT NULL,
+        owner TEXT NOT NULL,
+        repo TEXT NOT NULL,
+        access TEXT NOT NULL CHECK (access IN ('read','write')),
+        code_hash TEXT,
+        code_expires_at TIMESTAMPTZ NOT NULL,
+        key_hash TEXT,
+        exchanged_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        expires_at TIMESTAMPTZ NOT NULL,
+        revoked_at TIMESTAMPTZ,
+        last_used_at TIMESTAMPTZ,
+        uses INTEGER NOT NULL DEFAULT 0
+      )`;
+      await sql`CREATE INDEX IF NOT EXISTS git_remote_keys_connection ON git_remote_keys (connection, expires_at)`;
+      // Every use of a key (each Git request, each broker step); `nonce` makes a broker step single-use.
+      await sql`CREATE TABLE IF NOT EXISTS git_remote_uses (
+        id BIGSERIAL PRIMARY KEY,
+        key_id TEXT NOT NULL,
+        at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        service TEXT NOT NULL,
+        outcome TEXT NOT NULL,
+        detail TEXT,
+        nonce TEXT UNIQUE
+      )`;
+      await sql`CREATE INDEX IF NOT EXISTS git_remote_uses_key ON git_remote_uses (key_id, at)`;
+    },
+
+    // ---- GIT-REMOTE-1: git remote session keys (hashes only) and their use log. ----
+    /** A new key row awaiting its one-time exchange. */
+    async createGitRemoteKey({ id, connection, owner, repo, access, codeHash, codeExpiresAt, expiresAt }) {
+      if (!GIT_REMOTE_ID.test(id ?? '') || !GIT_REMOTE_HASH.test(codeHash ?? '') || typeof connection !== 'string' || !connection || typeof owner !== 'string' || !owner ||
+        typeof repo !== 'string' || !repo || !['read', 'write'].includes(access) || !(codeExpiresAt instanceof Date) || !(expiresAt instanceof Date)) throw new TypeError('Invalid git remote key.');
+      await sql`DELETE FROM git_remote_keys WHERE id IN (SELECT id FROM git_remote_keys WHERE expires_at < now() - interval '30 days' LIMIT 100)`;
+      const rows = await sql`INSERT INTO git_remote_keys (id, connection, owner, repo, access, code_hash, code_expires_at, expires_at)
+        VALUES (${id}, ${connection}, ${owner}, ${repo}, ${access}, ${codeHash}, ${codeExpiresAt.toISOString()}, ${expiresAt.toISOString()})
+        RETURNING id, connection, owner, repo, access, code_expires_at, exchanged_at, created_at, expires_at, revoked_at, last_used_at, uses`;
+      return rows[0];
+    },
+    /** The row including the key hash (for verification only; never returned by a tool or page). */
+    async getGitRemoteKey(id) {
+      if (!GIT_REMOTE_ID.test(id ?? '')) return null;
+      const rows = await sql`SELECT id, connection, owner, repo, access, key_hash, code_expires_at, exchanged_at, created_at, expires_at, revoked_at, last_used_at, uses
+        FROM git_remote_keys WHERE id = ${id}`;
+      return rows[0] ?? null;
+    },
+    /** Swaps a valid, unused, unexpired code for the key hash exactly once. Returns the row, or null. */
+    async exchangeGitRemoteCode({ id, codeHash, keyHash }) {
+      if (!GIT_REMOTE_ID.test(id ?? '') || !GIT_REMOTE_HASH.test(codeHash ?? '') || !GIT_REMOTE_HASH.test(keyHash ?? '')) return null;
+      const rows = await sql`UPDATE git_remote_keys SET key_hash = ${keyHash}, code_hash = NULL, exchanged_at = now()
+        WHERE id = ${id} AND code_hash = ${codeHash} AND exchanged_at IS NULL AND code_expires_at > now() AND expires_at > now() AND revoked_at IS NULL
+        RETURNING id, connection, owner, repo, access, exchanged_at, expires_at`;
+      return rows[0] ?? null;
+    },
+    /** Live keys (not revoked, not expired), newest first, optionally of one connection. No hashes. */
+    async listGitRemoteKeys({ connection = null, limit = 50 } = {}) {
+      if (!Number.isSafeInteger(limit) || limit < 1 || limit > 200) throw new TypeError('Invalid key list size.');
+      return sql`SELECT id, connection, owner, repo, access, exchanged_at, created_at, expires_at, last_used_at, uses FROM git_remote_keys
+        WHERE revoked_at IS NULL AND expires_at > now() AND (${connection}::text IS NULL OR connection = ${connection})
+        ORDER BY created_at DESC LIMIT ${limit}`;
+    },
+    /** Stops one key at once. Returns the row, or null when it was not live. */
+    async revokeGitRemoteKey(id, { connection = null } = {}) {
+      if (!GIT_REMOTE_ID.test(id ?? '')) return null;
+      const rows = await sql`UPDATE git_remote_keys SET revoked_at = now(), code_hash = NULL
+        WHERE id = ${id} AND revoked_at IS NULL AND (${connection}::text IS NULL OR connection = ${connection})
+        RETURNING id, connection, owner, repo, access, revoked_at`;
+      return rows[0] ?? null;
+    },
+    /** Logs one use. A repeated nonce is refused (false): each broker step is single-use. */
+    async recordGitRemoteUse({ keyId, service, outcome, detail = null, nonce = null }) {
+      if (!GIT_REMOTE_ID.test(keyId ?? '') || typeof service !== 'string' || !/^[a-z][a-z0-9_.:-]{0,40}$/.test(service) || typeof outcome !== 'string' || !/^[a-z][a-z0-9_.:-]{0,60}$/.test(outcome)) throw new TypeError('Invalid git remote use.');
+      if (nonce !== null && !/^[a-f0-9]{32}\.[a-z]{1,16}$/.test(nonce)) throw new TypeError('Invalid git remote nonce.');
+      await sql`DELETE FROM git_remote_uses WHERE id IN (SELECT id FROM git_remote_uses WHERE at < now() - interval '30 days' LIMIT 100)`;
+      const rows = await sql`INSERT INTO git_remote_uses (key_id, service, outcome, detail, nonce)
+        VALUES (${keyId}, ${service}, ${outcome}, ${detail === null ? null : redact(String(detail)).slice(0, 200)}, ${nonce})
+        ON CONFLICT (nonce) DO NOTHING RETURNING id`;
+      if (!rows.length) return false;
+      if (outcome === 'allowed') await sql`UPDATE git_remote_keys SET last_used_at = now(), uses = uses + 1 WHERE id = ${keyId}`;
+      return true;
+    },
+    async listGitRemoteUses(keyId, { limit = 50 } = {}) {
+      if (!GIT_REMOTE_ID.test(keyId ?? '') || !Number.isSafeInteger(limit) || limit < 1 || limit > 200) return [];
+      return sql`SELECT key_id, at, service, outcome, detail FROM git_remote_uses WHERE key_id = ${keyId} ORDER BY id DESC LIMIT ${limit}`;
     },
 
     /** Keeps a big result behind a handle. Also deletes up to 100 expired rows (no cron). */

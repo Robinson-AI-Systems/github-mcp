@@ -2,7 +2,7 @@
 // schema, A-3a adds the connector login store. Service-independent in-memory fake of createDb(): it mirrors the behavior
 // of src/db.js (hashed storage, single-use codes, atomic refresh) and is held to the same contract suite
 // (test/contract/oauth-contract.js) as real PostgreSQL.
-import { APP_SECRET_KINDS, JOB_ID, RESULT_HANDLE, SCHEMA_TABLES, SETUP_PURPOSES, ETAG_BODY_LIMIT_BYTES, PROTECTED_SEEDED_KEY, checkConnection, checkProtected, connectionSettings, normalizeChange } from '../../src/db.js';
+import { APP_SECRET_KINDS, GIT_REMOTE_ID, JOB_ID, RESULT_HANDLE, SCHEMA_TABLES, SETUP_PURPOSES, ETAG_BODY_LIMIT_BYTES, PROTECTED_SEEDED_KEY, checkConnection, checkProtected, connectionSettings, normalizeChange } from '../../src/db.js';
 import { hashToken } from '../../src/core/oauth.js';
 import { createHash } from 'node:crypto';
 import { createFakeDevLedger } from './dev-ledger-fake.js';
@@ -21,6 +21,7 @@ const withoutOptionalProof=(r,kind)=>{
 };
 export function createFakeDb({ clock = Date.now } = {}) {
   const rows = new Map();
+  const gitKeys = new Map(), gitUses = [];
   const tables = new Set();
   const clients = new Map();
   const codes = new Map();
@@ -100,6 +101,41 @@ export function createFakeDb({ clock = Date.now } = {}) {
       if (!RESULT_HANDLE.test(handle ?? '') || !row || row.connection !== connection || row.expires_at.getTime() <= clock()) return null;
       return { handle: row.handle, summary: row.summary, body: structuredClone(row.body), created_at: row.created_at, expires_at: row.expires_at };
     },
+    // GIT-REMOTE-1: same contract as src/db.js (hashes only, single-use exchange, single-use nonces).
+    async createGitRemoteKey({ id, connection, owner, repo, access, codeHash, codeExpiresAt, expiresAt }) {
+      if (!GIT_REMOTE_ID.test(id ?? '') || !/^[a-f0-9]{64}$/.test(codeHash ?? '') || !connection || !owner || !repo || !['read', 'write'].includes(access) || !(codeExpiresAt instanceof Date) || !(expiresAt instanceof Date)) throw new TypeError('Invalid git remote key.');
+      if (gitKeys.has(id)) throw new Error('duplicate key value violates unique constraint "git_remote_keys_pkey"');
+      const row = { id, connection, owner, repo, access, code_hash: codeHash, code_expires_at: codeExpiresAt, key_hash: null, exchanged_at: null, created_at: new Date(clock()), expires_at: expiresAt, revoked_at: null, last_used_at: null, uses: 0 };
+      gitKeys.set(id, row);
+      const { code_hash: _c, key_hash: _k, ...view } = row; return { ...view };
+    },
+    async getGitRemoteKey(id) { const r = gitKeys.get(id); if (!r) return null; const { code_hash: _c, ...view } = r; return { ...view }; },
+    async exchangeGitRemoteCode({ id, codeHash, keyHash }) {
+      const r = gitKeys.get(id);
+      if (!r || !codeHash || r.code_hash !== codeHash || r.exchanged_at || r.code_expires_at.getTime() <= clock() || r.expires_at.getTime() <= clock() || r.revoked_at || !/^[a-f0-9]{64}$/.test(keyHash ?? '')) return null;
+      Object.assign(r, { key_hash: keyHash, code_hash: null, exchanged_at: new Date(clock()) });
+      return { id: r.id, connection: r.connection, owner: r.owner, repo: r.repo, access: r.access, exchanged_at: r.exchanged_at, expires_at: r.expires_at };
+    },
+    async listGitRemoteKeys({ connection = null, limit = 50 } = {}) {
+      return [...gitKeys.values()].filter(r => !r.revoked_at && r.expires_at.getTime() > clock() && (connection === null || r.connection === connection))
+        .sort((a, b) => b.created_at - a.created_at).slice(0, limit)
+        .map(r => ({ id: r.id, connection: r.connection, owner: r.owner, repo: r.repo, access: r.access, exchanged_at: r.exchanged_at, created_at: r.created_at, expires_at: r.expires_at, last_used_at: r.last_used_at, uses: r.uses }));
+    },
+    async revokeGitRemoteKey(id, { connection = null } = {}) {
+      const r = gitKeys.get(id);
+      if (!r || r.revoked_at || (connection !== null && r.connection !== connection)) return null;
+      r.revoked_at = new Date(clock()); r.code_hash = null;
+      return { id: r.id, connection: r.connection, owner: r.owner, repo: r.repo, access: r.access, revoked_at: r.revoked_at };
+    },
+    async recordGitRemoteUse({ keyId, service, outcome, detail = null, nonce = null }) {
+      if (!GIT_REMOTE_ID.test(keyId ?? '') || !/^[a-z][a-z0-9_.:-]{0,40}$/.test(service ?? '') || !/^[a-z][a-z0-9_.:-]{0,60}$/.test(outcome ?? '')) throw new TypeError('Invalid git remote use.');
+      if (nonce !== null && !/^[a-f0-9]{32}\.[a-z]{1,16}$/.test(nonce)) throw new TypeError('Invalid git remote nonce.');
+      if (nonce !== null && gitUses.some(u => u.nonce === nonce)) return false;
+      gitUses.push({ key_id: keyId, at: new Date(clock()), service, outcome, detail: detail === null ? null : String(detail).slice(0, 200), nonce });
+      const r = gitKeys.get(keyId); if (r && outcome === 'allowed') { r.last_used_at = new Date(clock()); r.uses += 1; }
+      return true;
+    },
+    async listGitRemoteUses(keyId) { return gitUses.filter(u => u.key_id === keyId).reverse().map(({ nonce: _n, ...u }) => ({ ...u })); },
     async createJob({ id, connection, owner, repo = null, kind, providerRef = null, ttlMinutes = 1440 }) {
       if (!JOB_ID.test(id ?? '')) throw new TypeError('A job id looks like job_ followed by 16 hex digits.');
       if (typeof connection !== 'string' || !connection || typeof owner !== 'string' || !owner || typeof kind !== 'string' || !kind) throw new TypeError('A job needs a connection, an owner and a kind.');

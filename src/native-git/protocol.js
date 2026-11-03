@@ -119,3 +119,27 @@ export function nativeWorkerRoute(env, job) {
  }
  return primary;
 }
+
+// GIT-REMOTE-1: the git remote on this service's own domain. Routing Middleware checks the person's
+// session key and forwards each Git request to the worker with this signed, short-lived claim in a
+// header (never in the URL, never the key itself). The worker serves the repository's mirror with it
+// and presents it back to the control plane's broker to obtain a GitHub credential for that one request.
+export const REMOTE_PURPOSE = 'robinson-git-remote/v1';
+export const REMOTE_REFS_TTL_MS = 120000;
+/** A push's pack step may take minutes to upload before the guarded push runs. */
+export const REMOTE_PACK_TTL_MS = 900000;
+export const REMOTE_MAX_PUSH_BYTES = 100 * 1024 * 1024;
+const REMOTE_FIELDS = ['access', 'control', 'expiresAt', 'key', 'mirror', 'nonce', 'owner', 'purpose', 'repo', 'service', 'step', 'version'];
+export function verifyRemoteClaim(token, key, now = Date.now()) {
+ const claim = decodeCapability(token, key, REMOTE_FIELDS, 'git remote');
+ if (claim.purpose !== REMOTE_PURPOSE || claim.version !== 1 || !['git-upload-pack', 'git-receive-pack'].includes(claim.service) || !['refs', 'pack'].includes(claim.step) || !['read', 'write'].includes(claim.access)) throw new TypeError('Invalid git remote claim.');
+ if (claim.service === 'git-receive-pack' && claim.access !== 'write') throw new TypeError('Invalid git remote claim.');
+ if (!/^[a-f0-9]{32}$/.test(claim.key) || !/^[a-f0-9]{64}$/.test(claim.mirror) || !/^[a-f0-9]{32}$/.test(claim.nonce)) throw new TypeError('Invalid git remote claim.');
+ if (!/^[A-Za-z0-9-]{1,39}$/.test(claim.owner) || !/^[A-Za-z0-9_.-]{1,100}$/.test(claim.repo) || ['.', '..'].includes(claim.repo)) throw new TypeError('Invalid git remote claim.');
+ let control; try { control = new URL(claim.control); } catch { throw new TypeError('Invalid git remote claim.'); }
+ if (!['https:', 'http:'].includes(control.protocol) || control.username || control.password || control.pathname !== '/' || control.search || control.hash || control.origin !== claim.control) throw new TypeError('Invalid git remote claim.');
+ const ttl = claim.step === 'pack' ? REMOTE_PACK_TTL_MS : REMOTE_REFS_TTL_MS;
+ if (!Number.isSafeInteger(claim.expiresAt) || claim.expiresAt > now + ttl + 30000) throw new TypeError('Invalid git remote claim.');
+ if (claim.expiresAt <= now) throw new TypeError('This git remote request has expired. Run the git command again.');
+ return claim;
+}

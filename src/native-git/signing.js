@@ -77,3 +77,15 @@ export function signFleetOrderBody(body,env=process.env){
  if(!order||order.purpose!=='robinson-fleet-order/v1'||Object.hasOwn(order,'credential')||Object.hasOwn(order.payload??{},'credential')||Object.hasOwn(order.payload??{},'argv'))throw new TypeError('Invalid fleet order.');
  return 'ed25519:'+sign(null,Buffer.from(body),signingKey(env)).toString('base64url');
 }
+
+// GIT-REMOTE-1: the per-request git remote claim (Routing Middleware → worker → broker). It names one
+// session key, one repository mirror and one Git service; it never carries a credential or the key.
+export function signGitRemoteClaim(body, env = process.env) {
+ const claim = JSON.parse(body);
+ if (!claim || claim.purpose !== 'robinson-git-remote/v1' || ['credential', 'action', 'uploadId', 'downloadId', 'secret', 'password'].some(k => Object.hasOwn(claim, k))) throw new TypeError('Invalid git remote claim.');
+ if (env.NATIVE_GIT_WORKER_KEY) {
+  if (env.NATIVE_GIT_WORKER_KEY.startsWith('ed25519:')) throw new TypeError('A public verifier is not a shared signing secret. Use the control-plane signing key.');
+  return signWorkerBody(body, env.NATIVE_GIT_WORKER_KEY);
+ }
+ return sign(null, Buffer.from(body), signingKey(env)).toString('base64url');
+}

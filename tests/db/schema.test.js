@@ -5,6 +5,8 @@ import { SCHEMA_TABLES, createDb } from '../../src/db.js';
 // Column names that look secret-like but hold no secret: lookup keys, hashes, and expiry timestamps.
 const NON_SECRET_COLUMNS = new Set([
   'scope_key', 'installation_key', 'request_key', 'url_key', 'token_hash', 'refresh_hash',
+  // GIT-REMOTE-1: the public id of a git remote key row (the key itself is only ever stored as key_hash).
+  'key_id',
   'user_token_expires_at', 'user_refresh_expires_at',
   // Non-sensitive refresh coordination metadata, never OAuth token material.
   'user_refresh_claim', 'user_refresh_claim_expires_at'

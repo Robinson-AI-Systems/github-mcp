@@ -22,12 +22,29 @@
           "value": "no-store"
         }
       ]
+    },
+    {
+      "source": "/git/(.*)",
+      "headers": [
+        {
+          "key": "x-vercel-enable-rewrite-caching",
+          "value": "0"
+        },
+        {
+          "key": "Cache-Control",
+          "value": "no-store"
+        }
+      ]
     }
   ],
   "rewrites": [
     {
       "source": "/",
       "destination": "/api/index"
+    },
+    {
+      "source": "/git-remote/exchange",
+      "destination": "/api/git-remote?op=exchange"
     },
     {
       "source": "/limits",
