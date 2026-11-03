@@ -3341,6 +3341,25 @@
       "readiness": "READY",
       "ownerInputs": [],
       "pr": []
+    },
+    {
+      "id": "PUSH-EXIT-1",
+      "title": "Replaceable push exit near GitHub: one configured pool host (GIT_DIRECT_HOST) serves the direct git host (GIT_DIRECT_ORIGIN) for every caller allowed on it; on Dokploy a Caddy front door behind Traefik TCP passthrough removes the 60 s HTTP cut so large plain git pushes land",
+      "batch": "FIN",
+      "design": "docs/pr-cards/PUSH-EXIT-1.md",
+      "dependencies": [
+        "GIT-DIRECT-2",
+        "WORKER-POOL-2"
+      ],
+      "card": "docs/pr-cards/PUSH-EXIT-1.md",
+      "status": "IN_PROGRESS",
+      "migration": "none (new optional env GIT_DIRECT_HOST; compose gains a push-exit service)",
+      "budget": 600,
+      "units": [
+        "PUSH-EXIT-1"
+      ],
+      "readiness": "READY",
+      "ownerInputs": []
     }
   ],
   "gatewayBoundary": {

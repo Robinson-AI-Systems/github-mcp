@@ -1,0 +1,51 @@
+# PUSH-EXIT-1: the push exit's front door (docs/pr-cards/PUSH-EXIT-1.md).
+#
+# Dokploy's Traefik cuts any HTTP request at 60 s (entry-point readTimeout, a global setting this account cannot
+# change), which stopped every push larger than about 40 MB. Traefik's TCP routers clear that deadline once the TLS
+# ClientHello has been read, so compose.yaml routes the push-exit host name to this Caddy by SNI with TLS passthrough
+# and PROXY protocol v2. Caddy:
+#   - gets its own certificate with TLS-ALPN-01 (the challenge arrives through the same passthrough; no HTTP challenge,
+#     because port 80 belongs to Traefik),
+#   - learns the real client address from Traefik's PROXY header (only from private Docker-network peers) and sets
+#     X-Forwarded-For to it (a client's own X-Forwarded-For is replaced), so the worker's failed-key limit stays per
+#     client,
+#   - speaks HTTP/1.1 and HTTP/2 to git and plain HTTP/1.1 to the worker's direct git port, streaming both ways with
+#     no total request deadline (the worker closes a connection idle for 2 minutes and caps a push at 12 h),
+#   - passes only the direct git host's own paths (/git/… and /health); everything else is 404 here.
+# The host name comes from GIT_PUSH_EXIT_HOST (compose.yaml), the same value as the control plane's GIT_DIRECT_ORIGIN.
+{
+	admin off
+	https_port 8443
+	servers {
+		listener_wrappers {
+			proxy_protocol {
+				timeout 5s
+				allow 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16
+			}
+			tls
+		}
+		protocols h1 h2
+		timeouts {
+			read_header 15s
+			idle 2m
+		}
+	}
+}
+
+{$GIT_PUSH_EXIT_HOST}:8443 {
+	tls {
+		issuer acme {
+			disable_http_challenge
+			alt_tlsalpn_port 8443
+		}
+	}
+	@git path /git/* /health
+	handle @git {
+		reverse_proxy native-git:3001 {
+			flush_interval -1
+		}
+	}
+	handle {
+		respond "Not found." 404
+	}
+}

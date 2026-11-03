@@ -98,6 +98,19 @@ export function configuredHosts(env) {
  return Object.freeze(Object.assign(sorted, { invalid }));
 }
 
+/**
+ * PUSH-EXIT-1 (owner direction 2026-11-03: a replaceable "push exit" near GitHub): the pool host that serves the direct
+ * git host (GIT_DIRECT_ORIGIN). GIT_DIRECT_HOST names it by host name or role ("previous", "dokploy", …); unset = the
+ * primary (GIT-DIRECT-1/-2 behaviour). A name that matches no configured host gives null: no direct host at all, never a
+ * guess. Swapping the exit later is these two protected settings, nothing else.
+ */
+export function directHostOf(env, hosts = configuredHosts(env)) {
+ const wanted = env?.GIT_DIRECT_HOST;
+ if (wanted === undefined || wanted === null || wanted === '') return hosts.find(h => h.role === 'primary') ?? null;
+ if (typeof wanted !== 'string' || !HOST_NAME.test(wanted)) return null;
+ return hosts.find(h => h.name === wanted) ?? hosts.find(h => h.role === wanted) ?? null;
+}
+
 /** The configured host with this id (any state: a pinned workspace keeps routing to a disabled host). */
 export const configuredHost = (env, id) => typeof id === 'string' && /^[a-f0-9]{32}$/.test(id) ? configuredHosts(env).find(h => h.id === id) ?? null : null;
 
