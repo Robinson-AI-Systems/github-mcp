@@ -32,7 +32,7 @@ export function codingServer({runtime,key,now=Date.now,capacity=codingCapacity,p
    let size=0;const chunks=[];for await(const chunk of req){size+=chunk.length;if(size>65536)return send(413,{error:'request_too_large'});chunks.push(chunk);}
    claim=verifyCodingClaim(Buffer.concat(chunks).toString('utf8'),req.headers['x-robinson-signature'],key,runtime.binding,now());
    const activity=result=>({...result,idle_timeout_ms:runtime.idleMs,last_activity_at:runtime.lastActivity,expires_at:runtime.lastActivity+runtime.idleMs});
-   const o=claim.options??{};const fields={capabilities:[],start:['requestKey','argv','cwd','timeoutMs'],status:['id'],logs:['id','offset','length','expectedLogHash'],cancel:['id'],preview:['port','path','offset','length','expectedBodyHash']}[claim.action];
+   const o=claim.options??{};const fields={capabilities:[],start:['requestKey','argv','cwd','timeoutMs'],status:['id'],logs:['id','offset','length','expectedLogHash'],cancel:['id'],git_credential:['url','username','key','expiresAt'],preview:['port','path','offset','length','expectedBodyHash']}[claim.action];
    if(typeof o!=='object'||Array.isArray(o)||Object.keys(o).some(k=>!fields.includes(k)))return send(400,{error:'invalid_arguments'});
    const policy=scannerSettings(claim.scannerPolicy?.settings??defaultScannerSettings());
    if(['logs','preview'].includes(claim.action)&&(!Number.isSafeInteger(claim.scannerPolicy?.revision)||claim.scannerPolicy.revision<0))throw new TypeError('Current repository scanner policy is required for protected output.');
@@ -43,6 +43,7 @@ export function codingServer({runtime,key,now=Date.now,capacity=codingCapacity,p
     case 'logs':return send(200,activity(await runtime.logs(o.id,{offset:o.offset,length:o.length,expectedLogHash:o.expectedLogHash})));
     case 'preview':await runtime.touch();if(runtime.resources&&!((await runtime.resources.check()).allowed))throw Object.assign(new TypeError('Measured runtime resource pressure.'),{code:'resource_pressure'});return send(200,activity(await readPreview(o,{ports,controlPort})));
     case 'cancel':return send(200,activity(await runtime.cancel(o.id)));
+    case 'git_credential':return send(200,activity(await runtime.setGitCredential(o)));
    }});
   }catch(e){const status=claim?({authority_unavailable:503,resource_pressure:429,execution_busy:409,intent_conflict:409,log_changed:409,preview_changed:409,preview_timeout:504,preview_unavailable:502,preview_too_large:413,execution_not_found:404,workspace_expired:410}[e.code]??(e instanceof TypeError?400:500)):401;if(status===429)res.setHeader('Retry-After','2');return send(status,{error:claim&&/^[a-z_]{1,64}$/.test(e.code??'')?e.code:claim?'execution_unconfirmed':'invalid_authorization',next:claim?'Inspect the original execution; do not start another intent to retry an uncertain command.':'Obtain current workspace authorization from the MCP.'});}
  }));
