@@ -297,3 +297,16 @@ Chris's go-ahead and a design for the two-step flow.
   switch a host off without a release.
 - **Direct git host per pool host.** `GIT_DIRECT_ORIGIN` belongs to the primary; git remote keys placed on another host use
   this service's domain (pushes up to about 25 MB). Per-host direct origins would need one pinned direct-host key per host.
+
+## 2026-11-03 — Content protection follow-ups (from PUSH-FIXTURE-1, not built; need Chris's say-so)
+
+- **`github_content_push_files` has no content scan.** The git remote, workspace upload, direct git host,
+  `github_repo_change` and workspace `write_file` all refuse credential-shaped file content; the contents-API push tool
+  does not, which is inconsistent. Adding the same gate (with the FAKE fixture opt-in) would close it.
+- **`src/github/wiki-git.js` false positive.** The git auth callback that hands the token to isomorphic-git as the
+  password field is flagged as a password assignment by the generic rule, so that file cannot be pushed unchanged
+  through the gate. Either a narrower rule (an identifier, not a quoted literal, is never a password) or a small code
+  reshape would fix it.
+- **The scanner's own file could not pass its own gate.** Comments in `src/github/content-protection.js` named the npm
+  package for Postgres password files with a version as an assignment and quoted token shapes. PUSH-FIXTURE-1 reworded
+  them; a CI check that scans the repository's own source with the gate would stop this coming back.
