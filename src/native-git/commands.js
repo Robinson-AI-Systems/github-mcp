@@ -70,10 +70,12 @@ export function olderWorkerOptions(operation, a = {}) {
   return a;
 }
 export function allowedOptions(operation) { return OPTIONS[operation] ? [...OPTIONS[operation], 'worktree'] : null; }
+// PUSH-FIXTURE-1: written file content allows documented FAKE test tokens; arguments themselves never do.
+const FILE_CONTENT = Object.freeze({ fixtures: 'allow' });
 export function gitCommand(operation, input = {}) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw new TypeError('Native options must be an object.');
   if (containsCredential(JSON.stringify(input))) throw new TypeError('Credential-shaped native input belongs in protected setup, not tool arguments.');
-  if (operation === 'write_file' && typeof input.base64 === 'string') { const text = Buffer.from(input.base64, 'base64').toString('utf8'); if (containsCredential(text)) throw new TypeError(`Credential-shaped file input belongs in protected setup, not tool arguments (matched at ${credentialLocations(text)}; github_content_protection_check explains the rule).`); }
+  if (operation === 'write_file' && typeof input.base64 === 'string') { const text = Buffer.from(input.base64, 'base64').toString('utf8'); if (containsCredential(text, FILE_CONTENT)) throw new TypeError(`Credential-shaped file input belongs in protected setup, not tool arguments (matched at ${credentialLocations(text, { fixtures: 'allow' })}; github_content_protection_check explains the rule).`); }
   const allowed = OPTIONS[operation];
   if (!allowed) throw new TypeError('Unsupported typed native Git operation; use the documented local alternative.');
   const unknown = Object.keys(input).filter(key => key !== 'worktree' && !allowed.includes(key));

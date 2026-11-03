@@ -298,14 +298,16 @@ Chris's go-ahead and a design for the two-step flow.
 - **Direct git host per pool host.** `GIT_DIRECT_ORIGIN` belongs to the primary; git remote keys placed on another host use
   this service's domain (pushes up to about 25 MB). Per-host direct origins would need one pinned direct-host key per host.
 
-## Push hook blocks files with fake test credentials (found 2026-11-03, BRAND-UNLEASHED-1)
+## 2026-11-03 — Content protection follow-ups (from PUSH-FIXTURE-1, not built; need Chris's say-so)
 
-Pushing through this service's own git remote refuses the whole push when a changed file's full contents match a
-credential pattern, including this repository's required fake test values (the FAKE token shapes AGENTS.md prescribes) and
-the harmless `password: token` line in `src/github/wiki-git.js` (rule database-connection-password). Seven files
-cannot currently be changed this way at all: `src/github/wiki-git.js`, `tests/unit/git-direct.test.js`,
-`tests/unit/git-remote.test.js`, `tests/unit/git-remote-edge.test.js`, `tests/unit/god-6-act-as.test.js`,
-`tests/unit/setup-page.test.js`, `tests/unit/root-route.test.js`. Needs a decision: teach the detector to ignore
-the documented `FAKE` fixture shape (with positive/negative regression tests, CONTENT-PROTECTION.md), or a narrow
-exact-blob suppression. Once fixed, finish the BRAND-UNLEASHED-1 leftovers listed in its card.
-
+- **`github_content_push_files` has no content scan.** The git remote, workspace upload, direct git host,
+  `github_repo_change` and workspace `write_file` all refuse credential-shaped file content; the contents-API push tool
+  does not, which is inconsistent. Adding the same gate (with the FAKE fixture opt-in) would close it.
+- **`src/github/wiki-git.js` false positive.** The git auth callback that hands the token to isomorphic-git as the
+  password field is flagged as a password assignment by the generic rule, so that file cannot be pushed unchanged
+  through the gate. Either a narrower rule (an identifier, not a quoted literal, is never a password) or a small code
+  reshape would fix it. BRAND-UNLEASHED-1 left this file's text unchanged for that reason, so the wiki commit author
+  name there is still the old product name until this is fixed.
+- **The scanner's own file could not pass its own gate.** Comments in `src/github/content-protection.js` named the npm
+  package for Postgres password files with a version as an assignment and quoted token shapes. PUSH-FIXTURE-1 reworded
+  them; a CI check that scans the repository's own source with the gate would stop this coming back.

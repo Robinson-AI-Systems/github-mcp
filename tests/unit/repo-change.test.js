@@ -161,7 +161,7 @@ it('refuses unusable input plainly before anything is sent', async () => {
   [{ repo: 'hello', branch: 'x', files: [{ path: '../up.txt', content: 'x' }], message: 'm' }, /not a usable file path/],
   [{ repo: 'hello', branch: 'x', files: [{ path: 'a.txt', content: 'x', base64: 'eA==' }], message: 'm' }, /either content .* or base64/],
   [{ repo: 'hello', branch: 'x', files: [{ path: 'a.txt', content: 'x' }] }, /commit message is required/],
-  [{ repo: 'hello', branch: 'x', files: [{ path: 'k.env', content: 'TOKEN=ghp_FAKE0123456789abcdefghijklmnopqrstuvwx' }], message: 'm' }, /shaped like a credential/],
+  [{ repo: 'hello', branch: 'x', files: [{ path: 'k.env', content: 'TOKEN=' + ['ghp', 'A1b2'.repeat(9)].join('_') }], message: 'm' }, /shaped like a credential/],
   [{ repo: 'hello', branch: 'x', upload_id: 'upl_' + '0'.repeat(32), message: 'm' }, /also give the workspace_id/],
   [{ repo: 'hello', branch: 'x' }, /Nothing to change/],
   [{ repo: 'hello', branch: 'x', base: 'nope', files: [{ path: 'a', content: 'a' }], message: 'm' }, /Neither x nor the base nope exists/]

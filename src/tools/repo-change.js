@@ -52,7 +52,7 @@ function checkArgs(a) {
     if (file.base64 !== undefined && !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(file.base64)) throw safe(`base64 for ${JSON.stringify(file.path.slice(0, 120))} is not canonical base64.`, 'invalid_change_arguments');
     const bytes = file.base64 !== undefined ? Buffer.from(file.base64, 'base64') : Buffer.from(file.content, 'utf8');
     if (bytes.toString('base64').length > MAX_FILE_BASE64) throw safe(`${JSON.stringify(file.path.slice(0, 120))} is larger than about 1 MB. Send larger or many files with upload: "archive" (or "git") instead.`, 'invalid_change_arguments');
-    if (containsCredential(bytes.toString('utf8'))) throw safe(`${JSON.stringify(file.path.slice(0, 120))} contains something shaped like a credential, so it was not sent. Remove the value (keep real secrets out of the repository), or check it with github_git_workspace_read protection_check.`, 'content_protection');
+    if (containsCredential(bytes.toString('utf8'), { fixtures: 'allow' })) throw safe(`${JSON.stringify(file.path.slice(0, 120))} contains something shaped like a credential, so it was not sent. Remove the value (keep real secrets out of the repository), or check it with github_git_workspace_read protection_check.`, 'content_protection');
   }
   for (const path of removals) { filePath(path); if (seen.has(path)) throw safe(`${JSON.stringify(path.slice(0, 120))} is both written and deleted; choose one.`, 'invalid_change_arguments'); }
   if (a.pr && (a.base ?? null) === a.branch) throw safe('A pull request needs a base branch different from branch.', 'invalid_change_arguments');

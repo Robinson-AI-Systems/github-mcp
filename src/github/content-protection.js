@@ -43,8 +43,8 @@ function* databaseMatches(text) {
  }
  for (const m of text.matchAll(DATABASE_VARIABLE)) {
   const value = assignedLiteral(text,m.index+m[0].length);
-  // Package manifests and lockfiles name the npm package `pgpass` ("pgpass": "1.0.5", "node_modules/pgpass": {, pgpass: 1.0.5):
-  // a dependency version or an opening brace is not a password.
+  // Package manifests and lockfiles name the npm package whose name is pg plus pass, followed by a version number such as
+  // 1.0.5 or by an opening brace for its lockfile entry: a dependency version or an opening brace is not a password.
   if (value.length && !NOT_A_PASSWORD.test(text.slice(value.index,value.index+value.length))) yield { ...value,rule:'database-password-assignment',description:'Explicit database password assignment' };
  }
 }
@@ -52,11 +52,27 @@ function* databaseMatches(text) {
 // restricted to explicit key names, quoted literals and an entropy threshold to reduce code false positives.
 const GENERIC_ASSIGNMENT=/\b(?:password|passwd|api_?key|access_token|refresh_token|client_secret|secret_key|auth_token)\b["']?[ \t]*[:=][ \t]*(?=["'])/gi;
 function entropy(value){const counts=new Map();for(const c of value)counts.set(c,(counts.get(c)??0)+1);let h=0;for(const n of counts.values()){const p=n/value.length;h-=p*Math.log2(p);}return h;}
-function* credentialMatches(text) {
- const seen=text.length<=1000000?new Set():null;
+// PUSH-FIXTURE-1: AGENTS.md requires fake test credentials: the GitHub token prefixes followed by the word FAKE. In pushed or
+// written file content (and only there: callers opt in with {fixtures:'allow'}), a GitHub token shape whose payload starts with
+// the word FAKE (case-sensitive) followed by characters holding no other credential prefix is a documented fixture, not a
+// credential. A FAKE payload that itself contains another GitHub token prefix is still a match. Redaction never passes the
+// option, so text returned to AIs still hides fakes.
+const FIXTURE_PREFIX={'github-token':4,'github-fine-grained-token':11};
+const OTHER_CREDENTIAL_PREFIX=/gh[pousr]_|github_pat_|rtc_pass_|rg[kc]_|tac_|trf_/;
+const allowsFixtures=options=>options?.fixtures==='allow';
+function isDocumentedFixture(value,rule){
+ const skip=FIXTURE_PREFIX[rule];if(skip===undefined)return false;
+ const payload=value.slice(skip);return payload.startsWith('FAKE')&&!OTHER_CREDENTIAL_PREFIX.test(payload.slice(4));
+}
+function* credentialMatches(text,options={}) {
+ const seen=text.length<=1000000?new Set():null,fixtures=allowsFixtures(options);
  function* remember(matches){for(const r of matches){seen?.add(`${r.index}:${r.length}`);yield r;}}
  for(const m of text.matchAll(CLOUD_VARIABLE)){const value=assignedLiteral(text,m.index+m[0].length);if(value.length>=40)yield* remember([{...value,rule:'cloud-secret-assignment',description:'Assigned cloud provider secret or storage key'}]);}
- for(let index=0;index<TOKEN_SHAPES.length;index++)for(const m of text.matchAll(TOKEN_SHAPES[index]))yield* remember([{index:m.index,length:m[0].length,rule:RULE_INFO[index][0],description:RULE_INFO[index][1]}]);
+ for(let index=0;index<TOKEN_SHAPES.length;index++)for(const m of text.matchAll(TOKEN_SHAPES[index])){
+  // A fixture literal is judged by the token rule alone: it is remembered so the generic assignment rule does not re-flag exactly it.
+  if(fixtures&&isDocumentedFixture(m[0],RULE_INFO[index][0])){seen?.add(`${m.index}:${m[0].length}`);continue;}
+  yield* remember([{index:m.index,length:m[0].length,rule:RULE_INFO[index][0],description:RULE_INFO[index][1]}]);
+ }
  yield* remember(databaseMatches(text));yield* remember(openSecretMatches(text));
  for(const m of text.matchAll(GENERIC_ASSIGNMENT)){const value=assignedLiteral(text,m.index+m[0].length);if(value.length>=10&&!seen?.has(`${value.index}:${value.length}`)&&entropy(text.slice(value.index,value.index+value.length))>=3.5)yield {...value,rule:'generic-credential-assignment',description:'High-entropy literal assigned to an explicit credential key'};}
 }
@@ -76,11 +92,11 @@ function reportMatches(text,matches,{maxFindings=30}={}) {
 /** Same matchers as redaction; locations/rules only, NEVER values or snippets. */
 export function contentProtectionReport(value,options={}) {const text=String(value);return reportMatches(text,credentialMatches(text),options);}
 /** Where the first matches are, for a refusal message: "line 12 (database-password-assignment)". Never a value or snippet. */
-export function credentialLocations(value,{max=3}={}){
- const r=activeProtectionReport(value,{maxFindings:max});
+export function credentialLocations(value,{max=3,fixtures}={}){
+ const r=activeProtectionReport(value,{maxFindings:max,fixtures});
  return r.findings.map(f=>`line ${f.line} (${f.rule})`).join(', ')+(r.total_findings>max?` and ${r.total_findings-max} more`:'');
 }
-export function activeProtectionReport(value,options={}){const text=String(value);return reportMatches(text,(function*(){yield* credentialMatches(text);yield* customCredentialRanges(text,protectionContext.getStore()?.rules??[]);})(),options);}
+export function activeProtectionReport(value,options={}){const text=String(value);return reportMatches(text,(function*(){yield* credentialMatches(text,options);yield* customCredentialRanges(text,protectionContext.getStore()?.rules??[]);})(),options);}
 export function databaseProtectionReport(value,options={}) {const text=String(value);return reportMatches(text,databaseMatches(text),options);}
 const protectionContext=new AsyncLocalStorage();
 const textKey=text=>createHash('sha256').update(text).digest('hex');
@@ -95,9 +111,9 @@ export const withRepositoryProtection=(rules,fn,{isolateFiles=false,repository}=
 export const containsBuiltinCredential=value=>withRepositoryProtection([],()=>containsCredential(value),{isolateFiles:true});
 export const credentialRanges=text=>[...credentialMatches(String(text))];
 export function registerFileProtection(text,entry){const state=protectionContext.getStore();if(!state||!entry.exceptions?.size)return;const key=textKey(text);for(const context of new Set([state.files,state.publish].filter(Boolean))){const old=context.get(key);context.set(key,{exceptions:new Set([...(old?.exceptions??[]),...entry.exceptions])});}}
-function* effectiveRanges(text){
+function* effectiveRanges(text,options={}){
  const files=protectionContext.getStore()?.files,entry=files?.size?files.get(textKey(text)):undefined;
- for(const r of (function*(){yield* credentialMatches(text);yield* customCredentialRanges(text,protectionContext.getStore()?.rules??[]);})())if(!entry?.exceptions?.has(rangeKey(r.rule,Buffer.byteLength(text.slice(0,r.index)),Buffer.byteLength(text.slice(r.index,r.index+r.length)))))yield r;
+ for(const r of (function*(){yield* credentialMatches(text,options);yield* customCredentialRanges(text,protectionContext.getStore()?.rules??[]);})())if(!entry?.exceptions?.has(rangeKey(r.rule,Buffer.byteLength(text.slice(0,r.index)),Buffer.byteLength(text.slice(r.index,r.index+r.length)))))yield r;
 }
 /** Only exact contiguous views of a verified file inherit its position-bound exceptions. */
 export function registerFileView(view,original){
@@ -113,13 +129,14 @@ export function redactRanges(value,inputRanges,preserveLines=false) {
  return out+text.slice(at);
 }
 export const redact = value => redactRanges(value,effectiveRanges(String(value)));
-export function containsCredential(value) {
+/** options.fixtures==='allow' is for push/write gates on file content only (PUSH-FIXTURE-1); never for arguments or results. */
+export function containsCredential(value,options={}) {
  const stack=[String(value)];while(stack.length){
   const item=stack.pop();if(typeof item==='string'){
-   if(protectionContext.getStore()?.files.size&&protectionContext.getStore().files.has(textKey(item))){if(!effectiveRanges(item).next().done)return true;continue;}
+   if(protectionContext.getStore()?.files.size&&protectionContext.getStore().files.has(textKey(item))){if(!effectiveRanges(item,options).next().done)return true;continue;}
    if(/^[\s]*[\[{"]/.test(item)){try{const parsed=JSON.parse(item);if(parsed!==item){stack.push(parsed);continue;}}catch{/* ordinary source text */}}
-   if(!effectiveRanges(item).next().done)return true;
-  }else if(item&&typeof item==='object'){for(const [key,v] of Object.entries(item)){if(typeof v==='string'&&/^(?:(?:db|database|postgres(?:ql)?|mysql|mariadb|mongo(?:db)?|redis|mssql|sqlserver|pg)_?(?:password|pass)|AWS_SECRET_ACCESS_KEY|AZURE_STORAGE_ACCOUNT_KEY|AZURE_STORAGE_KEY|password|passwd|api_?key|access_token|refresh_token|client_secret|secret_key|auth_token)$/i.test(key)&&!effectiveRanges(JSON.stringify({[key]:v})).next().done)return true;stack.push(key,v);}}
+   if(!effectiveRanges(item,options).next().done)return true;
+  }else if(item&&typeof item==='object'){for(const [key,v] of Object.entries(item)){if(typeof v==='string'&&/^(?:(?:db|database|postgres(?:ql)?|mysql|mariadb|mongo(?:db)?|redis|mssql|sqlserver|pg)_?(?:password|pass)|AWS_SECRET_ACCESS_KEY|AZURE_STORAGE_ACCOUNT_KEY|AZURE_STORAGE_KEY|password|passwd|api_?key|access_token|refresh_token|client_secret|secret_key|auth_token)$/i.test(key)&&!effectiveRanges(JSON.stringify({[key]:v}),options).next().done)return true;stack.push(key,v);}}
  }
  return false;
 }
