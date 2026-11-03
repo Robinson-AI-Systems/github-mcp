@@ -22,3 +22,20 @@
 - **Next (live acceptance after release):** from a sandbox that allows only the MCP domain, `github_git_remote_setup`
   on `robinson-ai-scratch/upload-probe` with access write; run the command; clone, push a branch, pull; a push of about
   10 MB and of about 30 MB to find the live limit; cancel the key on the setup page and see the next fetch refused.
+
+**Live acceptance (2026-11-03 ~01:00 UTC, release `470196af`, worker redeployed):** from an agent sandbox that reaches
+only the MCP domain, against `robinson-ai-scratch/upload-probe`:
+- `github_git_remote_setup` (write, 1 h) returned the command; running it unchanged stored the key in
+  `~/.git-credentials-robinson` without printing it. Reusing the setup code then answered 410, and `info/refs` without a
+  key answered 401.
+- `git clone https://github.robinsonaisystems.com/git/robinson-ai-scratch/upload-probe.git` took 17 s, cloning HEAD
+  `92d4a1f`. A small `git push` created `retest/git-remote` on GitHub in 6 s (`remote: Pushed to GitHub …`), and GitHub's
+  branch API showed the commit. `git pull origin main` worked.
+- **Push size:** with git defaults, every push over about 4 MB got HTTP 502 from the hosting proxy (3/3 at 8 MB, plus
+  6, 10 and 15 MB). Git sends packs over `http.postBuffer` (1 MiB) with chunked encoding, which the proxy rejects. With
+  `http.postBuffer=209715200`: 8 MB 3/3, then 6, 15 and 25 MB all pushed; 40 MB got 502. Follow-up GIT-REMOTE-2 below.
+- Not run live: cancelling a key from My connection (the owner page needs Chris's browser sign-in; covered by the browser
+  and DB tests) and expiry.
+
+**Follow-up GIT-REMOTE-2:** the setup command now also sets `http.<origin>.postBuffer 209715200` for this address only,
+and the push note says pushes up to about 25 MB work, pointing larger payloads to the chunked upload.

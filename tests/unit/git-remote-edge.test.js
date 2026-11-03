@@ -132,3 +132,11 @@ describe('the worker and the broker accept only an exact, current claim', () => 
   expect((await post(push, { journal: 1, outcome: 'applied' }, 'report')).status).toBe(409);
  });
 });
+
+import { setupCommand as gitRemoteSetupCommand, PUSH_NOTE as gitRemotePushNote } from '../../src/tools/git-remote.js';
+it('the setup command makes git declare push sizes for this address only (hosting proxy refuses chunked bodies over ~4 MB)', () => {
+  const cmd = gitRemoteSetupCommand('https://mcp.example.test', 'rgc_FAKE', 'https://mcp.example.test/git/o/r.git');
+  expect(cmd).toContain('git config --global http.https://mcp.example.test.postBuffer 209715200');
+  expect(cmd).not.toMatch(/--global http\.postBuffer/);
+  expect(gitRemotePushNote).toMatch(/about 25 MB/);
+});
