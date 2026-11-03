@@ -275,6 +275,18 @@ for this origin only. The key is never printed; only its SHA-256 is stored (`git
 - **Worker.** Capability `git_remote: "v1"`; no new setting. Not served by dedicated (single-workspace) brokers.
 - **Direct host.** For pushes beyond about 25 MB, configure the [direct git host](#direct-git-host-git-direct-1).
 
+### GitHub transport (GIT-SSH-LEG-1)
+
+The worker's own push to GitHub uses HTTPS unless the worker sets `NATIVE_GIT_GITHUB_TRANSPORT=ssh`
+(`NATIVE_GIT_GITHUB_SSH_PORT` 443 = `ssh.github.com`, default, or 22 = `github.com`). Then each push gets a temporary
+write deploy key on exactly that repository through broker `op=key` (same credential as the push; owner connections
+only), goes over SSH with GitHub's host keys pinned in `workers/native-git/github-ssh.js`, and the key is removed and
+read back as gone right after; leftovers are retried from `<storage>/.remote-ssh-cleanup` and swept (exact title
+`GitHub Unleashed push <12 hex> (auto-removed)`, older than 15 minutes) at the repository's next SSH push. Refusals fall
+back to HTTPS with the reason in `remote:` and the change log (`transport`, `transport_note`, `timing`). Key rows use
+change-log tool `github_git_remote_deploy_key` and are access changes. `NATIVE_GIT_GITHUB_HTTP_VERSION` (`HTTP/1.1` |
+`HTTP/2`) sets git's `http.version` on the HTTPS legs. PC how-to: [PC-WORKER](PC-WORKER.md) "Faster pushes to GitHub over SSH".
+
 ## Direct git host (GIT-DIRECT-1)
 
 [Card](pr-cards/GIT-DIRECT-1.md). Optional: the worker serves the same `/git/<owner>/<repo>.git` smart-HTTP endpoints

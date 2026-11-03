@@ -3360,6 +3360,26 @@
       ],
       "readiness": "READY",
       "ownerInputs": []
+    },
+    {
+      "id": "GIT-SSH-LEG-1",
+      "title": "SSH leg to GitHub for git remote pushes: a temporary per-push write deploy key on exactly that repository (added and removed through the broker, read back as gone, swept by title), GitHub host keys pinned, HTTPS fallback with a plain reason, per-step timings in the change log; opt-in per worker (NATIVE_GIT_GITHUB_TRANSPORT=ssh), plus NATIVE_GIT_GITHUB_HTTP_VERSION",
+      "batch": "FIN",
+      "design": "docs/pr-cards/GIT-SSH-LEG-1.md",
+      "dependencies": [
+        "GIT-REMOTE-1",
+        "GIT-DIRECT-1",
+        "PC-WORKER-1"
+      ],
+      "card": "docs/pr-cards/GIT-SSH-LEG-1.md",
+      "status": "IN_PROGRESS",
+      "migration": "none (new optional worker env NATIVE_GIT_GITHUB_TRANSPORT / _SSH_PORT / _HTTP_VERSION; worker image gains openssh-client)",
+      "budget": 700,
+      "units": [
+        "GIT-SSH-LEG-1"
+      ],
+      "readiness": "READY",
+      "ownerInputs": []
     }
   ],
   "gatewayBoundary": {
