@@ -7,6 +7,7 @@ import { privateTenantToken } from '../tenancy/oauth-token.js';
 import { paramsOf, send } from '../core/http.js';
 import privateTenantAuthorize from '../../api/tenant/oauth/authorize.js';
 import { isPublicClientId } from '../tenancy/public-code.js';
+import { isCimdClientId } from '../tenancy/cimd-client.js';
 import { publicConnectEnabled } from '../tenancy/public-connect.js';
 import { publicApprove, publicAuthorize, publicForget, publicLimits, publicManage, publicTrust, publicMoved, publicRegister } from '../tenancy/public-http.js';
 import { TRUST_PAGES } from '../tenancy/trust-pages.js';
@@ -30,7 +31,7 @@ export async function handleOAuth(which, req, res, { db, env = process.env, cons
         if (params.manage === '1' || req.query?.manage === '1') return await publicManage(req, res, { env });
         if (params.step === 'approve') return await publicApprove(req, res, { env });
       }
-      if (isPublicClientId(params.client_id)) return await publicAuthorize(req, res, { env });
+      if (isPublicClientId(params.client_id) || isCimdClientId(params.client_id)) return await publicAuthorize(req, res, { env });
       if (isTenantRoutedCredential(params.client_id)) {
         // One sign-in for everyone: once the public sign-in is on, the older private-pilot sign-in takes no NEW sign-ins.
         // Connections it already made keep working (their refresh is untouched); reconnecting goes through the new flow.
@@ -43,7 +44,7 @@ export async function handleOAuth(which, req, res, { db, env = process.env, cons
       try { params = paramsOf(req); } catch { return send(res, 400, { error: 'invalid_request' }); }
       // Never try an explicitly tenant-routed client/refresh token against
       // the legacy owner database, even if the marker/signature is invalid.
-      if (isTenantRoutedCredential(params.client_id) || isPublicClientId(params.client_id))
+      if (isTenantRoutedCredential(params.client_id) || isPublicClientId(params.client_id) || isCimdClientId(params.client_id))
         return privateTenantToken(req, res, { env });
       if (isTenantRoutedCredential(params.refresh_token) ||
           isTenantRoutedCredential(params.code))
