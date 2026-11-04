@@ -3410,7 +3410,7 @@
         "CAP-5"
       ],
       "card": "docs/pr-cards/CAP-7.md",
-      "status": "IN_PROGRESS",
+      "status": "MERGED",
       "migration": "none",
       "budget": 200,
       "units": [
