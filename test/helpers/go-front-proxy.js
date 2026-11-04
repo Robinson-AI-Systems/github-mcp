@@ -1,4 +1,4 @@
-// RELAY-BODY-1: a stand-in for the Go net/http reverse proxy in front of the PC worker (Tailscale Funnel), used
+// RELAY-OWNER-1: a stand-in for the Go net/http reverse proxy in front of the PC worker (Tailscale Funnel), used
 // by the git remote test world (`startGitRemote(w, { front: 'go' })`).
 //
 // It forwards the request body in network-sized slices at a network-like pace and, when the worker's response

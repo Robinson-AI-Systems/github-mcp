@@ -145,7 +145,7 @@ export async function startGitRemote(w, { gates = [], direct = false, githubPush
   const destination = new URL(target);
   seen.push({ destination: target, headers: forwarded });
   if (destination.origin !== WORKER) { req.resume(); res.writeHead(502); return res.end(); }
-  // RELAY-BODY-1: `front: 'go'` puts the Go net/http reverse proxy's behaviour (Tailscale Funnel) on this hop.
+  // RELAY-OWNER-1: `front: 'go'` puts the Go net/http reverse proxy's behaviour (Tailscale Funnel) on this hop.
   if (front === 'go') { const record = seen.at(-1); return goFrontForward(req, res, httpRequest(workerOrigin + destination.pathname + destination.search, { method: req.method, headers: forwarded }), { record }); }
   const upstream = httpRequest(workerOrigin + destination.pathname + destination.search, { method: req.method, headers: forwarded }, reply => { res.writeHead(reply.statusCode, reply.headers); reply.pipe(res); });
   upstream.on('error', () => { if (!res.headersSent) res.writeHead(502); res.end(); });

@@ -87,6 +87,8 @@ describe('PUB-2 private-only provider identity and tenant pilot allowlist in REA
       sqlFactory:()=>sqlFor(dbClient)});
     expect(await directory.activate(id,tenantSchemaName(id))).toBe(true);
     expect((await directory.authorized(id,ownerA)).role).toBe('owner');
+    // RELAY-OWNER-1: the membership carries the identity's provider-verified numeric GitHub id, from the identity row only.
+    expect((await directory.authorized(id,ownerA)).verifiedSubject).toBe('20001');
     expect(await otherDirectory.provisionPilotForOwnerAccount(ownerA,'pilot-once-org')).toBe(id);
     expect(await directory.activate(id,tenantSchemaName(id))).toBe(false);
   });

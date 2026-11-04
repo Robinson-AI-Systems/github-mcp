@@ -36,6 +36,17 @@ const fake = (...parts) => ['FAKE', ...parts].join('-');
 const view = r => r?.content || r?.structuredContent ? parse(r) : r;
 const asPerson = w => { const connection = Object.freeze({ ...w.connection, operator: undefined }); return { ...w, connection, ctx: { ...w.ctx, connection } }; };
 
+// RELAY-OWNER-1: the owner connecting from claude.ai through public connect is a tenant whose database carries his
+// provider-verified numeric GitHub id (fake here); OPERATOR_GITHUB_USER_ID names the operator's own id.
+const OWNER_GITHUB_ID = '4242424242', OTHER_GITHUB_ID = '5151515151';
+const asTenant = (w, subject, { pass = false } = {}) => {
+ const db = Object.create(w.db); db.playgroundScope = Object.freeze({ tenantId: 't-owner', identityId: 'i-owner', membershipRevision: 1 });
+ if (subject) Object.defineProperty(db, 'verifiedGithubSubject', { value: subject, enumerable: false });
+ const connection = Object.freeze({ ...w.connection, operator: undefined, ...(pass ? { pass: true, kind: 'pass', pass_id: 'pass-1' } : {}) });
+ w.ctx.env.OPERATOR_GITHUB_USER_ID = OWNER_GITHUB_ID;
+ return { ...w, db, connection, ctx: { ...w.ctx, db, connection, publicDb: w.db } };
+};
+
 describe('host audience comes from protected configuration only', () => {
  const two = { NATIVE_GIT_WORKER_URL: PC + '/', NATIVE_GIT_PREVIOUS_WORKER_URL: 'https://old.example.test/' };
  const audiences = env => configuredHosts(env).map(h => [h.name, h.audience]);
@@ -65,6 +76,26 @@ describe('host audience comes from protected configuration only', () => {
   const owner = configuredHosts(two)[0];
   expect(hostAllowed({ connection: full, db: {} }, owner)).toBe(false);
   expect(hostAllowed({ connection: { ...full, operator: true }, db: {} }, owner)).toBe(true);
+ });
+ it('RELAY-OWNER-1: the owner\'s own tenant connection is the owner only by its verified numeric GitHub id', () => {
+  const full = { client_id: 'c', profile: 'full' }, env = { OPERATOR_GITHUB_USER_ID: OWNER_GITHUB_ID };
+  const tenantDb = subject => { const db = { playgroundScope: { tenantId: 't-1', identityId: 'i-1', membershipRevision: 1 } }; if (subject) Object.defineProperty(db, 'verifiedGithubSubject', { value: subject }); return db; };
+  expect(ownerCaller({ env, connection: full, db: tenantDb(OWNER_GITHUB_ID) })).toBe(true); // Chris through public connect
+  expect(ownerCaller({ env, connection: full, db: tenantDb(OTHER_GITHUB_ID) })).toBe(false); // another public person
+  expect(ownerCaller({ env, connection: full, db: tenantDb(null) })).toBe(false);
+  expect(ownerCaller({ env: {}, connection: full, db: tenantDb(OWNER_GITHUB_ID) })).toBe(false); // setting not set
+  expect(ownerCaller({ env: { OPERATOR_GITHUB_USER_ID: 'christcr2012' }, connection: full, db: tenantDb(OWNER_GITHUB_ID) })).toBe(false); // a login is not an id
+  // Spoofs: a login, an account, a client-supplied id anywhere but the verified identity row do nothing.
+  expect(ownerCaller({ env, connection: { ...full, login: 'christcr2012', github_user_id: OWNER_GITHUB_ID, defaultAccount: 'christcr2012', accounts: ['christcr2012'] }, db: tenantDb(OTHER_GITHUB_ID), args: { login: 'christcr2012' } })).toBe(false);
+  expect(ownerCaller({ env, connection: full, db: { playgroundScope: { tenantId: 't-1', verifiedGithubSubject: OWNER_GITHUB_ID } } })).toBe(false);
+  expect(ownerCaller({ env, connection: full, db: { verifiedGithubSubject: OWNER_GITHUB_ID } })).toBe(false); // not a tenant database
+  expect(ownerCaller({ env, connection: { ...full, verifiedGithubSubject: OWNER_GITHUB_ID }, db: tenantDb(OTHER_GITHUB_ID) })).toBe(false);
+  // A pass the owner made (or any pass), and background maintenance, stay off the PC.
+  expect(ownerCaller({ env, connection: { ...full, pass: true, kind: 'pass' }, db: tenantDb(OWNER_GITHUB_ID) })).toBe(false);
+  expect(ownerCaller({ env, connection: { ...full, kind: 'pass' }, db: tenantDb(OWNER_GITHUB_ID) })).toBe(false);
+  expect(ownerCaller({ env, connection: { client_id: 'c', pass_id: null }, db: tenantDb(OWNER_GITHUB_ID) })).toBe(false);
+  expect(hostAllowed({ env, connection: full, db: tenantDb(OWNER_GITHUB_ID) }, configuredHosts(two)[0])).toBe(true);
+  expect(hostAllowed({ env, connection: full, db: tenantDb(OTHER_GITHUB_ID) }, configuredHosts(two)[0])).toBe(false);
  });
  it('an unpinned call from a non-owner goes to a shared host; a pinned one keeps its host; none shared is a plain refusal', () => {
   const person = { env: two, connection: { client_id: 'c', profile: 'full' }, db: {} };
@@ -136,6 +167,45 @@ describe('placement: other people never land on the owner\'s PC', () => {
  });
 });
 
+describe('RELAY-OWNER-1: the owner from any of his own connections gets his PC; nobody else does', () => {
+ it('his public-connect tenant connection (verified id match) opens on the PC; another public person goes to Dokploy; his own pass stays off the PC', async () => {
+  const mine = asTenant(await world({ owner: false }), OWNER_GITHUB_ID);
+  const r = await open(mine, 'owner-tenant');
+  expect(r.status, JSON.stringify(r)).toBe('applied');
+  expect(await hostOf(mine, r.result.workspace_id)).toBe(idOf('pc'));
+  const other = asTenant(await world({ owner: false }), OTHER_GITHUB_ID);
+  const o = await open(other, 'other-tenant');
+  expect(o.status, JSON.stringify(o)).toBe('applied');
+  expect(await hostOf(other, o.result.workspace_id)).toBe(idOf('dokploy'));
+  expect(other.pool.pc.requests).toEqual([]);
+  const pass = asTenant(await world({ owner: false }), OWNER_GITHUB_ID, { pass: true });
+  expect(ownerCaller(pass.ctx)).toBe(false);
+  expect(hostAllowed(pass.ctx, configuredHosts(pass.ctx.env).find(h => h.name === 'pc'))).toBe(false);
+ });
+ it('git remote setup from his tenant connection places the key on the PC; another person gets the domain', async () => {
+  const mine = asTenant(await world({ owner: false }), OWNER_GITHUB_ID);
+  const r = parse(await doorsFor(def('github_git_remote_setup'))[0].call(mine, { owner: 'example-org', repo: 'hello', access: 'read', requestKey: 'owner-tenant-remote' }));
+  expect(r.status, JSON.stringify(r)).toBe('applied');
+  expect((await mine.db.getSetting('git_remote.' + r.result.key_id)).host).toBe(idOf('pc'));
+  const other = asTenant(await world({ owner: false }), OTHER_GITHUB_ID);
+  other.ctx.env.GIT_DIRECT_ORIGIN = 'https://pc-direct.example.test';
+  const o = parse(await doorsFor(def('github_git_remote_setup'))[0].call(other, { owner: 'example-org', repo: 'hello', access: 'write', requestKey: 'other-tenant-remote' }));
+  expect(o.status, JSON.stringify(o)).toBe('applied');
+  expect(o.result.remote_url).toBe('https://mcp.example.test/git/example-org/hello.git');
+  expect(JSON.stringify(o)).not.toMatch(/pc-direct|native-worker\.example/);
+  expect((await other.db.getSetting('git_remote.' + o.result.key_id)).host).toBe(idOf('dokploy'));
+  expect(other.pool.pc.requests).toEqual([]);
+ });
+ it('github_server_status shows his PC live to his tenant connection, and owner_only to anyone else', async () => {
+  const mine = asTenant(await world({ owner: false }), OWNER_GITHUB_ID);
+  const status = await serverStatus({ fields: ['health'] }, mine.ctx, { budgetMs: 5000 });
+  expect(status.health.worker_pool.hosts[0]).toMatchObject({ name: 'pc', audience: 'owner', state: 'available' });
+  const other = asTenant(await world({ owner: false }), OTHER_GITHUB_ID);
+  const theirs = await serverStatus({ fields: ['health'] }, other.ctx, { budgetMs: 5000 });
+  expect(theirs.health.worker_pool.hosts[0]).toEqual({ name: 'pc', audience: 'owner', state: 'owner_only' });
+ });
+});
+
 describe('pinned workspaces keep their host', () => {
  it('a non-owner request for a workspace already on the PC is still served there, and counted', async () => {
   const w = await world({ owner: true });
@@ -194,6 +264,18 @@ describe('git remote for a person', () => {
   const own = await keyWorld({ legacy: true }, null);
   await handleGitRemote(new Request('https://mcp.example.test/git/example-org/hello.git/info/refs?service=git-upload-pack', { headers: { authorization: 'Basic ' + Buffer.from('x-robinson-git:' + own.secret).toString('base64') } }), ENV, { now: own.w.ctx.now, openScope: own.openScope });
   expect(strayCount().count).toBe(before + 1);
+  // RELAY-OWNER-1: his tenant key (database of his verified GitHub id) is his; another person's tenant key still counts.
+  const tenantKey = async subject => {
+   const k = await keyWorld({ tenantId: 't-1', identityId: 'i-1', membershipRevision: 1 }, null);
+   k.w.db.playgroundScope = Object.freeze({ tenantId: 't-1', identityId: 'i-1', membershipRevision: 1 }); // as openKeyScope sets it
+   if (subject) Object.defineProperty(k.w.db, 'verifiedGithubSubject', { value: subject });
+   const env = { ...ENV, OPERATOR_GITHUB_USER_ID: OWNER_GITHUB_ID };
+   return handleGitRemote(new Request('https://mcp.example.test/git/example-org/hello.git/info/refs?service=git-upload-pack', { headers: { authorization: 'Basic ' + Buffer.from('x-robinson-git:' + k.secret).toString('base64') } }), env, { now: k.w.ctx.now, openScope: async () => ({ db: k.w.db, env, scope: { tenantId: 't-1', identityId: 'i-1', membershipRevision: 1 }, host: null }) });
+  };
+  expect((await tenantKey(OWNER_GITHUB_ID)).headers.get('x-middleware-rewrite')).toBe(PC + '/v1/remote/info/refs?service=git-upload-pack');
+  expect(strayCount().count).toBe(before + 1);
+  await tenantKey(OTHER_GITHUB_ID);
+  expect(strayCount().count).toBe(before + 2);
  });
  it('the PC\'s direct git host refuses a key whose mirror lives on another host', async () => {
   const { privateKey } = generateKeyPairSync('ed25519');

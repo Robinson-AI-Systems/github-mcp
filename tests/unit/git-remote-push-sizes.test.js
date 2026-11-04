@@ -1,4 +1,4 @@
-// RELAY-BODY-1: plain `git push` through the service domain, at every size measured live on 2026-11-03
+// RELAY-OWNER-1: plain `git push` through the service domain, at every size measured live on 2026-11-03
 // (8 KB ok, 20 KB to 200 KB corrupted or cut off, 800 KB and 2 MB ok). Real git client, the exact setup
 // command (http.postBuffer included), the real Routing Middleware, a stand-in for the Go reverse proxy in
 // front of the PC worker (Tailscale Funnel: test/helpers/go-front-proxy.js), the real worker and its real
@@ -30,7 +30,7 @@ async function world() {
  return { w, r, work, git };
 }
 
-describe('RELAY-BODY-1: git push through the service domain arrives byte-exact at every size', () => {
+describe('RELAY-OWNER-1: git push through the service domain arrives byte-exact at every size', () => {
  it('8 KB, 20 KB, 60 KB, 200 KB, 800 KB and 2 MB pushes (one new base64 file each) all land on GitHub unchanged', async () => {
   const t = await world();
   const out = parse(await handler({ repo: 'hello', access: 'write', requestKey: 'sizes-1' }, t.w.ctx));

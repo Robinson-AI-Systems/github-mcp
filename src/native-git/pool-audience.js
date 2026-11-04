@@ -1,14 +1,35 @@
 // WORKER-POOL-2 (owner decision 2026-11-03, "Only my work on my PC"): who may use which native Git pool host.
 // Control plane only (pool-config.js, which the worker images also carry, stays free of these imports).
-import { isOperatorConnection } from '../core/authority.js';
+import { isOperatorConnection, isOwnerConnection } from '../core/authority.js';
 import { configuredHosts } from './pool-config.js';
 
+const GITHUB_ID = /^[1-9][0-9]{0,18}$/;
+/** RELAY-OWNER-1: the operator's own numeric GitHub user id (protected setting OPERATOR_GITHUB_USER_ID), or null. */
+export function operatorGithubId(env) {
+ const raw = String(env?.OPERATOR_GITHUB_USER_ID ?? '').trim();
+ return GITHUB_ID.test(raw) ? raw : null;
+}
 /**
- * The service owner's own connection: the operator's direct full connector (PUB-8 `operator` mark, set only by the
- * operator's own database route) on the operator's own database. A person's tenant or public connection, a
- * Marketplace connection, a service pass, an RTC/HTTPS door call and a background maintenance context are not.
+ * RELAY-OWNER-1: a tenant database opened for a person whose provider-verified numeric GitHub id (read from their identity
+ * row with the membership, never a login or anything the client sent) is the operator's own.
  */
-export const ownerCaller = ctx => isOperatorConnection(ctx?.connection) && !ctx?.db?.playgroundScope?.tenantId;
+export function ownerIdentityDb(db, env) {
+ const id = operatorGithubId(env), subject = db?.verifiedGithubSubject;
+ return !!id && !!db?.playgroundScope?.tenantId && typeof subject === 'string' && subject === id;
+}
+
+/**
+ * The service owner's own connection ("Only my work on my PC" = his own work, from any of his own connections):
+ * - the operator's direct full connector (PUB-8 `operator` mark, set only by the operator's own database route) on
+ *   the operator's own database; or
+ * - RELAY-OWNER-1: his own full connection (not a pass) in a tenant (public connect from claude.ai, for example) whose
+ *   verified GitHub id equals OPERATOR_GITHUB_USER_ID.
+ * Other people's connections, any service pass (even one he issued), and background maintenance contexts are not.
+ */
+export const ownerCaller = ctx => {
+ if (isOperatorConnection(ctx?.connection) && !ctx?.db?.playgroundScope?.tenantId) return true;
+ return isOwnerConnection(ctx?.connection) && ctx.connection.pass !== true && ownerIdentityDb(ctx?.db, ctx?.env ?? process.env);
+};
 /** Whether this caller may be placed on (or sent to, unpinned) this host. */
 export const hostAllowed = (ctx, host) => !!host && (host.audience !== 'owner' || ownerCaller(ctx));
 /** The host a worker origin belongs to, or null. */
