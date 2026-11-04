@@ -41,6 +41,13 @@ async function begin(mode, { ref, maxBytes = 64 * 1024 * 1024, expect: wanted = 
  return { downloadId, claim, url: address(claim), begun: r.data };
 }
 const status = downloadId => call('download_status', { downloadId });
+// The worker records the final state just after the response that carried the pack ends, so a client that has
+// already exited can read the previous state for a moment. Wait (bounded) for it to settle, then assert exactly.
+const settled = async (downloadId, ms = 5000) => {
+  const until = Date.now() + ms; let r = await status(downloadId);
+  while (r.data?.state === 'serving' && Date.now() < until) { await new Promise(t => setTimeout(t, 50)); r = await status(downloadId); }
+  return r;
+};
 const fetchArchive = async url => { const res = await fetch(url); return { status: res.status, bytes: Buffer.from(await res.arrayBuffer()) }; };
 const tarList = bytes => execFileSync('tar', ['-tzf', '-'], { input: bytes, encoding: 'utf8' }).split('\n').filter(Boolean).map(p => p.replace(/\/$/, ''));
 
@@ -73,7 +80,7 @@ describe('git mode: a real git clone from the one-time URL', () => {
   expect(git(out, 'for-each-ref', '--format=%(refname)').split('\n').sort()).toEqual(['refs/heads/main', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/main', 'refs/remotes/origin/topic', 'refs/tags/v1']);
   expect(await readFile(join(out, 'image.bin'))).toEqual(await readFile(join(repo(), 'image.bin')));
   expect(git(out, 'fsck', '--full', '--strict')).toBe('');
-  expect((await status(downloadId)).data).toMatchObject({ state: 'downloaded', served_bytes: expect.any(Number) });
+  expect((await settled(downloadId)).data).toMatchObject({ state: 'downloaded', served_bytes: expect.any(Number) });
   // Single session: a later clone with the same address is refused; the snapshot is gone.
   const again = await clone(url, join(dir, 'again')); expect(again.status).not.toBe(0); expect(again.stderr).toMatch(/410|already used/);
   await expect(readdir(join(root, '.downloads', id, downloadId))).rejects.toThrow();
@@ -107,7 +114,7 @@ describe('git mode: a real git clone from the one-time URL', () => {
   const fetched = await spawnAsync('git', ['fetch', '--quiet', main.url, 'main:refs/remotes/ws/main'], { cwd: out, env: ENV });
   expect(fetched.status, fetched.stderr).toBe(0);
   expect(git(out, 'rev-parse', 'refs/remotes/ws/main')).toBe(git(repo(), 'rev-parse', 'HEAD'));
-  expect((await status(main.downloadId)).data.state).toBe('downloaded');
+  expect((await settled(main.downloadId)).data.state).toBe('downloaded');
   const commitRef = await begin('git', { ref: topic.slice(0, 12) });
   expect(commitRef.begun).toMatchObject({ branch: 'download', head: topic });
   const missing = await begin('git', { ref: 'no-such-branch', expect: 'refused' });
@@ -161,7 +168,7 @@ describe('git mode: a real git clone from the one-time URL', () => {
   expect((await fetch(url + '/info/refs?service=git-upload-pack')).status).toBe(200);
   skew = 600000 + 60000;
   expect((await clone(url, join(dir, 'late-session'))).status).toBe(0);
-  expect((await status(downloadId)).data.state).toBe('downloaded');
+  expect((await settled(downloadId)).data.state).toBe('downloaded');
   skew = 0;
   const second = await begin('git');
   expect((await fetch(second.url + '/info/refs?service=git-upload-pack')).status).toBe(200);
@@ -179,7 +186,7 @@ describe('archive mode: one curl download', () => {
    const sent = await spawnAsync('curl', ['-fsS', '--noproxy', '*', '-o', join(dir, 'repo.tar.gz'), url], { env: ENV });
    expect(sent.status, sent.stderr).toBe(0);
    expect(gunzipSync(await readFile(join(dir, 'repo.tar.gz')))).toEqual(gitBytes(repo(), 'archive', '--format=tar', commit));
-   expect((await status(downloadId)).data.state).toBe('downloaded');
+   expect((await settled(downloadId)).data.state).toBe('downloaded');
    expect((await fetchArchive(url)).status).toBe(410);
   }
  });
