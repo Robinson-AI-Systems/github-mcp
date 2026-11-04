@@ -159,6 +159,14 @@ describe('PUB-1 real PostgreSQL tenant scope and legacy preservation', () => {
     expect((await query(second, "SELECT count(*)::integer AS n FROM gh_async_jobs"))[0].n).toBe(1);
   });
 
+  it('RELAY-OWNER-1: a scoped database knows its person\'s verified numeric GitHub id, unlisted and outside the stored scope', async () => {
+    expect(tenantA.db.verifiedGithubSubject).toBe('10001');
+    expect(tenantB.db.verifiedGithubSubject).toBe('10002');
+    expect(Object.keys(tenantA.db)).not.toContain('verifiedGithubSubject');
+    expect(JSON.stringify(tenantA.db.playgroundScope)).not.toContain('10001');
+    expect(tenantA.tenant.verifiedSubject).toBe('10001');
+  });
+
   it('checks owner membership at each scoped DB acquisition and rejects foreign, revoked and unready principals', async () => {
     expect(await directory.authorized(a.id, b.owner)).toBeNull();
     const sqlFactory = () => { throw new Error('must not even connect to database'); };

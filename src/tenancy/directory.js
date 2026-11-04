@@ -530,13 +530,15 @@ export function createTenantDirectory(sql) {
      * in PUB-2. Check on every scoped session creation (no cached privileges). */
     async authorized(tenantId, identityId) {
       const t = validUuid(tenantId), i = validUuid(identityId);
-      const rows = await sql`SELECT t.id, t.namespace, m.role, m.revision
+      // RELAY-OWNER-1: the identity's provider-verified numeric GitHub id rides along (never a login).
+      const rows = await sql`SELECT t.id, t.namespace, m.role, m.revision, ident.provider_subject
         FROM gh_tenants t JOIN gh_tenant_memberships m ON m.tenant_id = t.id
+        LEFT JOIN gh_tenant_identities ident ON ident.id = m.identity_id AND ident.provider = 'github'
         WHERE t.id = ${t}::uuid AND m.identity_id = ${i}::uuid
           AND t.status = 'active' AND m.active = TRUE`;
       return rows.length === 1 ? { tenantId: String(rows[0].id),
         namespace: rows[0].namespace, role: rows[0].role,
-        membershipRevision: Number(rows[0].revision) } : null;
+        membershipRevision: Number(rows[0].revision), ...verifiedSubjectOf(rows[0]) } : null;
     },
 
     /** Private owner-only test allowlisting; never enough without live membership
@@ -601,10 +603,11 @@ export function createTenantDirectory(sql) {
     async authorizedPilotIdentity(tenantId, identityId) {
       const t = validUuid(tenantId), i = validUuid(identityId);
       const rows = await sql`SELECT t.id,t.namespace,m.role,m.revision AS membership_revision,
-          p.revision AS pilot_revision
+          p.revision AS pilot_revision, ident.provider_subject
         FROM gh_tenants t
         JOIN gh_tenant_memberships m ON m.tenant_id=t.id
         JOIN gh_tenant_pilot_allowlist p ON p.tenant_id=t.id AND p.identity_id=m.identity_id
+        LEFT JOIN gh_tenant_identities ident ON ident.id=m.identity_id AND ident.provider='github'
         WHERE t.id=${t}::uuid AND m.identity_id=${i}::uuid
           AND t.status='active' AND m.active=TRUE AND p.active=TRUE`;
       if (rows.length !== 1) return null;
@@ -612,7 +615,7 @@ export function createTenantDirectory(sql) {
       return Object.freeze({ tenantId: String(v.id), identityId: i,
         namespace: v.namespace, role: v.role,
         membershipRevision: Number(v.membership_revision),
-        pilotRevision: Number(v.pilot_revision) });
+        pilotRevision: Number(v.pilot_revision), ...verifiedSubjectOf(v) });
     },
 
     /** Save only encrypted provider tokens after verified GitHub /user +
@@ -1371,6 +1374,9 @@ export function createTenantDirectory(sql) {
   };
 }
 
+/** `{ verifiedSubject }` from a row's provider_subject when it is a numeric GitHub id, else nothing. */
+const verifiedSubjectOf = row => /^[1-9][0-9]{0,18}$/.test(String(row?.provider_subject ?? '')) ? { verifiedSubject: String(row.provider_subject) } : {};
+
 /** Never takes tenant from an HTTP parameter or cookie. PUB-2 must first verify
  * identity with GitHub and resolve membership through the service-owned registry.
  * Private tests may inject an isolated session SQL factory; production pins
@@ -1388,6 +1394,9 @@ export async function openAuthorizedTenantDb({ directory, tenantId, verifiedIden
   await assertTenantSearchPath(sql, tenantId);
   const db = createDb(sql);
   db.playgroundScope=Object.freeze({tenantId,identityId:verifiedIdentityId,membershipRevision:bound.membershipRevision});
+  // RELAY-OWNER-1 (WORKER-POOL-2 follow-up): the person's provider-verified numeric GitHub id, read from the identity row
+  // with the membership. Kept off playgroundScope, which is stored in index rows; never from the request.
+  if (bound.verifiedSubject) Object.defineProperty(db, 'verifiedGithubSubject', { value: bound.verifiedSubject, enumerable: false });
   await upgradeTenantSchemaOnce(tenantId, connectionString, db, sql);
   return { tenant: Object.freeze(bound), db, sql };
 }

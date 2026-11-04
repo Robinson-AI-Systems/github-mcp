@@ -6,7 +6,8 @@
 //  - The real control-plane handlers (src/git-remote/api.js) behind a local HTTP server.
 //  - "This service's domain": a stand-in for Vercel's edge that runs the real Routing Middleware
 //    (middleware.js → handleGitRemote) WITHOUT the request body, then proxies a rewrite to the
-//    worker with exactly the override headers, streaming both ways (as test/helpers/transfer-relay.js).
+//    worker with exactly the override headers, streaming both ways (as test/helpers/transfer-relay.js);
+//    with `front: 'go'`, through a stand-in for the Go reverse proxy in front of the PC (test/helpers/go-front-proxy.js).
 //    Other paths (/git-remote/exchange, /api/…) go to the function server, as on Vercel.
 import { createServer, request as httpRequest } from 'node:http';
 import { createServer as createTlsServer } from 'node:https';
@@ -22,6 +23,7 @@ import { handleGitRemote } from '../../src/git-remote/edge.js';
 import { exchange, broker, directAuthorize } from '../../src/git-remote/api.js';
 import { directIdentity } from '../../workers/native-git/direct.js';
 import { indexKey } from '../../src/git-remote/keys.js';
+import { goFrontForward } from './go-front-proxy.js';
 
 export const WORKER_KEY = 'FAKE-local-git-remote-worker-key-0123456789';
 export const PUBLIC = 'https://mcp.example.test';
@@ -86,7 +88,7 @@ export async function startFakeGithubGit({ owner = 'example-org', repo = 'hello'
  * `direct`: false (no direct host), true (the worker environment names it, GIT-DIRECT-1) or 'configure' (only this
  * service names it; the worker is configured by the signed `direct_configure` action, GIT-DIRECT-2).
  */
-export async function startGitRemote(w, { gates = [], direct = false, githubPushLimit = null, limits = undefined, freeDisk = undefined, limiter = undefined, transport = undefined, githubSsh = undefined } = {}) {
+export async function startGitRemote(w, { gates = [], direct = false, githubPushLimit = null, limits = undefined, freeDisk = undefined, limiter = undefined, transport = undefined, githubSsh = undefined, front = null } = {}) {
  const github = await startFakeGithubGit({ pushLimit: githubPushLimit });
  const dir = await mkdtemp(join(tmpdir(), 'git-remote-world-'));
  const root = join(dir, 'storage');
@@ -143,6 +145,8 @@ export async function startGitRemote(w, { gates = [], direct = false, githubPush
   const destination = new URL(target);
   seen.push({ destination: target, headers: forwarded });
   if (destination.origin !== WORKER) { req.resume(); res.writeHead(502); return res.end(); }
+  // RELAY-OWNER-1: `front: 'go'` puts the Go net/http reverse proxy's behaviour (Tailscale Funnel) on this hop.
+  if (front === 'go') { const record = seen.at(-1); return goFrontForward(req, res, httpRequest(workerOrigin + destination.pathname + destination.search, { method: req.method, headers: forwarded }), { record }); }
   const upstream = httpRequest(workerOrigin + destination.pathname + destination.search, { method: req.method, headers: forwarded }, reply => { res.writeHead(reply.statusCode, reply.headers); reply.pipe(res); });
   upstream.on('error', () => { if (!res.headersSent) res.writeHead(502); res.end(); });
   req.on('close', () => { if (!req.complete) upstream.destroy(); });

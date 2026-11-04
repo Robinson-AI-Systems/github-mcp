@@ -30,6 +30,9 @@ git-direct, server-status, repo-change and pc-worker suites pass (the worker-poo
   (`gh_t_<id>` schemas), Marketplace connections, service passes (even ones Chris issued), RTC/HTTPS door calls and
   background maintenance contexts. Those are all `shared` callers. Git remote keys: a key in the root database
   (`scope.legacy`) is the owner's; a tenant key is not.
+- **Extended by [RELAY-OWNER-1](RELAY-OWNER-1.md):** the owner's own tenant connection (public connect from claude.ai)
+  is the owner too when its provider-verified numeric GitHub id equals `OPERATOR_GITHUB_USER_ID`; its git remote keys are
+  the owner's. Passes and every other person are unchanged.
 
 ## What follows the rule
 

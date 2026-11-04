@@ -23,6 +23,8 @@ Only things that need you (your sign-in, phone or desktop, money, or a decision)
 
 7. **Optional: the GitHub App's own name on GitHub (BRAND-UNLEASHED-1, added 2026-11-03).** Every page, the MCP title and the docs now say "GitHub Unleashed by Robinson AI Systems". The registered GitHub App (and a Marketplace listing, if you publish one) keeps its current name on GitHub, because renaming an App can change its web address and bot name that installs and links rely on. Recommendation: leave it. If you want it renamed anyway, do it in GitHub's App settings yourself after checking GitHub's naming rules (they limit how "GitHub" may appear in names); nothing in this server needs to change.
 
+8. **Your own GitHub number for "only my work on my PC" (RELAY-OWNER-1, added 2026-11-03).** Your claude.ai connection is a public-connect sign-in, so the server needs to know which GitHub account is yours. One value in Vercel production (an agent with your Vercel connection can set it; it is not a secret, but this public repository must not hold it): `OPERATOR_GITHUB_USER_ID` = the same number already saved in `PUBLIC_UNLIMITED_SUBJECTS` (your numeric GitHub id; also the `id` at `https://api.github.com/users/christcr2012`). It takes effect with the next deployment. Until then your claude.ai work goes to Dokploy as before; nothing breaks.
+
 ## Only if you want them
 
 - **Backups of Git workspaces.** Optional and not needed for production (decision 2026-10-30). No backup exists today. The off-server destination currently returns 401; do not work around it. When you want it: [runbook](NATIVE-GIT-BACKUP-RUNBOOK.md).

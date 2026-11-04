@@ -30,7 +30,8 @@ export function checkedTenantMcpDirectory(directory, claim, authorized, marketpl
     throw new Error('Tenant authorization evidence does not match this bearer.');
   const membership = Object.freeze({
     tenantId: authorized.tenantId, namespace: authorized.namespace,
-    role: authorized.role, membershipRevision: authorized.membershipRevision
+    role: authorized.role, membershipRevision: authorized.membershipRevision,
+    ...(authorized.verifiedSubject ? { verifiedSubject: authorized.verifiedSubject } : {})
   });
   return {
     ...directory,

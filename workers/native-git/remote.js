@@ -215,14 +215,29 @@ export async function serveRemote(req, res, ctx, { route, search, claimToken, di
   const timer = setTimeout(kill, REMOTE_LIMITS.serveMs); timer.unref();
   const closed = new Promise(r => child.on('close', r));
   child.stdin.on('error', () => {});
-  // The reply starts at once so a proxy in front sees the response begin; Git's keepalives follow during the hook.
-  res.writeHead(200, { 'Content-Type': 'application/x-git-receive-pack-result', 'Cache-Control': 'no-store' }); res.flushHeaders();
+  // RELAY-OWNER-1: the reply never starts before Git does. Git writes nothing until it has read the whole pack
+  // (its keepalives start right after, during the hook), so no response header reaches a proxy in front while the
+  // push is still uploading. A Go net/http front (Tailscale Funnel) that sees a response begin with under 256 KiB
+  // of the request unread reads and drops the rest itself, which corrupted or cut off mid-size pushes.
   let over = false; const counter = counted(REMOTE_MAX_PUSH_BYTES + MiB, () => { over = true; });
-  const output = pipeline(child.stdout, res).catch(() => { kill(); });
+  const output = replyWhenGitWrites(child.stdout, res).catch(() => { kill(); });
   try { await pipeline(...source, counter.stream, child.stdin); } catch { kill(); }
   await closed; await output; clearTimeout(timer);
   if (over && !res.writableEnded) res.destroy();
  });
+}
+
+/** Streams Git's answer, sending the response header with its first byte (or at the end when it wrote none). */
+export async function replyWhenGitWrites(stdout, res, contentType = 'application/x-git-receive-pack-result') {
+ const start = () => { if (!res.headersSent) res.writeHead(200, { 'Content-Type': contentType, 'Cache-Control': 'no-store' }); };
+ const gone = new Promise(resolve => res.once('close', resolve));
+ for await (const chunk of stdout) {
+  if (res.destroyed) throw new Error('client gone');
+  start();
+  if (!res.write(chunk)) await Promise.race([new Promise(resolve => res.once('drain', resolve)), gone]);
+ }
+ if (res.destroyed) throw new Error('client gone');
+ start(); res.end();
 }
 
 // ---- GIT-DIRECT-1: the direct host's streamed push ------------------------------------------
