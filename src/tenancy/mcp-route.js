@@ -9,6 +9,7 @@ import { isPublicClientId } from './public-code.js';
 import { createCredentials } from '../github/credentials.js';
 import { createDb } from '../db.js';
 import { createTenantScopedCredentials } from './user-authorization.js';
+import { keepVerifiedSubject } from './verified-subject.js';
 import { withTenantStorageLimits, withTenantProviderMetrics, createTenantMetricBuffer } from './runtime-limits.js';
 
 
@@ -50,8 +51,9 @@ export function requestScopedVerifiedAccess(db, token, record) {
       typeof token !== 'string' || !token || !record ||
       typeof record.client_id !== 'string')
     throw new TypeError('Request-bound access requires a verified token and grant.');
-  return { ...db, getAccessToken: async candidate =>
-    candidate === token ? record : db.getAccessToken(candidate) };
+  // RELAY-OWNER-2: the spread drops the unlisted verified GitHub id; carry it so the owner is still recognised.
+  return keepVerifiedSubject({ ...db, getAccessToken: async candidate =>
+    candidate === token ? record : db.getAccessToken(candidate) }, db);
 }
 
 /** The max-ten authorized accounts can be checked concurrently; every one must still be live. */

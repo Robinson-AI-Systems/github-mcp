@@ -12,6 +12,7 @@
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { createDb, productionSql, GIT_REMOTE_ID } from '../db.js';
 import { CODE_PREFIX, KEY_PREFIX, parseSecret, sha256 } from './wire.js';
+import { setVerifiedSubject } from '../tenancy/verified-subject.js';
 
 export { CODE_PREFIX, KEY_PREFIX, parseSecret, sha256 };
 export const CODE_TTL_MS = 600000;
@@ -105,7 +106,7 @@ export async function openKeyScope(id, { env = process.env, withCredentials = fa
   if (marketplace && !marketplace.active) return null;
   const sql = createTenantSql(env.DATABASE_URL, scope.tenantId); await assertTenantSearchPath(sql, scope.tenantId);
   const db = createDb(sql); db.playgroundScope = Object.freeze({ ...scope });
-  if (authorized.verifiedSubject) Object.defineProperty(db, 'verifiedGithubSubject', { value: authorized.verifiedSubject, enumerable: false });
+  setVerifiedSubject(db, authorized.verifiedSubject);
   if (!withCredentials) return { db, env, scope, host };
   const [{ createCredentials }, { createTenantScopedCredentials }] = await Promise.all([import('../github/credentials.js'), import('../tenancy/user-authorization.js')]);
   const credentials = createTenantScopedCredentials({ base: createCredentials({ db, env, rootApps: root }), directory, tenant: authorized, db, env, fetchImpl: fetch });
