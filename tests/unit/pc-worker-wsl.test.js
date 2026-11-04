@@ -29,4 +29,11 @@ describe('PC-WORKER-2: the PC kit works on WSL2 with mirrored networking (found 
       expect(script).not.toMatch(/\$HOME\/\.docker/);
     }
   });
+  it('the PC kit pushes to GitHub over HTTP/1.1 by default (measured 2026-11-03), with SSH left off', () => {
+    expect(compose).toMatch(/NATIVE_GIT_GITHUB_HTTP_VERSION: \$\{NATIVE_GIT_GITHUB_HTTP_VERSION:-HTTP\/1\.1\}/);
+    expect(compose).toMatch(/NATIVE_GIT_GITHUB_TRANSPORT: \$\{NATIVE_GIT_GITHUB_TRANSPORT:-https\}/);
+    const example = readFileSync(new URL('../../deploy/pc/.env.example', import.meta.url), 'utf8');
+    expect(example).toMatch(/^NATIVE_GIT_GITHUB_HTTP_VERSION=HTTP\/1\.1$/m);
+    expect(example).toMatch(/^NATIVE_GIT_GITHUB_TRANSPORT=https$/m);
+  });
 });

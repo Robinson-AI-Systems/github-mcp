@@ -100,3 +100,11 @@ hook env `ROBINSON_REMOTE_TRANSPORT` / `ROBINSON_REMOTE_GITHUB_SSH` / `ROBINSON_
 change-log tool name `github_git_remote_deploy_key`, report fields `transport` / `transport_note` / `http_version` /
 `deploy_key_removed` / `timing`, the worker volume folder `.remote-ssh-cleanup`, and `openssh-client` in the image. No
 database migration, no tool schema change, no worker protocol change; HTTPS stays the default.
+
+## Follow-up 2026-11-03: live result, HTTP/1.1 is the PC default
+
+Tested one at a time as the owner asked. With only `NATIVE_GIT_GITHUB_HTTP_VERSION=HTTP/1.1` (transport `https`), Chris's
+PC sent 150 MB to GitHub in 5.3 s and about 700 MB packed in 17 s, against about 6 minutes for 150 MB with git's default
+HTTP/2. The PC kit now defaults to HTTP/1.1 (`deploy/pc/compose.yaml`, `.env.example`, test in
+`tests/unit/pc-worker-wsl.test.js`); the SSH transport stays off as a tested spare. Status note:
+[2026-11-03-pc-http11-default](../status/2026-11-03-pc-http11-default.md).
