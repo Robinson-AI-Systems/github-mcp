@@ -4,6 +4,7 @@ import { redact } from './util.js';
 // (`ctx.callTool`), so every check - arguments, profile, production switch, protected list, people, spend, change log - still applies.
 import { createHash } from 'node:crypto';
 import { areaOf, describeTool, kindOf, marksOf, searchTools } from '../core/meta.js';
+import { isOperatorConnection } from '../core/authority.js';
 import { listedDescription, toolsForProfile, toolsForListing } from '../core/registry.js';
 import {OptionalConsentRequired} from '../tenancy/optional-challenge.js';
 import { KEEP_WHOLE } from '../core/result-envelope.js';
@@ -16,17 +17,35 @@ const find = (ctx, name) => visible(ctx).find((t) => t.name === name);
 // Copilot families an account really has and says, per family and account, why one was left out.
 const offeredView = async (ctx, list) => (typeof ctx.offered === 'function' ? ctx.offered(list) : { tools: list, hidden: [] });
 
+/** How a tool is reached from this connection: in its direct tool list, or only through github_call. */
+const accessOf = (ctx, name) => (toolsForListing(ctx.registry, ctx.connection.profile, ctx.connection.listing ?? 'compact', ctx.connection)
+  .some((t) => t.name === name) ? 'direct' : 'github_call');
+
 async function searchHandler(args, ctx) {
   if (!args.query && !args.area && !args.audience) throw new TypeError('Say what you want to do (query), or narrow by area or audience.');
   const all = searchTools(visible(ctx), { ...args, limit: 25 });
   const { tools: shown, hidden } = await offeredView(ctx, all);
   const found = shown.slice(0, args.limit ?? 10);
-  return {
+  const out = {
     count: found.length,
-    tools: found.map((t) => ({ name: t.name, what: listedDescription(t), kind: kindOf(t), area: areaOf(t), safety: marksOf(t) })),
+    tools: found.map((t) => ({ name: t.name, what: listedDescription(t), kind: kindOf(t), area: areaOf(t), safety: marksOf(t), access: accessOf(ctx, t.name) })),
     ...(hidden.length ? { hidden_families: hidden } : {}),
     next: 'github_describe_tool shows the arguments; github_call runs a tool that is not in your list.'
   };
+  // Census honesty: a keyword that matches nothing this connection may call can still match tools that
+  // exist under another profile. Name them (in a separate field, never as callable results) instead of
+  // letting the search report an empty catalog that is not empty.
+  if (!found.length && args.query) {
+    const callable = new Set(visible(ctx).map((t) => t.name));
+    const catalog = ctx.registry.tools.filter((t) => !callable.has(t.name) && (t.operatorOnly !== true || isOperatorConnection(ctx.connection)));
+    const matches = searchTools(catalog, { ...args, limit: 25 });
+    if (matches.length) {
+      out.catalog_matches = matches.map((t) => ({ name: t.name, what: listedDescription(t), kind: kindOf(t), area: areaOf(t),
+        profiles: t.profiles ?? null, note: 'Exists in the full catalog; this connection\'s profile cannot call it.' }));
+      out.note = 'No tool this connection can call matched those words. catalog_matches names what the full catalog has; a connection with a listed profile can call those.';
+    }
+  }
+  return out;
 }
 
 // Profile-visible direct tools only. Sorted stable digests allow clients to
@@ -52,12 +71,14 @@ function manifestHandler(_args, ctx) {
 async function describeHandler(args, ctx) {
   const tool = find(ctx, args.name);
   if (!tool) throw new TypeError(`Unknown or unavailable tool: ${redact(String(args.name)).slice(0, 80)}. Search with github_search_tools.`);
+  const access = accessOf(ctx, tool.name) === 'direct' ? { access: 'direct' }
+    : { access: 'github_call', call_with: { tool: 'github_call', arguments: { name: tool.name, args: 'the arguments described here' } } };
   const { tools: shown, hidden } = await offeredView(ctx, [tool]);
   if (!shown.length) {
     const why = hidden[0]?.accounts?.map((a) => `${a.account}: ${a.reason}`).join(' ') ?? '';
-    return { ...describeTool(tool), offered: false, hidden_because: why.slice(0, 1200) };
+    return { ...describeTool(tool), ...access, offered: false, hidden_because: why.slice(0, 1200) };
   }
-  return describeTool(tool);
+  return { ...describeTool(tool), ...access };
 }
 
 const callable = (ctx, name) => { const t = find(ctx, name); return t && (!t.usesRegistry || t.name==='github_secret_scanner' || (t.area === 'workflow' && (Array.isArray(t.delegatedWrites) || t.annotations?.readOnlyHint === true))) ? t : null; };

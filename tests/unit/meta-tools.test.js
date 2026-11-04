@@ -43,6 +43,36 @@ describe('github_search_tools', () => {
     expect(data(await w.run('github_search_tools', { query: 'zzzzqqqq' })).count).toBe(0);
     expect((await w.run('github_search_tools', { query: 'x', limit: 99 })).isError).toBe(true);
   });
+  it('marks each result direct or github_call-only for this connection listing', async () => {
+    const w = await world();
+    const dispatch = createDispatch({ credentials: w.credentials, gates: w.ctx.gates, fetch: w.gh.fetch, now: w.ctx.now });
+    const compact = (name, args) => dispatch({ registry, name, args, connection: { ...w.connection, listing: 'compact' }, db: w.db });
+    const found = data(await compact('github_search_tools', { query: 'default account' }));
+    expect(found.tools[0]).toMatchObject({ name: 'github_set_default_account', access: 'github_call' });
+    const metaArea = data(await compact('github_search_tools', { area: 'meta' }));
+    expect(metaArea.tools.every((t) => t.access === 'direct')).toBe(true);
+    const described = data(await compact('github_describe_tool', { name: 'github_set_spend_limit' }));
+    expect(described.access).toBe('github_call');
+    expect(described.call_with).toMatchObject({ tool: 'github_call', arguments: { name: 'github_set_spend_limit' } });
+    expect(data(await compact('github_describe_tool', { name: 'github_search_tools' })).access).toBe('direct');
+  });
+  it('names full-catalog matches instead of a false empty when only another profile has them', async () => {
+    const fixture = { name: 'github_test_quuxberry', area: 'test', audience: ['B'], writes: true, profiles: ['full'],
+      description: 'Quuxberry the spend ceiling for a test account.', declarations: {},
+      inputSchema: { type: 'object', properties: {}, additionalProperties: false }, annotations: {} };
+    const reg = mergeNamespaces([{ tools: [...meta.tools, fixture], handlers: { ...meta.handlers, github_test_quuxberry: async () => ({}) } }]);
+    const low = await world('read_only');
+    const miss = data(await low.run('github_search_tools', { query: 'quuxberry' }, reg));
+    expect(miss.count).toBe(0);
+    expect(miss.tools).toEqual([]);
+    expect(miss.catalog_matches.map((t) => t.name)).toEqual(['github_test_quuxberry']);
+    expect(miss.catalog_matches[0].profiles).toEqual(['full']);
+    const full = await world('full');
+    const hit = data(await full.run('github_search_tools', { query: 'quuxberry' }, reg));
+    expect(hit.tools.map((t) => t.name)).toEqual(['github_test_quuxberry']);
+    expect(hit.catalog_matches).toBeUndefined();
+    expect(data(await low.run('github_search_tools', { query: 'zzzzqqqq' }, reg)).catalog_matches).toBeUndefined();
+  });
 });
 
 describe('github_describe_tool', () => {

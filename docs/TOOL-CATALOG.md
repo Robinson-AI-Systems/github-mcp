@@ -80,13 +80,13 @@ Card(s): A-5, B-2, B-3, B-8, C-1, C-2, R-1, O-1, X-1, PUB-7. Meta-tools, connect
 | `github_list_protected_resources` | The repositories and installations this server refuses to change (its own repo, other Robinson servers) and at what level | — | N | — | O,B | R | B-3 built #19 |
 | `github_recent_changes` | What was changed through this server (filter by repo, tool, account, date; previews hidden unless asked) | — | N | — | O,Op | R | B-8 built #23 |
 | `github_undo_change` | Undo one change-log entry when it has a clean opposite; says plainly when it does not | C | N | I | Op | E | X-1 built #224 |
-| `github_search_tools` | Find tools by plain words (and audience); one line each with safety marks | — | N | — | B,O,Op | R | C-2 built #26 |
+| `github_search_tools` | Find tools by plain words (and audience); one line each with safety marks, an `access` mark (direct or github_call-only) and, when only another profile has a match, `catalog_matches` naming it instead of a false empty | — | N | — | B,O,Op | R | C-2 built #26 |
 | `github_tool_manifest` | Stable profile-scoped direct-tool names, interface versions and change hashes | — | N | — | B,O,Op | R | C-11 #434 |
-| `github_describe_tool` | Full instructions and arguments for one tool | — | N | — | B,O,Op | R | C-2 built #26 |
+| `github_describe_tool` | Full instructions and arguments for one tool, with `access` (direct, or github_call with the exact `call_with`) | — | N | — | B,O,Op | R | C-2 built #26 |
 | `github_call` | Run any tool in the profile by name, through the same guards | as the tool | N | — | B,O,Op | R | C-2 built #26 |
 | `github_batch` | Up to 10 read calls in one round trip | — | N | — | B,O,Op | R | C-2 built #26 |
 | `github_write_batch` | 1–20 sequential owner-authorized guarded writes, confirmed scalar references, durable replay-safe and itemized stop-on-error outcomes | as the tool | N | I | B,Op | E | C-16 #431 |
-| `github_get_result` | Page through kept results (each page says `complete` and gives its next `continue` call); `startLine`/`endLine` read one long text field in whole lines; explicit `byteOffset`/`byteLength` returns up to 32 KiB of original retained file bytes as base64 | — | N | — | B,O,Op | R | C-1 built #25; RTC scoped single read #148 |
+| `github_get_result` | Page through kept results, including lists nested one level down (universal API reads keep theirs at `data.<list>`; the page names `list_path` and projects its fields) (each page says `complete` and gives its next `continue` call); `startLine`/`endLine` read one long text field in whole lines; explicit `byteOffset`/`byteLength` returns up to 32 KiB of original retained file bytes as base64 | — | N | — | B,O,Op | R | C-1 built #25; RTC scoped single read #148 |
 | `github_create_pass` | Make a short-lived preview pass for the HTTPS API and Robinson's Toolkit (read-only unless changes are allowed; $0; no access changes; shown once on the setup page) | C | N | — | O | F | R-1 built #225 |
 | `github_where_is_setting` | Structured steps (link, numbered actions, expected result, read-back check) for any GitHub setting with no API | — | N | — | O | R | B-8 built #24 |
 | `github_admin_overview` | Bounded owner/org security review, true optional user-selected MCP spend cap (legacy default $0 is uncapped), actual verified monthly GitHub billed usage or unreadable, enrolled U personal identity, explicit plan/permission gaps | — | N | I,U | O | R | O-1 built #197/#224; current provider-read correction |
@@ -151,10 +151,10 @@ Card(s): D-2.
 | `github_repo_change` | One call: write/delete files (or apply an upload) on a new or existing branch, commit, push with a lease and readback, optionally open the PR through `github_workflow_open_pr`; `expectedHead`/`allowMoved`; the same call again resumes and never commits twice. Compact list | P·Prod* | N | I | B,O,Op | F | NATIVE-ERGO-1 |
 | `github_content_get` | A file or directory at any ref; compact text by default (a cut-short file says plainly how to read it whole with `fullText`, up to 1 MB, or by `startLine`/`endLine` windows of up to 500 lines returned whole with a `next_start_line` cursor), byte-exact base64 via `byteOffset`/`byteLength` (up to 32 KiB per explicit call) and a retained handle for overflow | — | F | I | B,Op | R | D-2 built #30 |
 | `github_content_protection_check` | Explain matching rules and locations without values; provide a safe false-positive report and exact local-Git retrieval guidance | — | N | I | B,O,Op | R | PAR-2 |
-| `github_content_get_tree` | Recursive tree with blob SHA/mode, glob and pinned offset continuation beyond 500 entries | — | C | I | B | R | D-2 built #30 |
+| `github_content_get_tree` | Recursive tree with blob SHA/mode, glob (incl. `{a,b}` alternatives; malformed braces refused loudly) and pinned offset continuation beyond 500 entries; an incomplete page carries the exact `continue` call and `page_cut_by` when the byte budget stopped it | — | C | I | B | R | D-2 built #30 |
 | `github_content_put_file` | Create or update one file with a commit (checks the file's current version first) | P·Prod* | F | I | B | E | D-2 built #32 |
 | `github_content_delete_file` | Delete one file with a commit | C·Prod* | C | I | B | E | D-2 built #32 |
-| `github_content_commit_git_data` | Atomic 1–50 binary/text operations (2 MB); expected count, optional absent-branch createFrom, exact parent and full manifest readback | P·Prod* | N | I | B | E | PAR-3 |
+| `github_content_commit_git_data` | Atomic 1–50 binary/text operations (2 MB); expected count, optional absent-branch createFrom, exact parent and full manifest readback; symlink and submodule entries are refused, and batches over 50 are refused with the chained `github_write_batch` route named | P·Prod* | N | I | B | E | PAR-3 |
 | `github_content_push_files` | Commit several file changes at once on a branch, signed by GitHub (GraphQL `createCommitOnBranch`, expected head checked) | P·Prod* | N | I | B | E | D-2 built #32 |
 | `github_content_edit_files` | Edit files by find-and-replace (text must match exactly once unless `all`) or by line number (`lineEdits`: replace, insert or delete lines; numbers refer to the file as it is now, with an optional `expectFirstLine` safety check) and commit on a branch, signed by GitHub; sends only the changed text | P·Prod* | N | I | B | E | D-2 follow-up built |
 | `github_content_get_archive_link` | Safe queryless archive URL; when a signed redirect is withheld (all detail modes), the GitHub page plus `instead.steps` (one `github_repo_download` archive call) | — | N | I | B | R | D-2 built #30 |
@@ -285,7 +285,7 @@ Card(s): G-1.
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `github_actions_list_workflows` | Workflows in a repository with state and file path | — | C | I | B,Op | R | G-1 built #39 |
 | `github_actions_set_workflow_enabled` | Enable or disable a workflow | P·Prod* | C | I | B | F | G-1 built #41 |
-| `github_actions_dispatch` | Start a workflow (`workflow_dispatch`) on a ref with inputs; returns the run (API 2026-03-10) | P·Prod* | F | I | B,Op | E | G-1 built #41 |
+| `github_actions_dispatch` | Start a workflow (`workflow_dispatch`) on a ref with inputs; returns the run (API 2026-03-10); accepts `workflow_id` as the spelling of `workflow` | P·Prod* | F | I | B,Op | E | G-1 built #41 |
 | `github_actions_list_runs` | Runs by workflow, branch, event, status, actor, head SHA | — | C | I | B,Op | R | G-1 built #39 |
 | `github_actions_get_run` | One run: status, conclusion, jobs and steps, attempt, billable timing | — | C | I | B,Op | R | G-1 built #39 |
 | `github_actions_get_job_log` | Job summary or full redacted character windows pinned to log hash; job_id alias | — | F | I | B,Op | R | G-1 built #39 |
@@ -666,7 +666,7 @@ Card(s): P-2, P-3, W-1 … W-7. P-2 built in PR #207 as a non-read-only composed
 
 | Tool | What it does | Safety | Origin | Cred | Audience | Profile | Card |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| `github_workflow_pr_status` | PR checks/reviews/stack plus strict current-base diagnostics and concrete next action | — | N | I | B,Op | R | W-1 built #210 |
+| `github_workflow_pr_status` | PR checks/reviews/stack plus strict current-base diagnostics and concrete next action; an absent checks payload is reported as an explicit unknown state, never a bare null | — | N | I | B,Op | R | W-1 built #210 |
 | `github_workflow_open_pr` | Idempotently find an existing PR from bounded normalized head/base inventory without duplicating it; create only through guarded writer, then add missing labels separately | P·M | N | I | B | E | W-1 built #210 |
 | `github_workflow_merge_when_green` | Merge at the exact head SHA only when required checks are green there and no review thread is unresolved; otherwise says what is missing | C·Prod* | F | I | B | E | W-2 built #210 |
 | `github_workflow_merge_stack` | Merge a stack bottom-up: retarget each PR to the default branch, require fresh green CI at its head, merge; stops at the first PR that is not ready | C·Prod* | N | I | B | E | W-2 built #210 |

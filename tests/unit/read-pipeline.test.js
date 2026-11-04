@@ -137,3 +137,25 @@ describe('the tools built before this card', () => {
     expect(r.structuredContent.server_release).toHaveProperty('version');
   });
 });
+
+describe('kept results whose list is nested (the universal API read shape)', () => {
+  it('pages and projects the list under data instead of reporting its fields unknown', async () => {
+    const { run } = await setup();
+    const runs = Array.from({ length: 60 }, (_, i) => ({ id: i + 1, name: 'ci', head_sha: 's' + i, conclusion: 'success', long_note: 'x'.repeat(200) }));
+    current = () => ({ operationId: 'listWorkflowRuns', route: 'GET /repos/{owner}/{repo}/actions/runs', status: 200,
+      data: { total_count: 60, workflow_runs: runs } });
+    const r = out(await run('github_t_plain', {}));
+    expect(r.kept_result).toBeDefined();
+    expect(r.kept_result.what).toContain('60 data.workflow_runs');
+    const p1 = out(await run('github_get_result', { handle: r.kept_result.handle, page: 1, pageSize: 20, fields: ['id', 'name'] }));
+    expect(p1.list_path).toBe('data.workflow_runs');
+    expect(p1.page_info).toMatchObject({ page: 1, pages: 3, total: 60 });
+    expect(p1.data.workflow_runs).toHaveLength(20);
+    expect(p1.data.workflow_runs[0]).toMatchObject({ id: 1, name: 'ci' });
+    expect(p1.data.workflow_runs[0]).not.toHaveProperty('head_sha');
+    expect(p1.unknown_fields).toBeUndefined();
+    const p3 = out(await run('github_get_result', { handle: r.kept_result.handle, page: 3, pageSize: 20, fields: ['id'] }));
+    expect(p3.data.workflow_runs.map((x) => x.id)).toEqual(Array.from({ length: 20 }, (_, i) => 41 + i));
+    expect(out(await run('github_get_result', { handle: r.kept_result.handle, fields: ['nope'] })).unknown_fields).toEqual(['nope']);
+  });
+});

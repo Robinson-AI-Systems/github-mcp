@@ -368,6 +368,37 @@ it('pages the actually delivered tree entries through dispatch without skipping 
  }
  expect(paths).toEqual(tree.map(x=>x.path));
 });
+it('expands brace alternatives in a tree glob and refuses malformed braces loudly',async()=>{
+ const w=await world(),sha='a'.repeat(40),tree=['src/a/x.js','src/b/y.js','src/c/z.js','docs/a.md'].map(p=>({path:p,type:'blob',sha:'b'.repeat(40),mode:'100644',size:1}));
+ w.gh.when('GET /repos/{owner}/{repo}/git/trees/{tree_sha}').reply(200,{sha,truncated:false,tree});
+ const {body}=await run(w,'github_content_get_tree',{...R,ref:sha,glob:'src/{a,b}/**'});
+ expect(body.items.map(x=>x.path)).toEqual(['src/a/x.js','src/b/y.js']);
+ expect(body.total_matching).toBe(2);
+ for(const glob of ['src/{a,b','src/{a}/**','src/{a,{b,c}}/**']){
+  const bad=await run(w,'github_content_get_tree',{...R,ref:sha,glob});
+  expect(bad.result.isError).toBe(true);
+  expect(JSON.stringify(bad.result)).toMatch(/brace/i);
+ }
+ expect(w.gh.invalid).toEqual([]);
+});
+it('hands back the exact next call on an incomplete tree page and says why a page stopped early',async()=>{
+ const w=await world(),sha='a'.repeat(40),tree=Array.from({length:200},(_,i)=>({path:'some/ordinary/path/file-'+i+'.txt',type:'blob',sha:'b'.repeat(40),mode:'100644',size:1}));
+ w.gh.when('GET /repos/{owner}/{repo}/git/trees/{tree_sha}').reply(200,{sha,truncated:false,tree});
+ const first=await run(w,'github_content_get_tree',{...R,ref:sha,max:200});
+ expect(first.body.complete).toBe(false);
+ expect(first.body.page_cut_by).toBe('bytes');
+ expect(first.body.continue).toMatchObject({tool:'github_content_get_tree',arguments:{repo:'hello',ref:sha,expectedTreeSha:sha,max:200}});
+ expect(first.body.continue.arguments.offset).toBe(first.body.next_offset);
+ const missing=await run(w,'github_content_get_tree',{...R,ref:sha,offset:5});
+ expect(missing.result.isError).toBe(true);
+ expect(JSON.stringify(missing.result)).toMatch(/needs expectedTreeSha/);
+ const changed=await run(w,'github_content_get_tree',{...R,ref:sha,offset:5,expectedTreeSha:'c'.repeat(40)});
+ expect(JSON.stringify(changed.result)).toMatch(/tree changed/i);
+ const second=await run(w,'github_content_get_tree',first.body.continue.arguments);
+ expect(second.body.offset).toBe(first.body.next_offset);
+ expect(second.body.items.length).toBeGreaterThan(0);
+ expect(w.gh.invalid).toEqual([]);
+});
 it('bounds review comparison to the actual requested changed file before normal result shaping',async()=>{
  const w=await world();w.gh.when('GET /repos/{owner}/{repo}/compare/{basehead}').reply(200,{status:'ahead',ahead_by:1,behind_by:0,merge_base_commit:{sha:'a'.repeat(40)},commits:[],files:Array.from({length:60},(_,i)=>({filename:'f'+i+'.js',patch:'@@ -1 +1 @@\n-old\n+new'}))});
  const {body}=await run(w,'github_commit_compare',{...R,base:'a'.repeat(40),head:'b'.repeat(40),path:'f59.js'});

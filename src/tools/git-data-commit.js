@@ -56,7 +56,7 @@ export function bytesOf(item) {
 
 export function checkGitFiles(files) {
   if (!Array.isArray(files) || files.length < 1 || files.length > MAX_FILES)
-    throw new TypeError('Provide 1-50 file operations; oversized batches are refused, never truncated.');
+    throw new TypeError('Provide 1-50 file operations; oversized batches are refused, never truncated. For a larger tree, send one github_write_batch of github_content_commit_git_data steps of up to 50 files each, each step expecting the previous step\'s branch head, so every step is verified on its own.');
   const paths = new Set();
   let total = 0;
   let additions = 0;
@@ -81,7 +81,7 @@ const FILE = { type: 'object', additionalProperties: false, properties: {
 
 export const gitDataCommit = defineGithubWrite({
   name: 'github_content_commit_git_data', area: 'content', audience: ['B'],
-  description: 'Atomically commit up to 50 files, optionally create the branch, and verify the complete manifest.',
+  description: 'Atomically commit up to 50 files, optionally create the branch, and verify the complete manifest. Symlink and submodule entries are refused.',
   properties: { owner: OWNER, repo: REPO, branch: BRANCH,
     message: { type: 'string', minLength: 1, maxLength: 2000 },
     expectedHead: { type: 'string', pattern: '^([a-fA-F0-9]{40})?$', description: 'Exact observed destination head, or empty for an absent branch.' },

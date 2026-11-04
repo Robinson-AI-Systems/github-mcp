@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { RULES, capText, describeBody, fitToBudget, listKeyOf, pageOfBody, projectFields, sizeOf } from '../../src/core/result-rules.js';
+import { RULES, capText, describeBody, fitToBudget, listKeyOf, listPathOf, pageOfBody, pageOfBodyAt, projectFields, sizeOf } from '../../src/core/result-rules.js';
 
 describe('projectFields', () => {
   const pr = { number: 7, title: 'T', user: { login: 'a', id: 1 }, labels: [{ name: 'x', color: 'f' }, { name: 'y', color: 'e' }], head: { ref: 'r', sha: 's' } };
@@ -135,5 +135,34 @@ describe('describeBody, listKeyOf and pageOfBody', () => {
   it('pages a root list and returns a plain object whole', () => {
     expect(pageOfBody([1, 2, 3], { pageSize: 2 }).value).toEqual({ items: [1, 2], page_info: { page: 1, pages: 2, page_size: 2, total: 3 } });
     expect(pageOfBody({ a: 1 })).toEqual({ value: { a: 1 }, page: 1, pages: 1, total: null });
+  });
+});
+
+describe('listPathOf and pageOfBodyAt: lists nested one level down (universal API reads)', () => {
+  // The shape github_api_read retains: the provider body sits under `data`, its list under a named key.
+  const envelope = { operationId: 'listWorkflowRuns', route: 'GET /repos/{owner}/{repo}/actions/runs', status: 200,
+    data: { total_count: 45, workflow_runs: Array.from({ length: 45 }, (_, i) => ({ id: i, name: 'ci' })) } };
+  it('finds the nested list path when no top-level list exists', () => {
+    expect(listPathOf(envelope)).toEqual(['data', 'workflow_runs']);
+    expect(listPathOf({ items: [1] })).toEqual(['items']);
+    expect(listPathOf([1, 2])).toEqual([]);
+    expect(listPathOf({ a: { b: 1 } })).toBeNull();
+    expect(listPathOf('text')).toBeNull();
+    expect(describeBody(envelope)).toMatch(/^45 data\.workflow_runs, \d+ KB$/);
+  });
+  it('pages the nested list: page 1 keeps the wrapper, later pages return just the chain', () => {
+    const p1 = pageOfBodyAt(envelope, ['data', 'workflow_runs']);
+    expect(p1).toMatchObject({ page: 1, pages: 3, total: 45 });
+    expect(p1.value.operationId).toBe('listWorkflowRuns');
+    expect(p1.value.data.total_count).toBe(45);
+    expect(p1.value.data.workflow_runs).toHaveLength(20);
+    const p3 = pageOfBodyAt(envelope, ['data', 'workflow_runs'], { page: 3 });
+    expect(p3.value).toEqual({ data: { workflow_runs: envelope.data.workflow_runs.slice(40) },
+      page_info: { page: 3, pages: 3, page_size: 20, total: 45 } });
+    expect(pageOfBodyAt(envelope, ['data', 'workflow_runs'], { page: 99 }).page).toBe(3);
+    expect(pageOfBodyAt(envelope, ['data', 'missing'])).toEqual({ value: envelope, page: 1, pages: 1, total: null });
+  });
+  it('a data body that is itself a list still resolves at the top level', () => {
+    expect(listPathOf({ operationId: 'x', data: [1, 2, 3] })).toEqual(['data']);
   });
 });

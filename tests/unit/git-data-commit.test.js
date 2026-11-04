@@ -193,3 +193,6 @@ it('accepts all 50 operations while preserving the independent total byte bound'
  expect(gitData.checkGitFiles(Array.from({length:50},(_,i)=>({path:'f'+i,content:'x'}))).additions).toBe(50);
  expect(()=>gitData.checkGitFiles(Array.from({length:50},(_,i)=>({path:'f'+i,content:'x'.repeat(50000)})))).toThrow(/2 MB/);
 });
+it('names the in-server chunked route when a batch exceeds one commit',()=>{
+ expect(()=>gitData.checkGitFiles(Array.from({length:51},(_,i)=>({path:'f'+i,content:'x'})))).toThrow(/github_write_batch/);
+});
