@@ -20,7 +20,16 @@ async function nativeWorld() {
 }
 const expiry = async w => (await w.db.getJob(ID, nativeConnection(w.ctx))).expires_at.getTime();
 const view = r => r?.content || r?.structuredContent ? parse(r) : r;
-const call = (w, name, args, extra = {}) => (native.handlers[name] ?? playground.handlers[name])(args, {...w.ctx, ...extra});
+// The fixture worker runs its real resource monitor (no limits overridden). On a loaded CI runner it can answer a
+// retryable "busy, no operation was started" refusal (event-loop delay over its limit). Nothing ran, so the same call
+// is simply repeated after a short pause, as an agent would; every other error and every result is unchanged.
+const busy = e => e?.safeCode === 'native_busy' && e?.nativeNoOperationStarted === true && e?.safeRetryable === true;
+const call = async (w, name, args, extra = {}) => {
+  for (let attempt = 1; ; attempt++) {
+    try { return await (native.handlers[name] ?? playground.handlers[name])(args, {...w.ctx, ...extra}); }
+    catch (e) { if (!busy(e) || attempt >= 20) throw e; await new Promise(t => setTimeout(t, 250)); }
+  }
+};
 
 describe('only real work extends the idle lease', () => {
   it('status reads and failed preflights do not; Git reads and Git operations do', async () => {
