@@ -57,7 +57,7 @@ services:
       # GIT-SSH-LEG-1: how pushes reach GitHub (https default; ssh uses a temporary per-push deploy key) and git's HTTP version.
       NATIVE_GIT_GITHUB_TRANSPORT: ${NATIVE_GIT_GITHUB_TRANSPORT:-https}
       NATIVE_GIT_GITHUB_SSH_PORT: ${NATIVE_GIT_GITHUB_SSH_PORT:-443}
-      NATIVE_GIT_GITHUB_HTTP_VERSION: ${NATIVE_GIT_GITHUB_HTTP_VERSION:-}
+      NATIVE_GIT_GITHUB_HTTP_VERSION: ${NATIVE_GIT_GITHUB_HTTP_VERSION:-HTTP/1.1}
       # Public, from the MCP's GET /api/native-git-key (never a private key).
       NATIVE_GIT_CONTROL_PUBLIC_KEY: ${NATIVE_GIT_CONTROL_PUBLIC_KEY:?Set NATIVE_GIT_CONTROL_PUBLIC_KEY from the MCP's /api/native-git-key}
       # GIT-DIRECT-1: the direct git host is this PC's own Funnel origin; the MCP answers its op=authorize.

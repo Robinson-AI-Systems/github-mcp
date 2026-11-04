@@ -289,10 +289,12 @@ delegated pass is pushing), or GitHub cannot be reached over SSH, the same push 
 say why. Each push prints one line such as `Sent to GitHub over SSH in 18 s`, and its change-log row records the
 transport and how long the scan, key steps, push and read-back took. Fetches and the read-back stay on HTTPS.
 
-Both settings are **off by default** (`NATIVE_GIT_GITHUB_TRANSPORT=https`, `NATIVE_GIT_GITHUB_HTTP_VERSION` empty), so
-after the release they can be tried one at a time (owner sequencing, 2026-11-03): first the HTTP version alone with
-HTTPS, time a push, set it back to empty; then SSH alone.
+**Measured 2026-11-03 : HTTP/1.1 is the PC default.** From Chris's home connection, git's default HTTPS
+mode (HTTP/2) pushed to GitHub at about 0.34 MB/s (150 MB: the GitHub leg took about 6 minutes). With
+`NATIVE_GIT_GITHUB_HTTP_VERSION=HTTP/1.1` the same leg took 5.3 s for 150 MB and 17 s for about 700 MB packed (about
+40 MB/s); SSH measured about 8 MB/s. So the PC kit now sets HTTP/1.1 (an empty value in an older `.env` also means HTTP/1.1)
+and leaves SSH off (`NATIVE_GIT_GITHUB_TRANSPORT=https`); SSH stays available as a tested spare. Set `HTTP/2` only to
+compare. End to end a push is now limited by the upload into the PC through the Funnel (about 1.5-2 MB/s).
 
-Optional experiment: `NATIVE_GIT_GITHUB_HTTP_VERSION=HTTP/1.1` or `HTTP/2` sets git's HTTP version for the HTTPS legs
-(empty = git's default). `NATIVE_GIT_GITHUB_SSH_PORT=22` uses `github.com` port 22 instead of 443. Everywhere else
+`NATIVE_GIT_GITHUB_SSH_PORT=22` uses `github.com` port 22 instead of 443. Everywhere else
 (Dokploy, Render) these stay unset, which is plain HTTPS as before.
