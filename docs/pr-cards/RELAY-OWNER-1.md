@@ -6,7 +6,7 @@ Two live git-remote routing bugs found 2026-11-03, fixed together because both d
 
 Outcome: a plain `git push` through `https://<service>/git/<owner>/<repo>.git` arrives byte-exact at every size, and
 Chris's own connection from claude.ai (a public-connect tenant) is treated as the owner for the PC, while other people and
-every pass stay off it. Accepted when `tests/unit/git-remote-push-sizes.test.js` and the new cases in
+every pass stay off it. Accepted when the new byte-exact size case in `tests/unit/git-remote.test.js` and the new cases in
 `tests/unit/worker-pool-owner-hosts.test.js`, `tests/db/pub-1-tenancy.test.js` and `tests/db/pub-2-pilot-identity.test.js`
 pass, the existing git-remote / git-direct / transfer-relay / worker-pool suites pass, and `ci` + `release-policy` are green
 at the exact head; live acceptance follows a release and one protected setting.
@@ -31,7 +31,7 @@ not affected.
 does. `receive-pack` writes nothing until it has read the whole pack; its keepalives (`receive.keepAlive`) begin right
 after, during the pre-receive hook, so a long GitHub push still shows progress. No guard, limit or check changed.
 
-**Test:** `tests/unit/git-remote-push-sizes.test.js` pushes real packs of 8 KB, 20 KB, 60 KB, 200 KB, 800 KB and 2 MB with
+**Test:** `tests/unit/git-remote.test.js` ("RELAY-OWNER-1: git push … byte-exact at every size") pushes real packs of 8 KB, 20 KB, 60 KB, 200 KB, 800 KB and 2 MB with
 the local git client and the exact setup command (postBuffer included) through the real Routing Middleware and a stand-in
 for the Go front (`test/helpers/go-front-proxy.js`: network-paced forwarding plus Go's discard rule), to the real worker
 and hook, and checks byte-exact delivery (SHA-256 and length of what the client sent equal what the worker got; GitHub
@@ -75,3 +75,12 @@ Builds on GIT-REMOTE-1 (domain door), GIT-DIRECT-1 (direct host's streamed reply
 `ownerKey`), PUB-2/PUB-8 (verified identity, operator mark). New: `replyWhenGitWrites`, `operatorGithubId`,
 `ownerIdentityDb`, `verifiedSubject` on memberships, `verifiedGithubSubject` on tenant databases, test stand-in
 `go-front-proxy.js`, setting `OPERATOR_GITHUB_USER_ID`.
+
+## CI note
+
+The size case lives inside `tests/unit/git-remote.test.js` rather than its own file. As a separate file it changed the
+unit shard assignment and put three heavy local-Git files beside `native-git-lease-activity.test.js` in one shard; that
+test's real resource monitor (no overridden limits, by design) then saw the shared runner's event-loop delay above 250 ms
+and refused with `worker_responsiveness_pressure`. The same refusal reproduces locally on a 2-core machine with only
+pre-existing files (`native-git-lease-activity`, `git-remote`, `git-direct` run together), so it is a load interaction,
+not this change's code. Keeping the test file list unchanged keeps main's shard composition.
