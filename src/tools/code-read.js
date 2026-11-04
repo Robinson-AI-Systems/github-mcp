@@ -129,30 +129,61 @@ export const contentProtectionCheck = defineRead({
   })
 });
 
+/** Expands {a,b} alternation in a glob into the equivalent plain globs. Braces that do not form a
+ * comma group are a caller error worth naming: left literal they would silently match nothing,
+ * and a verification read would report real files as absent. */
+function expandBraces(pattern) {
+  const open = pattern.indexOf('{');
+  const close = pattern.indexOf('}');
+  if (open === -1 && close === -1) return [pattern];
+  if (open === -1 || close === -1 || close < open)
+    throw new TypeError('The glob has unbalanced braces; write alternatives like src/{a,b}/** or remove the braces.');
+  const inner = pattern.slice(open + 1, close);
+  if (inner.includes('{') || inner.includes('}'))
+    throw new TypeError('Nested brace groups in a glob are not supported; use one {a,b} group per pattern part.');
+  const parts = inner.split(',');
+  if (parts.length < 2 || parts.some((p) => !p))
+    throw new TypeError('A brace group in a glob needs at least two alternatives, like {a,b}.');
+  const out = [];
+  for (const part of parts) out.push(...expandBraces(pattern.slice(0, open) + part + pattern.slice(close + 1)));
+  if (out.length > 16) throw new TypeError('That glob expands to too many patterns (over 16); split it into separate calls.');
+  return out;
+}
+
 export const contentGetTree = defineRead({
   name: 'github_content_get_tree', boundedWindow:true, area: 'content', audience: ['B'],
-  description: 'List every file in a repository at a ref (recursive), optionally only paths matching a glob such as src/**/*.js.',
-  properties: { owner: OWNER, repo: REPO, ref: { ...REF, description: 'Branch, tag or commit (default: the default branch)' }, glob: { type: 'string', maxLength: 200, description: 'Only paths matching this (* within a folder, ** across folders)' },
-    include_dirs: { type: 'boolean', description: 'Also list folders (default files only)' }, offset:{type:'integer',minimum:0},expectedTreeSha:{type:'string',pattern:'^[a-fA-F0-9]{40}$'}, max: { type: 'integer', minimum: 1, maximum: MAX_TREE, description: 'Default 200' } },
+  description: 'List every file in a repository at a ref (recursive), optionally only paths matching a glob such as src/**/*.js or src/{a,b}/**.',
+  properties: { owner: OWNER, repo: REPO, ref: { ...REF, description: 'Branch, tag or commit (default: the default branch)' }, glob: { type: 'string', maxLength: 200, description: 'Only paths matching this (* within a folder, ** across folders, {a,b} alternatives)' },
+    include_dirs: { type: 'boolean', description: 'Also list folders (default files only)' }, offset:{type:'integer',minimum:0},expectedTreeSha:{type:'string',pattern:'^[a-fA-F0-9]{40}$',description:'Required to continue past the first page: the sha field of the previous page. A mismatch means the tree changed.'}, max: { type: 'integer', minimum: 1, maximum: MAX_TREE, description: 'Default 200' } },
   required: ['repo'],
   handler: (args, ctx) => plain(async () => {
     const { owner, octokit } = await readerFor(args, ctx);
     const ref = args.ref ?? (await octokit.request('GET /repos/{owner}/{repo}', { owner, repo: args.repo })).data.default_branch;
     const { data } = await octokit.request('GET /repos/{owner}/{repo}/git/trees/{tree_sha}', { owner, repo: args.repo, tree_sha: ref, recursive: '1' });
     // `**/` also matches no folder at all (src/**/*.js finds src/a.js), as people expect.
-    const patterns = args.glob ? [globToRegExp(args.glob), globToRegExp(args.glob.replaceAll('**/', ''))] : null;
+    const patterns = args.glob ? [...new Set(expandBraces(args.glob).flatMap((g) => [g, g.replaceAll('**/', '')]))].map(globToRegExp) : null;
     const wanted = patterns ? { test: (path) => patterns.some((re) => re.test(path)) } : null;
     const matches = (data.tree ?? []).filter((e) => (e.type === 'blob' || (args.include_dirs && e.type === 'tree')) && (!wanted || wanted.test(e.path)));
-    const max = args.max ?? 200,offset=args.offset??0;
-    if(offset>matches.length||((offset>0||args.expectedTreeSha!==undefined)&&args.expectedTreeSha!==data.sha))
-      throw new TypeError('Tree SHA changed or is missing for continuation; restart at offset zero.');
-    const items=[];
-    const page=()=>({ref,sha:data.sha,offset,next_offset:offset+items.length,complete:!data.truncated&&offset+items.length===matches.length,
-      github_truncated:data.truncated===true,total_matching:matches.length,shown:items.length,
-      ...(data.truncated?{note:'GitHub cut this very large tree; use a folder read for the omitted provider entries.'}:{}),items});
-    for(const e of matches.slice(offset,offset+max)){
-      items.push({path:e.path,sha:e.sha,mode:e.mode,type:e.type==='tree'?'dir':'file',...(e.size!==undefined?{size:e.size}:{})});
-      if(Buffer.byteLength(JSON.stringify(page()))>6000){items.pop();break;}
+    const max = args.max ?? 200, offset = args.offset ?? 0;
+    if (offset > matches.length) throw new TypeError('That offset is past the end of this listing; restart at offset zero.');
+    if (args.expectedTreeSha !== undefined && args.expectedTreeSha !== data.sha)
+      throw new TypeError('The tree changed since the first page (its SHA no longer matches expectedTreeSha); restart at offset zero.');
+    if (offset > 0 && args.expectedTreeSha === undefined)
+      throw new TypeError('Continuing a tree listing needs expectedTreeSha: pass the sha field from the previous page, so a tree that changed mid-listing cannot mix two listings.');
+    const items = [];
+    let cutByBytes = false;
+    const page = () => {
+      const complete = !data.truncated && offset + items.length === matches.length;
+      return { ref, sha: data.sha, offset, next_offset: offset + items.length, complete,
+        github_truncated: data.truncated === true, total_matching: matches.length, shown: items.length,
+        ...(cutByBytes ? { page_cut_by: 'bytes' } : {}),
+        ...(data.truncated ? { note: 'GitHub cut this very large tree; use a folder read for the omitted provider entries.' } : {}),
+        ...(complete ? {} : { continue: { tool: 'github_content_get_tree', arguments: { owner, repo: args.repo, ...(args.ref ? { ref: args.ref } : {}), ...(args.glob ? { glob: args.glob } : {}), ...(args.include_dirs ? { include_dirs: true } : {}), offset: offset + items.length, expectedTreeSha: data.sha, max } } }),
+        items };
+    };
+    for (const e of matches.slice(offset, offset + max)) {
+      items.push({ path: e.path, sha: e.sha, mode: e.mode, type: e.type === 'tree' ? 'dir' : 'file', ...(e.size !== undefined ? { size: e.size } : {}) });
+      if (Buffer.byteLength(JSON.stringify(page())) > 7000) { items.pop(); cutByBytes = true; break; }
     }
     if(!items.length&&offset<matches.length)throw new TypeError('A tree entry exceeds this bounded page. Use the universal Git tree read and retained-result fields for that entry.');
     return page();

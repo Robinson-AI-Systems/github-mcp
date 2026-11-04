@@ -13,7 +13,7 @@ import { dollars as money } from '../github/prices.js';
 import { spendStatus } from './spend-guard.js';
 import { oneTimeStore } from '../dev/forwarders.js';
 import { validateGrant } from '../rtc/pass-scope.js';
-import { RULES, capText, fitToBudget, listKeyOf, pageOfBody, projectFields } from '../core/result-rules.js';
+import { RULES, capText, fitToBudget, listKeyOf, listPathOf, pageOfBody, pageOfBodyAt, projectFields } from '../core/result-rules.js';
 import { findText, lineWindow, nextPageCall, nextWindowCall, textContinueCall } from '../core/continuation.js';
 import { MASTER_AREAS, masterUnlocks } from '../github/master-areas.js';
 import { actAsFor, loginFor } from '../github/act-as.js';
@@ -253,15 +253,28 @@ async function getResult(args, ctx) {
   // A page that would not fit gets a smaller page size (halved until it does); page_info says which size was used, so paging stays consistent.
   const keep = { alsoKeep: ['untrusted', 'page_info'], twins: ['_local', '_display'] };
   const listName = listKeyOf(row.body) === '' ? 'items' : listKeyOf(row.body);
+  // Universal API reads keep the provider body under `data`, so their lists sit one level down
+  // (data.workflow_runs and kin). Page and project THAT list; a top-level-only reader used to
+  // report every field of it as unknown and hand back the unusable wrapper instead.
+  const listPath = listPathOf(row.body);
+  const nested = listPath?.length === 2 ? listPath : null;
   const build = (size) => {
-    const page = pageOfBody(row.body, { page: args.page, pageSize: size });
+    const page = nested
+      ? pageOfBodyAt(row.body, nested, { page: args.page, pageSize: size })
+      : pageOfBody(row.body, { page: args.page, pageSize: size });
     let value = page.value;
     let unknown = [];
     if (args.fields?.length) {
-      const inList = listName && Array.isArray(value[listName]);
-      const target = projectFields(inList ? value[listName] : value, args.fields, keep);
-      unknown = target.unknown;
-      value = inList ? { page_info: value.page_info, [listName]: target.value } : target.value;
+      if (nested) {
+        const target = projectFields(value[nested[0]][nested[1]], args.fields, keep);
+        unknown = target.unknown;
+        value = { page_info: value.page_info, [nested[0]]: { [nested[1]]: target.value } };
+      } else {
+        const inList = listName && Array.isArray(value[listName]);
+        const target = projectFields(inList ? value[listName] : value, args.fields, keep);
+        unknown = target.unknown;
+        value = inList ? { page_info: value.page_info, [listName]: target.value } : target.value;
+      }
     }
     const capped = capText(value, { offset: args.offset ?? 0 });
     return { capped, unknown, fit: fitToBudget(capped.value) };
@@ -277,6 +290,7 @@ async function getResult(args, ctx) {
   const textNext = capped.cut.length ? textContinueCall(args.handle, capped.cut[0], { offset: args.offset ?? 0 }) : null;
   return {
     handle: args.handle, what: row.summary, ...(typeof fit.value === 'object' && !Array.isArray(fit.value) ? fit.value : { value: fit.value }),
+    ...(nested ? { list_path: nested.join('.') } : {}),
     ...(info && Number.isInteger(info.page) && Number.isInteger(info.pages) ? { complete: info.page >= info.pages && !fit.fitted && !capped.cut.length } : {}),
     ...(nextPage ? { continue: nextPage } : {}),
     ...(textNext ? { text_continue: textNext } : {}),

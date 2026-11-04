@@ -65,6 +65,11 @@ export async function inspectPr(args,ctx){
   const pr=readBody(prReply);
   if(!pr)return {done:false,status:'not_readable',number:args.number,
     next:'The PR or its required CI/review evidence could not be read.'};
+  // A PR read can legitimately carry no checks payload at all: closed PRs get none, and a large
+  // checks list can be cut for size while checks are still running. Readers downstream expect an
+  // object, so an absent payload becomes an explicit unknown state, never a bare null.
+  const checks=pr.checks??{green:null,basis:null,items:[],
+    unknown:'The PR read carried no checks payload (a closed PR has none, and a large one can be cut for size mid-run). Read exact-head state with github_check_get_ci_state.'};
   let position={state:'not_readable',note:'Stack membership could not be checked.'};
   if(within(ctx,start)){
     const r=readBody(stackReply);
@@ -76,12 +81,12 @@ export async function inspectPr(args,ctx){
       position=matches.length?{state:'found',items:matches}:{state:'none'};
     }
   }
-  const next=nextAction(pr);
+  const next=nextAction({...pr,checks});
   let ciFailure=null;
   // Only a confirmed red exact-head check needs additional GitHub Actions reads.
   // The CI helper selects the latest run at this SHA and bounds its first job.
-  if(pr.state==='open'&&pr.checks?.green===false&&
-    pr.checks.items?.some(x=>x.state==='failure')&&within(ctx,start)){
+  if(pr.state==='open'&&checks.green===false&&
+    checks.items?.some(x=>x.state==='failure')&&within(ctx,start)){
     const diagnosis=readBody(await call(ctx,'github_workflow_ci_failure_summary',{
       ...base,pr:args.number,firstFailureOnly:true}));
     ciFailure=firstFailure(pr,diagnosis);
@@ -89,7 +94,7 @@ export async function inspectPr(args,ctx){
   return {done:true,status:'observed',number:pr.number,head_sha:pr.head_sha,
     head:pr.head,base:pr.base,draft:pr.draft,state:pr.state,merged:pr.merged,
     mergeable:pr.mergeable,mergeable_state:pr.mergeable_state,
-    merge_diagnostics:pr.merge_diagnostics??null,checks:pr.checks??null,review_decision:pr.review_decision??null,
+    merge_diagnostics:pr.merge_diagnostics??null,checks,review_decision:pr.review_decision??null,
     unresolved_threads:pr.threads?.unresolved??null,stack:position,
     ...(ciFailure?{ci_failure:ciFailure}:{}),next_action:next,can_request_merge:next.startsWith('All checks'),
     html_url:pr.html_url,observed_at:new Date(clock(ctx)).toISOString(),

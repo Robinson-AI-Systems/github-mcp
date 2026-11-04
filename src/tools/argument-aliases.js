@@ -12,5 +12,8 @@ export function standardAliases(name, properties) {
  if(name.startsWith('github_pr_'))add('number',['pull_number','pr','issue_number']);
  add('issue_number',['number']);
  if(name==='github_branch_create')add('from',['fromRef']);
+ // The provider names this argument workflow_id everywhere else (routes, run objects), so callers
+ // reach for it first; accept it as the dispatch tool's spelling of `workflow`.
+ if(name==='github_actions_dispatch')add('workflow',['workflow_id']);
  return aliases;
 }

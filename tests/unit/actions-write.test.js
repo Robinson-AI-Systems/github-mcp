@@ -103,6 +103,17 @@ describe('Actions change rules', () => {
     expect(w.gh.invalid).toEqual([]);
   });
 
+  it('dispatch accepts the provider spelling workflow_id for the workflow argument', async () => {
+    const w = await makeWorld({});
+    workflow(w.gh, null);
+    w.gh.when('POST /repos/{owner}/{repo}/actions/workflows/{workflow_id}/dispatches').reply(200, { workflow_run_id: 55, run_url: 'https://api.github.com/x', html_url: 'https://github.com/x' });
+    w.gh.when(RUN).reply(200, { id: 55, status: 'queued', html_url: 'u' });
+    const out = await call('github_actions_dispatch', w, { ...R, workflow_id: 'ci.yml', ref: 'feature', inputs: [{ name: 'a', value: 'b' }], confirm: true });
+    expect(out).toMatchObject({ status: 'applied', result: { run_id: 55 } });
+    expect(w.gh.calls.find((c) => c.route.endsWith('/dispatches')).body).toEqual({ ref: 'feature', inputs: { a: 'b' } });
+    expect(w.gh.invalid).toEqual([]);
+  });
+
   it('a workflow whose environment cannot be read from its file counts as production (refused on a preview connection)', async () => {
     const w = await makeWorld({});
     workflow(w.gh, '${{ inputs.target }}');

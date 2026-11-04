@@ -65,6 +65,16 @@ describe('W-1 full PR status and resumable guarded open',()=>{
     expect(got.can_request_merge).toBe(false);
     expect(got.next_action).toMatch(/review threads could not be verified/i);
   });
+  it('reports an absent checks payload as an explicit unknown, never a bare null',async()=>{
+    const {checks:_dropped,...noChecks}=ready(4);
+    const f=fixture({prs:{4:noChecks}});
+    const got=await prWorkflows.github_workflow_pr_status({repo:'app',number:4},f.ctx);
+    expect(got.checks).toMatchObject({green:null,items:[]});
+    expect(got.checks.unknown).toMatch(/no checks payload/i);
+    expect(got.can_request_merge).toBe(false);
+    expect(got.next_action).toMatch(/could not be verified/i);
+    expect(writes(f)).toEqual([]);
+  });
   it('opens a PR through guarded writer with every confirmation/notification policy still delegated',async()=>{
     const f=fixture({extra:{github_pr_create:{status:'applied',number:21}}});
     const x=body(await prWorkflows.github_workflow_open_pr({

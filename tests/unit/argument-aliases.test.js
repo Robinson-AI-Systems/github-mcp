@@ -7,6 +7,8 @@ it('does not alias distinct declared values and covers named provider spellings'
  expect(standardAliases('github_pr_x',{number:{},issue_number:{},runId:{},max:{}})).toEqual({runId:['run_id'],max:['limit'],number:['pull_number','pr']});
  expect(standardAliases('github_branch_create',{from:{}})).toEqual({from:['fromRef']});
  expect(standardAliases('github_issue_x',{issue_number:{}})).toEqual({issue_number:['number']});
+ expect(standardAliases('github_actions_dispatch',{workflow:{}})).toEqual({workflow:['workflow_id']});
+ expect(standardAliases('github_actions_rerun',{workflow:{}})).toEqual({});
 });
 it('normalizes multiple read aliases and refuses disagreement before the handler',async()=>{
  let calls=0;const read=defineRead({name:'github_pr_aliases',description:'Read aliases.',properties:{number:{type:'integer'}},required:['number'],handler:a=>{calls++;return a;}});

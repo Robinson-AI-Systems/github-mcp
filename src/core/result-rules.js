@@ -147,6 +147,8 @@ export function describeBody(body) {
   const kb = `${Math.max(1, Math.round(sizeOf(body) / 1024))} KB`;
   if (key === '') return `${body.length} items, ${kb}`;
   if (key) return `${body[key].length} ${key}, ${kb}`;
+  const path = listPathOf(body);
+  if (path) return `${body[path[0]][path[1]].length} ${path.join('.')}, ${kb}`;
   return `one result, ${kb}`;
 }
 
@@ -164,4 +166,42 @@ export function pageOfBody(body, { page = 1, pageSize = RULES.pageSize } = {}) {
   if (key === '') return { value: { items: slice, page_info: info }, ...info };
   const rest = at === 1 ? body : {};
   return { value: { ...rest, [key]: slice, page_info: info }, ...info };
+}
+
+/**
+ * Where the page-able list lives: [] for a root array, [key] for a top-level list, or [key, subkey] when the
+ * list is nested one level down — the universal API read keeps the provider body under `data`, so its lists sit
+ * at paths like data.workflow_runs. Null when no list exists at either level.
+ */
+export function listPathOf(body) {
+  const key = listKeyOf(body);
+  if (key === '') return [];
+  if (key) return [key];
+  if (!isObject(body)) return null;
+  let best = null;
+  for (const [k, v] of Object.entries(body)) {
+    if (!isObject(v)) continue;
+    const sub = largestList(v);
+    if (sub && (!best || v[sub].length > body[best[0]][best[1]].length)) best = [k, sub];
+  }
+  return best;
+}
+
+/**
+ * One page of a list nested one level down (see listPathOf), with pageOfBody's contract: page 1 keeps the
+ * wrapper fields, later pages return just the chain to the list, and page_info lands at the root.
+ */
+export function pageOfBodyAt(body, path, { page = 1, pageSize = RULES.pageSize } = {}) {
+  const size = Math.min(Math.max(Number.isInteger(pageSize) ? pageSize : RULES.pageSize, 1), RULES.maxPageSize);
+  const [outer, inner] = path;
+  const list = body?.[outer]?.[inner];
+  if (!Array.isArray(list)) return { value: body, page: 1, pages: 1, total: null };
+  const pages = Math.max(1, Math.ceil(list.length / size));
+  const at = Math.min(Math.max(Number.isInteger(page) ? page : 1, 1), pages);
+  const slice = list.slice((at - 1) * size, at * size);
+  const info = { page: at, pages, page_size: size, total: list.length };
+  const value = at === 1
+    ? { ...body, [outer]: { ...body[outer], [inner]: slice }, page_info: info }
+    : { [outer]: { [inner]: slice }, page_info: info };
+  return { value, ...info };
 }
