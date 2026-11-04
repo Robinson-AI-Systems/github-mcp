@@ -9,6 +9,7 @@ import { createDb, SCHEMA_TABLES } from '../db.js';
 import { initTenantRuntimeSchema } from './runtime-limits.js';
 import { initMarketplaceSchema, createMarketplaceStore } from '../marketplace/store.js';
 import { isCimdClientId } from './cimd-client.js';
+import { setVerifiedSubject } from './verified-subject.js';
 
 /** Postgres refuses two sessions replacing the same function at once ("tuple concurrently updated", SQLSTATE XX000).
  * Many first-time sign-ins can run this setup together, so that one refusal is retried a few times; anything else is raised. */
@@ -1396,7 +1397,7 @@ export async function openAuthorizedTenantDb({ directory, tenantId, verifiedIden
   db.playgroundScope=Object.freeze({tenantId,identityId:verifiedIdentityId,membershipRevision:bound.membershipRevision});
   // RELAY-OWNER-1 (WORKER-POOL-2 follow-up): the person's provider-verified numeric GitHub id, read from the identity row
   // with the membership. Kept off playgroundScope, which is stored in index rows; never from the request.
-  if (bound.verifiedSubject) Object.defineProperty(db, 'verifiedGithubSubject', { value: bound.verifiedSubject, enumerable: false });
+  setVerifiedSubject(db, bound.verifiedSubject);
   await upgradeTenantSchemaOnce(tenantId, connectionString, db, sql);
   return { tenant: Object.freeze(bound), db, sql };
 }

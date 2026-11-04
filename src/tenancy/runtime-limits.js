@@ -3,6 +3,7 @@
 // defend shared infrastructure, not which GitHub capabilities a customer can
 // authorize or the developer's separate zero-spend restrictions.
 import { createHash } from 'node:crypto';
+import { keepVerifiedSubject } from './verified-subject.js';
 
 export const TENANT_RUNTIME_LIMITS = Object.freeze({
   mcpClientPerMinute: 120,
@@ -362,7 +363,8 @@ export async function releaseTenantStorage(sql,kind,clientId,resourceId) {
 export function withTenantStorageLimits(db, sql, clientId) {
   if (!db || typeof db.createJob !== 'function' || typeof db.putResult !== 'function')
     throw new TypeError('Tenant capacity needs an existing isolated result/job store.');
-  return {
+  // RELAY-OWNER-2: the spread drops the unlisted verified GitHub id; keepVerifiedSubject carries it across.
+  return keepVerifiedSubject({
     ...db,
     async createJob(input) {
       if (!bound(input?.ttlMinutes ?? 1440,1,TENANT_RUNTIME_LIMITS.jobMaxTtlMinutes))
@@ -413,5 +415,5 @@ export function withTenantStorageLimits(db, sql, clientId) {
         throw error;
       }
     }
-  };
+  }, db);
 }

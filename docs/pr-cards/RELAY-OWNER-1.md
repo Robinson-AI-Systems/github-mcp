@@ -84,3 +84,22 @@ test's real resource monitor (no overridden limits, by design) then saw the shar
 and refused with `worker_responsiveness_pressure`. The same refusal reproduces locally on a 2-core machine with only
 pre-existing files (`native-git-lease-activity`, `git-remote`, `git-direct` run together), so it is a load interaction,
 not this change's code. Keeping the test file list unchanged keeps main's shard composition.
+
+## Follow-up: the owner was still not recognised on the live path (RELAY-OWNER-2 fix, same card)
+
+Outcome: Chris's own claude.ai (public connect) connection is recognised as the owner on the real request path, so
+`github_server_status` shows his PC host's real state and `github_git_remote_setup` offers the PC push exit; other people
+still are not. Acceptance: a throwaway-Postgres test drives the real public-connect sign-in, token, MCP gate,
+`requestScopedVerifiedAccess` and `requireMcpToken`, then asserts the owner is recognised and another person is not.
+
+Root cause: the verified id was put on the tenant database as an unlisted (non-enumerable) property, and two wrappers on
+the MCP path rebuild the database with an object spread, which silently drops unlisted properties —
+`withTenantStorageLimits` (inside `resolvePrivateTenantMcpBearer`) and `requestScopedVerifiedAccess` (in `api/mcp.js`).
+Tools therefore saw no verified id and `ownerCaller` was false. `ctx.env` (the dispatcher defaults it to the server's
+environment) and the connection (`profile: 'full'`, not a pass) were fine. The git-remote broker (`openKeyScope`) does
+not wrap its database and was not affected.
+
+Fix: `src/tenancy/verified-subject.js` (`setVerifiedSubject`, `keepVerifiedSubject`) sets the id unlisted and read-only,
+and both wrappers carry it across. Still read only from the identity row with the membership, never from a login or the
+request. Test: `tests/db/pub-6-public-connect.test.js` "RELAY-OWNER-2 the owner's own public connection on the real MCP
+path" (fails without the fix with `expected undefined to be '<id>'`).

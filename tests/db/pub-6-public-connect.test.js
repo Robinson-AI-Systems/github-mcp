@@ -8,7 +8,11 @@ import { createTenantDirectory, tenantSchemaName } from '../../src/tenancy/direc
 import { createPublicConnect, FORGET_CLIENT, MANAGE_CLIENT, PublicConnectError } from '../../src/tenancy/public-connect.js';
 import { parsePublicCode } from '../../src/tenancy/public-code.js';
 import { privateTenantToken } from '../../src/tenancy/oauth-token.js';
-import { resolvePrivateTenantMcpBearer } from '../../src/tenancy/mcp-route.js';
+import { resolvePrivateTenantMcpBearer, requestScopedVerifiedAccess } from '../../src/tenancy/mcp-route.js';
+import { requireMcpToken } from '../../src/core/mcp-auth.js';
+import { createGithubPolicy } from '../../src/oauth/policy.js';
+import { hostAllowed, ownerCaller, routeJobFor } from '../../src/native-git/pool-audience.js';
+import { configuredHosts } from '../../src/native-git/pool-config.js';
 import { publicApprove, publicAuthorize, publicCallback, publicForget, publicManage, publicRegister } from '../../src/tenancy/public-http.js';
 import { encryptSecret } from '../../src/core/crypto.js';
 import { Readable } from 'node:stream';
@@ -411,6 +415,53 @@ describe('PUB-6 public simple connect in REAL PostgreSQL', () => {
     const t2 = await tokenFor(c, other, 'alice');
     expect(await directory.deletePublicClient(other.client_id)).toBe(true);
     expect(await gateFor(t2)).toBeNull();
+  });
+});
+
+// RELAY-OWNER-2: the owner recognised on the REAL public-connect path, exactly as api/mcp.js builds it: the tenant bearer
+// gate (resolvePrivateTenantMcpBearer, which wraps the database in withTenantStorageLimits), then
+// requestScopedVerifiedAccess, then requireMcpToken with the policy's toConnection, then the tool context the dispatcher
+// hands every tool. RELAY-OWNER-1 checked only the bare scoped database, so the two wrappers (object spreads that drop
+// the unlisted verified id) went unnoticed and the owner's live connection was treated as anyone's.
+describe('RELAY-OWNER-2 the owner\'s own public connection on the real MCP path', () => {
+  const PC_ORIGIN = 'https://native-worker.example.test';
+  const poolEnv = { NATIVE_GIT_WORKER_URL: PC_ORIGIN + '/', NATIVE_GIT_WORKER_POOL: JSON.stringify([{ name: 'workshop', origin: 'https://workshop.example.test' }]) };
+  /** The tool context for one person's public connection, built the way api/mcp.js and the dispatcher build it. */
+  async function liveToolCtx(who, toolEnv) {
+    const c = make();
+    const client = await c.registerClient({ redirect_uris: [CB] });
+    const token = await tokenFor(c, client, who);
+    const context = await gateFor(token);
+    expect(context).not.toBeNull();
+    const db = requestScopedVerifiedAccess(context.db, context.verifiedAccess.token, context.verifiedAccess.record);
+    const req = request('POST', {}, { authorization: 'Bearer ' + token.access_token });
+    const connection = await requireMcpToken(req, response(), db, env, { toConnection: createGithubPolicy({ env }).toConnection });
+    expect(connection?.profile).toBe('full');
+    return { connection, db, env: toolEnv };
+  }
+
+  it('recognises the owner (verified numeric id = OPERATOR_GITHUB_USER_ID) and nobody else, from the identity row only', async () => {
+    const toolEnv = { ...env, ...poolEnv, OPERATOR_GITHUB_USER_ID: String(people.alice.id) };
+    const owner = await liveToolCtx('alice', toolEnv), other = await liveToolCtx('bob', toolEnv);
+    const pc = configuredHosts(toolEnv).find(h => h.role === 'primary');
+    expect(pc.audience).toBe('owner');
+    // The verified id survives every wrapper, stays unlisted and is never part of the stored scope.
+    expect(owner.db.verifiedGithubSubject).toBe(String(people.alice.id));
+    expect(Object.keys(owner.db)).not.toContain('verifiedGithubSubject');
+    expect(JSON.stringify(owner.db.playgroundScope)).not.toContain(String(people.alice.id));
+    expect(ownerCaller(owner)).toBe(true);
+    expect(hostAllowed(owner, pc)).toBe(true);
+    expect(routeJobFor(owner, {})).toEqual({}); // the owner's unpinned work goes to his own PC
+    expect(other.db.verifiedGithubSubject).toBe(String(people.bob.id));
+    expect(ownerCaller(other)).toBe(false);
+    expect(hostAllowed(other, pc)).toBe(false);
+    expect(routeJobFor(other, {}).host).not.toBe(pc.id); // another person is sent to the shared host
+    // A login is never an id; with the setting unset nobody is the owner.
+    expect(ownerCaller({ ...owner, env: { ...toolEnv, OPERATOR_GITHUB_USER_ID: people.alice.login } })).toBe(false);
+    expect(ownerCaller({ ...owner, env: { ...poolEnv } })).toBe(false);
+    // The wrappers cannot be used to plant or change the id.
+    expect(() => { 'use strict'; owner.db.verifiedGithubSubject = String(people.bob.id); }).toThrow();
+    expect(owner.db.verifiedGithubSubject).toBe(String(people.alice.id));
   });
 });
 
