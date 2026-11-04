@@ -215,7 +215,7 @@ export async function serveRemote(req, res, ctx, { route, search, claimToken, di
   const timer = setTimeout(kill, REMOTE_LIMITS.serveMs); timer.unref();
   const closed = new Promise(r => child.on('close', r));
   child.stdin.on('error', () => {});
-  // RELAY-BODY-1: the reply never starts before Git does. Git writes nothing until it has read the whole pack
+  // RELAY-OWNER-1: the reply never starts before Git does. Git writes nothing until it has read the whole pack
   // (its keepalives start right after, during the hook), so no response header reaches a proxy in front while the
   // push is still uploading. A Go net/http front (Tailscale Funnel) that sees a response begin with under 256 KiB
   // of the request unread reads and drops the rest itself, which corrupted or cut off mid-size pushes.

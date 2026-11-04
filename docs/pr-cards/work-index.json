@@ -3380,6 +3380,25 @@
       ],
       "readiness": "READY",
       "ownerInputs": []
+    },
+    {
+      "id": "RELAY-OWNER-1",
+      "title": "Git remote routing fixes: mid-size pushes through the service domain arrive byte-exact (reply starts only when Git writes, so the Go front cannot drop body bytes), and Chris's own tenant connection (verified GitHub id = OPERATOR_GITHUB_USER_ID) gets his PC while other people and passes stay off it",
+      "batch": "FIN",
+      "design": "docs/pr-cards/RELAY-OWNER-1.md",
+      "dependencies": [
+        "GIT-REMOTE-1",
+        "WORKER-POOL-2"
+      ],
+      "card": "docs/pr-cards/RELAY-OWNER-1.md",
+      "status": "IN_PROGRESS",
+      "migration": "none (new optional protected setting OPERATOR_GITHUB_USER_ID)",
+      "budget": 500,
+      "units": [
+        "RELAY-OWNER-1"
+      ],
+      "readiness": "READY",
+      "ownerInputs": []
     }
   ],
   "gatewayBoundary": {
