@@ -126,8 +126,17 @@ steer, untouched). CAP-7's grade is untouched; only its follow-on rows moved.
   `git-ssh-leg`'s "the real ssh client refuses a server whose host key is not
   GitHub's", reproduces IDENTICALLY on the untouched base commit in this
   environment — pre-existing and environment-dependent (it exercises a real SSH
-  client), not a Batch 2 regression; the PR's CI is its arbiter. The bench pass is
-  re-run on the final head before the PR opens.
+  client), not a Batch 2 regression; the PR's CI is its arbiter. The bench pass was
+  re-run on the final head before the PR opened: check green, 11,594/11,595 with
+  only that same SSH test failing.
+- The PR's first CI run then caught one more real defect the bench timing had
+  masked: in the download worker's commit path, a cut-off client makes the
+  `git archive` child die on the broken pipe (or by the worker's own kill, exit
+  code null), and the exit-code check ran before the cut-off check — so under CI
+  timing the state landed `failed` instead of `serving`. Fixed by precedence:
+  byte cap first, then cut-off, and the exit code is only judged when the pipeline
+  completed. The download suite passes six consecutive runs with the fix; the
+  final head's CI is the closing evidence.
 - The helper client's allowlist (`custom.github-mcp/bin/client.py`) was re-read and
   deliberately left unchanged: nothing tonight needs to call a new tool through it
   (`github_deploy_delete`'s registration is provable via `github_describe_tool`).

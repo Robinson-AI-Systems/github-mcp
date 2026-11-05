@@ -350,9 +350,12 @@ async function serveArchive(req, res, { root, claim, stored, p, repo, finish }) 
   let sent = true;
   try { await pipeline(child.stdout, createGzip(), counter.stream, res); } catch { sent = false; kill(); }
   const code = await closed; clearTimeout(timer);
-  if (over || code !== 0) { await finish('failed', { servedBytes: counter.total() }); if (!res.writableEnded) res.destroy(); return; }
-  // G7: the client went away mid-stream (see the worktree path): keep the snapshot for a retry.
+  if (over) { await finish('failed', { servedBytes: counter.total() }); if (!res.writableEnded) res.destroy(); return; }
+  // G7: once the stream has broken, the child's exit code says nothing — a cut-off client
+  // makes git die on the broken pipe, and the kill above lands as a signal (exit code null).
+  // The serve was cut off, not failed: the snapshot stays 'serving' for a retry.
   if (!sent) { await finish('serving', { servedBytes: counter.total() }); if (!res.writableEnded) res.destroy(); return; }
+  if (code !== 0) { await finish('failed', { servedBytes: counter.total() }); if (!res.writableEnded) res.destroy(); return; }
   return finish('downloaded', { servedBytes: counter.total() });
 }
 
