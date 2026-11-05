@@ -14,6 +14,7 @@ const REPO = 'GET /repos/{owner}/{repo}';
 const ENV = 'GET /repos/{owner}/{repo}/environments/{environment_name}';
 const BRANCH = 'GET /repos/{owner}/{repo}/branches/{branch}';
 const RULES = 'GET /repos/{owner}/{repo}/rules/branches/{branch}';
+const REMOVE = 'DELETE /repos/{owner}/{repo}/deployments/{deployment_id}';
 const def = (name) => ({ tool: deployments.tools.find((t) => t.name === name), handler: deployments.handlers[name] });
 const writes = (gh) => gh.calls.filter((c) => ['PUT', 'POST', 'DELETE', 'PATCH'].includes(c.method));
 const call = async (name, world, args) => parse(await doorsFor(def(name))[0].call(world, args));
@@ -30,6 +31,19 @@ runWriteContract({
     safeRef(gh);
     gh.when(CREATE).reply(201, { id: 42, ref: 'feature', environment: 'staging' });
     gh.when(DEPLOY).reply(200, outcome === 'ok' ? deploy : { ...deploy, environment: 'different' });
+  }
+});
+runWriteContract({
+  label: 'github_deploy_delete (inactive deployment)', definition: def('github_deploy_delete'),
+  args: { repo: 'hello', deploymentId: 42 },
+  needsConfirm: true, profile: 'everyday',
+  arrange(gh, outcome) {
+    safeRef(gh);
+    let deleted = false;
+    gh.when(DEPLOY).replyWith(() => deleted
+      ? { status: 404, body: { message: 'Not Found' } } : { status: 200, body: deploy });
+    gh.when(STATUSES).reply(200, [{ ...status, state: 'inactive' }]);
+    gh.when(REMOVE).replyWith(() => { if (outcome === 'ok') deleted = true; return { status: 204, body: {} }; });
   }
 });
 runWriteContract({
@@ -97,6 +111,40 @@ describe('G-4 deployment writes', () => {
     w.gh.when(DEPLOY).reply(404, { message: 'Not found' });
     const out = await call('github_deploy_set_status', w,
       { repo: 'hello', deploymentId: 999, state: 'failure' });
+    expect(out.status).not.toBe('applied');
+    expect(writes(w.gh)).toEqual([]);
+  });
+
+  it('deletes an inactive deployment and verifies it is gone', async () => {
+    const w = await makeWorld({ mode: 'production', profile: 'everyday' });
+    safeRef(w.gh);
+    let deleted = false;
+    w.gh.when(DEPLOY).replyWith(() => deleted
+      ? { status: 404, body: { message: 'Not Found' } } : { status: 200, body: deploy });
+    w.gh.when(STATUSES).reply(200, [{ ...status, state: 'inactive' }]);
+    w.gh.when(REMOVE).replyWith(() => { deleted = true; return { status: 204, body: {} }; });
+    const out = await call('github_deploy_delete', w, { repo: 'hello', deploymentId: 42, confirm: true });
+    expect(out).toMatchObject({ status: 'applied' });
+    expect(writes(w.gh)).toHaveLength(1);
+    expect(writes(w.gh)[0].method).toBe('DELETE');
+    expect(w.gh.invalid).toEqual([]);
+  });
+
+  it('refuses to delete a deployment whose latest status is not inactive, and sends nothing', async () => {
+    const w = await makeWorld({ mode: 'production', profile: 'everyday' });
+    safeRef(w.gh);
+    w.gh.when(DEPLOY).reply(200, deploy);
+    w.gh.when(STATUSES).reply(200, [status]); // latest state: success (active record)
+    const out = await call('github_deploy_delete', w, { repo: 'hello', deploymentId: 42, confirm: true });
+    expect(out.status).not.toBe('applied');
+    expect(JSON.stringify(out)).toContain('github_deploy_set_status');
+    expect(writes(w.gh)).toEqual([]);
+  });
+
+  it('refuses an unknown deployment id for delete and sends nothing', async () => {
+    const w = await makeWorld({ mode: 'production', profile: 'everyday' });
+    w.gh.when(DEPLOY).reply(404, { message: 'Not Found' });
+    const out = await call('github_deploy_delete', w, { repo: 'hello', deploymentId: 999, confirm: true });
     expect(out.status).not.toBe('applied');
     expect(writes(w.gh)).toEqual([]);
   });

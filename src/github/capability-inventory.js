@@ -1,7 +1,7 @@
 import { redact } from './content-protection.js';
 // CAP-1: source-pinned capability census. This module NEVER issues a provider request,
 // grants authority, or treats an API finder / tool count as actual GitHub coverage.
-import {deriveRestCredentials, listedFor, NO_EVIDENCE, DERIVED_REVIEWED} from './credential-derivation.js';
+import {deriveRestCredentials, listedFor, NO_EVIDENCE, DERIVED_REVIEWED, transportCredentialDecisions} from './credential-derivation.js';
 import {restOperations} from './openapi-index.js';
 import {githubGraphqlSchema} from './graphql-schema.js';
 import {curatedTool} from './hand-built-map.js';
@@ -267,7 +267,10 @@ function baseline({key, interfaceName, family, effect, source, officialReference
     version: source.version, family, effect,
     evidence: {pinnedRevision: source.revision, officialUrl: officialReference,
       sourceUrl: source.url, checked: SOURCE.checked, conflicts: []},
-    credentialSupport: unknownCredentials(interfaceName),
+    // Transport-level credential facts (M4 tranche) are decided before the per-operation
+    // evidence layers run; a reviewed per-operation decision for the same kind, applied by the
+    // record builders after this baseline, still wins over the transport rule.
+    credentialSupport: Object.assign(unknownCredentials(interfaceName), transportCredentialDecisions(interfaceName)),
     prerequisites: prerequisites(),
     hostApplicability: interfaceName === 'graphql' ? graphqlHosts(key) : hostApplicability(key),
     implementation: {status: 'unresolved', route: null, tool: null,

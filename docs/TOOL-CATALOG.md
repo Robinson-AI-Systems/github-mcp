@@ -329,9 +329,9 @@ Card(s): G-3. Covers Actions, Dependabot, Codespaces and agent secrets at reposi
 | `github_variable_set` | Create or update a variable | P·Prod* | F | I | B | E | G-3 built #44 |
 | `github_variable_delete` | Delete a variable | C·Prod* | C | I | B | E | G-3 built #44 |
 
-## Environments and deployments (`github_env_*, github_deploy_*`) — 10
+## Environments and deployments (`github_env_*, github_deploy_*`) — 11
 
-Card(s): G-4.
+Card(s): G-4; CAP-8 (the deployment-record delete leg, CAP-7 follow-on M2).
 
 | Tool | What it does | Safety | Origin | Cred | Audience | Profile | Card |
 | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -345,6 +345,7 @@ Card(s): G-4.
 | `github_deploy_list` | Deployments with their latest status, by environment and ref | — | C | I | B,Op | R | G-4 built #51 |
 | `github_deploy_create` | Create a deployment for a ref and environment | C·Prod* | C | I | B | E | G-4 built #52 |
 | `github_deploy_set_status` | Add a status to a deployment (in progress, success, failure, inactive) | P·Prod* | C | I | B | E | G-4 built #52 |
+| `github_deploy_delete` | Delete a deployment record permanently (the deployment must be inactive first; verified gone by read-back) | C·D·Prod* | C | I | B | E | CAP-8 |
 
 ## Releases (`github_release_*`) — 7
 

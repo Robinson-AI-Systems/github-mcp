@@ -4,6 +4,7 @@ import {RUNTIME_CHOICES} from '../playground/sizing.js';
 import { nativeWorkerPublicKey, signNativeUploadClaim, signNativeDownloadClaim } from '../native-git/signing.js';
 import { randomBytes } from 'node:crypto';
 import { defineRead } from './define-read.js';
+import { readerFor } from './github-read.js';
 import { defineGithubWrite, explainGithubError } from './define-github-write.js';
 import { TenantCapacityError } from '../tenancy/runtime-limits.js';
 import { READ_OPERATIONS, WRITE_OPERATIONS, gitCommand, switchBranch, branchName, nativeOperationHelp, allOperationOptions, normalizeNativeOptions, needsErgonomicWorker, olderWorkerOptions, NATIVE_OPTIONS_VERSION } from '../native-git/commands.js';
@@ -32,6 +33,23 @@ const invoke = (c, t, a) => callNativeWorker(c, { binding: t.record.binding, job
 const configured = c => { workerUrl(c.env); if (c.env?.NATIVE_GIT_WORKER_KEY) workerKey(c.env.NATIVE_GIT_WORKER_KEY); else nativeWorkerPublicKey(c.env); };
 
 const safe = (message, safeCode, extra = {}) => Object.assign(new TypeError(message), { safeMessage: true, safeCode, ...extra });
+// G12: a workspace's LOCAL refs can sit on an older commit than the remote branch of the same name
+// (AR-5b, 2026-10-31: the workspace's local main was a same-titled earlier state while remote main
+// was the real squash; two branches built on local refs carried the whole feature diff and only a
+// remote compare caught it). Every status read therefore also reports the remote head of the
+// workspace's current branch, read from GitHub at the same moment, and names the divergence. The
+// remote read never fails the status read: any problem leaves relation 'unknown'.
+async function withRemoteHead(c, record, result) {
+ if (!result || result.state !== 'ready' || typeof result.branch !== 'string' || !result.branch || typeof result.head !== 'string') return result;
+ const remote = { branch: result.branch, head: null, relation: 'unknown' };
+ try {
+  const { octokit } = await readerFor({ owner: record.row.owner, repo: record.row.repo }, c);
+  const { data } = await octokit.request('GET /repos/{owner}/{repo}/branches/{branch}', { owner: record.row.owner, repo: record.row.repo, branch: result.branch });
+  const head = data?.commit?.sha;
+  if (typeof head === 'string' && /^[a-f0-9]{40}$/.test(head)) { remote.head = head; remote.relation = head === result.head ? 'same' : 'different'; }
+ } catch { /* the remote head stays unknown; the local status read stands */ }
+ return { ...result, remote, ...(remote.relation === 'different' ? { divergence_note: `Local ${result.branch} is at ${result.head.slice(0, 12)}, but GitHub's ${result.branch} is now at ${remote.head.slice(0, 12)}: the local refs are stale, or the workspace holds unpushed commits. Fetch, or compare with github_commit_compare, before creating a branch from a local ref.` } : {}) };
+}
 // WORKER-POOL-1: placement before any clone is sent (shared by workspace open, github_repo_download,
 // github_repo_change): the first pool host, in priority order, that is reachable, not paused by its owner,
 // admits resources and is under its workspace limit (src/native-git/pool.js). Refuses plainly when none is.
@@ -116,7 +134,7 @@ const open = defineGithubWrite({
 });
 const read = defineRead({
  name: 'github_git_workspace_read', area: 'git', audience: ['B', 'O', 'Op'], byteWindow: true,
- description: 'Read native Git status, history, diffs, conflicts, refs or exact file byte windows from this connection’s workspace.',
+ description: 'Read native Git status, history, diffs, conflicts, refs or exact file byte windows from this connection’s workspace. Status also reports the remote head of the current branch (remote.relation: same, different or unknown) so a workspace sitting on stale local refs is visible before branching from them.',
  properties: { workspace_id: WORKSPACE, operation: { type: 'string', enum: ['capabilities', ...READ_OPERATIONS] }, options: OPTIONS, byteOffset: { type: 'integer', minimum: 0 }, byteLength: { type: 'integer', minimum: 1, maximum: 32768 },
   owner: OWNER, repo: REPO, path: OPTIONS.properties.path, paths: OPTIONS.properties.paths, ref: TEXT }, required: ['operation'],
  handler: async (input, c) => { const a = { ...input }; for (const key of ['path', 'paths', 'ref']) if (a[key] !== undefined) { if (a.options?.[key] !== undefined && JSON.stringify(a.options[key]) !== JSON.stringify(a[key])) throw new TypeError(`${key} was given both at the top level and in options; give it once.`); a.options = { ...(a.options ?? {}), [key]: a[key] }; delete a[key]; }
@@ -131,7 +149,8 @@ const read = defineRead({
   for (const [key, expected] of [['owner', r.row.owner], ['repo', r.row.repo]]) if (a[key] !== undefined && a[key].toLowerCase() !== expected.toLowerCase()) throw new TypeError(`This workspace belongs to ${r.row.owner}/${r.row.repo}, not the ${key} you gave.`);
   if (needsErgonomicWorker(a.operation, normalizeNativeOptions(a.operation, a.options ?? {})) && (await callNativeWorker(c, { action: 'capabilities', job: r.job }).catch(() => ({}))).native_options !== NATIVE_OPTIONS_VERSION)
    throw new TypeError(`The native Git worker serving this workspace must be updated for ${a.operation === 'changed_files' ? 'changed_files' : 'these options'}. Meanwhile use status (uncommitted changes) or diff with options.ref.`);
-  return callNativeWorker(c, { binding: r.binding, job: r.job, workspace_id: r.worker, action: a.operation === 'status' ? 'inspect' : 'read', operation: a.operation, options: { ...(a.options ?? {}), ...(a.byteOffset !== undefined ? { byteOffset: a.byteOffset } : {}), ...(a.byteLength !== undefined ? { byteLength: a.byteLength } : {}) }, network: a.operation === 'remote_refs' }); }
+  const result = await callNativeWorker(c, { binding: r.binding, job: r.job, workspace_id: r.worker, action: a.operation === 'status' ? 'inspect' : 'read', operation: a.operation, options: { ...(a.options ?? {}), ...(a.byteOffset !== undefined ? { byteOffset: a.byteOffset } : {}), ...(a.byteLength !== undefined ? { byteLength: a.byteLength } : {}) }, network: a.operation === 'remote_refs' });
+  return a.operation === 'status' ? withRemoteHead(c, r, result) : result; }
 });
 // NATIVE-ERGO-1: what a stale expectedGeneration or another definite worker refusal needs: the
 // current generation, read once after the refusal (nothing was changed by the refused call).
@@ -418,20 +437,20 @@ const downloadStatus = (c, t, response) => invoke(c, t, { action: 'download_stat
 // Compact clients drop large `result` objects; the one-time command (which carries the URL) and the
 // allowlist note must stay visible, within the 1200-byte progress bound (optional fields go first).
 const downloadEssentials = shaped => shaped?.command
- ? fitDigest({ ...(shaped.workspace_id ? { workspace_id: shaped.workspace_id } : {}), download_id: shaped.download_id, command: shaped.command, head: shaped.head ?? null, single_use: true, if_blocked: shaped.if_blocked, next: 'Run within 10 minutes; it works once. Do not publish the URL.' }, ['next', 'head', 'workspace_id', 'download_id', 'single_use'])
+ ? fitDigest({ ...(shaped.workspace_id ? { workspace_id: shaped.workspace_id } : {}), download_id: shaped.download_id, command: shaped.command, head: shaped.head ?? null, single_use: true, if_blocked: shaped.if_blocked, next: 'Run within 10 minutes; an archive fetch that is cut off can be retried with the same address until one download completes. Do not publish the URL.' }, ['next', 'head', 'workspace_id', 'download_id', 'single_use'])
  : shaped?.next ? fitDigest({ ...(shaped.workspace_id ? { workspace_id: shaped.workspace_id, state: shaped.state } : {}), next: shaped.next }) : null;
 const presentDownload = (a, after, response) => {
  if (typeof response?.url !== 'string') return { ...after, next: 'The download address is shown only once. Begin a new download with a fresh requestKey if you no longer have it.' };
  return { ...after, url: response.url, command: DOWNLOAD_COMMAND[a.mode](response.url), single_use: true, if_blocked: blockedNote(response.url),
   next: a.mode === 'git'
    ? 'Run the command within 10 minutes (one clone or fetch session). The clone\'s origin is the one-time URL; send changes back with github_git_workspace_upload. Do not publish the URL; it holds no GitHub credential.'
-   : 'Run the command within 10 minutes (it works once). The archive has no .git folder. Do not publish the URL; it holds no GitHub credential.' };
+   : 'Run the command within 10 minutes. If the fetch is cut off, run the same command again — the address serves until one download completes (retries share the session window). The archive has no .git folder. Do not publish the URL; it holds no GitHub credential.' };
 };
 const BLOCKED_GUIDANCE = 'The URL is on this service\'s own domain, the same for every repository and transfer: if the sandbox cannot reach it (host not allowed, proxy 403, DNS error), add that one domain once to the AI\'s network allowlist (for Claude: the Capabilities / network access allowed-domains setting) and ask for a new link; nothing is lost.';
 const download = defineGithubWrite({
  name: 'github_git_workspace_download', area: 'git', audience: ['B', 'O', 'Op'],
  description: 'Get a whole native workspace at once: returns a one-time git clone URL, or a curl URL for a .tar.gz of a ref or the current worktree.',
- guidance: 'Instead of reading many files one at a time; for a repository you have not opened yet, github_repo_download does it in one call. mode git returns `git clone "<url>" repo` (local branches and tags, or only ref); mode archive returns a curl command for a .tar.gz of ref (branch, tag or commit; default HEAD) or of ref "worktree" (tracked plus untracked, not ignored, files; never .git). Works for workspaces attached to a Playground runtime too (served from the runtime\'s copy). The URL works for one clone session or one download within 10 minutes and holds no GitHub credential. The clone\'s origin is that one-time URL: send changes back with github_git_workspace_upload. ' + BLOCKED_GUIDANCE + ' Do not publish the URL.',
+ guidance: 'Instead of reading many files one at a time; for a repository you have not opened yet, github_repo_download does it in one call. mode git returns `git clone "<url>" repo` (local branches and tags, or only ref); mode archive returns a curl command for a .tar.gz of ref (branch, tag or commit; default HEAD) or of ref "worktree" (tracked plus untracked, not ignored, files; never .git). Works for workspaces attached to a Playground runtime too (served from the runtime\'s copy). The URL works for one clone session or one completed archive download within 10 minutes (a cut-off archive fetch may be retried with the same address inside the session window) and holds no GitHub credential. The clone\'s origin is that one-time URL: send changes back with github_git_workspace_upload. ' + BLOCKED_GUIDANCE + ' Do not publish the URL.',
  properties: { workspace_id: WORKSPACE, mode: { type: 'string', enum: ['git', 'archive'], description: 'git = one git clone/fetch session; archive = one .tar.gz download.' },
   ref: { ...TEXT, description: 'Branch, tag or commit to serve (default: git all local branches and tags; archive HEAD). archive also accepts "worktree" for uncommitted files.' },
   maxMegabytes: { type: 'integer', minimum: 1, maximum: 500, description: 'Size cap in MiB for what is sent (default 200).' } },
@@ -463,7 +482,7 @@ const branchOf = ref => ref === undefined || ref === 'worktree' || /^[a-f0-9]{7,
 const repoDownload = defineGithubWrite({
  name: 'github_repo_download', area: 'git', audience: ['B', 'O', 'Op'],
  description: 'Download a whole repository in one call: returns a one-time git clone or curl .tar.gz command on this service\'s own domain. No GitHub key in it.',
- guidance: 'The usual way to get a repository\'s files into your sandbox. mode git (default) returns `git clone "<url>" repo`; mode archive returns a curl command for a .tar.gz of ref (default HEAD; "worktree" includes uncommitted workspace files). It reuses an open native workspace of the same repository on this connection (its current commits, which may include work not yet pushed) or clones a Git-only one from GitHub (fresh: true always clones). A large repository may still be cloning: then the result says so; call again in a minute and it reuses that workspace. The URL works once within 10 minutes. ' + BLOCKED_GUIDANCE + ' To send changes back use github_git_workspace_upload with the returned workspace_id. Do not publish the URL.',
+ guidance: 'The usual way to get a repository\'s files into your sandbox. mode git (default) returns `git clone "<url>" repo`; mode archive returns a curl command for a .tar.gz of ref (default HEAD; "worktree" includes uncommitted workspace files). It reuses an open native workspace of the same repository on this connection (its current commits, which may include work not yet pushed) or clones a Git-only one from GitHub (fresh: true always clones). A large repository may still be cloning: then the result says so; call again in a minute and it reuses that workspace. The URL works for one clone session or one completed archive download within 10 minutes; a cut-off archive fetch may be retried with the same address inside the session window. ' + BLOCKED_GUIDANCE + ' To send changes back use github_git_workspace_upload with the returned workspace_id. Do not publish the URL.',
  properties: { owner: OWNER, repo: REPO, mode: { type: 'string', enum: ['git', 'archive'], description: 'git (default) = one git clone; archive = one .tar.gz.' },
   ref: { ...TEXT, description: 'Branch, tag or commit (default: git every branch and tag; archive HEAD).' }, fresh: { ...BOOL, description: 'Always clone a new copy from GitHub.' },
   maxMegabytes: { type: 'integer', minimum: 1, maximum: 500, description: 'Size cap in MiB (default 200).' } },

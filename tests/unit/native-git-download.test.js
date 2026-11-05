@@ -190,6 +190,36 @@ describe('archive mode: one curl download', () => {
    expect((await fetchArchive(url)).status).toBe(410);
   }
  });
+ it('a cut-off archive fetch does not consume the address: the same address serves until one download completes (G7)', async () => {
+  const commit = git(repo(), 'rev-parse', 'HEAD^{commit}');
+  const { url, downloadId } = await begin('archive');
+  // First fetch dies mid-stream (the sandboxed-fetch failure from the field: 0 usable bytes).
+  const first = await fetch(url);
+  expect(first.status).toBe(200);
+  const reader = first.body.getReader();
+  await reader.read();
+  await reader.cancel().catch(() => {});
+  await new Promise(t => setTimeout(t, 300));
+  expect((await status(downloadId)).data.state).toBe('serving');
+  // The retry with the SAME address delivers the whole archive.
+  const { status: code, bytes } = await fetchArchive(url);
+  expect(code).toBe(200);
+  expect(gunzipSync(bytes)).toEqual(gitBytes(repo(), 'archive', '--format=tar', commit));
+  expect((await settled(downloadId)).data.state).toBe('downloaded');
+  // Only a completed download consumes the address.
+  expect((await fetchArchive(url)).status).toBe(410);
+ });
+ it('an archive retry after the session window is refused', async () => {
+  const { url, downloadId } = await begin('archive');
+  const first = await fetch(url);
+  expect(first.status).toBe(200);
+  await first.body.cancel().catch(() => {});
+  await new Promise(t => setTimeout(t, 300));
+  expect((await status(downloadId)).data.state).toBe('serving');
+  skew = DOWNLOAD_SESSION_MS + 1000;
+  expect((await fetchArchive(url)).status).toBe(410);
+  skew = 0;
+ });
  it('worktree: tracked and untracked files including uncommitted edits, never .git, ignored files or outside links', async () => {
   await writeFile(join(repo(), 'file.txt'), 'edited, not committed\n');
   await writeFile(join(repo(), 'new-untracked.md'), '# new\n');

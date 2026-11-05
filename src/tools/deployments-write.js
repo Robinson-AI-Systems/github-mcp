@@ -10,6 +10,7 @@ const REF = { type: 'string', minLength: 1, maxLength: 250 };
 const ENV = { type: 'string', minLength: 1, maxLength: 100 };
 const GET = 'GET /repos/{owner}/{repo}/deployments/{deployment_id}';
 const CREATE = 'POST /repos/{owner}/{repo}/deployments';
+const DELETE = 'DELETE /repos/{owner}/{repo}/deployments/{deployment_id}';
 const STATUS = 'POST /repos/{owner}/{repo}/deployments/{deployment_id}/statuses';
 const STATUSES = 'GET /repos/{owner}/{repo}/deployments/{deployment_id}/statuses';
 const params = (t, id) => ({ owner: t.owner, repo: t.repo, ...(id ? { deployment_id: id } : {}) });
@@ -126,6 +127,51 @@ const deployStatus = defineGithubWrite({
     state: after?.state, confirmed: !!after })
 });
 
-const defs = [deployCreate, deployStatus];
+// CAP-7 M2: the family's missing symmetry leg (create existed, delete did not). Confirmation
+// discipline mirrors github_actions_delete_run: always confirm, refuse before the call when the
+// record is absent or not yet deletable, and verify from an independent read-back that it is gone.
+// GitHub only deletes an inactive deployment, so an active latest status is refused up front with
+// the one call that fixes it instead of surfacing GitHub's 422 after confirmation.
+const deployDelete = defineGithubWrite({
+  name: 'github_deploy_delete', area: 'deploy', audience: ['B'],
+  description: 'Delete a deployment record permanently. The deployment must be inactive first (set its status to inactive). This cannot be undone.',
+  properties: {
+    owner: OWNER, repo: REPO, deploymentId: { type: 'integer', minimum: 1 }
+  },
+  required: ['repo', 'deploymentId'],
+  declarations: { production: 'when-target', confirm: 'always', profiles: ['everyday', 'full'] },
+  target: statusTarget,
+  read: async (args, ctx, t) => {
+    const deployment = await get(ctx, t, args.deploymentId);
+    const statuses = deployment ? await readStatuses(ctx, t, args.deploymentId) : [];
+    return { deployment, latest: statuses[0] ?? null };
+  },
+  // A missing deployment classifies as not-production: there is nothing to delete, apply refuses
+  // 404 before any write, and a replayed delete (whose record is gone because it succeeded) must
+  // still reach its stored receipt instead of tripping the production guard.
+  classify: async ({ ctx, before, target: t }) => ({
+    production: before.deployment
+      ? await classify(ctx, { ...t, ref: before.deployment.ref, environment: before.deployment.environment,
+        productionFlag: before.deployment.production_environment === true })
+      : null
+  }),
+  summarize: ({ args, before, target: t }) => before.deployment
+    ? `Permanently delete deployment ${args.deploymentId} (${before.deployment.ref} → ${before.deployment.environment}) in ${slug(t.owner, t.repo)}; this cannot be undone`
+    : `Deployment ${args.deploymentId} does not exist in ${slug(t.owner, t.repo)}`,
+  apply: async ({ args, before, ctx, target: t }) => {
+    if (!before.deployment) throw refusal('Deployment not found.', 404);
+    if (before.latest && before.latest.state !== 'inactive')
+      throw refusal(`Deployment ${args.deploymentId} is still "${before.latest.state}"; GitHub only deletes inactive deployments. Set its status to inactive with github_deploy_set_status first, then delete it.`);
+    return (await octo(ctx, t.owner)).request(DELETE, params(t, args.deploymentId));
+  },
+  readAfter: async ({ args, ctx, target: t }) =>
+    (await get(ctx, t, args.deploymentId)) ? { deployment: 'still there' } : { deployment: 'gone' },
+  verify: ({ after }) => after?.deployment === 'gone',
+  inverse: () => null,
+  present: ({ args, before }) => ({ deleted: true, deployment_id: args.deploymentId,
+    environment: before.deployment?.environment, ref: before.deployment?.ref })
+});
+
+const defs = [deployCreate, deployStatus, deployDelete];
 export const tools = defs.map((d) => d.tool);
 export const handlers = Object.fromEntries(defs.map((d) => [d.tool.name, d.handler]));

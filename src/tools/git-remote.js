@@ -154,11 +154,31 @@ async function createKey(c, before) {
  await c.db.createGitRemoteKey({ id, connection: c.connection.client_id, owner: before.owner, repo: before.repo, access: before.access, codeHash: sha256(code), codeExpiresAt, expiresAt });
  return { key_id: id, code, owner: before.owner, repo: before.repo, access: before.access, expires_at: expiresAt.toISOString(), code_expires_at: codeExpiresAt.toISOString(), ...(direct ? { direct } : {}), ...(note ? { direct_note: note } : {}) };
 }
+// The stored read-back is also what a replayed call returns, so the state explanation lives here,
+// not only in present(): a replay never reaches present() (G17 — the field failure was a silent
+// replay, after which git failed against an older session's expired key with "could not read
+// Username" and nothing in the result said why or what to do instead).
 const view = row => row ? { key_id: row.id, owner: row.owner, repo: row.repo, access: row.access, state: row.revoked_at ? 'revoked' : row.exchanged_at ? 'active' : 'awaiting_setup',
- expires_at: new Date(row.expires_at).toISOString(), setup_shown_once: true } : null;
+ expires_at: new Date(row.expires_at).toISOString(), setup_shown_once: true,
+ ...(row.revoked_at
+  ? { next: 'This key was cancelled; its setup command was shown only once and no longer works. Call github_git_remote_setup again with a fresh requestKey for a new key.' }
+  : row.exchanged_at
+   ? { next: 'This key is already set up in git\'s credential store for this repository, so git clone, pull and push should work; the setup command itself was shown only once. If git still fails, call github_git_remote_setup again with a fresh requestKey and run the new command.' }
+   : { next: 'This key was never set up: its one-time setup command was shown only once, in the first result, and its 10-minute code has lapsed. Until a new setup command runs, git keeps any older, expired key for this address and fails with "could not read Username". Call github_git_remote_setup again with a fresh requestKey and run the new command in the same step; the new command replaces the stored key.' }) } : null;
 
 function present(c, after, response) {
- if (typeof response?.code !== 'string') return { ...after, next: 'The setup command is shown only once. Call github_git_remote_setup again with a fresh requestKey for a new one.' };
+ // G17: a replayed setup cannot re-show the one-time command (only its hash is stored). Say
+ // plainly which state the key is in, because the field failure was silent: a caller who missed
+ // the first showing retried git against an older session's expired key and got git's misleading
+ // "could not read Username". The exchange endpoint already explains an expired code the same way.
+ if (typeof response?.code !== 'string') {
+  const next = after?.state === 'awaiting_setup'
+   ? 'The setup command is shown only once and cannot be shown again — and this key was never set up: its 10-minute code has lapsed, so nothing reached git. Until a new setup command runs, git still holds any older, expired key for this address and fails with "could not read Username". Call github_git_remote_setup again with a fresh requestKey and run its command in the same step; the new command replaces the stored key.'
+   : after?.state === 'active'
+    ? 'The setup command is shown only once and cannot be shown again; this key is already set up in git\'s credential store, so git clone, pull and push should work. If git still fails, call github_git_remote_setup again with a fresh requestKey and run the new command.'
+    : 'The setup command is shown only once and cannot be shown again. Call github_git_remote_setup again with a fresh requestKey for a new one.';
+  return { ...after, next };
+ }
  const origin = publicOrigin(c.env), path = `/git/${response.owner}/${response.repo}.git`, domainUrl = origin + path;
  const direct = response.direct?.origin ?? null, remoteUrl = direct ? direct + path : domainUrl;
  return { ...after, remote_url: remoteUrl, ...(direct ? { fallback_url: domainUrl } : {}), command: setupCommand(origin, response.code, remoteUrl, direct),
@@ -176,6 +196,9 @@ const essentials = shaped => shaped?.command
  : shaped?.next ? fitDigest({ next: shaped.next }) : null;
 
 const setup = defineGithubWrite({
+ // G17: a replay re-reads the key's CURRENT state (a key exchanged after its first result was
+ // recorded must not replay as "awaiting_setup"), and present() then speaks for that state.
+ refreshReplay: async ({ ctx: c, prior }) => (typeof prior?.key_id === 'string' ? view(await c.db.getGitRemoteKey(prior.key_id)) : null),
  name: 'github_git_remote_setup', area: 'git', audience: ['B', 'O', 'Op'],
  description: 'Use plain git clone/pull/push on this service\'s domain: returns a one-time setup command that stores a short-lived key for one repository.',
  guidance: 'For coding agents with a shell: instead of upload/apply/commit calls, use normal git. Call with owner, repo and access (read: clone/fetch/pull; write: also push) and optional hours (default 8, at most 24). Run the returned command once within 10 minutes: it swaps the one-time code for a session key straight into git\'s credential store for this one address (never printed). Then `git clone <remote_url>` (or set it as origin) and use git as usual. Works for every repository this connection can reach, including collaborator repositories and extra places. Pushes go through the same checks as github_git_workspace_run push (branch rules and protected branches on GitHub, content protection, change log, Act as me attribution); a refusal shows as git "remote:" lines with a next step. ' + PUSH_NOTE + ' The key works only for this repository and access, expires on its own and can be cancelled on My connection. If the sandbox cannot reach the domain, add that one domain to its network allowlist once (for Claude: the Capabilities / network access allowed-domains setting). When the service has a direct git host, remote_url uses it (large pushes, no hosting-proxy limit) and fallback_url is the same repository on this domain.',
