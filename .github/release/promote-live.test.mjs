@@ -123,7 +123,7 @@ test('real atomic git promotion, read-back and second same-day update refusal', 
 test('bounded schedule backups preserve midnight, daily marker and owner recovery', () => {
   const workflow = readFileSync(new URL('../workflows/daily-live.yml', import.meta.url), 'utf8');
   const crons = [...workflow.matchAll(/cron: '([^']+)'/g)].map(m => m[1]);
-  assert.deepEqual(crons, ['1 0 * * *', '17 0 * * *', '17 1 * * *', '37 5 * * *', '43 12 * * *']);
+  assert.deepEqual(crons, ['7 0 * * *', '23 0 * * *', '23 1 * * *', '43 5 * * *', '49 12 * * *']);
   assert.equal((workflow.match(/timezone: America\/Denver/g) || []).length, 4);
   assert.match(workflow, /recover_missed_daily:/);
   assert.match(workflow, /default: false/);
