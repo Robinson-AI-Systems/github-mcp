@@ -113,11 +113,21 @@ steer, untouched). CAP-7's grade is untouched; only its follow-on rows moved.
   download worker, replay wording); the G4/G11 fix also rests on the live read-back
   quoted above. Pre-existing tests are unchanged in behavior; every pre-existing test
   in the touched suites passes as before.
-- Verification so far is targeted unit/contract suites on the working VM (quick
-  checks); the full `npm run check` for this branch runs on a fleet bench before the
-  push, and the PR's own CI is the second full pass. If the bench pass cannot
-  complete, this note must be amended to declare the verification degraded before
-  merge — a degraded pass does not close this batch.
+- Verification: targeted unit/contract suites on the working VM while building, then
+  the full gate on a fleet bench (PC bench slot 1, job `gh-mcp-batch2-check`) at the
+  first pushed head. That bench pass FAILED and did its job: `npm run check` stopped
+  in `count-catalog.py` (the catalog's Totals line and summary table still counted
+  513 tools), and 3 of 11,595 tests failed — the registry's exact tool inventory
+  (the intended +1) and the tool-pages budget (the G12 edit had pushed
+  `github_git_workspace_read`'s description past the 160-character listing limit).
+  All three were this batch's own defects and are fixed in the follow-up commit
+  (registry inventory, shorter description, catalog counts 513 → 514); `npm run
+  check` then ran green end-to-end and the two test files pass. The third failure,
+  `git-ssh-leg`'s "the real ssh client refuses a server whose host key is not
+  GitHub's", reproduces IDENTICALLY on the untouched base commit in this
+  environment — pre-existing and environment-dependent (it exercises a real SSH
+  client), not a Batch 2 regression; the PR's CI is its arbiter. The bench pass is
+  re-run on the final head before the PR opens.
 - The helper client's allowlist (`custom.github-mcp/bin/client.py`) was re-read and
   deliberately left unchanged: nothing tonight needs to call a new tool through it
   (`github_deploy_delete`'s registration is provable via `github_describe_tool`).

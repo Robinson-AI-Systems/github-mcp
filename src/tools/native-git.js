@@ -134,7 +134,7 @@ const open = defineGithubWrite({
 });
 const read = defineRead({
  name: 'github_git_workspace_read', area: 'git', audience: ['B', 'O', 'Op'], byteWindow: true,
- description: 'Read native Git status, history, diffs, conflicts, refs or exact file byte windows from this connection’s workspace. Status also reports the remote head of the current branch (remote.relation: same, different or unknown) so a workspace sitting on stale local refs is visible before branching from them.',
+ description: 'Read native Git status (with the current branch remote head), history, diffs, conflicts, refs or exact file byte windows from this connection’s workspace.',
  properties: { workspace_id: WORKSPACE, operation: { type: 'string', enum: ['capabilities', ...READ_OPERATIONS] }, options: OPTIONS, byteOffset: { type: 'integer', minimum: 0 }, byteLength: { type: 'integer', minimum: 1, maximum: 32768 },
   owner: OWNER, repo: REPO, path: OPTIONS.properties.path, paths: OPTIONS.properties.paths, ref: TEXT }, required: ['operation'],
  handler: async (input, c) => { const a = { ...input }; for (const key of ['path', 'paths', 'ref']) if (a[key] !== undefined) { if (a.options?.[key] !== undefined && JSON.stringify(a.options[key]) !== JSON.stringify(a[key])) throw new TypeError(`${key} was given both at the top level and in options; give it once.`); a.options = { ...(a.options ?? {}), [key]: a[key] }; delete a[key]; }

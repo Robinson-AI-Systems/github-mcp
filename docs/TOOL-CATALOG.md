@@ -946,7 +946,7 @@ Metered actions with no published per-use price (larger runners, Copilot agent a
 
 ## Totals
 
-**Totals:** 513 tools: 507 hand-built + 6 universal (`github_api_*`, `github_graphql_*`), plus guided settings for every
+**Totals:** 514 tools: 508 hand-built + 6 universal (`github_api_*`, `github_graphql_*`), plus guided settings for every
 dashboard-only owner setting. By profile (lowest profile that has the tool): read_only 162, everyday adds 85
 (everyday lists 247), full adds 118 (full lists 407; `github_tenant_remove` only on the owner's own direct connection, so everyone else sees 403). In compact mode (`docs/designs/BATCH-C.md`) an agent
 loads only about 25 tools up front (meta-tools, whoami, universal search, workflows) and reaches the rest through
@@ -966,7 +966,7 @@ loads only about 25 tools up front (meta-tools, whoami, universal search, workfl
 | Actions: workflows, runs, jobs and logs | 13 |
 | Checks, statuses, artifacts and caches | 11 |
 | Secrets and variables | 7 |
-| Environments and deployments | 10 |
+| Environments and deployments | 11 |
 | Releases | 7 |
 | Pages and packages | 7 |
 | Developer tools | 15 |
@@ -999,7 +999,7 @@ loads only about 25 tools up front (meta-tools, whoami, universal search, workfl
 | Code quality and GitHub help | 4 |
 | Robinson Playground commands | 5 |
 | CAP-6 gated families: merge queue, Copilot coding agent, feature check | 5 |
-| **Total** | **513** |
+| **Total** | **514** |
 
 <!-- #108: experimental RTC HTTPS reader bridges only server/meta read tools using existing guarded dispatch; RTC 1 certification is not claimed. -->
 
