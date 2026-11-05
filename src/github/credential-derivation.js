@@ -80,3 +80,23 @@ export function deriveRestCredentials(op) {
     resolution: 'Neither source is stronger, so the credential is kept unknown with the reason recorded. Only a live call can decide it.' });
   return { decisions, conflicts };
 }
+
+// M4 TRANCHE (CAP-7 follow-on, 2026-11-04): one credential kind decided end-to-end from GitHub's
+// authentication contract. An SSH key authenticates Git transport only (clone/fetch/push over
+// SSH); neither API admits it — the REST API's authentication reference accepts token credentials
+// (Bearer, or Basic with a token), and GraphQL calls carry a token in the Authorization header.
+// That is a transport-level fact about the credential kind itself, not an inference from one
+// operation to another (the rule this module otherwise forbids), so it is recorded once here and
+// applied to every REST and GraphQL row. It decides NOTHING for the census's Git-transport rows,
+// where an SSH key is the credential in question, and nothing about any other kind.
+const API_AUTH_PAGES = Object.freeze({
+  rest: 'https://docs.github.com/en/rest/authentication/authenticating-to-the-rest-api',
+  graphql: 'https://docs.github.com/en/graphql/guides/forming-calls'
+});
+export function transportCredentialDecisions(interfaceName) {
+  const evidence = API_AUTH_PAGES[interfaceName];
+  if (!evidence) return {};
+  return { git_ssh: { disposition: 'unsupported', evidence, permissions: null, scopes: null,
+    checked: '2026-11-04', derived: true, basis: 'github-authentication-contract',
+    note: 'SSH keys authenticate Git transport only; this API\'s documented authentication accepts token credentials, and no operation in it accepts an SSH key.' } };
+}

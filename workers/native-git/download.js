@@ -4,7 +4,9 @@
 // or a commit to archive, or a tar of the current worktree — and the control plane signs a
 // short-lived capability for it. The worker accepts that capability only on /v1/download: one
 // read-only `git clone`/`git fetch` session (smart HTTP upload-pack, advertised refs only) or one
-// archive GET. Nothing in the workspace is changed, no GitHub credential is involved, and no
+// COMPLETED archive download — a fetch that dies mid-stream may be retried with the same address
+// inside the session window, because it delivered nothing (G7). Nothing in the workspace is
+// changed, no GitHub credential is involved, and no
 // `.git` directory, configuration or file outside the workspace repository is ever served.
 import { spawn } from 'node:child_process';
 import { createReadStream, createWriteStream } from 'node:fs';
@@ -288,7 +290,7 @@ export async function downloadHttp(req, res, { root, key, now = Date.now, monito
     try { const handle = await open(p.claimed, 'wx', 0o600); await handle.close(); } catch { return gone(); }
     stored = { ...stored, state: 'serving', sessionStartedAt: at, requests: 0, servedBytes: 0 };
     await save(p.record, stored);
-  } else if (!(git && stored.state === 'serving' && stored.sessionStartedAt + DOWNLOAD_SESSION_MS > at && stored.requests < DOWNLOAD_LIMITS.requests)) return gone();
+  } else if (!(stored.state === 'serving' && stored.sessionStartedAt + DOWNLOAD_SESSION_MS > at && (!git || stored.requests < DOWNLOAD_LIMITS.requests))) return gone();
   const finish = async (state, extra = {}) => { await save(p.record, { ...stored, ...extra, state, finishedAt: now() }).catch(() => {}); if (state !== 'serving') await rm(p.data, { recursive: true, force: true }).catch(() => {}); };
   const repo = join(p.data, 'repo.git');
   try {
@@ -332,7 +334,11 @@ async function serveArchive(req, res, { root, claim, stored, p, repo, finish }) 
   if (stored.source === 'worktree') {
     const file = join(p.data, 'archive.tar.gz'); const size = (await stat(file)).size;
     res.writeHead(200, { ...headers, 'Content-Length': String(size) });
-    try { await pipeline(createReadStream(file), counter.stream, res); } catch { await finish('failed', { servedBytes: counter.total() }); if (!res.writableEnded) res.destroy(); return; }
+    // G7: a fetch that dies mid-stream delivered nothing usable, so it must not consume the
+    // address (the field failure was a 0-byte first fetch and a 410 on retry). The snapshot is
+    // kept in 'serving' and the same address may be fetched again inside the session window;
+    // only a completed serve consumes it. A serve that breaks the byte cap stays 'failed'.
+    try { await pipeline(createReadStream(file), counter.stream, res); } catch { await finish(over ? 'failed' : 'serving', { servedBytes: counter.total() }); if (!res.writableEnded) res.destroy(); return; }
     return finish('downloaded', { servedBytes: counter.total() });
   }
   // A commit snapshot: `git archive` of the fixed commit in the snapshot repository (no workspace config or attributes).
@@ -344,7 +350,12 @@ async function serveArchive(req, res, { root, claim, stored, p, repo, finish }) 
   let sent = true;
   try { await pipeline(child.stdout, createGzip(), counter.stream, res); } catch { sent = false; kill(); }
   const code = await closed; clearTimeout(timer);
-  if (over || !sent || code !== 0) { await finish('failed', { servedBytes: counter.total() }); if (!res.writableEnded) res.destroy(); return; }
+  if (over) { await finish('failed', { servedBytes: counter.total() }); if (!res.writableEnded) res.destroy(); return; }
+  // G7: once the stream has broken, the child's exit code says nothing — a cut-off client
+  // makes git die on the broken pipe, and the kill above lands as a signal (exit code null).
+  // The serve was cut off, not failed: the snapshot stays 'serving' for a retry.
+  if (!sent) { await finish('serving', { servedBytes: counter.total() }); if (!res.writableEnded) res.destroy(); return; }
+  if (code !== 0) { await finish('failed', { servedBytes: counter.total() }); if (!res.writableEnded) res.destroy(); return; }
   return finish('downloaded', { servedBytes: counter.total() });
 }
 

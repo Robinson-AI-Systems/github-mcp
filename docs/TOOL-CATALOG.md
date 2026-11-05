@@ -329,9 +329,9 @@ Card(s): G-3. Covers Actions, Dependabot, Codespaces and agent secrets at reposi
 | `github_variable_set` | Create or update a variable | P·Prod* | F | I | B | E | G-3 built #44 |
 | `github_variable_delete` | Delete a variable | C·Prod* | C | I | B | E | G-3 built #44 |
 
-## Environments and deployments (`github_env_*, github_deploy_*`) — 10
+## Environments and deployments (`github_env_*, github_deploy_*`) — 11
 
-Card(s): G-4.
+Card(s): G-4; CAP-8 (the deployment-record delete leg, CAP-7 follow-on M2).
 
 | Tool | What it does | Safety | Origin | Cred | Audience | Profile | Card |
 | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -345,6 +345,7 @@ Card(s): G-4.
 | `github_deploy_list` | Deployments with their latest status, by environment and ref | — | C | I | B,Op | R | G-4 built #51 |
 | `github_deploy_create` | Create a deployment for a ref and environment | C·Prod* | C | I | B | E | G-4 built #52 |
 | `github_deploy_set_status` | Add a status to a deployment (in progress, success, failure, inactive) | P·Prod* | C | I | B | E | G-4 built #52 |
+| `github_deploy_delete` | Delete a deployment record permanently (the deployment must be inactive first; verified gone by read-back) | C·D·Prod* | C | I | B | E | CAP-8 |
 
 ## Releases (`github_release_*`) — 7
 
@@ -945,7 +946,7 @@ Metered actions with no published per-use price (larger runners, Copilot agent a
 
 ## Totals
 
-**Totals:** 513 tools: 507 hand-built + 6 universal (`github_api_*`, `github_graphql_*`), plus guided settings for every
+**Totals:** 514 tools: 508 hand-built + 6 universal (`github_api_*`, `github_graphql_*`), plus guided settings for every
 dashboard-only owner setting. By profile (lowest profile that has the tool): read_only 162, everyday adds 85
 (everyday lists 247), full adds 118 (full lists 407; `github_tenant_remove` only on the owner's own direct connection, so everyone else sees 403). In compact mode (`docs/designs/BATCH-C.md`) an agent
 loads only about 25 tools up front (meta-tools, whoami, universal search, workflows) and reaches the rest through
@@ -965,7 +966,7 @@ loads only about 25 tools up front (meta-tools, whoami, universal search, workfl
 | Actions: workflows, runs, jobs and logs | 13 |
 | Checks, statuses, artifacts and caches | 11 |
 | Secrets and variables | 7 |
-| Environments and deployments | 10 |
+| Environments and deployments | 11 |
 | Releases | 7 |
 | Pages and packages | 7 |
 | Developer tools | 15 |
@@ -998,7 +999,7 @@ loads only about 25 tools up front (meta-tools, whoami, universal search, workfl
 | Code quality and GitHub help | 4 |
 | Robinson Playground commands | 5 |
 | CAP-6 gated families: merge queue, Copilot coding agent, feature check | 5 |
-| **Total** | **513** |
+| **Total** | **514** |
 
 <!-- #108: experimental RTC HTTPS reader bridges only server/meta read tools using existing guarded dispatch; RTC 1 certification is not claimed. -->
 

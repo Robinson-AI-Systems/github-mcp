@@ -3421,6 +3421,63 @@
       "pr": [
         579
       ]
+    },
+    {
+      "id": "CAP-8",
+      "title": "Deployment-record delete (CAP-7 follow-on M2)",
+      "batch": "CAP",
+      "design": "docs/designs/MAXIMUM-AUTHORITY.md",
+      "dependencies": [
+        "CAP-7"
+      ],
+      "card": "docs/pr-cards/CAP-8.md",
+      "status": "IN_PROGRESS",
+      "migration": "none",
+      "budget": 650,
+      "units": [
+        "CAP-8"
+      ],
+      "readiness": "READY",
+      "ownerInputs": [],
+      "pr": []
+    },
+    {
+      "id": "CAP-9",
+      "title": "Agent merge configuration legs: pinned-catalog check (CAP-7 follow-on M1)",
+      "batch": "CAP",
+      "design": "docs/designs/MAXIMUM-AUTHORITY.md",
+      "dependencies": [
+        "CAP-7"
+      ],
+      "card": "docs/pr-cards/CAP-9.md",
+      "status": "IN_PROGRESS",
+      "migration": "none",
+      "budget": 200,
+      "units": [
+        "CAP-9"
+      ],
+      "readiness": "READY",
+      "ownerInputs": [],
+      "pr": []
+    },
+    {
+      "id": "CAP-10",
+      "title": "PR archive/unarchive/revert named tools: filed with evidence (CAP-7 follow-on M3)",
+      "batch": "CAP",
+      "design": "docs/designs/MAXIMUM-AUTHORITY.md",
+      "dependencies": [
+        "CAP-7"
+      ],
+      "card": "docs/pr-cards/CAP-10.md",
+      "status": "IN_PROGRESS",
+      "migration": "none",
+      "budget": 200,
+      "units": [
+        "CAP-10"
+      ],
+      "readiness": "READY",
+      "ownerInputs": [],
+      "pr": []
     }
   ],
   "gatewayBoundary": {

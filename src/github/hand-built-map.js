@@ -40,6 +40,8 @@ const exact = new Map([
   ['DELETE /orgs/{org}/copilot/billing/selected_teams', 'github_copilot_team_seats_remove'],
   ['PUT /orgs/{org}/copilot/coding-agent/permissions', 'github_copilot_agent_policy_set'],
   ['PUT /orgs/{org}/copilot/content_exclusion', 'github_copilot_content_exclusions_set'],
+  // CAP-7 M2: deployment-record delete is served by the guarded named tool, never the universal door.
+  ['DELETE /repos/{owner}/{repo}/deployments/{deployment_id}', 'github_deploy_delete'],
   ['PUT /orgs/{org}/copilot/coding-agent/permissions/repositories/{repository_id}', 'github_copilot_agent_repo_set'],
   ['DELETE /orgs/{org}/copilot/coding-agent/permissions/repositories/{repository_id}', 'github_copilot_agent_repo_set'],
   // PAR-4: enterprise writes with dedicated policy/scope/affected-repository

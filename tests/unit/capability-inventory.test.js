@@ -61,6 +61,24 @@ describe('CAP-1 source inventory: no fabricated functional coverage', () => {
     expect(gql.credentialSupport.app_jwt.evidence).toContain('github.com');
   });
 
+  it('M4 tranche: an SSH key is decided unsupported for every REST and GraphQL row, and nothing else moves', () => {
+    const {result} = fixture();
+    const api = result.operations.filter(x => x.interface === 'rest' || x.interface === 'graphql');
+    expect(api.length).toBeGreaterThan(0);
+    for (const row of api) {
+      expect(row.credentialSupport.git_ssh).toMatchObject({ disposition: 'unsupported', derived: true, basis: 'github-authentication-contract' });
+      expect(row.credentialSupport.git_ssh.evidence).toMatch(/^https:\/\/docs\.github\.com\//);
+    }
+    // The Git-transport rows are untouched: there an SSH key is the credential in question.
+    for (const row of result.operations.filter(x => x.interface !== 'rest' && x.interface !== 'graphql'))
+      expect(row.credentialSupport.git_ssh.disposition).toBe('unknown');
+    // Other kinds are exactly as the fixture decided them before the tranche.
+    const whoami = get(result.operations, 'rest:github.com@2026-03-10:GET /user');
+    expect(whoami.credentialSupport.workflow_token.disposition).toBe('unknown');
+    expect(result.summary.unknownCredentialDecisions)
+      .toBe(result.operations.reduce((n, x) => n + Object.values(x.credentialSupport).filter(v => v.disposition === 'unknown').length, 0));
+  });
+
   it('does not infer GHE.com or GHES host parity from a GitHub.com schema', () => {
     const {result} = fixture();
     for (const row of result.operations) {

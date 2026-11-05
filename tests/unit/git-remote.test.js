@@ -37,6 +37,33 @@ async function setup(t, args = { repo: 'hello', access: 'write' }) {
  return out;
 }
 
+describe('setup replays say plainly what state the key is in (G17)', () => {
+ it('a replay of a never-exchanged setup names the lapsed code and the fresh-requestKey cure', async () => {
+  const t = await world();
+  const key = 'replay-never-used';
+  const first = parse(await handler({ repo: 'hello', access: 'write', requestKey: key }, t.w.ctx));
+  expect(first.result.command).toEqual(expect.any(String));
+  const replay = parse(await handler({ repo: 'hello', access: 'write', requestKey: key }, t.w.ctx));
+  expect(replay.result.command).toBeUndefined();
+  expect(replay.result.state).toBe('awaiting_setup');
+  expect(replay.result.next).toMatch(/never set up/);
+  expect(replay.result.next).toMatch(/could not read Username/);
+  expect(replay.result.next).toMatch(/fresh requestKey/);
+ });
+ it('a replay after the command ran says the key is already set up', async () => {
+  const t = await world();
+  const key = 'replay-active';
+  const first = parse(await handler({ repo: 'hello', access: 'write', requestKey: key }, t.w.ctx));
+  const ran = await t.sh(first.result.command);
+  expect(ran.status, ran.stderr).toBe(0);
+  const replay = parse(await handler({ repo: 'hello', access: 'write', requestKey: key }, t.w.ctx));
+  expect(replay.result.command).toBeUndefined();
+  expect(replay.replay_state).toBe('current');
+  expect(replay.result.state).toBe('active');
+  expect(replay.result.next).toMatch(/already set up/);
+ });
+});
+
 describe('the git remote: setup, clone, pull and push with plain git', () => {
  it('one setup call, the exact command, then git clone / pull / push; the key is never shown or logged; GitHub gets the push', async () => {
   const t = await world();

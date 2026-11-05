@@ -60,7 +60,7 @@ export const FINE_AREAS = Object.freeze([
   { area: 'Actions runs and workflows', permission: 'actions', tools: ['github_actions_*'] },
   { area: 'Actions variables', permission: 'actions_variables', tools: ['github_variable_*'] },
   { area: 'Actions secrets (names only)', permission: 'secrets', tools: ['github_secret_list', 'github_secret_set', 'github_secret_delete'] },
-  { area: 'Deployments', permission: 'deployments', tools: ['github_deploy_list', 'github_deploy_create', 'github_deploy_set_status'] },
+  { area: 'Deployments', permission: 'deployments', tools: ['github_deploy_list', 'github_deploy_create', 'github_deploy_set_status', 'github_deploy_delete'] },
   { area: 'Repository webhooks', permission: 'repository_hooks', tools: ['github_webhook_*'] },
   { area: 'Repository settings and access', permission: 'administration', tools: ['github_repo_update_settings', 'github_deploykey_*'] },
   { area: 'Pages', permission: 'pages', tools: ['github_pages_*'] },

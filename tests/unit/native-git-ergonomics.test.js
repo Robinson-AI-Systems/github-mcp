@@ -176,6 +176,26 @@ it('upload: begin ignores expectedGeneration; apply deletes listed files and mir
  expect(stale).toMatchObject({ status: 'rejected', details: { next_generation: generation } }); expect(stale.error).toMatch(/Stale expectedGeneration/);
 }, 60000);
 
+it('status reports the remote head beside the local one and names divergence (G12)', async () => {
+ await open();
+ const BRANCH = 'GET /repos/{owner}/{repo}/branches/{branch}';
+ const localHead = git(bare, 'rev-parse', 'main');
+ w.gh.when(BRANCH).reply(200, { name: 'main', commit: { sha: localHead } });
+ const same = parse(await call('github_git_workspace_read', { workspace_id: id, operation: 'status' }));
+ expect(same).toMatchObject({ state: 'ready', branch: 'main', head: localHead, remote: { branch: 'main', head: localHead, relation: 'same' } });
+ expect(same.divergence_note).toBeUndefined();
+ // GitHub's main advances (a squash lands there); the workspace still sits on the old local ref.
+ const remoteHead = 'b'.repeat(40);
+ w.gh.when(BRANCH).reply(200, { name: 'main', commit: { sha: remoteHead } });
+ const diverged = parse(await call('github_git_workspace_read', { workspace_id: id, operation: 'status' }));
+ expect(diverged).toMatchObject({ head: localHead, remote: { branch: 'main', head: remoteHead, relation: 'different' } });
+ expect(diverged.divergence_note).toMatch(/stale|unpushed/);
+ // A failed remote read never fails the status read; the relation is honestly unknown.
+ w.gh.when(BRANCH).reply(404, { message: 'Not Found' });
+ const unknown = parse(await call('github_git_workspace_read', { workspace_id: id, operation: 'status' }));
+ expect(unknown).toMatchObject({ state: 'ready', head: localHead, remote: { branch: 'main', head: null, relation: 'unknown' } });
+}, 60000);
+
 it('a large archive well past the earlier 19.5 MB failure goes through the one-time relay address and applies', async () => {
  await open();
  const begin = parse(await call('github_git_workspace_upload', { workspace_id: id, operation: 'begin', mode: 'archive', maxMegabytes: 60, requestKey: 'big-1' }));

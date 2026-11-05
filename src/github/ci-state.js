@@ -99,8 +99,16 @@ export async function ciState(octokit, { owner, repo, baseBranch, headSha }) {
     const matching = runs.filter((r) => r.name === context && (appId == null || r.app?.id === appId));
     const run = latestRun(matching);
     if (run) return { context, state: runState(run), source: 'check run', started_at: run.started_at ?? null, completed_at: run.completed_at ?? null };
-    const status = appId==null?(statuses ?? []).find((s) => s.context === context):null;
-    return status ? { context, state: statusState(status.state), source: 'status', updated_at: status.updated_at ?? null } : { context, state: 'missing', source: 'none',observed_sha:headSha,required_app_id:appId??null,reason:appId!=null&&runs.some(r=>r.name===context)?'same-name check exists under another app':'required check not observed on this exact SHA' };
+    // A required check may be reported as a commit STATUS rather than a check run (the review-gate
+    // pattern: a workflow posts the status). GitHub's own merge box satisfies the requirement from
+    // the combined status for that exact context, so read it the same way — also when the rule
+    // names the reporting app: the status API exposes no app identity to match against, and
+    // skipping the status reported a present check as "missing" (G4/G11, live on appliance-desk
+    // PR #842, 2026-11-04: ruleset app 15368, combined status carried the context from that app).
+    const status = (statuses ?? []).find((s) => s.context === context);
+    return status ? { context, state: statusState(status.state), source: 'status', updated_at: status.updated_at ?? null,
+      ...(appId != null ? { required_app_id: appId, note: 'Reported as a commit status; GitHub exposes no app identity for statuses, so the state is the combined-status state for this exact context — the same evidence GitHub\'s merge box uses for this requirement.' } : {}) }
+      : { context, state: 'missing', source: 'none',observed_sha:headSha,required_app_id:appId??null,reason:appId!=null&&runs.some(r=>r.name===context)?'same-name check exists under another app':'required check not observed on this exact SHA' };
   };
 
   let checks; let basis;
