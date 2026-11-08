@@ -64,12 +64,20 @@ const worker = https.createServer(
   (req, res) => {
   claims.push(req.headers['x-robinson-git-claim'] ?? null);
   const u = new URL(req.url, 'http://worker');
+  // The real worker resolves the mirror from the signed claim, not
+  // the path: the rewrite destination is /v1/remote/<suffix> where
+  // the suffix is only info/refs or the pack service name.
+  let claimPath = '';
+  try {
+    const claim = JSON.parse(Buffer.from(String(req.headers['x-robinson-git-claim']).split('.')[0], 'base64url').toString('utf8'));
+    claimPath = `/${claim.owner}/${claim.repo}.git`;
+  } catch { /* no claim: the backend 404s, as it should */ }
   const backend = spawn('git', ['http-backend'], {
     env: {
       ...process.env,
       GIT_PROJECT_ROOT: projectRoot,
       GIT_HTTP_EXPORT_ALL: '1',
-      PATH_INFO: u.pathname.replace(/^\/v1\/remote/, ''),
+      PATH_INFO: claimPath + u.pathname.replace(/^\/v1\/remote/, ''),
       QUERY_STRING: u.search.slice(1),
       REQUEST_METHOD: req.method,
       CONTENT_TYPE: req.headers['content-type'] ?? '',
