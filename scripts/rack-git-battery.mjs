@@ -24,8 +24,8 @@ import https from 'node:https';
 import { randomBytes } from 'node:crypto';
 
 const PIN = 'f21fad344d704bd1ea85b10da6da58de515d09e3';
-const ENTRY = 18741;
-const WORKER = 18742;
+const ENTRY = 20000 + Math.floor(Math.random() * 8000);
+const WORKER = ENTRY + 1;
 const scratch = process.env.DATABASE_URL;
 if (!scratch) { console.error('DATABASE_URL required'); process.exit(1); }
 
