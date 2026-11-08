@@ -18,7 +18,7 @@ aspg() { runuser -u "$PGUSER_NAME" -- env PATH="$PGBIN:/usr/bin:/bin" HOME="$WOR
 cleanup() { aspg pg_ctl -D "$WORK/data" -m immediate stop >/dev/null 2>&1 || true; }
 trap cleanup EXIT
 aspg initdb -D "$WORK/data" -U postgres --auth=trust >/dev/null
-aspg pg_ctl -D "$WORK/data" -o "-p $PORT -k $WORK -h 127.0.0.1" -l "$WORK/pg.log" -w start >/dev/null
+aspg pg_ctl -D "$WORK/data" -o "-p $PORT -k $WORK -h 127.0.0.1" -l "$WORK/pg.log" -w start >/dev/null || { cat "$WORK/pg.log" 2>/dev/null | tail -15; exit 3; }
 createdb -h 127.0.0.1 -p "$PORT" -U postgres github_scratch
 export DATABASE_URL="postgresql://postgres@127.0.0.1:$PORT/github_scratch"
 echo "BATTERY pg: scratch cluster on 127.0.0.1:$PORT"
