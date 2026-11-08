@@ -357,7 +357,7 @@ async function runMiddleware(req, res, url) {
   await proxyRewrite(req, res, rewrite, forwarded);
 }
 
-export function createRackServer(env = process.env) {
+export function createRackServer() {
   return createServer(async (req, res) => {
     presentResponse(res);
     try {
