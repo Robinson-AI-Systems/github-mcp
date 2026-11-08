@@ -198,7 +198,12 @@ try {
   execFileSync('git', ['-C', cloneDir, 'add', '.']);
   execFileSync('git', ['-C', cloneDir, '-c', 'user.email=fixture@example.invalid', '-c', 'user.name=Fixture', 'commit', '-qm', 'battery push']);
   console.log('BATTERY trace: starting push');
-  await run('git', ['-C', cloneDir, 'push', '-q', 'origin', 'HEAD:refs/heads/main'], { env: gitEnv, timeout: 45000 });
+  try {
+    await run('git', ['-C', cloneDir, 'push', '-q', 'origin', 'HEAD:refs/heads/main'], { env: { ...gitEnv, GIT_TRACE: '1', GIT_CURL_VERBOSE: '1' }, timeout: 45000 });
+  } catch (e) {
+    writeFileSync(join(root, 'clone-trace.txt'), Buffer.from(e.stderr ?? ''));
+    throw e;
+  }
   const log = execFileSync('git', ['--git-dir', join(projectRoot, 'fixture-owner', 'fixture-repo.git'), 'log', '--oneline', 'main']).toString();
   if (!log.includes('battery push')) throw new Error('push did not land in fixture repo');
   if (!claims.some((c) => typeof c === 'string' && c.length > 20)) throw new Error('worker saw no signed claim header');
