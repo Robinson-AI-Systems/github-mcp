@@ -51,6 +51,7 @@ Object.assign(process.env, env);
 const root = mkdtempSync(join(tmpdir(), 'rack-git-battery-'));
 const projectRoot = join(root, 'projects');
 execFileSync('git', ['init', '--bare', '-q', join(projectRoot, 'fixture-owner', 'fixture-repo.git')], { stdio: 'inherit' });
+execFileSync('git', ['--git-dir', join(projectRoot, 'fixture-owner', 'fixture-repo.git'), 'symbolic-ref', 'HEAD', 'refs/heads/main']);
 const seedDir = join(root, 'seed');
 execFileSync('git', ['init', '-q', seedDir]);
 writeFileSync(join(seedDir, 'README.md'), 'fixture\n');
@@ -191,7 +192,7 @@ try {
     writeFileSync(join(root, 'clone-trace.txt'), Buffer.from(e.stderr ?? ''));
     throw e;
   }
-  if (!existsSync(join(cloneDir, 'fixture.txt'))) throw new Error('clone missing fixture file');
+  if (!existsSync(join(cloneDir, 'README.md'))) throw new Error('clone missing fixture file');
   console.log('BATTERY 4b PASS git clone through entrypoint');
   writeFileSync(join(cloneDir, 'pushed.txt'), 'pushed through the rack entrypoint\n');
   execFileSync('git', ['-C', cloneDir, 'add', '.']);
