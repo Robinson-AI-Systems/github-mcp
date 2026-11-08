@@ -183,8 +183,7 @@ try {
   try {
     execFileSync('git', ['clone', '-q', `http://127.0.0.1:${ENTRY}/git/fixture-owner/fixture-repo.git`, cloneDir], { env: { ...gitEnv, GIT_TRACE: '1', GIT_CURL_VERBOSE: '1' }, stdio: ['ignore', 'pipe', 'pipe'], timeout: 45000 });
   } catch (e) {
-    console.log('BATTERY trace: clone failed:', e.message);
-    console.log('BATTERY trace: clone stderr tail:', Buffer.from(e.stderr ?? '').toString('utf8').slice(-3000));
+    writeFileSync(join(root, 'clone-trace.txt'), Buffer.from(e.stderr ?? ''));
     throw e;
   }
   if (!existsSync(join(cloneDir, 'README.md'))) throw new Error('clone missing fixture file');
