@@ -1,6 +1,6 @@
 # Rack staging — transport seam + rack entrypoint (2026-11-08)
 
-State: **in progress** — branch `ai/vivienne/rack-staging` from main
+State: **staging complete** — branch `ai/vivienne/rack-staging` from main
 `f21fad34` (the live pin). This PR is held open unmerged on purpose:
 the rack move window merges it as its first act. Nothing here changes
 production behavior — without `STORE_TRANSPORT=pg` (or a rack
@@ -50,6 +50,21 @@ in the fleet workspace): unit suites and the boot-against-scratch
 proof (self-migration + per-tenant schema creation + search_path
 proof on a fresh rack-side Postgres through the pg transport) run on
 a fleet bench; CI at the exact head is the merge gate for the window.
+
+Verification summary: full unit suite 11,604/11,605 (sole failure a
+base-pinned, environment-dependent ssh leg proven identical at the
+untouched pin), db suite 287/287, shapes 26/26, the entrypoint git
+battery (front door, contract, tokenless refusal, discovery, clone,
+push, transfer refusal) green, and CI green at the exact head —
+`ci`, release policy and the workspace-image workflow all success.
+One seam fix landed during staging after CI's browser shards
+exposed it: pg pools now swallow idle-client errors (an unhandled
+pool 'error' would otherwise crash the process on a database
+restart), and the hostname fallback was narrowed to the rack's own
+hostname after CI's service database (bare hostname `postgres`)
+collided with it — the rack enrollment declares
+`STORE_TRANSPORT=pg` explicitly, so the move never relied on the
+broader rule.
 
 ## Next
 
