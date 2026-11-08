@@ -32,6 +32,7 @@ if (!scratch) { console.error('DATABASE_URL required'); process.exit(1); }
 const env = {
   ...process.env,
   STORE_TRANSPORT: 'pg',
+  RACK_DEBUG: '1',
   DATABASE_URL: scratch,
   PUBLIC_BASE_URL: 'https://github.robinsonaisystems.com',
   VERCEL_ENV: 'production',
