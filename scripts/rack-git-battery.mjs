@@ -20,6 +20,7 @@ import { mkdtempSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import http from 'node:http';
+import https from 'node:https';
 import { randomBytes } from 'node:crypto';
 
 const PIN = 'f21fad344d704bd1ea85b10da6da58de515d09e3';
@@ -36,7 +37,8 @@ const env = {
   VERCEL_ENV: 'production',
   VERCEL_GIT_COMMIT_SHA: PIN,
   TOKEN_ENCRYPTION_KEY: randomBytes(32).toString('base64'),
-  NATIVE_GIT_WORKER_URL: `http://127.0.0.1:${WORKER}`,
+  NATIVE_GIT_WORKER_URL: `https://127.0.0.1:${WORKER}`,
+  NODE_TLS_REJECT_UNAUTHORIZED: '0',
   PORT: String(ENTRY),
   HOST: '127.0.0.1',
 };
@@ -54,7 +56,12 @@ execFileSync('git', ['-C', seedDir, '-c', 'user.email=fixture@example.invalid', 
 execFileSync('git', ['-C', seedDir, 'push', '-q', join(projectRoot, 'fixture-owner', 'fixture-repo.git'), 'HEAD:refs/heads/main']);
 
 const claims = [];
-const worker = http.createServer((req, res) => {
+execFileSync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-keyout', join(root, 'worker-key.pem'),
+  '-out', join(root, 'worker-cert.pem'), '-days', '1', '-nodes', '-subj', '/CN=127.0.0.1',
+  '-addext', 'subjectAltName=IP:127.0.0.1'], { stdio: 'ignore' });
+const worker = https.createServer(
+  { key: readFileSync(join(root, 'worker-key.pem')), cert: readFileSync(join(root, 'worker-cert.pem')) },
+  (req, res) => {
   claims.push(req.headers['x-robinson-git-claim'] ?? null);
   const u = new URL(req.url, 'http://worker');
   const backend = spawn('git', ['http-backend'], {
@@ -91,7 +98,7 @@ const worker = http.createServer((req, res) => {
   });
   req.pipe(backend.stdin);
   backend.on('error', () => { if (!res.headersSent) res.statusCode = 502; res.end(); });
-});
+  });
 await new Promise((r) => worker.listen(WORKER, '127.0.0.1', r));
 
 // --- seed the store through production code -----------------------
