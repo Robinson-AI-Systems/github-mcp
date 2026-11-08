@@ -416,6 +416,6 @@ if (isMain) {
   const port = Number(process.env.PORT || 3000);
   const host = process.env.HOST || '0.0.0.0';
   createRackServer().listen(port, host, () => {
-    console.log(`GitHub Unleashed by Robinson AI Systems rack entrypoint listening on ${host}:${port} (release ${pinnedCommit ?? 'unpinned'})`);
+    console.log(`GitHub Unleashed by Robinson AI Systems rack entrypoint listening on ${host}:${port} (release ${pinnedCommit ?? 'unpinned'}) debug=${process.env.RACK_DEBUG ?? 'unset'}`);
   });
 }
