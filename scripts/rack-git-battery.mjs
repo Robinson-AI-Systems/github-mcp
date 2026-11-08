@@ -191,7 +191,7 @@ try {
     writeFileSync(join(root, 'clone-trace.txt'), Buffer.from(e.stderr ?? ''));
     throw e;
   }
-  if (!existsSync(join(cloneDir, 'README.md'))) throw new Error('clone missing fixture file');
+  if (!existsSync(join(cloneDir, 'fixture.txt'))) throw new Error('clone missing fixture file');
   console.log('BATTERY 4b PASS git clone through entrypoint');
   writeFileSync(join(cloneDir, 'pushed.txt'), 'pushed through the rack entrypoint\n');
   execFileSync('git', ['-C', cloneDir, 'add', '.']);
