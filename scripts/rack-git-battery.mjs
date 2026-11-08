@@ -34,7 +34,6 @@ if (!scratch) { console.error('DATABASE_URL required'); process.exit(1); }
 const env = {
   ...process.env,
   STORE_TRANSPORT: 'pg',
-  RACK_DEBUG: '1',
   DATABASE_URL: scratch,
   PUBLIC_BASE_URL: 'https://github.robinsonaisystems.com',
   VERCEL_ENV: 'production',
@@ -67,7 +66,6 @@ execFileSync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-keyout', join(
 const worker = https.createServer(
   { key: readFileSync(join(root, 'worker-key.pem')), cert: readFileSync(join(root, 'worker-cert.pem')) },
   (req, res) => {
-  console.log('WORKER request:', req.method, req.url, 'claim:', Boolean(req.headers['x-robinson-git-claim']));
   claims.push(req.headers['x-robinson-git-claim'] ?? null);
   const u = new URL(req.url, 'http://worker');
   // The real worker resolves the mirror from the signed claim, not
@@ -110,7 +108,6 @@ const worker = https.createServer(
       backend.stdout.pipe(res);
     }
   });
-  backend.on('exit', (code) => console.log('WORKER backend exit', code));
   req.pipe(backend.stdin);
   backend.on('error', () => { if (!res.headersSent) res.statusCode = 502; res.end(); });
   });
@@ -179,32 +176,18 @@ try {
   const refused = await fetch(`http://127.0.0.1:${ENTRY}/git/fixture-owner/fixture-repo.git/info/refs?service=git-upload-pack`, { headers: { Authorization: basic('rgk_' + '0'.repeat(32) + '_' + 'A'.repeat(43)) } });
   if (refused.status !== 401) throw new Error(`wrong key expected 401, got ${refused.status}: ${(await refused.text()).slice(0,300)} | server log: ${serverLog.slice(-500)}`);
   console.log('BATTERY 4a PASS wrong session key refused 401 by middleware');
-  try {
-    const probe = await fetch(`http://127.0.0.1:${ENTRY}/git/fixture-owner/fixture-repo.git/info/refs?service=git-upload-pack`, { headers: { Authorization: basic(sessionKey) }, signal: AbortSignal.timeout(15000) });
-    const probeBody = Buffer.from(await probe.arrayBuffer());
-    console.log(`BATTERY trace: direct info/refs fetch -> ${probe.status}, ${probeBody.length} bytes, claims seen by worker: ${claims.length}`);
-  } catch (e) { console.log('BATTERY trace: direct info/refs fetch FAILED:', e.message, '| claims:', claims.length); throw e; }
-  console.log('BATTERY trace: starting clone');
+  const probe = await fetch(`http://127.0.0.1:${ENTRY}/git/fixture-owner/fixture-repo.git/info/refs?service=git-upload-pack`, { headers: { Authorization: basic(sessionKey) }, signal: AbortSignal.timeout(15000) });
+  if (probe.status !== 200) throw new Error(`direct info/refs expected 200, got ${probe.status}`);
+  await probe.arrayBuffer();
   const cloneDir = join(root, 'clone');
   const gitEnv = { ...process.env, GIT_TERMINAL_PROMPT: '0', GIT_CONFIG_COUNT: '1', GIT_CONFIG_KEY_0: `http.extraHeader`, GIT_CONFIG_VALUE_0: `Authorization: ${basic(sessionKey)}` };
-  try {
-    await run('git', ['clone', '-q', `http://127.0.0.1:${ENTRY}/git/fixture-owner/fixture-repo.git`, cloneDir], { env: { ...gitEnv, GIT_TRACE: '1', GIT_CURL_VERBOSE: '1' }, timeout: 45000 });
-  } catch (e) {
-    writeFileSync(join(root, 'clone-trace.txt'), Buffer.from(e.stderr ?? ''));
-    throw e;
-  }
+  await run('git', ['clone', '-q', `http://127.0.0.1:${ENTRY}/git/fixture-owner/fixture-repo.git`, cloneDir], { env: gitEnv, timeout: 45000 });
   if (!existsSync(join(cloneDir, 'README.md'))) throw new Error('clone missing fixture file');
   console.log('BATTERY 4b PASS git clone through entrypoint');
   writeFileSync(join(cloneDir, 'pushed.txt'), 'pushed through the rack entrypoint\n');
   execFileSync('git', ['-C', cloneDir, 'add', '.']);
   execFileSync('git', ['-C', cloneDir, '-c', 'user.email=fixture@example.invalid', '-c', 'user.name=Fixture', 'commit', '-qm', 'battery push']);
-  console.log('BATTERY trace: starting push');
-  try {
-    await run('git', ['-C', cloneDir, 'push', '-q', 'origin', 'HEAD:refs/heads/main'], { env: { ...gitEnv, GIT_TRACE: '1', GIT_CURL_VERBOSE: '1' }, timeout: 45000 });
-  } catch (e) {
-    writeFileSync(join(root, 'clone-trace.txt'), Buffer.from(e.stderr ?? ''));
-    throw e;
-  }
+  await run('git', ['-C', cloneDir, 'push', '-q', 'origin', 'HEAD:refs/heads/main'], { env: gitEnv, timeout: 45000 });
   const log = execFileSync('git', ['--git-dir', join(projectRoot, 'fixture-owner', 'fixture-repo.git'), 'log', '--oneline', 'main']).toString();
   if (!log.includes('battery push')) throw new Error('push did not land in fixture repo');
   if (!claims.some((c) => typeof c === 'string' && c.length > 20)) throw new Error('worker saw no signed claim header');
@@ -216,7 +199,6 @@ try {
   console.log(`BATTERY 5 PASS unsigned transfer refused (${transfer.status})`);
   console.log('BATTERY ALL LEGS PASS');
 } finally {
-  console.log('BATTERY server log tail:', serverLog.slice(-1500));
   server.kill('SIGTERM');
   worker.close();
   await sql.end().catch(() => {});
