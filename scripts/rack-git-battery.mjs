@@ -32,7 +32,7 @@ const env = {
   ...process.env,
   STORE_TRANSPORT: 'pg',
   DATABASE_URL: scratch,
-  PUBLIC_BASE_URL: `http://127.0.0.1:${ENTRY}`,
+  PUBLIC_BASE_URL: 'https://github.robinsonaisystems.com',
   VERCEL_ENV: 'production',
   VERCEL_GIT_COMMIT_SHA: PIN,
   TOKEN_ENCRYPTION_KEY: randomBytes(32).toString('base64'),
