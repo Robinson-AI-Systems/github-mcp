@@ -155,7 +155,7 @@ try {
   // 4. Git battery through the middleware family
   const basic = (key) => 'Basic ' + Buffer.from(`x-robinson-git:${key}`).toString('base64');
   const refused = await fetch(`http://127.0.0.1:${ENTRY}/git/fixture-owner/fixture-repo.git/info/refs?service=git-upload-pack`, { headers: { Authorization: basic('rgk_' + '0'.repeat(32) + '_' + 'A'.repeat(43)) } });
-  if (refused.status !== 401) throw new Error(`wrong key expected 401, got ${refused.status}`);
+  if (refused.status !== 401) throw new Error(`wrong key expected 401, got ${refused.status}: ${(await refused.text()).slice(0,300)} | server log: ${serverLog.slice(-500)}`);
   console.log('BATTERY 4a PASS wrong session key refused 401 by middleware');
   const cloneDir = join(root, 'clone');
   const gitEnv = { ...process.env, GIT_CONFIG_COUNT: '1', GIT_CONFIG_KEY_0: `http.extraHeader`, GIT_CONFIG_VALUE_0: `Authorization: ${basic(sessionKey)}` };
