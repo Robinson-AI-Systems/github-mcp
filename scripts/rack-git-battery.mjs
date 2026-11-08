@@ -180,7 +180,7 @@ try {
   console.log('BATTERY trace: starting clone');
   const cloneDir = join(root, 'clone');
   const gitEnv = { ...process.env, GIT_TERMINAL_PROMPT: '0', GIT_CONFIG_COUNT: '1', GIT_CONFIG_KEY_0: `http.extraHeader`, GIT_CONFIG_VALUE_0: `Authorization: ${basic(sessionKey)}` };
-  execFileSync('git', ['clone', '-q', `http://127.0.0.1:${ENTRY}/git/fixture-owner/fixture-repo.git`, cloneDir], { env: gitEnv, stdio: 'inherit' });
+  execFileSync('git', ['clone', '-q', `http://127.0.0.1:${ENTRY}/git/fixture-owner/fixture-repo.git`, cloneDir], { env: { ...gitEnv, GIT_TRACE: '1', GIT_CURL_VERBOSE: '1' }, stdio: 'inherit', timeout: 45000 });
   if (!existsSync(join(cloneDir, 'README.md'))) throw new Error('clone missing fixture file');
   console.log('BATTERY 4b PASS git clone through entrypoint');
   writeFileSync(join(cloneDir, 'pushed.txt'), 'pushed through the rack entrypoint\n');
