@@ -23,5 +23,5 @@ createdb -h 127.0.0.1 -p "$PORT" -U postgres github_scratch
 export DATABASE_URL="postgresql://postgres@127.0.0.1:$PORT/github_scratch"
 echo "BATTERY pg: scratch cluster on 127.0.0.1:$PORT"
 node scripts/rack-staging-proof.mjs
-timeout 180 node scripts/rack-git-battery.mjs
+timeout 90 node scripts/rack-git-battery.mjs
 echo "BATTERY WRAPPER PASS"

@@ -164,6 +164,7 @@ try {
   const refused = await fetch(`http://127.0.0.1:${ENTRY}/git/fixture-owner/fixture-repo.git/info/refs?service=git-upload-pack`, { headers: { Authorization: basic('rgk_' + '0'.repeat(32) + '_' + 'A'.repeat(43)) } });
   if (refused.status !== 401) throw new Error(`wrong key expected 401, got ${refused.status}: ${(await refused.text()).slice(0,300)} | server log: ${serverLog.slice(-500)}`);
   console.log('BATTERY 4a PASS wrong session key refused 401 by middleware');
+  console.log('BATTERY trace: starting clone');
   const cloneDir = join(root, 'clone');
   const gitEnv = { ...process.env, GIT_TERMINAL_PROMPT: '0', GIT_CONFIG_COUNT: '1', GIT_CONFIG_KEY_0: `http.extraHeader`, GIT_CONFIG_VALUE_0: `Authorization: ${basic(sessionKey)}` };
   execFileSync('git', ['clone', '-q', `http://127.0.0.1:${ENTRY}/git/fixture-owner/fixture-repo.git`, cloneDir], { env: gitEnv, stdio: 'inherit' });
@@ -172,6 +173,7 @@ try {
   writeFileSync(join(cloneDir, 'pushed.txt'), 'pushed through the rack entrypoint\n');
   execFileSync('git', ['-C', cloneDir, 'add', '.']);
   execFileSync('git', ['-C', cloneDir, '-c', 'user.email=fixture@example.invalid', '-c', 'user.name=Fixture', 'commit', '-qm', 'battery push']);
+  console.log('BATTERY trace: starting push');
   execFileSync('git', ['-C', cloneDir, 'push', '-q', 'origin', 'HEAD:refs/heads/main'], { env: gitEnv, stdio: 'inherit' });
   const log = execFileSync('git', ['--git-dir', join(projectRoot, 'fixture-owner', 'fixture-repo.git'), 'log', '--oneline', 'main']).toString();
   if (!log.includes('battery push')) throw new Error('push did not land in fixture repo');
