@@ -1,9 +1,9 @@
 import { redact } from './github/content-protection.js';
+import { storeFactory } from './db-transport.js';
 // Foundation database layer (A-2). Lazy Neon client plus the additive foundation schema of docs/designs/BATCH-A.md §2.
 // Every statement is a static tagged template (no string building) and uses IF NOT EXISTS: running initSchema() twice
 // changes nothing, and nothing here ever drops, alters or deletes. Credentials are ciphertext (*_enc) or hashes
 // (*_hash) only; no column holds a plain token, key or secret.
-import { neon } from '@neondatabase/serverless';
 import { createHash } from 'node:crypto';
 import { hashToken } from './core/oauth.js';
 import { createDevLedger } from './dev/ledger.js';
@@ -115,7 +115,7 @@ export function connectionSettings(row) {
 export function productionSql() {
   const url = process.env.DATABASE_URL;
   if (!url) throw new Error('DATABASE_URL is not configured. Set it in the server environment.');
-  return neon(url);
+  return storeFactory(url);
 }
 
 /**

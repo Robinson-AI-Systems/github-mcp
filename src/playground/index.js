@@ -1,6 +1,6 @@
-import {neon} from '@neondatabase/serverless';
 import {createDb} from '../db.js';
-export const rootAllocationDb=ctx=>ctx.publicDb??(ctx.db.playgroundScope?.tenantId?createDb(neon(ctx.env.DATABASE_URL)):ctx.db);
+import { storeFactory } from '../db-transport.js';
+export const rootAllocationDb=ctx=>ctx.publicDb??(ctx.db.playgroundScope?.tenantId?createDb(storeFactory(ctx.env.DATABASE_URL)):ctx.db);
 export const indexKey=binding=>'pg_index.'+binding.slice(0,40);
 export async function indexAllocation(ctx,allocation){
  const db=rootAllocationDb(ctx),key=indexKey(allocation.binding);

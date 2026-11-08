@@ -4,6 +4,7 @@
 // credential step is refused unless this is the production deployment. The redirects from GitHub carry an unguessable
 // `state` created only after the passphrase was accepted; a state works once and expires.
 import { createHash, randomBytes } from 'node:crypto';
+import { storeFactory } from '../db-transport.js';
 import { LOCKOUT_WINDOW_MINUTES, clientIp, evaluateLogin, randomToken, secretsMatch } from '../core/oauth.js';
 import { only, paramsOf, publicOrigin, send } from '../core/http.js';
 import { buildManifest, isValidLogin, manifestFormUrl } from './app-manifest.js';
@@ -28,7 +29,6 @@ import { createTenantDirectory, openAuthorizedTenantDb } from '../tenancy/direct
 import { saveTenantRuntimePolicy } from '../tenancy/runtime-limits.js';
 import { forgetPublicPerson } from '../tenancy/forget-person.js';
 import { publicUsageSummary } from '../tenancy/usage-summary.js';
-import { neon } from '@neondatabase/serverless';
 import { APP_SECRET_NAMES, ROTATION_WINDOW_MS, ROTATION_WINDOW_WORDS, checkClientSecret, checkPrivateKeyPem, clientSecretWorks, newWebhookSecret, privateKeyWorks } from './app-secret-rotation.js';
 
 const HTML = 'text/html; charset=utf-8';
@@ -379,7 +379,7 @@ export function createSetupHandlers({ db, credentials, oneTimeStore, env = proce
       return page(400, { result: 'Type the person\'s GitHub account name twice and tick the confirmation. Nothing was deleted.' });
     if (!env.DATABASE_URL) return page(409, { result: 'No database is configured.' });
     try {
-      const root = neon(env.DATABASE_URL);
+      const root = storeFactory(env.DATABASE_URL);
       const removed = await forgetPublicPerson(createTenantDirectory(root), root, name, { connectionString: env.DATABASE_URL });
       await db.recordChange({ account: null, mode: 'setup', tool: 'setup_forget_public_person', target: 'public_person',
         summary: `Deleted ${removed} public sign-in data set${removed === 1 ? '' : 's'} on request`, production: true, accessWidening: false, confirmed: true }).catch(() => {});
@@ -392,19 +392,19 @@ export function createSetupHandlers({ db, credentials, oneTimeStore, env = proce
   /** Read-only public usage numbers for the owner; any problem just hides the section. */
   async function publicUsage() {
     if (env.GITHUB_PRIVATE_TENANT_PILOT !== 'enabled' || !env.DATABASE_URL) return null;
-    try { return await publicUsageSummary(neon(env.DATABASE_URL), { connectionString: env.DATABASE_URL, env }); } catch { return null; }
+    try { return await publicUsageSummary(storeFactory(env.DATABASE_URL), { connectionString: env.DATABASE_URL, env }); } catch { return null; }
   }
 
   /** LAUNCH-1: the invite list (who may become a NEW public person while invite-only is on). Hidden when the public sign-in is not set up. */
   async function publicInvites() {
     if (env.GITHUB_PRIVATE_TENANT_PILOT !== 'enabled' || !env.DATABASE_URL) return null;
-    try { return { on: env.GITHUB_PUBLIC_INVITE_ONLY === 'enabled', logins: await createTenantDirectory(neon(env.DATABASE_URL)).listPublicInvites() }; } catch { return null; }
+    try { return { on: env.GITHUB_PUBLIC_INVITE_ONLY === 'enabled', logins: await createTenantDirectory(storeFactory(env.DATABASE_URL)).listPublicInvites() }; } catch { return null; }
   }
   async function editInvites(action, p, page) {
     if (!isProduction()) return page(403, { blocked: NOT_PRODUCTION });
     if (env.GITHUB_PRIVATE_TENANT_PILOT !== 'enabled' || !env.DATABASE_URL) return page(409, { result: 'The public sign-in is not set up here.' });
     try {
-      const dir = createTenantDirectory(neon(env.DATABASE_URL));
+      const dir = createTenantDirectory(storeFactory(env.DATABASE_URL));
       let result;
       if (action === 'add-invites') {
         const names = String(p.logins ?? '').split(/[\s,]+/).filter(Boolean);
@@ -664,7 +664,7 @@ export function createSetupHandlers({ db, credentials, oneTimeStore, env = proce
       const row=await db.getAccount(account);
       if (row?.account_type!=='Organization' || !row.is_scratch ||
           row.installation_status!=='active') throw new Error('Not a protected scratch account.');
-      const directory=createTenantDirectory(neon(env.DATABASE_URL));
+      const directory=createTenantDirectory(storeFactory(env.DATABASE_URL));
       const tenants=await directory.listPilotsForAccount(account);
       if (tenants.length!==1) throw new Error('Ambiguous private tenant.');
       const owner=await directory.authorizedPilotIdentity(
@@ -702,7 +702,7 @@ export function createSetupHandlers({ db, credentials, oneTimeStore, env = proce
       const row=await db.getAccount(account);
       if (!row || row.account_type!=='Organization' || !env.DATABASE_URL)
         return page(404,{result:'This account has no private pilot to revoke.'});
-      const dir=createTenantDirectory(neon(env.DATABASE_URL));
+      const dir=createTenantDirectory(storeFactory(env.DATABASE_URL));
       const tenants=await dir.listPilotsForAccount(account);
       const stopped=await dir.revokePrivatePilotsForAccount(account);
       // Authorization is disabled FIRST. If cleanup fails, further private

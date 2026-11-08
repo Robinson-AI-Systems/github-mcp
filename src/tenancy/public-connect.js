@@ -1,4 +1,5 @@
 import { redact } from '../github/content-protection.js';
+import { storeFactory } from '../db-transport.js';
 // Public sign-in ("connect") and the person's own "My connection" page. Redesigned 2026-10-23 after a day of phone-only
 // failures: the old flow chained up to ten hops (our form, GitHub, install, GitHub again, an accounts page, a God-mode page,
 // a token page, a hand-back page) and needed three browser cookies to survive every hop. In-app browsers lost them.
@@ -22,7 +23,6 @@ import { redact } from '../github/content-protection.js';
 //   single-use code row, the client secret hash, PKCE and live membership revisions still decide everything.
 import { validZone, ZONE_SETTING } from '../core/time-zone.js';
 import { createHash, randomBytes } from 'node:crypto';
-import { neon } from '@neondatabase/serverless';
 import { createTenantDirectory, initializeProvisionedTenant, openAuthorizedTenantDb } from './directory.js';
 import { createPublicUsage, publicUsageLimits } from './public-usage.js';
 import { publicSignupState } from './usage-cost.js';
@@ -85,7 +85,7 @@ const whole = (text, fallback, max) => {
   return Number.isSafeInteger(n) && n >= 1 && n <= max ? n : fallback;
 };
 
-export function createPublicConnect({ env = process.env, fetchImpl = fetch, rootSqlFactory = neon, tenantSqlFactory = neon } = {}) {
+export function createPublicConnect({ env = process.env, fetchImpl = fetch, rootSqlFactory = storeFactory, tenantSqlFactory = storeFactory } = {}) {
   const appId = Number(env.GITHUB_PILOT_APP_ID);
   const limits = Object.freeze({
     maxClients: whole(env.GITHUB_PUBLIC_MAX_CLIENTS, 100000, 1000000),
