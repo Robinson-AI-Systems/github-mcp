@@ -96,7 +96,8 @@ await new Promise((r) => worker.listen(WORKER, '127.0.0.1', r));
 
 // --- seed the store through production code -----------------------
 const { createDb } = await import('../src/db.js');
-const { newSessionKey, sha256, indexKey, GIT_REMOTE_ID } = await import('../src/git-remote/keys.js');
+const { newSessionKey, sha256, indexKey } = await import('../src/git-remote/keys.js');
+const { GIT_REMOTE_ID } = await import('../src/db.js');
 const db = createDb();
 await db.initSchema();
 const id = randomBytes(16).toString('hex');
