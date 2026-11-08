@@ -204,6 +204,7 @@ try {
   console.log(`BATTERY 5 PASS unsigned transfer refused (${transfer.status})`);
   console.log('BATTERY ALL LEGS PASS');
 } finally {
+  console.log('BATTERY server log tail:', serverLog.slice(-1500));
   server.kill('SIGTERM');
   worker.close();
   await sql.end().catch(() => {});

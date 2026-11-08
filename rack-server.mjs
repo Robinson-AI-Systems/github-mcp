@@ -302,7 +302,9 @@ function proxyRewrite(req, res, destination, headers) {
   const target = new URL(destination);
   const transport = target.protocol === 'https:' ? import('node:https') : import('node:http');
   return transport.then(({ request: send }) => new Promise((resolve) => {
+    if (process.env.RACK_DEBUG) console.error('[rack] proxy start', target.href);
     const out = send(target, { method: req.method, headers }, (upstream) => {
+      if (process.env.RACK_DEBUG) console.error('[rack] proxy upstream', upstream.statusCode);
       res.statusCode = upstream.statusCode ?? 502;
       for (const [name, value] of Object.entries(upstream.headers)) {
         if (value !== undefined) res.setHeader(name, value);
@@ -334,7 +336,9 @@ async function runMiddleware(req, res, url) {
     else if (Array.isArray(value)) for (const v of value) headers.append(name, v);
   }
   const request = new Request(url.toString(), { method: req.method, headers });
+  if (process.env.RACK_DEBUG) console.error('[rack] middleware start', req.method, url.pathname);
   const answer = await middleware(request);
+  if (process.env.RACK_DEBUG) console.error('[rack] middleware done', answer.status, answer.headers.get('x-middleware-rewrite') ? 'rewrite' : 'plain');
   const rewrite = answer?.headers?.get?.('x-middleware-rewrite');
   if (!rewrite) {
     // A plain Response: a refusal, a challenge, or a direct answer.
