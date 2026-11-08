@@ -52,6 +52,7 @@ const root = mkdtempSync(join(tmpdir(), 'rack-git-battery-'));
 const projectRoot = join(root, 'projects');
 execFileSync('git', ['init', '--bare', '-q', join(projectRoot, 'fixture-owner', 'fixture-repo.git')], { stdio: 'inherit' });
 execFileSync('git', ['--git-dir', join(projectRoot, 'fixture-owner', 'fixture-repo.git'), 'symbolic-ref', 'HEAD', 'refs/heads/main']);
+execFileSync('git', ['--git-dir', join(projectRoot, 'fixture-owner', 'fixture-repo.git'), 'config', 'http.receivepack', 'true']);
 const seedDir = join(root, 'seed');
 execFileSync('git', ['init', '-q', seedDir]);
 writeFileSync(join(seedDir, 'README.md'), 'fixture\n');
