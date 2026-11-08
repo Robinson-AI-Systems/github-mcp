@@ -15,7 +15,9 @@
 //   5. transfer family shape: an unsigned /v1/transfer/* address is
 //      refused by the middleware (404), never proxied.
 // Prints BATTERY lines; exits non-zero on the first failure.
-import { spawn, execFileSync } from 'node:child_process';
+import { spawn, execFile, execFileSync } from 'node:child_process';
+import { promisify } from 'node:util';
+const run = promisify(execFile);
 import { mkdtempSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
