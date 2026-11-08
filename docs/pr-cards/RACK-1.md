@@ -68,3 +68,13 @@ STAGED, held open unmerged by design: the move window merges this
 PR as its first act under the program's quiet period. The window
 itself (sealed census, fence, route commit, connector
 verification, retirements) is program work, not this card.
+
+## Drift check
+
+Baselines re-verified before composing: the construction-site and
+env-name censuses were run on a byte-faithful clone of main
+`f21fad34` (the live pin, verified three ways in the move dossier);
+the route table is pinned by test against this repo's own
+`vercel.json`. This card changes no tool, widens no access, raises
+no spend; production behavior without `STORE_TRANSPORT=pg` is the
+Neon driver's own handle, unchanged.
