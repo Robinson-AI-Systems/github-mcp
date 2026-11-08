@@ -165,7 +165,7 @@ try {
   if (refused.status !== 401) throw new Error(`wrong key expected 401, got ${refused.status}: ${(await refused.text()).slice(0,300)} | server log: ${serverLog.slice(-500)}`);
   console.log('BATTERY 4a PASS wrong session key refused 401 by middleware');
   const cloneDir = join(root, 'clone');
-  const gitEnv = { ...process.env, GIT_CONFIG_COUNT: '1', GIT_CONFIG_KEY_0: `http.extraHeader`, GIT_CONFIG_VALUE_0: `Authorization: ${basic(sessionKey)}` };
+  const gitEnv = { ...process.env, GIT_TERMINAL_PROMPT: '0', GIT_CONFIG_COUNT: '1', GIT_CONFIG_KEY_0: `http.extraHeader`, GIT_CONFIG_VALUE_0: `Authorization: ${basic(sessionKey)}` };
   execFileSync('git', ['clone', '-q', `http://127.0.0.1:${ENTRY}/git/fixture-owner/fixture-repo.git`, cloneDir], { env: gitEnv, stdio: 'inherit' });
   if (!existsSync(join(cloneDir, 'README.md'))) throw new Error('clone missing fixture file');
   console.log('BATTERY 4b PASS git clone through entrypoint');
