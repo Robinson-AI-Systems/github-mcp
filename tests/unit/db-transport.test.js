@@ -24,9 +24,11 @@ describe('store transport selection (S-1)', () => {
     expect(isNeonStoreUrl('postgresql://fixture@ep-x.neon.tech/db')).toBe(true);
     expect(isNeonStoreUrl('postgresql://fixture@example.com/db')).toBe(false);
   });
-  it('selects pg for the rack Postgres hostnames', () => {
+  it('selects pg for the rack Postgres hostname', () => {
     expect(selectStoreTransport({}, 'postgresql://fixture@rack-postgres:5432/github_production')).toBe('pg');
-    expect(selectStoreTransport({}, 'postgresql://fixture@postgres/github_production')).toBe('pg');
+  });
+  it('keeps the Neon driver for the bare "postgres" hostname (CI service name)', () => {
+    expect(selectStoreTransport({}, 'postgresql://fixture@postgres/github_test')).toBe('neon');
   });
   it('storeFactory returns the Neon handle untouched on the neon path', () => {
     const sql = storeFactory('postgresql://fixture@ep-x.neon.tech/db', {});

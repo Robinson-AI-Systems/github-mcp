@@ -33,16 +33,20 @@
 //      value is a configuration error and throws. The rack enrollment
 //      sets STORE_TRANSPORT=pg.
 //   2. Otherwise a *.neon.tech host keeps the Neon driver, and the
-//      rack's own Postgres hostnames (rack-postgres, postgres) select
-//      pg. Every other host keeps the Neon driver — deliberately:
+//      rack's own Postgres hostname (rack-postgres) selects pg.
+//      Every other host keeps the Neon driver — deliberately:
 //      this repo's test suites pin the Neon HTTP serializer against
 //      fixture hosts (tests/unit + tests/db tenant-http-namespace),
-//      and production behavior without the switch must not change.
+//      CI's service database answers to the bare hostname "postgres"
+//      and must keep the test-adapter path, and production behavior
+//      without the switch must not change. The rack enrollment
+//      always declares STORE_TRANSPORT=pg explicitly, so the
+//      hostname entry is a convenience, never the mechanism.
 import { neon } from '@neondatabase/serverless';
 import pg from 'pg';
 
 export const STORE_TRANSPORTS = Object.freeze(['neon', 'pg']);
-const PG_HOSTNAMES = new Set(['rack-postgres', 'postgres']);
+const PG_HOSTNAMES = new Set(['rack-postgres']);
 
 export function isNeonStoreUrl(url) {
   try {
@@ -93,10 +97,18 @@ function poolFor(url) {
         connectionString = parsed.toString();
       }
     } catch { /* keep the caller's string untouched */ }
-    entry = {
-      pool: new pg.Pool({ connectionString, max: 5, idleTimeoutMillis: 30_000 }),
-      ended: false,
-    };
+    const pool = new pg.Pool({ connectionString, max: 5, idleTimeoutMillis: 30_000 });
+    // node-postgres emits 'error' for an idle client whose connection
+    // dies underneath it (a database restart, a failover, a service
+    // container stopping). Unhandled, that event is an uncaught
+    // exception and takes the whole process down; the Neon driver
+    // has no equivalent failure mode. Swallow it here (the pool
+    // discards the dead client itself); a query that actually needs
+    // a connection still fails at query time, where callers see it.
+    pool.on('error', (err) => {
+      console.error('db-transport: idle pool client error (client discarded):', err?.message ?? err);
+    });
+    entry = { pool, ended: false };
     pools.set(url, entry);
   }
   return entry;
