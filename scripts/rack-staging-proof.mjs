@@ -18,7 +18,7 @@ import { randomUUID } from 'node:crypto';
 process.env.STORE_TRANSPORT = 'pg';
 const { createDb, SCHEMA_TABLES } = await import('../src/db.js');
 const { storeFactory } = await import('../src/db-transport.js');
-const { createTenantDirectory, initializeProvisionedTenant, tenantSchemaName } =
+const { createTenantDirectory, tenantSchemaName } =
   await import('../src/tenancy/directory.js');
 const { initMarketplaceSchema } = await import('../src/marketplace/store.js');
 

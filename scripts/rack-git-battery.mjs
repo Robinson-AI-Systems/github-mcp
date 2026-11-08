@@ -21,7 +21,6 @@ const run = promisify(execFile);
 import { mkdtempSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import http from 'node:http';
 import https from 'node:https';
 import { randomBytes } from 'node:crypto';
 
