@@ -9,7 +9,7 @@ if [ -z "${PGBIN}" ] && command -v initdb >/dev/null; then PGBIN="$(dirname "$(c
 [ -n "${PGBIN}" ] || { echo "no PostgreSQL binaries found"; exit 2; }
 export PATH="$PGBIN:$PATH"
 WORK="$(mktemp -d)"
-PORT="${BATTERY_PG_PORT:-55441}"
+PORT="${BATTERY_PG_PORT:-$(( 20000 + RANDOM % 20000 ))}"
 # Bench jobs run as root; PostgreSQL refuses to run as root, so the
 # cluster is owned and run by the postgres system user.
 chown postgres:postgres "$WORK" 2>/dev/null || chown nobody "$WORK"
