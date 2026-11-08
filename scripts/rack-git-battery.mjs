@@ -63,6 +63,7 @@ execFileSync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-keyout', join(
 const worker = https.createServer(
   { key: readFileSync(join(root, 'worker-key.pem')), cert: readFileSync(join(root, 'worker-cert.pem')) },
   (req, res) => {
+  console.log('WORKER request:', req.method, req.url, 'claim:', Boolean(req.headers['x-robinson-git-claim']));
   claims.push(req.headers['x-robinson-git-claim'] ?? null);
   const u = new URL(req.url, 'http://worker');
   // The real worker resolves the mirror from the signed claim, not
@@ -105,6 +106,7 @@ const worker = https.createServer(
       backend.stdout.pipe(res);
     }
   });
+  backend.on('exit', (code) => console.log('WORKER backend exit', code));
   req.pipe(backend.stdin);
   backend.on('error', () => { if (!res.headersSent) res.statusCode = 502; res.end(); });
   });
