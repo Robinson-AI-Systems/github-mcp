@@ -23,8 +23,8 @@ createdb -h 127.0.0.1 -p "$PORT" -U postgres github_scratch
 export DATABASE_URL="postgresql://postgres@127.0.0.1:$PORT/github_scratch"
 echo "BATTERY pg: scratch cluster on 127.0.0.1:$PORT"
 node scripts/rack-staging-proof.mjs
-timeout 90 node scripts/rack-git-battery.mjs
-BATTERY_RC=$?
+BATTERY_RC=0
+timeout 90 node scripts/rack-git-battery.mjs || BATTERY_RC=$?
 TRACE=$(ls -td /tmp/rack-git-battery-*/clone-trace.txt 2>/dev/null | head -1)
 [ -n "$TRACE" ] && { echo '--- clone trace ---'; cat "$TRACE"; }
 exit $BATTERY_RC
