@@ -164,6 +164,11 @@ try {
   const refused = await fetch(`http://127.0.0.1:${ENTRY}/git/fixture-owner/fixture-repo.git/info/refs?service=git-upload-pack`, { headers: { Authorization: basic('rgk_' + '0'.repeat(32) + '_' + 'A'.repeat(43)) } });
   if (refused.status !== 401) throw new Error(`wrong key expected 401, got ${refused.status}: ${(await refused.text()).slice(0,300)} | server log: ${serverLog.slice(-500)}`);
   console.log('BATTERY 4a PASS wrong session key refused 401 by middleware');
+  try {
+    const probe = await fetch(`http://127.0.0.1:${ENTRY}/git/fixture-owner/fixture-repo.git/info/refs?service=git-upload-pack`, { headers: { Authorization: basic(sessionKey) }, signal: AbortSignal.timeout(15000) });
+    const probeBody = Buffer.from(await probe.arrayBuffer());
+    console.log(`BATTERY trace: direct info/refs fetch -> ${probe.status}, ${probeBody.length} bytes, claims seen by worker: ${claims.length}`);
+  } catch (e) { console.log('BATTERY trace: direct info/refs fetch FAILED:', e.message, '| claims:', claims.length); throw e; }
   console.log('BATTERY trace: starting clone');
   const cloneDir = join(root, 'clone');
   const gitEnv = { ...process.env, GIT_TERMINAL_PROMPT: '0', GIT_CONFIG_COUNT: '1', GIT_CONFIG_KEY_0: `http.extraHeader`, GIT_CONFIG_VALUE_0: `Authorization: ${basic(sessionKey)}` };
