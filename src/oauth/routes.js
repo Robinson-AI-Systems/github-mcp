@@ -11,13 +11,42 @@ import { isCimdClientId } from '../tenancy/cimd-client.js';
 import { publicConnectEnabled } from '../tenancy/public-connect.js';
 import { publicApprove, publicAuthorize, publicForget, publicLimits, publicManage, publicTrust, publicMoved, publicRegister } from '../tenancy/public-http.js';
 import { TRUST_PAGES } from '../tenancy/trust-pages.js';
+import { MUSE_PUBLIC_CLIENT_ID } from '../tenancy/muse-client.js';
 
 // DOOR-DB-1: the discovery documents are built from configuration alone; serving them never opens the store.
 const STORELESS = Object.freeze(['metadata', 'resourceMetadata', 'museClient']);
 
+// RAS MCP Standard D-006 MC-8: plain `muse` is the easy Client ID anyone can
+// type. It is a nickname for this server's fixed public Muse client, swapped
+// in on the request itself as it arrives (later steps re-read the request),
+// so every door after this one sees the same client it always has.
+export const MUSE_CLIENT_NICKNAME = 'muse';
+export function applyMuseNickname(req) {
+  if (req?.query && req.query.client_id === MUSE_CLIENT_NICKNAME) req.query = { ...req.query, client_id: MUSE_PUBLIC_CLIENT_ID };
+  if (req?.method === 'GET') return;
+  const body = req?.body;
+  if (body && typeof body === 'object' && !Array.isArray(body)) {
+    if (body.client_id === MUSE_CLIENT_NICKNAME) req.body = { ...body, client_id: MUSE_PUBLIC_CLIENT_ID };
+    return;
+  }
+  if (typeof body !== 'string' || body.length > 65536) return;
+  const type = String(req.headers?.['content-type'] || '').split(';')[0].toLowerCase();
+  if (type === 'application/x-www-form-urlencoded') {
+    const form = new URLSearchParams(body);
+    if (form.get('client_id') === MUSE_CLIENT_NICKNAME) { form.set('client_id', MUSE_PUBLIC_CLIENT_ID); req.body = form.toString(); }
+  } else if (type === 'application/json') {
+    try {
+      const parsed = JSON.parse(body);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed) && parsed.client_id === MUSE_CLIENT_NICKNAME)
+        req.body = JSON.stringify({ ...parsed, client_id: MUSE_PUBLIC_CLIENT_ID });
+    } catch { /* malformed bodies are refused by the handler as before */ }
+  }
+}
+
 /** Runs one OAuth handler. Any failure answers 503 with no detail (never SQL, tokens, passphrases or stack text). */
 export async function handleOAuth(which, req, res, { db, env = process.env, consentFactory } = {}) {
   try {
+    if (['authorize', 'token', 'revoke'].includes(which)) applyMuseNickname(req);
     // PUB-6 (dark): while GITHUB_PUBLIC_CONNECT is on, registration creates public clients (pcl_), never owner clients.
     if (which === 'register' && publicConnectEnabled(env)) return await publicRegister(req, res, { env });
     if (which === 'authorize' && ['GET','POST'].includes(req.method)) {
