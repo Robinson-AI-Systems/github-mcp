@@ -13,7 +13,7 @@ import { publicApprove, publicAuthorize, publicForget, publicLimits, publicManag
 import { TRUST_PAGES } from '../tenancy/trust-pages.js';
 
 // DOOR-DB-1: the discovery documents are built from configuration alone; serving them never opens the store.
-const STORELESS = Object.freeze(['metadata', 'resourceMetadata']);
+const STORELESS = Object.freeze(['metadata', 'resourceMetadata', 'museClient']);
 
 /** Runs one OAuth handler. Any failure answers 503 with no detail (never SQL, tokens, passphrases or stack text). */
 export async function handleOAuth(which, req, res, { db, env = process.env, consentFactory } = {}) {

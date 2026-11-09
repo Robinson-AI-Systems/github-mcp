@@ -10,6 +10,13 @@ import { publicOrigin, send, paramsOf, only } from './http.js';
 
 const tokenResponse = (access, refresh) => ({ access_token: access, token_type: 'Bearer', expires_in: 3600, refresh_token: refresh });
 const bad = (res, status, code, description) => send(res, status, { error: code, error_description: description });
+// Muse (Meta) publishes no client document of its own: the server hosts
+// the document at this path and that URL is Muse's client_id (CIMD). The
+// authorize door resolves it through the CIMD resolver like any other
+// metadata-document client; the document is configuration alone, so
+// serving it never opens the store.
+const MUSE_CLIENT_PATH = '/.well-known/muse-client.json';
+const MUSE_REDIRECT_URI = 'https://agent.meta.ai/api/hatch/oauth/callback';
 const html = (res, status, page) => send(res, status, page, 'text/html; charset=utf-8');
 const str = (x) => (typeof x === 'string' ? x : '');
 
@@ -145,5 +152,15 @@ export function createOAuthHandlers({ db, env = process.env, policy, scopesSuppo
       ...(scopesSupported?{scopes_supported:scopesSupported}:{}) });
   }
 
-  return { register, authorize, token, metadata, resourceMetadata };
+  function museClient(req, res) {
+    if (!only(res, req, ['GET'])) return;
+    const { origin } = urls();
+    return send(res, 200, {
+      client_id: origin + MUSE_CLIENT_PATH, client_name: 'Muse',
+      grant_types: ['authorization_code', 'refresh_token'], redirect_uris: [MUSE_REDIRECT_URI],
+      response_types: ['code'], token_endpoint_auth_method: 'none'
+    });
+  }
+
+  return { register, authorize, token, metadata, resourceMetadata, museClient };
 }

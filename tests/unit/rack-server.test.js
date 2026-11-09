@@ -36,6 +36,13 @@ describe('rack entrypoint route contract (S-2)', () => {
     }
     expect(REWRITES.size).toBe(vercel.rewrites.length);
   });
+  it('serves the scoped protected-resource document and the Muse client document', () => {
+    expect(REWRITES.get('/.well-known/oauth-protected-resource/api/mcp'))
+      .toEqual({ route: '/api/well-known/oauth-protected-resource', query: {} });
+    expect(REWRITES.get('/.well-known/muse-client.json'))
+      .toEqual({ route: '/api/well-known/muse-client', query: {} });
+    expect(FILE_ROUTES.has('/api/well-known/muse-client')).toBe(true);
+  });
   it('pins the release commit only from a valid 40-hex source', () => {
     const env = {};
     expect(pinReleaseCommit(env)).toBe(null);

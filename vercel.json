@@ -83,6 +83,14 @@
       "destination": "/api/well-known/oauth-protected-resource"
     },
     {
+      "source": "/.well-known/oauth-protected-resource/api/mcp",
+      "destination": "/api/well-known/oauth-protected-resource"
+    },
+    {
+      "source": "/.well-known/muse-client.json",
+      "destination": "/api/well-known/muse-client"
+    },
+    {
       "source": "/.well-known/security.txt",
       "destination": "/api/security-txt"
     },

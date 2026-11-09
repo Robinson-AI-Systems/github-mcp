@@ -57,6 +57,19 @@ describe('connector metadata and registration', () => {
     expect((await call(h.metadata, request('POST', {}))).statusCode).toBe(405);
   });
 
+  it('serves the Muse client document at its own URL with the exact hosted callback', async () => {
+    const { h } = await fixture();
+    expect(json(await call(h.museClient, request('GET', {})))).toEqual({
+      client_id: baseEnv.PUBLIC_BASE_URL + '/.well-known/muse-client.json',
+      client_name: 'Muse',
+      grant_types: ['authorization_code', 'refresh_token'],
+      redirect_uris: ['https://agent.meta.ai/api/hatch/oauth/callback'],
+      response_types: ['code'],
+      token_endpoint_auth_method: 'none'
+    });
+    expect((await call(h.museClient, request('POST', {}))).statusCode).toBe(405);
+  });
+
   it('never derives the issuer from a request header: a missing or non-HTTPS PUBLIC_BASE_URL throws', async () => {
     for (const bad of [undefined, 'http://github-mcp.example.test', 'https://user:pw@github-mcp.example.test', 'https://github-mcp.example.test/path']) {
       const { h } = await fixture({ ...baseEnv, PUBLIC_BASE_URL: bad });
