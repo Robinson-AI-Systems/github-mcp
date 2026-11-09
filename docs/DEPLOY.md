@@ -1,5 +1,10 @@
 # Deploy and set up
 
+> **Hosting note (2026-11-08):** production no longer runs on Vercel/Neon. It serves from the Robinson AI
+> Systems Development Rack at the same address, with its database on the rack. This page is kept as the
+> record of the retired hosted setup (and the rollback shape while those copies exist); do not follow its
+> Vercel/Neon steps for the live server.
+
 For Chris, who is not a developer. The server is already live at `https://github.robinsonaisystems.com` (Vercel plus its own Neon database). This page explains how it is set up, how to add a GitHub account, and what to do if something breaks. Existing paid Vercel and Neon plans are used; nothing here needs a new plan.
 
 Only the daily release job updates the `live` branch, and Vercel builds only `live` (`.github/RELEASE-POLICY.md`). Do not deploy by hand. Where a step says Agent, say "go" in chat and Claude does it through your Vercel and Neon connections. Secrets are always yours to type; Claude must never see them.
