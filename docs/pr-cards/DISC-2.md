@@ -33,6 +33,19 @@ the client check), pinning the refusal point from the store.
 - Out of scope: the `api/mcp.js` public-usage metering hook still keys on
   `pcl_` only — a counting path, never a refusal.
 
+## Drift check
+
+Baselines re-verified before composing: the refusal was pinned from
+the live rack ingress log (token exchange 200 at 07:33:47 MST, then
+`/api/mcp` 401s with the 25-byte `invalid_token` body), the new tenant
+token row (created the same second as the exchange, unrevoked, its
+`last_used_at` advancing on refused calls), and the code at main
+`ff5c5386` — the authorize and token doors' classification was read
+directly beside the MCP route's. This card changes no tool, widens no
+access beyond what the token door already issued, raises no spend,
+and touches neither the token door nor any credential format; it makes
+the third door apply the classification the first two already use.
+
 ## Acceptance
 
 Targeted unit tests green; `npm run check` green at the exact head;
