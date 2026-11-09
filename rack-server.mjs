@@ -9,7 +9,7 @@
 //     index.js also serves at its directory path); bracket segments
 //     ([action], [handle], [name]) bind as query parameters, as
 //     Vercel binds them;
-//   - the vercel.json rewrites, verbatim (19): root onto the front
+//   - the vercel.json rewrites, verbatim (21): root onto the front
 //     door, /git-remote/exchange onto the git-remote function with
 //     ?op=exchange, the authorize-page family, the well-known
 //     documents, the brand icons onto the front door with their
@@ -114,6 +114,7 @@ import tenantOauthAuthorize from './api/tenant/oauth/authorize.js';
 import tenantOauthCallback from './api/tenant/oauth/callback.js';
 import toolName from './api/tools/[name].js';
 import toolsIndex from './api/tools/index.js';
+import wellKnownMuseClient from './api/well-known/muse-client.js';
 import wellKnownAS from './api/well-known/oauth-authorization-server.js';
 import wellKnownPR from './api/well-known/oauth-protected-resource.js';
 import whoami from './api/whoami.js';
@@ -179,6 +180,7 @@ export const FILE_ROUTES = new Map([
   ['/api/tenant/oauth/callback', route(tenantOauthCallback)],
   ['/api/tools/index', route(toolsIndex)],
   ['/api/tools', route(toolsIndex)],
+  ['/api/well-known/muse-client', route(wellKnownMuseClient)],
   ['/api/well-known/oauth-authorization-server', route(wellKnownAS)],
   ['/api/well-known/oauth-protected-resource', route(wellKnownPR)],
   ['/api/whoami', route(whoami)],
@@ -207,6 +209,8 @@ export const REWRITES = new Map([
   ['/status', { route: '/api/oauth/authorize', query: { page: 'status' } }],
   ['/.well-known/oauth-authorization-server', { route: '/api/well-known/oauth-authorization-server', query: {} }],
   ['/.well-known/oauth-protected-resource', { route: '/api/well-known/oauth-protected-resource', query: {} }],
+  ['/.well-known/oauth-protected-resource/api/mcp', { route: '/api/well-known/oauth-protected-resource', query: {} }],
+  ['/.well-known/muse-client.json', { route: '/api/well-known/muse-client', query: {} }],
   ['/.well-known/security.txt', { route: '/api/security-txt', query: {} }],
   ['/brand/icon-256.png', { route: '/api/index', query: { brand_icon: '256' } }],
   ['/brand/icon-64.png', { route: '/api/index', query: { brand_icon: '64' } }],

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated": "2026-11-04",
+  "updated": "2026-11-09",
   "order": [
     "A",
     "B",
@@ -3491,6 +3491,23 @@
       "budget": 800,
       "units": [
         "RACK-1"
+      ],
+      "readiness": "READY",
+      "ownerInputs": [],
+      "pr": []
+    },
+    {
+      "id": "DISC-1",
+      "title": "Muse discovery documents: muse-client.json + scoped protected-resource",
+      "batch": "FIN",
+      "design": "docs/pr-cards/DISC-1.md",
+      "dependencies": [],
+      "card": "docs/pr-cards/DISC-1.md",
+      "status": "IN_PROGRESS",
+      "migration": "none",
+      "budget": 300,
+      "units": [
+        "DISC-1"
       ],
       "readiness": "READY",
       "ownerInputs": [],
