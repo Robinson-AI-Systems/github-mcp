@@ -1,4 +1,5 @@
 import { createMcpHandler } from '../src/core/mcp-server.js';
+import { storeFactory } from '../src/db-transport.js';
 import { registry } from '../src/tools/index.js';
 import { createGithubPolicy } from '../src/oauth/policy.js';
 import { createDispatch } from '../src/tools/dispatch.js';
@@ -10,7 +11,6 @@ import { operatorConnection } from '../src/core/authority.js';
 import { publicOrigin } from '../src/core/http.js';
 import { loadZone, withTimeZone } from '../src/core/time-zone.js';
 import { admitTenantMcp, TenantCapacityError, recordTenantMetric } from '../src/tenancy/runtime-limits.js';
-import { neon } from '@neondatabase/serverless';
 import { isPublicClientId } from '../src/tenancy/public-code.js';
 import { createPublicUsage, publicUsageLimits } from '../src/tenancy/public-usage.js';
 import { offeredRegistry } from '../src/github/feature-gates.js';
@@ -58,7 +58,7 @@ export async function handleMcp(req, res, { marketplaceAccountId = null } = {}) 
       // real changes are counted one by one inside dispatch. Numbers only, kept at the shared level.
       if (isPublicClientId(context.clientId) && process.env.DATABASE_URL) {
         publicTenantId = String(context.tenant.tenantId);
-        usage = createPublicUsage(neon(process.env.DATABASE_URL), publicUsageLimits(process.env));
+        usage = createPublicUsage(storeFactory(process.env.DATABASE_URL), publicUsageLimits(process.env));
         const items = Array.isArray(req.body) ? req.body : [req.body];
         const calls = items.filter((m) => m?.method === 'tools/call').length;
         if (calls > 0) {

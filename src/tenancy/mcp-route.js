@@ -2,8 +2,8 @@
 // HMAC, checked against current membership/allowlist, AND looked up by hash in
 // only that tenant's store. A failed tenant credential must NEVER be looked up
 // through the legacy owner's global database.
-import { neon } from '@neondatabase/serverless';
 import { createTenantDirectory, openAuthorizedTenantDb } from './directory.js';
+import { storeFactory } from '../db-transport.js';
 import { isTenantRoutedCredential, verifyTenantCredential } from './routed-credential.js';
 import { isPublicClientId } from './public-code.js';
 import { createCredentials } from '../github/credentials.js';
@@ -79,8 +79,8 @@ export const isPrivateTenantBearer = (authorization) =>
 /** Dependency overrides are for private tests only; no user-visible route
  * accepts an arbitrary tenant identifier, identity or tenant SQL handle. */
 export async function resolvePrivateTenantMcpBearer({
-  authorization, env = process.env, fetchImpl = fetch, rootSqlFactory = neon,
-  tenantSqlFactory = neon
+  authorization, env = process.env, fetchImpl = fetch, rootSqlFactory = storeFactory,
+  tenantSqlFactory = storeFactory
 }) {
   const value = /^[Bb][Ee][Aa][Rr][Ee][Rr][ \t]+([A-Za-z0-9_-]{30,256})$/.exec(String(authorization || ''))?.[1];
   if (!value || !isTenantRoutedCredential(value)) return null;

@@ -2,12 +2,12 @@
 // public API. The protected owner setup has already authenticated the owner,
 // selected its server-known tenant and disabled all private pilot access.
 // Every deletion runs in that tenant's independently verified SQL namespace.
-import { neon } from '@neondatabase/serverless';
 import { openAuthorizedTenantDb } from './directory.js';
+import { storeFactory } from '../db-transport.js';
 
 export async function purgeRevokedTenantArtifacts({
   directory, tenantId, ownerIdentityId,
-  connectionString=process.env.DATABASE_URL, sqlFactory=neon
+  connectionString=process.env.DATABASE_URL, sqlFactory=storeFactory
 }) {
   if (!directory || typeof directory.authorized !== 'function')
     throw new TypeError('Private tenant directory required for incident cleanup.');

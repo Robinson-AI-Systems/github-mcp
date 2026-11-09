@@ -1,7 +1,7 @@
 // A device can claim only a one-use code the verified user saw at My connection.
 // Claiming proves device key possession but NEVER enables commands or a trusted origin.
-import {neon} from '@neondatabase/serverless';
 import {createDb} from '../../src/db.js';
+import { storeFactory } from '../../src/db-transport.js';
 import {createTenantDirectory,openAuthorizedTenantDb} from '../../src/tenancy/directory.js';
 import {publicConnectEnabled} from '../../src/tenancy/public-connect.js';
 import {pairingIndexKey,createEnrolledHostStore} from '../../src/playground/enrolled-hosts.js';
@@ -24,17 +24,17 @@ export function createEnrollmentClaimHandler({env=process.env,scopeFactory=null}
       Object.keys(body).some(k=>!['code','deviceId','publicKey','origin','signature'].includes(k)))
      throw new TypeError('invalid');
    const scope=scopeFactory?await scopeFactory(body):await (async()=>{
-     const root=createDb(neon(env.DATABASE_URL));
+     const root=createDb(storeFactory(env.DATABASE_URL));
      const index=await root.getSetting(pairingIndexKey(body.code));
      if(index?.kind!=='playground-pair-selector'||!index.tenantId||!index.identityId||!index.clientId)
        throw new TypeError('unknown');
-     const directory=createTenantDirectory(neon(env.DATABASE_URL));
+     const directory=createTenantDirectory(storeFactory(env.DATABASE_URL));
      const live=await directory.authorizedPilotIdentity(index.tenantId,index.identityId);
      if(!live||live.tenantId!==index.tenantId||live.identityId!==index.identityId)
        throw new TypeError('revoked');
      const tenant=await openAuthorizedTenantDb({
        directory,tenantId:index.tenantId,verifiedIdentityId:index.identityId,
-       connectionString:env.DATABASE_URL,sqlFactory:neon
+       connectionString:env.DATABASE_URL,sqlFactory:storeFactory
      });
      const grants=await tenant.db.listUpgradeableConnections();
      if(!grants.some(g=>g.client_id===index.clientId&&g.profile==='full'))

@@ -1,13 +1,13 @@
 // PUB-2 private owner-initiated bootstrap only. The caller MUST already have
 // passed the protected setup-page passphrase, same-origin/CSRF and production
 // checks. Never expose this function as a public API, MCP tool, or Hub action.
-import { neon } from '@neondatabase/serverless';
 import { createTenantDirectory, initializeProvisionedTenant } from './directory.js';
+import { storeFactory } from '../db-transport.js';
 import { verifyGithubBearerIdentity, verifyGithubUserInstallation } from './github-identity.js';
 
 export async function bootstrapPrivateOwnerPilot({
   accountLogin, rootDb, ownerCredentials, env=process.env, fetchImpl=fetch,
-  rootSqlFactory=neon, tenantSqlFactory=neon
+  rootSqlFactory=storeFactory, tenantSqlFactory=storeFactory
 }) {
   if (env.VERCEL_ENV!=='production' ||
       env.GITHUB_PRIVATE_TENANT_PILOT!=='enabled' || !env.DATABASE_URL ||
