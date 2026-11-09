@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { issueTenantCredential, verifyTenantCredential, isTenantRoutedCredential } from '../../src/tenancy/routed-credential.js';
-import { isPrivateTenantBearer, resolvePrivateTenantMcpBearer } from '../../src/tenancy/mcp-route.js';
+import { isPrivateTenantBearer, resolvePrivateTenantMcpBearer, isPublicGrantClient } from '../../src/tenancy/mcp-route.js';
 
 const A='5ca85cbb-2222-4222-8222-333333333333';
 const B='5ca85cbb-2222-4222-8222-444444444444';
@@ -41,6 +41,15 @@ describe('PUB-2 signed private tenant credentials',()=>{
     expect(isPrivateTenantBearer('Bearer tac_bad')).toBe(true);
     expect(isPrivateTenantBearer('bEaReR\ttac_bad')).toBe(true);
     expect(isPrivateTenantBearer('Bearer ordinary_owner_credential')).toBe(false);
+  });
+  it('classifies pcl_ and CIMD document clients as public-registry grants',()=>{
+    expect(isPublicGrantClient('pcl_ZzqoIDxdtXmm7Y3QoCKlVOxELfJ_-Rj-')).toBe(true);
+    expect(isPublicGrantClient('https://github.robinsonaisystems.com/.well-known/muse-client.json')).toBe(true);
+    expect(isPublicGrantClient('https://chatgpt.com/oauth/client.json')).toBe(true);
+    expect(isPublicGrantClient('tcl_signedclientcredential')).toBe(false);
+    expect(isPublicGrantClient('plain-dcr-client-id')).toBe(false);
+    expect(isPublicGrantClient('')).toBe(false);
+    expect(isPublicGrantClient(null)).toBe(false);
   });
   it('refuses invalid routed token BEFORE querying the root or tenant database',async()=>{
     const rootSqlFactory=()=>{throw Error('root must not be queried');};

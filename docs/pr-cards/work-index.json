@@ -3512,6 +3512,25 @@
       "readiness": "READY",
       "ownerInputs": [],
       "pr": []
+    },
+    {
+      "id": "DISC-2",
+      "title": "CIMD grants at the tenant MCP door: classification parity",
+      "batch": "FIN",
+      "design": "docs/pr-cards/DISC-2.md",
+      "dependencies": [
+        "DISC-1"
+      ],
+      "card": "docs/pr-cards/DISC-2.md",
+      "status": "IN_PROGRESS",
+      "migration": "none",
+      "budget": 300,
+      "units": [
+        "DISC-2"
+      ],
+      "readiness": "READY",
+      "ownerInputs": [],
+      "pr": []
     }
   ],
   "gatewayBoundary": {

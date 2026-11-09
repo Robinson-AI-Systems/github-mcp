@@ -6,6 +6,7 @@ import { createTenantDirectory, openAuthorizedTenantDb } from './directory.js';
 import { storeFactory } from '../db-transport.js';
 import { isTenantRoutedCredential, verifyTenantCredential } from './routed-credential.js';
 import { isPublicClientId } from './public-code.js';
+import { isCimdClientId } from './cimd-client.js';
 import { createCredentials } from '../github/credentials.js';
 import { createDb } from '../db.js';
 import { createTenantScopedCredentials } from './user-authorization.js';
@@ -72,6 +73,15 @@ export async function tenantMcpAccountsLive(db, accounts, mode, env, _profile = 
   ));
 }
 
+/** A grant's client is on the public registry when it is a public-connect
+ * (pcl_) client OR a CIMD document client — the same classification the
+ * authorize door (public-connect.js) and the token door (oauth-token.js)
+ * apply. A CIMD grant's client_id is the document URL itself, never a
+ * signed (tcl_) credential, so classifying it as a signed client refuses
+ * every CIMD-issued tenant credential at this door. */
+export const isPublicGrantClient = (clientId) =>
+  isPublicClientId(clientId) || isCimdClientId(clientId);
+
 export const isPrivateTenantBearer = (authorization) =>
   typeof authorization === 'string' &&
   /^[Bb][Ee][Aa][Rr][Ee][Rr][ \t]+(?:tac|trf|tcl)_/.test(authorization);
@@ -110,7 +120,7 @@ export async function resolvePrivateTenantMcpBearer({
     // signed and revision-pinned (checked above); the client must still exist at the root (deleting it is the
     // emergency lever) and be mirrored in this tenant. Such a connection may span several of the SAME person's
     // accounts; every one is validated below. Signed (tcl_) clients keep the exact single-account rule.
-    const isPublic = typeof grant?.client_id === 'string' && isPublicClientId(grant.client_id);
+    const isPublic = typeof grant?.client_id === 'string' && isPublicGrantClient(grant.client_id);
     if (isPublic) {
       const [registered, mirrored] = await Promise.all([
         directory.getPublicClient(grant.client_id), db.getOAuthClient(grant.client_id)
