@@ -83,9 +83,20 @@ async function describeHandler(args, ctx) {
 
 const callable = (ctx, name) => { const t = find(ctx, name); return t && (!t.usesRegistry || t.name==='github_secret_scanner' || (t.area === 'workflow' && (Array.isArray(t.delegatedWrites) || t.annotations?.readOnlyHint === true))) ? t : null; };
 
+// Owner feedback 2026-11-09: an agent called a general read tool by a guessed name ("github_api_request") and got a bare
+// "Unknown or unavailable tool", though github_api_read exists. Offer close names so the right one is one step away.
+const SYNONYMS = { request: ['read', 'write'], get: ['read'], fetch: ['read'], rest: ['api'], http: ['api'], query: ['read', 'search'], list: ['read', 'search'] };
+export function closeNames(ctx, wanted, max = 3) {
+  const words = new Set(String(wanted).toLowerCase().split(/[^a-z0-9]+/).filter(Boolean).flatMap((w) => [w, ...(SYNONYMS[w] ?? [])]));
+  words.delete('github');
+  if (!words.size) return [];
+  return (ctx.registry?.tools ?? []).filter((t) => find(ctx, t.name))
+    .map((t) => ({ name: t.name, score: t.name.split('_').filter((w) => w !== 'github' && words.has(w)).length }))
+    .filter((x) => x.score >= 2).sort((a, b) => b.score - a.score || a.name.localeCompare(b.name)).slice(0, max).map((x) => x.name);
+}
 async function callHandler(args, ctx) {
   if (!callable(ctx, args.name)) {
-    return { isError: true, content: [{ type: 'text', text: `Unknown or unavailable tool: ${redact(String(args.name)).slice(0, 80)}. Search with github_search_tools.${find(ctx, args.name) ? ' The tool-finding tools are called directly, not through github_call.' : ''}` }] };
+    return { isError: true, content: [{ type: 'text', text: `Unknown or unavailable tool: ${redact(String(args.name)).slice(0, 80)}. Search with github_search_tools.${closeNames(ctx, args.name).length ? ' Did you mean: ' + closeNames(ctx, args.name).join(', ') + '?' : ''}${find(ctx, args.name) ? ' The tool-finding tools are called directly, not through github_call.' : ''}` }] };
   }
   return ctx.callTool(args.name, args.args ?? {});
 }

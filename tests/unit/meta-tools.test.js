@@ -112,6 +112,23 @@ describe('github_describe_tool', () => {
   });
 });
 
+describe('unknown tool names suggest the right tool (owner feedback 2026-11-09)', () => {
+  it('points a guessed general-request name at the universal read tool', async () => {
+    const w = await world('everyday');
+    const r = await w.run('github_call', { name: 'github_api_request', args: {} });
+    expect(r.isError).toBe(true);
+    expect(r.content[0].text).toContain('Unknown or unavailable');
+    expect(r.content[0].text).toMatch(/Did you mean: [^?]*github_api_read/);
+    const nothing = await w.run('github_call', { name: 'github_zzz_qqq', args: {} });
+    expect(nothing.content[0].text).not.toContain('Did you mean');
+  });
+  it('never suggests a tool the connection cannot see', async () => {
+    const low = await world('read_only');
+    const r = await low.run('github_call', { name: 'github_api_request', args: {} });
+    expect(r.content[0].text).not.toContain('github_api_write');
+  });
+});
+
 describe('canonical read aliases', () => {
   it('describes canonical names once, while documenting accepted aliases separately', async () => {
     const w = await world('read_only');
