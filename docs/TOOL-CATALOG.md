@@ -7,6 +7,8 @@
 
 **Unknown tool names (2026-11-09):** `github_call` errors for an unknown or hidden tool add "Did you mean: …" with close visible names (a guessed `github_api_request` points at `github_api_read`, the general read-only GET tool).
 
+**Owner feedback 2026-11-10 (early failure):** `github_check_wait` returns at once, still `still_running`, with `failed_runs` when a check run at the head has failed while a required check (typically the roll-up `ci`) has not reported; `github_actions_get_run_logs_summary` with `pr` or `ref` also explains a failed job inside a run that is still in progress.
+
 **Owner feedback 2026-11-10:** when no workspace host answers at all, the refusal (`native_hosts_busy`) now says the worker may be off or restarting and names the routes that need no worker (`github_content_push_files`, `github_pr_create`, `github_workflow_merge_when_green`); a mix that includes a busy or paused host keeps the busy wording. `github_workflow_merge_when_green` answers `checks_running` (nothing to repair, how to wait) instead of `not_ready` when the only blocker is required checks that have not finished and none failed.
 
 **Owner feedback 2026-11-09:** `github_workflow_pr_status` accepts `steps: true` and adds `ci_steps` (each CI job and step at the exact head with result and seconds); `github_actions_get_run` accepts `includeSteps`. A repository with no required checks, no statuses and no Actions workflows reports CI green with basis `no-checks-configured`, so `github_workflow_merge_when_green` no longer waits forever there. Git session keys that are in regular use renew quietly (8 hours from the last use, at most 7 days from creation). The `github_git_remote_setup` push note explains the harmless "push negotiation failed" warning.
