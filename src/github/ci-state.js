@@ -21,6 +21,28 @@ export function runBriefs(runs, max = 40) {
   return (runs ?? []).slice(0, max).map((r) => ({ name: r.name, status: r.status, conclusion: r.conclusion ?? null, seconds: secs(r.started_at, r.completed_at), app: r.app?.slug ?? null }));
 }
 
+// Moved here from the check tools so merge decisions and waiting use one definition of "no CI will ever run".
+export const NO_CI_AFTER_MS = 120000;
+export const NONE_RAN_AFTER_MS = 10 * 60 * 1000;
+export async function runsNoCi(octokit, p, headSha, now, committedAt) {
+  try {
+    const [workflows, suites, commit] = await Promise.all([
+      octokit.request('GET /repos/{owner}/{repo}/actions/workflows', { ...p, per_page: 1 }),
+      octokit.request('GET /repos/{owner}/{repo}/commits/{ref}/check-suites', { ...p, ref: headSha, per_page: 50 }),
+      committedAt ? null : octokit.request('GET /repos/{owner}/{repo}/commits/{ref}', { ...p, ref: headSha })]);
+    const date = Date.parse(committedAt ?? commit?.data?.commit?.committer?.date ?? '');
+    // GitHub creates an empty, permanently queued suite for every installed app with checks access (this App, coding
+    // agents); only a suite that started or holds a check run means checks are coming.
+    const list = suites.data?.check_suites ?? [];
+    const live = list.filter((x) => x.status !== 'queued' || (x.latest_check_runs_count ?? 0) > 0).length;
+    if (live > 0 || (suites.data?.total_count ?? 0) > list.length || !Number.isFinite(date)) return null;
+    if (workflows.data?.total_count === 0 && now - date > NO_CI_AFTER_MS) return 'no_ci';
+    // Workflows exist but none ran for this commit long after it was made (e.g. manual-only workflows): none are coming.
+    if (now - date > NONE_RAN_AFTER_MS) return 'none_ran';
+    return null;
+  } catch { return null; }
+}
+
 const PASSING = new Set(['success', 'neutral', 'skipped']);
 const FAILING = new Set(['failure', 'timed_out', 'cancelled', 'action_required', 'startup_failure', 'stale']);
 
@@ -84,7 +106,7 @@ const statusState = (s) => ({ success: 'success', failure: 'failure', error: 'fa
  * @returns {Promise<{ notes: string[], green: boolean|null, known: boolean, basis: 'required'|'all-checks', checks: Array<{ context: string, state: string, source: string }>, problems: string[], errors: string[] }>}
  *   `green` is true only when everything counted is `success`; null when it could not be worked out.
  */
-export async function ciState(octokit, { owner, repo, baseBranch, headSha }) {
+export async function ciState(octokit, { owner, repo, baseBranch, headSha, now = Date.now(), committedAt = null }) {
   const p = { owner, repo };
   // All four independent GitHub reads begin together. Required-check policy
   // and check-run pagination still retain their own ordering, and no failure
@@ -129,10 +151,10 @@ export async function ciState(octokit, { owner, repo, baseBranch, headSha }) {
     // A repository with nothing required, no commit statuses and no GitHub Actions workflow at all can never report a check, so
     // "wait for CI" would last forever. GitHub's own merge box allows such a merge. Only a successful read that proves zero
     // workflows counts; a failed read or any existing workflow keeps the careful "not reported yet" answer.
+    // Same proof the waiting tool uses: zero workflows, no live check suite, and a commit old enough that CI would have started.
     const none = basis === 'all-checks' && !errors.length && (statuses ?? []).length === 0
-      ? await tryRead(async () => (await octokit.request('GET /repos/{owner}/{repo}/actions/workflows', { ...p, per_page: 1 })).data.total_count)
-      : null;
-    if (none?.ok && none.data === 0) {
+      ? await runsNoCi(octokit, p, headSha, now, committedAt) : null;
+    if (none === 'no_ci') {
       notes.push('This repository has no required checks and no GitHub Actions workflows, so no check can ever report; there is nothing to wait for. Review, conflict and threads are still enforced.');
       return { green: errors.length ? null : true, known: errors.length === 0, basis: 'no-checks-configured', checks, problems: [], notes, errors, strict_up_to_date, policy_sources, all_runs: [] };
     }

@@ -5,7 +5,7 @@ import { ciState } from '../../src/github/ci-state.js';
 // "merge when green" because "no checks yet" waited forever. Only a proven zero-workflow repository is treated as
 // having nothing to wait for; every uncertain case stays fail-closed.
 const err = (status, message) => Object.assign(new Error(message), { status, response: { data: { message } } });
-function octokit({ runs = [], statuses = [], workflows = 0, workflowsError = null }) {
+function octokit({ runs = [], statuses = [], workflows = 0, workflowsError = null, suites = [], committed = '2026-11-09T00:00:00Z' }) {
   return {
     async request(route) {
       if (route.includes('/rules/branches/')) return { data: [] };
@@ -13,17 +13,29 @@ function octokit({ runs = [], statuses = [], workflows = 0, workflowsError = nul
       if (route.includes('/check-runs')) return { data: { check_runs: runs, total_count: runs.length } };
       if (route.includes('/commits/{ref}/status')) return { data: { statuses } };
       if (route === 'GET /repos/{owner}/{repo}/actions/workflows') { if (workflowsError) throw workflowsError; return { data: { total_count: workflows, workflows: [] } }; }
+      if (route.includes('/check-suites')) return { data: { total_count: suites.length, check_suites: suites } };
+      if (route === 'GET /repos/{owner}/{repo}/commits/{ref}') return { data: { commit: { committer: { date: committed } } } };
       throw new Error('unexpected ' + route);
     }
   };
 }
-const call = (o) => ciState(o, { owner: 'o', repo: 'r', baseBranch: 'main', headSha: 'a'.repeat(40) });
+const NOW = Date.parse('2026-11-09T01:00:00Z');
+const call = (o) => ciState(o, { owner: 'o', repo: 'r', baseBranch: 'main', headSha: 'a'.repeat(40), now: NOW });
 
 describe('ciState: repository with no checks configured', () => {
   it('is green with its own basis and a plain note when nothing is required and there are no workflows', async () => {
     const r = await call(octokit({ workflows: 0 }));
     expect(r).toMatchObject({ green: true, known: true, basis: 'no-checks-configured', problems: [] });
     expect(r.notes.join(' ')).toMatch(/no GitHub Actions workflows/);
+  });
+  it('keeps waiting while the commit is brand new (a first workflow may be about to appear)', async () => {
+    const r = await call(octokit({ workflows: 0, committed: new Date(NOW - 30000).toISOString() }));
+    expect(r.green).toBe(false);
+    expect(r.basis).toBe('all-checks');
+  });
+  it('keeps waiting when a check suite has started even if no workflow is listed', async () => {
+    const r = await call(octokit({ workflows: 0, suites: [{ status: 'in_progress', latest_check_runs_count: 1 }] }));
+    expect(r.green).toBe(false);
   });
   it('keeps waiting (not green) when workflows exist but nothing has reported yet', async () => {
     const r = await call(octokit({ workflows: 2 }));
