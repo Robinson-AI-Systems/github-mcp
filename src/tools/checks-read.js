@@ -54,6 +54,12 @@ const WAIT_POLL_MS = 6000;
 // A repository with no workflows, no check suite on the commit and no required checks runs no CI at
 // all: say so instead of "still running" forever, once the commit is old enough for CI to have started.
 const overallOf = (state) => state.green === true ? 'green' : state.green === null ? 'unknown' : state.checks.some((c) => c.state === 'failure') ? 'red' : 'pending';
+// Owner feedback 2026-11-10: a roll-up check ("ci") reports only after every job has finished, so a job that had already failed
+// showed as the required check "missing" and the wait kept answering "still running" for minutes. A failed run while a required
+// check has not reported is returned at once, with the names, so the agent reads the log now instead of waiting.
+const EARLY_FAIL = new Set(['failure', 'timed_out', 'startup_failure']);
+const failedEarly = (state) => state.basis === 'required' && state.checks.some((c) => c.state === 'missing')
+  ? (state.all_runs ?? []).filter((r) => r.status === 'completed' && EARLY_FAIL.has(r.conclusion)).map((r) => r.name) : [];
 export const checkWait = defineRead({
   name: 'github_check_wait', area: 'check', audience: ['B', 'Op'],
   description: 'Wait up to 45 s for a PR\'s or commit\'s checks to finish; resumable.',
@@ -94,7 +100,7 @@ export const checkWait = defineRead({
         return { status: 'no_ci', done: true, overall: 'no_ci', reason: 'none_ran', head_sha: headSha, base_branch: baseBranch, waited_seconds: Math.round((now() - start) / 1000), polls, basis: state.basis, checks: [],
           next: `No check has run on this commit in the ${NONE_RAN_AFTER_MS / 60000} minutes since it was made, and none is required; this repository's workflows do not run for it (for example they are manual-only). There is nothing to wait for.` };
       const overall = overallOf(state);
-      if (overall !== 'pending' || now() + WAIT_POLL_MS > deadline) break;
+      if (overall !== 'pending' || failedEarly(state).length || now() + WAIT_POLL_MS > deadline) break;
       await sleep(Math.min(WAIT_POLL_MS, Math.max(0, deadline - now())));
     }
     const overall = overallOf(state);
@@ -102,15 +108,17 @@ export const checkWait = defineRead({
     const resume = { tool: 'github_check_wait', arguments: { ...(args.owner ? { owner: args.owner } : {}), repo: args.repo, ...(args.pr ? { pr: args.pr, expectedHeadSha: headSha } : { ref: headSha }) } };
     const running = state.checks.filter((c) => c.state === 'pending').map((c) => c.context);
     const notReported = state.checks.filter((c) => c.state === 'missing').map((c) => c.context);
+    const early = failedEarly(state);
     const next = overall === 'green' ? 'Every required check passed at this exact commit.'
       : overall === 'red' ? `A required check failed${running.length ? ' (others are still running)' : ''}. Read why with github_actions_get_run_logs_summary (pr or ref), fix it and push again.`
       : overall === 'unknown' ? `The check state could not be read: ${state.errors.join('; ')}. Waiting longer will not help until that read works.`
+      : early.length ? `Check run(s) already failed: ${early.slice(0, 5).join(', ')}. The required result is waiting on them and will most likely fail; read why now with github_actions_get_run_logs_summary (pr or ref) instead of waiting.`
       : `Checks are still running after ${waited} s${!running.length && notReported.length ? ' (required checks have not reported yet; CI usually starts within a minute of a push)' : ''}. Call github_check_wait again with resume.arguments; nothing has to be redone.`;
     return { status: overall === 'pending' ? 'still_running' : 'finished', done: overall !== 'pending', overall, head_sha: headSha, base_branch: baseBranch,
       waited_seconds: waited, polls, basis: state.basis,
       checks: state.checks.slice(0, 30).map((c) => ({ context: c.context, state: c.state })), check_runs: state.all_runs ?? [], ...(state.checks.length > 30 ? { checks_not_shown: state.checks.length - 30 } : {}),
       ...(running.length ? { still_running: running.slice(0, 20) } : {}), ...(notReported.length ? { not_reported_yet: notReported.slice(0, 20) } : {}), ...(state.problems.length ? { problems: state.problems.slice(0, 10) } : {}),
-      ...(state.errors.length ? { could_not_check: state.errors } : {}), next, ...(overall === 'pending' ? { resume } : {}) };
+      ...(early.length ? { failed_runs: early.slice(0, 10) } : {}), ...(state.errors.length ? { could_not_check: state.errors } : {}), next, ...(overall === 'pending' ? { resume } : {}) };
   })
 });
 

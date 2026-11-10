@@ -150,13 +150,23 @@ export const actionsGetRunLogsSummary = defineRead({
     let runId = args.runId; let found = null;
     if (runId === undefined) {
       found = await failedRunAt(octokit, owner, args.repo, args);
-      if (!found.failed.length) {
+      let pick = found.failed[0]?.id;
+      if (pick === undefined) {
+        // Owner feedback 2026-11-10: a run still in progress can already hold a failed job (the roll-up waits for the slowest job).
+        for (const r of found.runs.filter((x) => x.status !== 'completed').slice(0, 5)) {
+          try {
+            const js = (await octokit.request('GET /repos/{owner}/{repo}/actions/runs/{run_id}/jobs', { owner, repo: args.repo, run_id: r.id, filter: 'latest', per_page: 100 })).data.jobs ?? [];
+            if (js.some((j) => j.conclusion === 'failure')) { pick = r.id; break; }
+          } catch { /* keep looking; the note below stays truthful */ }
+        }
+      }
+      if (pick === undefined) {
         const running = found.runs.filter((r) => r.status !== 'completed').length;
         return { head_sha: found.sha, failed_jobs: [], runs_at_head: found.runs.length,
           note: !found.runs.length ? 'No workflow run has started at this commit yet; CI usually starts within a minute of a push (github_check_wait waits for it).'
             : running ? `No run has failed at this commit; ${running} run(s) are still in progress (github_check_wait waits for them).` : 'No workflow run failed at this commit.' };
       }
-      runId = found.failed[0].id;
+      runId = pick;
     }
     const p = { owner, repo: args.repo, run_id: runId };
     const { items: jobs, capped } = await listWrapped(octokit, 'GET /repos/{owner}/{repo}/actions/runs/{run_id}/jobs', { ...p, filter: 'latest' }, 'jobs', 100);
