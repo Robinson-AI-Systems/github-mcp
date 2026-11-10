@@ -113,19 +113,36 @@ describe('github_describe_tool', () => {
 });
 
 describe('unknown tool names suggest the right tool (owner feedback 2026-11-09)', () => {
-  it('points a guessed general-request name at the universal read tool', async () => {
+  it('suggests close visible names for a guessed tool and nothing for nonsense', async () => {
     const w = await world('everyday');
-    const r = await w.run('github_call', { name: 'github_api_request', args: {} });
+    const r = await w.run('github_call', { name: 'github_rest_get', args: {} });
     expect(r.isError).toBe(true);
-    expect(r.content[0].text).toContain('Unknown or unavailable');
     expect(r.content[0].text).toMatch(/Did you mean: [^?]*github_api_read/);
     const nothing = await w.run('github_call', { name: 'github_zzz_qqq', args: {} });
     expect(nothing.content[0].text).not.toContain('Did you mean');
   });
   it('never suggests a tool the connection cannot see', async () => {
     const low = await world('read_only');
-    const r = await low.run('github_call', { name: 'github_api_request', args: {} });
+    const r = await low.run('github_call', { name: 'github_rest_get', args: {} });
     expect(r.content[0].text).not.toContain('github_api_write');
+  });
+});
+
+describe('github_api_request is the common name for the read tool only (owner decision 2026-11-09)', () => {
+  it('describes and calls through the alias as github_api_read, and never reaches the write tool', async () => {
+    const w = await world('everyday');
+    const d = data(await w.run('github_describe_tool', { name: 'github_api_request' }));
+    expect(d.name).toBe('github_api_read');
+    // Same tool behind both names: the read tool's own validation answers either one.
+    const viaAlias = await w.run('github_call', { name: 'github_api_request', args: {} });
+    const direct = await w.run('github_call', { name: 'github_api_read', args: {} });
+    expect(viaAlias.isError).toBe(true);
+    expect(viaAlias.content[0].text).toBe(direct.content[0].text);
+    expect(viaAlias.content[0].text).not.toContain('Unknown or unavailable');
+    // A change operation sent through the alias is refused by the read tool, never run.
+    const write = await w.run('github_call', { name: 'github_api_request', args: { operation: 'POST /repos/{owner}/{repo}/issues', params: { owner: 'example-org', repo: 'hello', title: 'x' } } });
+    expect(write.isError).toBe(true);
+    expect(write.content[0].text).not.toMatch(/Unknown or unavailable/);
   });
 });
 

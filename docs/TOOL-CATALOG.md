@@ -3,6 +3,8 @@
 > **Current authority and parity remediation (2026-10-28):** [requirements](OWNER-DECISION-2026-10-27.md), [delivery plan](designs/AUTHORITY-PARITY-2026-10-28.md). Full owner writes disclose/execute/journal/verify in one call; explicit delegated restrictions remain. Older dated statements about owner caps, production ceremony and mandatory merge gates are superseded. Source delivery and live acceptance remain separate.
 # Tool catalog
 
+**Name alias (2026-11-09):** `github_api_request` is accepted as another name for `github_api_read` (read-only GET) in `github_call`, `github_describe_tool` and `github_batch`; no new tool, never reaches `github_api_write`.
+
 **Unknown tool names (2026-11-09):** `github_call` errors for an unknown or hidden tool add "Did you mean: …" with close visible names (a guessed `github_api_request` points at `github_api_read`, the general read-only GET tool).
 
 **Owner feedback 2026-11-09:** `github_workflow_pr_status` accepts `steps: true` and adds `ci_steps` (each CI job and step at the exact head with result and seconds); `github_actions_get_run` accepts `includeSteps`. A repository with no required checks, no statuses and no Actions workflows reports CI green with basis `no-checks-configured`, so `github_workflow_merge_when_green` no longer waits forever there. Git session keys that are in regular use renew quietly (8 hours from the last use, at most 7 days from creation). The `github_git_remote_setup` push note explains the harmless "push negotiation failed" warning.
