@@ -320,3 +320,5 @@ Chris's go-ahead and a design for the two-step flow.
   link near GitHub can replace it with two settings (`GIT_DIRECT_HOST`, `GIT_DIRECT_ORIGIN`) plus the same worker and a
   long-request TLS front. A chunked, resumable bundle push (each request under 60 s) is not needed while the front door
   carries long requests; it would only help on an exit that limits each connection.
+
+- REMOTE-V2 (2026-11-09 owner feedback): serve git protocol v2 for `git-upload-pack` on the git remote (domain and direct doors) so `push.negotiate` clients stop printing "push negotiation failed"; must keep the advertised-tips-only rule and be released with a worker redeploy.
