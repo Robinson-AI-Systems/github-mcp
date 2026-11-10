@@ -178,6 +178,14 @@ describe('item 1: github_check_wait', () => {
     const out = parse(await call(w, 'github_check_wait', { repo: 'hello', pr: 6, timeoutSeconds: 5 }));
     expect(out.next).toMatch(/CI usually starts within a minute/);
   });
+  it('returns at once when a check run has already failed while the required roll-up has not reported', async () => {
+    const w = await makeWorld({ advanceClockOnSleep: true });
+    routes(w.gh, [[run('check', 'completed', 'failure'), run('unit', 'in_progress', null, 2)]]);
+    const out = parse(await call(w, 'github_check_wait', { repo: 'hello', pr: 6 }));
+    expect(out).toMatchObject({ status: 'still_running', overall: 'pending', polls: 1, failed_runs: ['check'] });
+    expect(out.next).toMatch(/already failed: check.*github_actions_get_run_logs_summary/);
+    expect(w.gh.invalid).toEqual([]);
+  });
   it('needs exactly one of pr or ref', async () => {
     const w = await makeWorld();
     expect((await call(w, 'github_check_wait', { repo: 'hello' })).content[0].text).toMatch(/exactly one of pr/);
@@ -398,6 +406,19 @@ describe('items 6, 15, 17-20: results with the essentials', () => {
     expect(out).toMatchObject({ run_id: 55, head_sha: A });
     expect(out.failed_jobs[0].lines_before_failure.join('\n')).toMatch(/docs drift: TOOL-CATALOG.md lacks github_x/);
     expect((await call(w, 'github_actions_get_run_logs_summary', { repo: 'hello', runId: 55, ref: 'work' })).content[0].text).toMatch(/exactly one of runId/);
+    expect(w.gh.invalid).toEqual([]);
+  });
+  it('the run log summary explains a failed job in a run that is still in progress', async () => {
+    const w = await makeWorld();
+    w.gh.when('GET /repos/{owner}/{repo}/pulls/{pull_number}').reply(200, { number: 6, head: { ref: 'work', sha: A }, base: { ref: 'main' } });
+    w.gh.when('GET /repos/{owner}/{repo}/actions/runs').reply(200, { total_count: 1, workflow_runs: [{ id: 55, name: 'ci', status: 'in_progress', conclusion: null, head_sha: A }] });
+    w.gh.when('GET /repos/{owner}/{repo}/actions/runs/{run_id}/jobs').reply(200, { total_count: 2, jobs: [{ id: 9, name: 'check', status: 'completed', conclusion: 'failure', steps: [{ number: 5, name: 'Run check', conclusion: 'failure' }] }, { id: 10, name: 'unit', status: 'in_progress', conclusion: null, steps: [] }] });
+    w.gh.when('GET /repos/{owner}/{repo}/actions/runs/{run_id}/logs').reply(404, { message: 'Not Found' });
+    w.gh.when('GET /repos/{owner}/{repo}/actions/jobs/{job_id}/logs').reply(200, '2026-11-10T10:00:00.000Z Docs check failed: no PR card\n2026-11-10T10:00:01.000Z ##[error]Process completed with exit code 1.\n');
+    const out = parse(await call(w, 'github_actions_get_run_logs_summary', { repo: 'hello', pr: 6 }));
+    expect(out).toMatchObject({ run_id: 55, head_sha: A });
+    expect(out.failed_jobs.map((j) => j.name)).toEqual(['check']);
+    expect(JSON.stringify(out.failed_jobs[0])).toMatch(/Docs check failed: no PR card/);
     expect(w.gh.invalid).toEqual([]);
   });
   it('a job log window takes its own response field names back and hands over the next call', async () => {
