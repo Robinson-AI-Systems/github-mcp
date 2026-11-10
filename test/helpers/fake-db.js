@@ -127,6 +127,14 @@ export function createFakeDb({ clock = Date.now } = {}) {
       r.revoked_at = new Date(clock()); r.code_hash = null;
       return { id: r.id, connection: r.connection, owner: r.owner, repo: r.repo, access: r.access, revoked_at: r.revoked_at };
     },
+    // Same contract as src/db.js: quiet renewal, never shortening, capped from creation, at most one write per 30 minutes.
+    async renewGitRemoteKey(id, { windowHours, capDays }) {
+      const r = gitKeys.get(id);
+      if (!GIT_REMOTE_ID.test(id ?? '') || !r || !Number.isSafeInteger(windowHours) || windowHours < 1 || windowHours > 24 || !Number.isSafeInteger(capDays) || capDays < 1 || capDays > 30) return null;
+      const target = Math.min(r.created_at.getTime() + capDays * 86400000, clock() + windowHours * 3600000);
+      if (r.revoked_at || r.expires_at.getTime() <= clock() || r.expires_at.getTime() >= target || r.expires_at.getTime() >= clock() + windowHours * 3600000 - 1800000) return null;
+      r.expires_at = new Date(target); return r.expires_at;
+    },
     async recordGitRemoteUse({ keyId, service, outcome, detail = null, nonce = null }) {
       if (!GIT_REMOTE_ID.test(keyId ?? '') || !/^[a-z][a-z0-9_.:-]{0,40}$/.test(service ?? '') || !/^[a-z][a-z0-9_.:-]{0,60}$/.test(outcome ?? '')) throw new TypeError('Invalid git remote use.');
       if (nonce !== null && !/^[a-f0-9]{32}\.[a-z]{1,16}$/.test(nonce)) throw new TypeError('Invalid git remote nonce.');

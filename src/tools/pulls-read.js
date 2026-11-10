@@ -82,7 +82,7 @@ export const prGet = defineRead({
     ]);
     Object.assign(out, review);
     if (ci) {
-      out.checks = { green: ci.green, basis: ci.basis, items: ci.checks,strict_up_to_date:ci.strict_up_to_date,policy_sources:ci.policy_sources, ...(ci.problems.length ? { problems: ci.problems } : {}), ...(ci.errors.length ? { could_not_check: ci.errors } : {}), ...(ci.notes?.length ? { plan_limits: ci.notes } : {}) };
+      out.checks = { green: ci.green, basis: ci.basis, items: ci.checks, runs: ci.all_runs ?? [], strict_up_to_date:ci.strict_up_to_date,policy_sources:ci.policy_sources, ...(ci.problems.length ? { problems: ci.problems } : {}), ...(ci.errors.length ? { could_not_check: ci.errors } : {}), ...(ci.notes?.length ? { plan_limits: ci.notes } : {}) };
     }
     out.merge_diagnostics={strict_up_to_date:ci?.strict_up_to_date??null,policy_sources:ci?.policy_sources??[],
       head_sha:pr.head?.sha??null,test_merge_sha:pr.merge_commit_sha??null,state:'not_required'};
