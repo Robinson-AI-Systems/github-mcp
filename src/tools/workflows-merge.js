@@ -91,6 +91,12 @@ async function mergeOne(a,ctx){
       why=blockers(p,a.expectedHeadSha,r.default_branch,{override:a.overrideRules===true});
     }
   }
+  // Owner feedback 2026-11-10: a change sent without git showed checks that took ~7 minutes to start, and the answer was a
+  // bare "not_ready ... repair the listed conditions". Checks that have not started or are still running are not a fault to
+  // repair: say they are waiting and how to wait. A red check or any other blocker keeps the plain not_ready answer.
+  if(why.length===1&&why[0]===CI_NOT_GREEN&&p?.checks?.green===false&&!(p.checks.items??[]).some(x=>x.state==='failure'))
+    return reply({status:'checks_running',done:false,number:a.number,expected_head:a.expectedHeadSha,actual_head:p?.head_sha??null,blockers:why,
+      next:'Required checks have not finished at this head (not started yet, or still running; GitHub can take several minutes to start them). Nothing needs repairing. Call github_workflow_merge_when_green again with waitForChecks: true, or wait with github_check_wait.'});
   if(why.length)return reply({status:'not_ready',done:false,number:a.number,
     expected_head:a.expectedHeadSha,actual_head:p?.head_sha??null,
     blockers:why,next:'Repair the listed conditions, then re-read the exact PR.'});

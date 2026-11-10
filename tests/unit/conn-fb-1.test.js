@@ -252,6 +252,20 @@ describe('merge_when_green: waitForChecks and the stack sibling message', () => 
     expect(w.gh.calls.filter((c) => c.method === 'PUT')).toHaveLength(0);
     expect(w.gh.invalid).toEqual([]);
   });
+  it('without waitForChecks, checks that are still running are "checks_running", not a fault to repair', async () => {
+    const w = await makeWorld({ advanceClockOnSleep: true, profile: 'full' });
+    w.gh.when('GET /repos/{owner}/{repo}').reply(200, { default_branch: 'main', name: 'hello' });
+    w.gh.when('GET /repos/{owner}/{repo}/pulls/{pull_number}').reply(200, { number: 6, state: 'open', draft: false, merged: false, mergeable: true, head: { ref: 'work', sha: A }, base: { ref: 'main', sha: B } });
+    w.gh.when('POST /graphql').reply(200, { data: { repository: { pullRequest: { reviewDecision: null, reviewThreads: { totalCount: 0, pageInfo: { hasNextPage: false }, nodes: [] } } } } });
+    w.gh.when('GET /repos/{owner}/{repo}/rules/branches/{branch}').reply(200, []);
+    w.gh.when('GET /repos/{owner}/{repo}/branches/{branch}/protection/required_status_checks').reply(404, { message: 'Not Found' });
+    w.gh.when('GET /repos/{owner}/{repo}/commits/{ref}/check-runs').reply(200, { total_count: 1, check_runs: [{ id: 1, name: 'ci', status: 'in_progress', conclusion: null, started_at: '2026-11-02T10:00:00Z' }] });
+    w.gh.when('GET /repos/{owner}/{repo}/commits/{ref}/status').reply(200, { state: 'pending', statuses: [] });
+    const out = parse(await call(w, 'github_workflow_merge_when_green', { repo: 'hello', number: 6, expectedHeadSha: A, confirm: true }));
+    expect(out).toMatchObject({ status: 'checks_running', done: false });
+    expect(out.next).toMatch(/Nothing needs repairing/);
+    expect(w.gh.calls.filter((c) => c.method === 'PUT')).toHaveLength(0);
+  });
   it('explains a sibling PR in a stack list instead of only "chain is broken"', async () => {
     const w = await makeWorld({ profile: 'full' });
     w.gh.when('GET /repos/{owner}/{repo}').reply(200, { default_branch: 'main', name: 'hello' });
