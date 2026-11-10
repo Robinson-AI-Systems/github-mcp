@@ -44,3 +44,14 @@ describe('ciState: repository with no checks configured', () => {
     expect(r.green).toBe(false);
   });
 });
+
+describe('ciState: every check run with its duration', () => {
+  it('lists all runs (not only required ones) with seconds, so a roll-up pass can be checked', async () => {
+    const r = await call(octokit({ runs: [
+      { id: 1, name: 'unit', status: 'completed', conclusion: 'success', started_at: '2026-11-09T00:00:00Z', completed_at: '2026-11-09T00:00:41Z', app: { slug: 'github-actions' } },
+      { id: 2, name: 'test', status: 'completed', conclusion: 'success', started_at: '2026-11-09T00:00:50Z', completed_at: '2026-11-09T00:00:53Z', app: { slug: 'github-actions' } }] }));
+    expect(r.all_runs).toEqual([
+      { name: 'unit', status: 'completed', conclusion: 'success', seconds: 41, app: 'github-actions' },
+      { name: 'test', status: 'completed', conclusion: 'success', seconds: 3, app: 'github-actions' }]);
+  });
+});

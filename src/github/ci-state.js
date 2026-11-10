@@ -15,6 +15,12 @@ async function allCheckRuns(octokit, params) {
   return {items:runs,complete};
 }
 
+/** Every check run at the commit, briefly, with how long each took (owner feedback 2026-11-09: confirm a green result is real). */
+export function runBriefs(runs, max = 40) {
+  const secs = (a, b) => { const x = Date.parse(a ?? ''), y = Date.parse(b ?? ''); return Number.isFinite(x) && Number.isFinite(y) && y >= x ? Math.round((y - x) / 1000) : null; };
+  return (runs ?? []).slice(0, max).map((r) => ({ name: r.name, status: r.status, conclusion: r.conclusion ?? null, seconds: secs(r.started_at, r.completed_at), app: r.app?.slug ?? null }));
+}
+
 const PASSING = new Set(['success', 'neutral', 'skipped']);
 const FAILING = new Set(['failure', 'timed_out', 'cancelled', 'action_required', 'startup_failure', 'stale']);
 
@@ -128,10 +134,10 @@ export async function ciState(octokit, { owner, repo, baseBranch, headSha }) {
       : null;
     if (none?.ok && none.data === 0) {
       notes.push('This repository has no required checks and no GitHub Actions workflows, so no check can ever report; there is nothing to wait for. Review, conflict and threads are still enforced.');
-      return { green: errors.length ? null : true, known: errors.length === 0, basis: 'no-checks-configured', checks, problems: [], notes, errors, strict_up_to_date, policy_sources };
+      return { green: errors.length ? null : true, known: errors.length === 0, basis: 'no-checks-configured', checks, problems: [], notes, errors, strict_up_to_date, policy_sources, all_runs: [] };
     }
     problems.push('no checks have reported on this commit yet; CI usually starts within a minute of a push (github_check_wait waits for it)');
   }
   // Any read that failed means the answer is unknown, never green.
-  return { green: errors.length ? null : problems.length === 0, known: errors.length === 0, basis, checks, problems, notes, errors,strict_up_to_date,policy_sources };
+  return { green: errors.length ? null : problems.length === 0, known: errors.length === 0, basis, checks, problems, notes, errors,strict_up_to_date,policy_sources, all_runs: runBriefs(runs) };
 }

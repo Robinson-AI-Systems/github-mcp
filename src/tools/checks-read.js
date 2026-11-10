@@ -128,7 +128,7 @@ export const checkWait = defineRead({
       : `Checks are still running after ${waited} s${!running.length && notReported.length ? ' (required checks have not reported yet; CI usually starts within a minute of a push)' : ''}. Call github_check_wait again with resume.arguments; nothing has to be redone.`;
     return { status: overall === 'pending' ? 'still_running' : 'finished', done: overall !== 'pending', overall, head_sha: headSha, base_branch: baseBranch,
       waited_seconds: waited, polls, basis: state.basis,
-      checks: state.checks.slice(0, 30).map((c) => ({ context: c.context, state: c.state })), ...(state.checks.length > 30 ? { checks_not_shown: state.checks.length - 30 } : {}),
+      checks: state.checks.slice(0, 30).map((c) => ({ context: c.context, state: c.state })), check_runs: state.all_runs ?? [], ...(state.checks.length > 30 ? { checks_not_shown: state.checks.length - 30 } : {}),
       ...(running.length ? { still_running: running.slice(0, 20) } : {}), ...(notReported.length ? { not_reported_yet: notReported.slice(0, 20) } : {}), ...(state.problems.length ? { problems: state.problems.slice(0, 10) } : {}),
       ...(state.errors.length ? { could_not_check: state.errors } : {}), next, ...(overall === 'pending' ? { resume } : {}) };
   })
