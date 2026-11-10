@@ -616,6 +616,21 @@ export function createDb(sql = productionSql()) {
       if (outcome === 'allowed') await sql`UPDATE git_remote_keys SET last_used_at = now(), uses = uses + 1 WHERE id = ${keyId}`;
       return true;
     },
+    /**
+     * Quiet renewal (owner feedback 2026-11-09: a key expired mid-work). A key that is really being used keeps working: its
+     * expiry moves out to `windowHours` from now, never earlier than it already was and never past `capDays` after the key was
+     * created. A revoked or already-expired key is not renewed. Returns the new expiry, or null when nothing changed.
+     */
+    async renewGitRemoteKey(id, { windowHours, capDays }) {
+      if (!GIT_REMOTE_ID.test(id ?? '') || !Number.isSafeInteger(windowHours) || windowHours < 1 || windowHours > 24 || !Number.isSafeInteger(capDays) || capDays < 1 || capDays > 30) return null;
+      const rows = await sql`UPDATE git_remote_keys
+        SET expires_at = LEAST(created_at + make_interval(days => ${capDays}), now() + make_interval(hours => ${windowHours}))
+        WHERE id = ${id} AND revoked_at IS NULL AND expires_at > now()
+          AND expires_at < LEAST(created_at + make_interval(days => ${capDays}), now() + make_interval(hours => ${windowHours}))
+          AND expires_at < now() + make_interval(hours => ${windowHours}) - interval '30 minutes'
+        RETURNING expires_at`;
+      return rows[0]?.expires_at ?? null;
+    },
     async listGitRemoteUses(keyId, { limit = 50 } = {}) {
       if (!GIT_REMOTE_ID.test(keyId ?? '') || !Number.isSafeInteger(limit) || limit < 1 || limit > 200) return [];
       return sql`SELECT key_id, at, service, outcome, detail FROM git_remote_uses WHERE key_id = ${keyId} ORDER BY id DESC LIMIT ${limit}`;

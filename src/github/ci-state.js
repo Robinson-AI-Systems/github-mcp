@@ -119,7 +119,19 @@ export async function ciState(octokit, { owner, repo, baseBranch, headSha }) {
     checks = [...names.map((context) => evaluate({ context, appId: null })), ...(statuses ?? []).filter((s) => !names.includes(s.context)).map((s) => ({ context: s.context, state: statusState(s.state), source: 'status' }))];
   }
   const problems = checks.filter((c) => c.state !== 'success').map((c) => `${c.context}: ${c.state}`);
-  if (!checks.length) problems.push('no checks have reported on this commit yet; CI usually starts within a minute of a push (github_check_wait waits for it)');
+  if (!checks.length) {
+    // A repository with nothing required, no commit statuses and no GitHub Actions workflow at all can never report a check, so
+    // "wait for CI" would last forever. GitHub's own merge box allows such a merge. Only a successful read that proves zero
+    // workflows counts; a failed read or any existing workflow keeps the careful "not reported yet" answer.
+    const none = basis === 'all-checks' && !errors.length && (statuses ?? []).length === 0
+      ? await tryRead(async () => (await octokit.request('GET /repos/{owner}/{repo}/actions/workflows', { ...p, per_page: 1 })).data.total_count)
+      : null;
+    if (none?.ok && none.data === 0) {
+      notes.push('This repository has no required checks and no GitHub Actions workflows, so no check can ever report; there is nothing to wait for. Review, conflict and threads are still enforced.');
+      return { green: errors.length ? null : true, known: errors.length === 0, basis: 'no-checks-configured', checks, problems: [], notes, errors, strict_up_to_date, policy_sources };
+    }
+    problems.push('no checks have reported on this commit yet; CI usually starts within a minute of a push (github_check_wait waits for it)');
+  }
   // Any read that failed means the answer is unknown, never green.
   return { green: errors.length ? null : problems.length === 0, known: errors.length === 0, basis, checks, problems, notes, errors,strict_up_to_date,policy_sources };
 }

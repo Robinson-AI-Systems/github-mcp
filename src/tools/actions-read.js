@@ -28,6 +28,11 @@ const jobBrief = (j) => ({ id: j.id, name: j.name, status: j.status, conclusion:
   failed_steps: (j.steps ?? []).filter((s) => s.conclusion === 'failure').map((s) => ({ number: s.number, name: s.name })), html_url: j.html_url,
   check_run_id: /\/check-runs\/(\d+)$/.test(j.check_run_url ?? '') ? Number(j.check_run_url.match(/\/check-runs\/(\d+)$/)[1]) : null });
 
+// Owner feedback 2026-11-09: a pass in about 40 seconds looked too fast and there was no way to see what actually ran.
+const secondsBetween = (a, b) => { const x = Date.parse(a ?? ''), y = Date.parse(b ?? ''); return Number.isFinite(x) && Number.isFinite(y) && y >= x ? Math.round((y - x) / 1000) : null; };
+const stepBrief = (s) => ({ number: s.number, name: s.name, status: s.status, conclusion: s.conclusion, seconds: secondsBetween(s.started_at, s.completed_at) });
+const jobWithSteps = (j) => ({ ...jobBrief(j), seconds: secondsBetween(j.started_at, j.completed_at), steps: (j.steps ?? []).slice(0, 60).map(stepBrief), ...((j.steps ?? []).length > 60 ? { steps_cut: true } : {}) });
+
 export const actionsListWorkflows = defineRead({
   name: 'github_actions_list_workflows', area: 'actions', audience: ['B', 'Op'], summaryType: 'workflow',
   description: 'Workflows of a repository with their state and file path.',
@@ -59,14 +64,14 @@ export const actionsListRuns = defineRead({
 export const actionsGetRun = defineRead({
   name: 'github_actions_get_run', area: 'actions', audience: ['B', 'Op'],
   description: 'One workflow run: status, conclusion, attempt, timing, and every job with its failed steps.',
-  properties: { owner: OWNER, repo: REPO, runId: RUN }, required: ['repo', 'runId'],
+  properties: { owner: OWNER, repo: REPO, runId: RUN, includeSteps: { type: 'boolean', description: 'Also list every step of every job with its result and seconds.' } }, required: ['repo', 'runId'],
   handler: (args, ctx) => plain(async () => {
     const { owner, octokit } = await readerFor(args, ctx);
     const p = { owner, repo: args.repo, run_id: args.runId };
     const run = (await octokit.request('GET /repos/{owner}/{repo}/actions/runs/{run_id}', p)).data;
     const { items: jobs, capped } = await listWrapped(octokit, 'GET /repos/{owner}/{repo}/actions/runs/{run_id}/jobs', { ...p, filter: 'latest' }, 'jobs', 100);
     return { id: run.id, workflow_id: run.workflow_id, path: run.path, jobs_complete: !capped, name: run.name, title: run.display_title, event: run.event, status: run.status, conclusion: run.conclusion, branch: run.head_branch, head_sha: run.head_sha,
-      run_number: run.run_number, run_attempt: run.run_attempt, actor: run.actor?.login, created_at: run.created_at, updated_at: run.updated_at, html_url: run.html_url, jobs: jobs.map(jobBrief) };
+      run_number: run.run_number, run_attempt: run.run_attempt, actor: run.actor?.login, created_at: run.created_at, updated_at: run.updated_at, html_url: run.html_url, jobs: jobs.map(args.includeSteps === true ? jobWithSteps : jobBrief) };
   })
 });
 

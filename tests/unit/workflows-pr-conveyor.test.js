@@ -42,6 +42,31 @@ const body=r=>r.structuredContent;
 const writes=x=>x.calls.filter(c=>['github_pr_create','github_pr_merge','github_pr_update',
   'github_issue_set_labels'].includes(c.name));
 
+describe('PR status step detail (owner feedback 2026-11-09)',()=>{
+  const runs={items:[{id:77,head_sha:A},{id:78,head_sha:B}],count:2};
+  const run={id:77,name:'ci',status:'completed',conclusion:'success',run_attempt:1,
+    jobs:[{name:'test',conclusion:'success',seconds:38,steps:[{number:1,name:'Run tests',conclusion:'success',seconds:31}]}]};
+  it('lists each job and step at the exact head only when asked',async()=>{
+    const f=fixture({extra:{github_actions_list_runs:runs,github_actions_get_run:run}});
+    const plain=(await prWorkflows.github_workflow_pr_status({repo:'app',number:4},f.ctx));
+    expect(plain.ci_steps).toBeUndefined();
+    expect(f.calls.some(c=>c.name==='github_actions_get_run')).toBe(false);
+    const f2=fixture({extra:{github_actions_list_runs:runs,github_actions_get_run:run}});
+    const full=(await prWorkflows.github_workflow_pr_status({repo:'app',number:4,steps:true},f2.ctx));
+    expect(full.ci_steps).toMatchObject({status:'observed',head_sha:A,untrusted:true});
+    expect(full.ci_steps.runs).toHaveLength(1); // the run for another head is ignored
+    expect(full.ci_steps.runs[0].jobs[0].steps[0]).toMatchObject({name:'Run tests',seconds:31});
+    expect(f2.calls.find(c=>c.name==='github_actions_get_run').args).toMatchObject({runId:77,includeSteps:true});
+    expect(f2.calls.find(c=>c.name==='github_actions_list_runs').args).toMatchObject({headSha:A});
+  });
+  it('says plainly when no run exists at the head or the read fails',async()=>{
+    const none=fixture({extra:{github_actions_list_runs:{items:[],count:0}}});
+    expect((await prWorkflows.github_workflow_pr_status({repo:'app',number:4,steps:true},none.ctx)).ci_steps.status).toBe('none');
+    const bad=fixture({extra:{github_actions_list_runs:null}});
+    expect((await prWorkflows.github_workflow_pr_status({repo:'app',number:4,steps:true},bad.ctx)).ci_steps.status).toBe('unavailable');
+  });
+});
+
 describe('W-1 full PR status and resumable guarded open',()=>{
   it('registers both approved workflows with correct read-versus-change marks',()=>{
     for(const name of ['github_workflow_pr_status','github_workflow_open_pr',
