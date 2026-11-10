@@ -43,7 +43,9 @@ describe('the home page', () => {
     expect(html).toContain(`<code class="addr" id="address">${ORIGIN}/api/mcp</code>`);
     expect(html).toContain('GitHub Unleashed is a Robinson AI Systems product. It is not affiliated with, endorsed by, or sponsored by GitHub.');
     expect(html).toContain('/brand/unleashed-github.png');
-    for (const word of ['<h2>Claude (web, desktop and phone app)</h2>', '<h2>ChatGPT</h2>', '<h2>Claude Code</h2>', '<h2>Cursor</h2>', '<h2>VS Code</h2>']) expect(html).toContain(word);
+    for (const word of ['<h2>Claude (web, desktop and phone app)</h2>', '<h2>ChatGPT</h2>', '<h2>Claude Code</h2>', '<h2>Cursor</h2>', '<h2>VS Code</h2>', '<h2>OpenAI Codex (and the ChatGPT desktop app)</h2>', '<h2>Gemini CLI</h2>', '<h2>Windsurf</h2>', '<h2>Any other app</h2>', '<h2>How connecting works</h2>']) expect(html).toContain(word);
+    expect(html.indexOf('How connecting works')).toBeLessThan(html.indexOf('id="connect"'));
+    expect(html.indexOf('<h2>Any other app</h2>')).toBeLessThan(html.indexOf('id="whole-repository"'));
     expect(html).toContain(`claude mcp add --transport http github-robinson ${ORIGIN}/api/mcp`);
     expect(html).not.toMatch(/<script/i);
     for (const page of ['/connection', '/limits', '/privacy', '/terms', '/security', '/support']) expect(html).toContain(`href="${page}"`);

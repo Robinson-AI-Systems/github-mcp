@@ -24,8 +24,11 @@ export function renderHome(origin = 'https://github.robinsonaisystems.com') {
 <li>Read-only mode prevents all changes. Sensitive changes involving production, access, notifications or spending require preview and confirmation; routine permitted changes may execute directly.</li>
 <li>Free. You can disconnect and delete your data at any time.</li></ul>
 <p><small>${h(BRAND.disclaimer)}</small></p>
+<section id="start"><h2>How connecting works</h2><ol><li><a href="#connect">Add the address below</a> to your AI app.</li><li>Your app opens GitHub's own sign-in. Sign in to <b>your</b> GitHub account and choose which repositories the app may reach. We never see or ask for your GitHub password.</li><li>On the last page, choose how much the app may do, then approve.</li></ol>
+<p><small>Later, <a href="/connection">My connection</a> is where you change what an app may do, switch to read-only, or disconnect.</small></p></section>
 <section id="connect"><h2>Connect your AI app</h2><p>Paste this address into your AI app when it asks for a server or connector address:</p>
 <code class="addr" id="address">${address}</code>
+<p><small>Leave any Client ID and Client Secret boxes blank (Muse is the one exception, below).</small></p>
 <!-- Steps below checked on 2026-10-24 against each client's official documentation:
   Claude: https://www.claude.com/docs/connectors/custom/remote-mcp (Claude can add a connector from its phone app, confirmed by the owner 2026-10-24 and 2026-10-30; Customize > Connectors > Add custom connector > paste the URL > Add > Connect).
   ChatGPT: https://developers.openai.com/api/docs/guides/custom-mcp-server (ChatGPT cannot add one from its phone app: add it in the phone's web browser, then use it in the app, owner 2026-10-30. ChatGPT Plugins > plus > Add custom MCP server > name and URL > OAuth > confirm > Create as a plugin; install it before use).
@@ -33,11 +36,11 @@ export function renderHome(origin = 'https://github.robinsonaisystems.com') {
   Cursor: https://cursor.com/docs/context/mcp (.cursor/mcp.json or ~/.cursor/mcp.json, "mcpServers" with a "url").
   VS Code: https://code.visualstudio.com/docs/copilot/reference/mcp-configuration (.vscode/mcp.json, "servers" with "type": "http" and "url").
   Meta Muse Code: https://dev.meta.ai/docs/muse-code/extending (streamable_http and muse mcp login).
-  Meta Muse personal assistant: https://about.fb.com/news/2026/09/introducing-muse-small-business/ (custom connectors); https://platform.muse.ai/docs (Meta catalog review). -->
-<h2>Claude (web, desktop and phone app)</h2><ol><li>Open Claude on the web, or in the desktop or phone app, and go to <b>Customize</b>, then <b>Connectors</b>.</li><li>Choose <b>Add custom connector</b> and paste the address above.</li><li>Choose <b>Add</b>, then <b>Connect</b>, and sign in with GitHub.</li></ol>
+  Meta Muse personal assistant: https://about.fb.com/news/2026/09/introducing-muse-small-business/ (custom connectors); https://platform.muse.ai/docs (Meta catalog review).
+  Added 2026-11-10, checked against current docs: OpenAI Codex https://developers.openai.com/codex/mcp (codex mcp add NAME --url URL; codex mcp login NAME; desktop app Settings > MCP servers > Add server > Streamable HTTP > Authenticate).
+  Gemini CLI https://google-gemini.github.io/gemini-cli/docs/tools/mcp-server.html (gemini mcp add --transport http; /mcp auth NAME). Windsurf mcp_config.json "serverUrl". -->
+<h2>Claude (web, desktop and phone app)</h2><ol><li>Open Claude on the web, or in the desktop or phone app, and go to <b>Settings</b> (called <b>Customize</b> in some versions), then <b>Connectors</b>.</li><li>Choose <b>+</b> or <b>Add</b>, then <b>Add custom connector</b>, give it a name and paste the address above.</li><li>Choose <b>Add</b>, then <b>Connect</b>, and sign in with GitHub.</li></ol>
 <p><small>On a team or company plan, an owner adds it first under Organization settings, then members choose Connect.</small></p>
-<h2 id="whole-repository">Downloading or uploading a whole repository</h2><p>Ask your AI to download a repository (the <code>github_repo_download</code> tool). It gets a one-time <code>git clone</code> or download command on <code>${h(new URL(origin).hostname)}</code>, the same address for every repository and every transfer. If the command fails because your AI's sandbox cannot reach that address (for example "host not allowed", a 403 from a proxy, or a DNS error), add <b>${h(new URL(origin).hostname)}</b> once to your AI's network allowlist (in Claude: the Capabilities / network access allowed-domains setting), then ask again. Nothing is lost: an unused link simply expires.</p>
-<h2 id="plain-git">Plain git clone, pull and push</h2><p>An AI that can run commands (Claude Code, Codex, a Claude sandbox) can use normal git with your repositories here: ask it to set up the git remote (the <code>github_git_remote_setup</code> tool). It runs one setup command once, then uses <code>git clone https://${h(new URL(origin).hostname)}/git/&lt;owner&gt;/&lt;repository&gt;.git</code>, <code>git pull</code> and <code>git push</code>. You do nothing else. Your GitHub sign-in never leaves this service: git gets a key for that one repository, which ends by itself (after 8 hours unless you ask for up to 24) and which you can cancel any time on <a href="/connection">My connection</a>. Pushes get the same checks as every other change (GitHub's branch rules, secret scanning, the change log). Same one address to allow as above.</p>
 <h2>ChatGPT</h2><p><small>On a phone, add it from the phone's web browser at chatgpt.com. Once added, you can use it in the ChatGPT app too.</small></p><ol><li>Open ChatGPT on the web and go to <b>Plugins</b>.</li><li>Choose the plus button, then <b>Add custom MCP server</b>.</li><li>Enter a name and paste the address above. For authentication choose <b>OAuth</b>.</li><li>Confirm the warning, choose <b>Create as a plugin</b>, then install it and sign in with GitHub.</li></ol>
 <h2>Claude Code</h2><pre>claude mcp add --transport http github-robinson ${address}</pre><p><small>Then type /mcp inside Claude Code and sign in.</small></p>
 <h2>Cursor</h2><p>Add this to <code>.cursor/mcp.json</code> (or <code>~/.cursor/mcp.json</code>), then sign in when asked:</p>
@@ -81,7 +84,20 @@ Once connected, show my tools; make changes only after I ask.</pre>
   "servers": {
     "github-robinson": { "type": "http", "url": "${address}" }
   }
-}</pre></section>
+}</pre><p><small>Or run <b>MCP: Add Server</b> from the Command Palette, choose <b>HTTP</b> and paste the address.</small></p>
+<h2>OpenAI Codex (and the ChatGPT desktop app)</h2><pre>codex mcp add github-robinson --url ${address}
+codex mcp login github-robinson</pre><p><small>In the desktop app instead: <b>Settings</b>, <b>MCP servers</b>, <b>Add server</b>, choose <b>Streamable HTTP</b>, paste the address, save, then <b>Authenticate</b>.</small></p>
+<h2>Gemini CLI</h2><pre>gemini mcp add --transport http --scope user github-robinson ${address}</pre><p><small>Then start <code>gemini</code> and type <code>/mcp auth github-robinson</code> to sign in.</small></p>
+<h2>Windsurf</h2><p>In <b>Windsurf Settings</b>, <b>Cascade</b>, <b>MCP servers</b>, choose <b>View raw config</b> and add:</p><pre>{
+  "mcpServers": {
+    "github-robinson": { "serverUrl": "${address}" }
+  }
+}</pre><p><small>Save and refresh; Windsurf opens the GitHub sign-in.</small></p>
+<h2>Any other app</h2><p>Any app that can add a remote MCP server with sign-in (OAuth) works: paste the address and sign in with GitHub.</p></section>
+<section id="for-agents"><h2>For AIs that run commands</h2>
+<h3 id="whole-repository">Downloading or uploading a whole repository</h3><p>Ask your AI to download a repository (the <code>github_repo_download</code> tool). It gets a one-time <code>git clone</code> or download command on <code>${h(new URL(origin).hostname)}</code>, the same address for every repository and every transfer. If the command fails because your AI's sandbox cannot reach that address (for example "host not allowed", a 403 from a proxy, or a DNS error), add <b>${h(new URL(origin).hostname)}</b> once to your AI's network allowlist (in Claude: the Capabilities / network access allowed-domains setting), then ask again. Nothing is lost: an unused link simply expires.</p>
+<h3 id="plain-git">Plain git clone, pull and push</h3><p>An AI that can run commands (Claude Code, Codex, a Claude sandbox) can use normal git with your repositories here: ask it to set up the git remote (the <code>github_git_remote_setup</code> tool). It runs one setup command once, then uses <code>git clone https://${h(new URL(origin).hostname)}/git/&lt;owner&gt;/&lt;repository&gt;.git</code>, <code>git pull</code> and <code>git push</code>. You do nothing else. Your GitHub sign-in never leaves this service: git gets a key for that one repository, which ends by itself (after 8 hours unless you ask for up to 24) and which you can cancel any time on <a href="/connection">My connection</a>. Pushes get the same checks as every other change (GitHub's branch rules, secret scanning, the change log). Same one address to allow as above.</p>
+</section>
 <section><h2>Already connected?</h2><a class="button" href="/connection">Open My connection</a>
 <ul class="links"><li><a href="/limits">Free use limits</a></li><li><a href="/privacy">Privacy</a></li><li><a href="/terms">Terms</a></li><li><a href="/security">Security</a></li><li><a href="/support">Support</a></li></ul></section>
 ${brandFooter()}</main></body></html>`;
