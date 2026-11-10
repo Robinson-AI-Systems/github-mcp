@@ -97,6 +97,9 @@ export async function poolStatus(ctx, { call = callNativeWorker } = {}) {
 }
 
 const BUSY = 'All workspace hosts are busy or paused; try again in a minute. No operation was started (nothing was cloned).';
+// Owner feedback 2026-11-10: with the worker down the refusal still said "busy or paused; try again in a minute", which
+// sent an agent waiting for 20 minutes. When no host answered at all, say so and name the routes that need no worker.
+const UNREACHABLE = 'No workspace host answered (the worker may be off or restarting); try again in a minute. No operation was started. If it stays down, github_content_push_files, github_pr_create and github_workflow_merge_when_green need no worker.';
 const UPDATE = 'Update the native Git worker to resource-based admission before opening a new workspace.';
 const DOWNLOAD_UPDATE = 'The native Git worker must be updated before direct downloads work. No clone was sent.';
 /** The plain refusal when no host can take new work: retryable unless every host only needs an update. */
@@ -105,9 +108,10 @@ export function poolRefusal(tried, { download = false } = {}) {
  if (states.length && states.every(s => s === 'update_required'))
   return Object.assign(new TypeError(download ? DOWNLOAD_UPDATE : UPDATE), { safeMessage: true, safeCode: 'native_worker_update_required', noOperationStarted: true, nativeNoOperationStarted: true });
  const detail = tried.length ? ' Hosts: ' + tried.map(t => `${t.name} ${t.state}${t.reason ? ' (' + t.reason + ')' : ''}`).join(', ') + '.' : '';
+ const none = states.length > 0 && states.every(s => s === 'unavailable' || s === 'disabled');
  // A one-host pool keeps its earlier reason code for resource pressure (agents already branch on it).
  const code = tried.length === 1 && states[0] === 'busy' ? 'native_resource_pressure' : 'native_hosts_busy';
- return Object.assign(new TypeError((BUSY + detail).slice(0, 600)), { safeMessage: true, safeCode: code, safeRetryable: true, status: 503,
+ return Object.assign(new TypeError(((none ? UNREACHABLE : BUSY) + detail).slice(0, 600)), { safeMessage: true, safeCode: code, safeRetryable: true, status: 503,
   noOperationStarted: true, nativeNoOperationStarted: true, outcomeDetails: { no_operation_started: true, hosts: tried.slice(0, 16) } });
 }
 
