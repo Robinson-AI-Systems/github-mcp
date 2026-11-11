@@ -53,8 +53,10 @@ describe('PLAY-3 update application and rollback', () => {
     const r = await applyUpdate({dir: d, ad: envelope(release()), controlKey, currentVersion: 'fleet-agent/1', fetchImpl: fetchBundle, isIdle: () => true, unpack: unpackOk, log: () => {}});
     expect(r).toMatchObject({applied: true, version: 'fleet-agent/2', previous: 'fleet-agent/1'});
     expect(await readPointer(d)).toBe('fleet-agent/2');
-    const {readdir} = await import('node:fs/promises');
-    expect((await readdir(join(d, 'agent-versions'))).sort()).toEqual(['current', 'fleet-agent/1', 'fleet-agent/2']);
+    const {stat} = await import('node:fs/promises');
+    // Payloads nest by version string: agent-versions/fleet-agent/<n>.
+    expect((await stat(join(d, 'agent-versions', 'fleet-agent', '1'))).isDirectory()).toBe(true);
+    expect((await stat(join(d, 'agent-versions', 'fleet-agent', '2', 'agent.mjs'))).isFile()).toBe(true);
   });
   it('refuses a bundle whose bytes do not match the signed hash', async () => {
     const d = await dir();

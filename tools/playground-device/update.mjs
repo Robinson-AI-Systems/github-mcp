@@ -69,7 +69,18 @@ export async function flipPointer(dir, version) {
   await rename(tmp, pointerPath(dir)); // atomic on the same filesystem
 }
 export async function listVersions(dir) {
-  try { return (await readdir(versionsDir(dir), {withFileTypes: true})).filter(e => e.isDirectory() && parseVersion(e.name)).map(e => e.name); } catch { return []; }
+  // Version strings may contain a slash ('fleet-agent/2'), so a payload
+  // directory can nest (agent-versions/fleet-agent/2). A directory counts
+  // as a payload when it directly holds agent.mjs; walk up to 3 levels.
+  const found = [];
+  async function walk(abs, rel, depth) {
+    let entries; try { entries = await readdir(abs, {withFileTypes: true}); } catch { return; }
+    if (rel && entries.some(e => e.isFile() && e.name === 'agent.mjs') && parseVersion(rel)) { found.push(rel); return; }
+    if (depth >= 3) return;
+    for (const e of entries) if (e.isDirectory()) await walk(join(abs, e.name), rel ? rel + '/' + e.name : e.name, depth + 1);
+  }
+  await walk(versionsDir(dir), '', 0);
+  return found;
 }
 
 function defaultExec(cmd, args, {timeoutMs = 120000} = {}) {
