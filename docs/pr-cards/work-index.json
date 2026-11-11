@@ -3675,6 +3675,26 @@
       ],
       "readiness": "READY",
       "ownerInputs": []
+    },
+    {
+      "id": "WORKER-RESOLV-GUARD-1",
+      "title": "PC native Git worker never runs silently with a broken resolver: the worker's own timed egress verdict in signed capabilities and on /health, github_server_status down on that verdict, and a PC-kit guard that probes in-container every 2 min and heals a poisoned resolv.conf capture (restart, then recreate) at a job boundary on the auto-updater's drain rule",
+      "batch": "FIN",
+      "design": "docs/pr-cards/WORKER-RESOLV-GUARD-1.md",
+      "dependencies": [
+        "PC-WORKER-1",
+        "WORKER-AUTOUPDATE-1",
+        "SRV-STATUS-1"
+      ],
+      "card": "docs/pr-cards/WORKER-RESOLV-GUARD-1.md",
+      "status": "IN_PROGRESS",
+      "migration": "none (guard state in /srv/robinson-git/resolv-guard/ on the PC)",
+      "budget": 900,
+      "units": [
+        "WORKER-RESOLV-GUARD-1"
+      ],
+      "readiness": "READY",
+      "ownerInputs": []
     }
   ],
   "gatewayBoundary": {

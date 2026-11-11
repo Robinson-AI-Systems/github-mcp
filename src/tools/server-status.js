@@ -108,6 +108,18 @@ function stamp(at, source) {
   return { local: formatLocal(date), utc: date.toISOString().replace('.000Z', 'Z'), zone: currentZone(), source, source_note: SOURCE_NOTE[source] };
 }
 
+/**
+ * WORKER-RESOLV-GUARD-1: the worker's own timed resolver verdict, reduced to a status and a
+ * round-trip time (never a resolved address). Workers built before the guard report no
+ * egress field at all; that stays null here and the health check treats it as unknown,
+ * never as a failure — the older build already draws the "redeploy the worker" warning.
+ */
+function egressView(cap) {
+  const egress = cap?.egress;
+  if (!egress || typeof egress !== 'object' || !['ok', 'down', 'unknown'].includes(egress.status)) return null;
+  return { status: egress.status, ms: Number.isSafeInteger(egress.ms) ? egress.ms : null };
+}
+
 /** The native Git worker's signed capabilities, reduced to versions and switch names (never its addresses or key). */
 function workerView(cap) {
   const features = {};
@@ -119,6 +131,7 @@ function workerView(cap) {
     native_options: typeof cap.native_options === 'string' ? cap.native_options : null,
     capacity_mode: typeof cap.capacity_mode === 'string' ? cap.capacity_mode : null,
     admission: cap.admission && typeof cap.admission === 'object' ? (cap.admission.allowed === false ? 'busy' : 'open') : null,
+    egress: egressView(cap),
     features
   };
 }
@@ -141,6 +154,13 @@ async function checkWorker(ctx, env, budget, slow) {
   if (r.timeout) return { check: { status: 'down', reason: `The native Git worker did not answer within ${Math.round(budget / 1000)} s.` }, cap: null };
   if (r.error || !r.value || typeof r.value !== 'object') return { check: { status: 'down', reason: 'The native Git worker could not be reached or refused the signed check.' }, cap: null };
   if (r.value.ready !== true) return { check: { status: 'degraded', ms, reason: 'The native Git worker answered but is not ready.' }, cap: r.value };
+  // WORKER-RESOLV-GUARD-1: a worker that answers but cannot resolve GitHub from its own
+  // network is down for the only job it has, however healthy its loopback looks. The
+  // verdict is the worker's own timed probe (2500 ms per name), reported in its signed
+  // capabilities; a worker that reports no verdict yet ('unknown' or an older build)
+  // is not failed on a check it has not run.
+  const egress = egressView(r.value);
+  if (egress?.status === 'down') return { check: { status: 'down', ms, egress, reason: 'The native Git worker answered, but its own timed resolver check cannot resolve github.com and api.github.com, so clones and pushes would fail: the worker\'s resolver is not working.' }, cap: r.value };
   return { check: ms > slow.worker ? { status: 'degraded', ms, reason: 'The native Git worker answered, but slowly.' } : { status: 'ok', ms }, cap: r.value };
 }
 
@@ -315,7 +335,7 @@ export async function serverStatus(args, ctx, { budgetMs = STATUS_BUDGET_MS, slo
   if (want.has('workers')) {
     const nativeGit = workerFacts
       ? { protocol: workerFacts.protocol, build_commit: short(workerFacts.build_commit) ?? 'not reported', features: full ? workerFacts.features : Object.keys(workerFacts.features),
-          ...(full ? { native_options: workerFacts.native_options, capacity_mode: workerFacts.capacity_mode, admission: workerFacts.admission } : {}) }
+          ...(full ? { native_options: workerFacts.native_options, capacity_mode: workerFacts.capacity_mode, admission: workerFacts.admission, ...(workerFacts.egress ? { egress: workerFacts.egress } : {}) } : {}) }
       : { available: false };
     const runtime = image.source === 'release_tag'
       ? { tag: image.tag, digest: image.digest && !full ? `${image.digest.slice(0, 19)}…` : image.digest, published: image.published, ...(image.lookup ? { lookup: image.lookup } : {}) }
