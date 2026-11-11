@@ -3659,6 +3659,22 @@
       ],
       "readiness": "READY",
       "ownerInputs": []
+    },
+    {
+      "id": "SWEEP-ORPHAN-1",
+      "title": "Sweep retires cleanup-requested allocations whose provider app was never created: no composeId plus a fresh inventory read proving zero plan-name matches (the Nov-8 record job_b4dc31759005e8d8, orphaned across 16 healthy cycles) retires in place with the never-allocated terminal write plus orphan journaling; one-match adoption, multi-match/no-request/inventory-error deferral and the composeId path unchanged",
+      "batch": "FIN",
+      "design": "docs/pr-cards/SWEEP-ORPHAN-1.md",
+      "dependencies": [],
+      "card": "docs/pr-cards/SWEEP-ORPHAN-1.md",
+      "status": "IN_PROGRESS",
+      "migration": "none (sweep retires the orphaned record through its normal cycles; no hand edits, no schema or credential changes)",
+      "budget": 600,
+      "units": [
+        "SWEEP-ORPHAN-1"
+      ],
+      "readiness": "READY",
+      "ownerInputs": []
     }
   ],
   "gatewayBoundary": {
