@@ -26,11 +26,17 @@ const CLOUD_VARIABLE=/\b(?:AWS_SECRET_ACCESS_KEY|AZURE_STORAGE_ACCOUNT_KEY|AZURE
 const NOT_A_PASSWORD=/^(?:[{[]|(?:[\^~]|[<>]=?|=)?v?\d+(?:\.(?:\d+|[xX*]))*(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?)$/;
 const DATABASE_VARIABLE = /\b(?:db|database|postgres(?:ql)?|mysql|mariadb|mongo(?:db)?|redis|mssql|sqlserver|pg)_?(?:password|pass)\b["']?[ \t]*[:=](?![=>])[ \t]*/gi;
 
+// HIDDEN-GUARD-1: the whole value is one template interpolation: Python/JS/shell/printf/Jinja forms.
+export const INTERPOLATION=/^(?:\{[A-Za-z_][\w.]*(?:![rsa])?(?::[^{}]*)?\}|\$\{[A-Za-z_][\w.]*\}|\$[A-Za-z_]\w*|%(?:\([A-Za-z_]\w*\))?s|\{\{\s*[A-Za-z_][\w.]*\s*\}\})$/;
+export const isInterpolation=value=>INTERPOLATION.test(value);
 /** Return a literal's range, excluding quote delimiters. Never evaluate code or expand variables. */
 function* databaseMatches(text) {
  for (const m of text.matchAll(DATABASE_URI)) {
   const first = m[0].indexOf('://')+3, at = m[0].lastIndexOf('@'), colon = m[0].indexOf(':',first);
-  if (at > colon && colon >= first && at > colon+1 && m[0].slice(colon+1,at)!==HIDDEN) yield { index:m.index+colon+1,length:at-colon-1,rule:'database-uri-password',description:'Password in a database connection URI' };
+  // HIDDEN-GUARD-1: a password slot holding only a code interpolation ({pw}, ${PW}, $PW, %s, {{ pw }}) is
+  // source code, not a credential; treating it as one blanked real code in reads and refused its restore.
+  const slot=at > colon ? m[0].slice(colon+1,at) : '';
+  if (at > colon && colon >= first && at > colon+1 && slot!==HIDDEN && !isInterpolation(slot)) yield { index:m.index+colon+1,length:at-colon-1,rule:'database-uri-password',description:'Password in a database connection URI' };
  }
  for (const m of text.matchAll(PASSWORD_FIELD)) {
   const start = Math.max(0,m.index-1024), end = Math.min(text.length,m.index+1024);

@@ -9,6 +9,7 @@ import { missing, octo, ownerOf, refusal, slug } from './github-write.js';
 import { notifyOutsiders } from './people-guard.js';
 import { productionReason } from './production-guard.js';
 import { overridable } from './rule-override.js';
+import { blankedLines, blankingRefusalText, hasPlaceholder } from '../github/placeholder-guard.js';
 
 const OWNER = { type: 'string', maxLength: 39, description: 'GitHub account (default: the connection\'s default account)' };
 const REPO = { type: 'string', minLength: 1, maxLength: 100 };
@@ -28,6 +29,12 @@ const cleanPath = (path) => {
   const p = String(path ?? '').replace(/^\/+/, '');
   if (!p || p.endsWith('/') || p.split('/').some((part) => part === '..' || part === '.' || part === '')) throw new TypeError('The path must be a file path inside the repository, such as docs/readme.md.');
   return p;
+};
+// HIDDEN-GUARD-1: refuse a write whose new text swaps real lines for the redaction placeholder.
+const refuseBlanking = (path, previous, next) => {
+  if (previous === null || typeof next !== 'string' || !next.split('\n').some(hasPlaceholder)) return;
+  const lines = blankedLines(previous, next);
+  if (lines.length) throw refusal(blankingRefusalText(lines.map((line) => ({ path, line }))), 422);
 };
 const changedSince = (args, before, path) => {
   if (!args.expectedSha) return;
@@ -57,6 +64,7 @@ const contentPutFile = defineGithubWrite(overridable({
   apply: async ({ args, ctx, before, target }) => {
     const path = cleanPath(args.path);
     changedSince(args, before, path);
+    if (before) refuseBlanking(path, decodedText(before), args.content);
     return (await octo(ctx, target.owner)).request('PUT /repos/{owner}/{repo}/contents/{path}', { owner: target.owner, repo: target.repo, path, message: args.message, content: b64(args.content), branch: args.branch, ...(before ? { sha: before.sha } : {}) });
   },
   readAfter: ({ args, ctx, target }) => readFile(ctx, target, cleanPath(args.path), args.branch),
@@ -140,6 +148,11 @@ const contentPushFiles = defineGithubWrite(overridable({
     const additions = args.files.filter((f) => !f.delete).map((f) => ({ path: cleanPath(f.path), contents: b64(f.content) }));
     const deletions = args.files.filter((f) => f.delete).map((f) => ({ path: cleanPath(f.path) }));
     if (args.expectedHead && args.expectedHead !== before) throw refusal(`The branch ${args.branch} moved since the preview: it now points at ${short(before)}, not ${short(args.expectedHead)}. Nothing was changed; preview again.`, 409);
+    for (const f of args.files) {
+      if (f.delete || !String(f.content).split('\n').some(hasPlaceholder)) continue;
+      const path = cleanPath(f.path);
+      refuseBlanking(path, decodedText(await readFile(ctx, target, path, args.expectedHead ?? before)), f.content);
+    }
     const octokit = await octo(ctx, target.owner);
     const [headline, ...rest] = args.message.split('\n');
     const data = await graphql(octokit, COMMIT, { input: { branch: { repositoryNameWithOwner: slug(target.owner, target.repo), branchName: args.branch },
@@ -222,7 +235,11 @@ const planEdits = (args, before) => {
     const r = lr.problems.length ? lr : applyEdits(lr.text, f.edits ?? [], path);
     problems.push(...r.problems);
     if (!r.problems.length && r.text === have.text) problems.push(`${path}: the edits change nothing`);
-    if (!r.problems.length && r.text !== have.text) changes.push({ path, text: r.text, before: have.text.length });
+    if (!r.problems.length && r.text !== have.text) {
+      const blanked = blankedLines(have.text, r.text);
+      if (blanked.length) { problems.push(blankingRefusalText(blanked.map((line) => ({ path, line })))); continue; }
+      changes.push({ path, text: r.text, before: have.text.length });
+    }
   }
   return { changes, problems };
 };
