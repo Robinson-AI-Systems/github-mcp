@@ -216,6 +216,25 @@ main() {
       note "systemd not found; the auto-updater script is installed but its timer is not. Run it from any scheduler: $home/worker-autoupdate.sh"
     fi
   fi
+  # WORKER-RESOLV-GUARD-1: the resolver guard (timed in-container probe, drain-first heal).
+  # Same install discipline as the updater: only when this source carries it, atomic copy.
+  if [[ -f "$SRC/deploy/pc/worker-resolv-guard.sh" ]]; then
+    local guard_tmp="$home/.worker-resolv-guard.sh.tmp"
+    install -m 755 "$SRC/deploy/pc/worker-resolv-guard.sh" "$guard_tmp" && mv "$guard_tmp" "$home/worker-resolv-guard.sh"
+    ok "resolver guard: $home/worker-resolv-guard.sh (probes the worker's resolver every 2 min, heals at a job boundary; pc-worker resolv-guard status)"
+    if command -v systemctl >/dev/null 2>&1 && [[ -d /etc/systemd/system ]]; then
+      install -m 644 "$SRC/deploy/pc/worker-resolv-guard.service" /etc/systemd/system/worker-resolv-guard.service
+      install -m 644 "$SRC/deploy/pc/worker-resolv-guard.timer" /etc/systemd/system/worker-resolv-guard.timer
+      systemctl daemon-reload >/dev/null 2>&1 || true
+      if systemctl enable --now worker-resolv-guard.timer >/dev/null 2>&1; then
+        ok "resolver guard timer enabled (worker-resolv-guard.timer)"
+      else
+        note "could not enable worker-resolv-guard.timer; enable it with: systemctl enable --now worker-resolv-guard.timer"
+      fi
+    else
+      note "systemd not found; the resolver guard script is installed but its timer is not. Run it from any scheduler: $home/worker-resolv-guard.sh"
+    fi
+  fi
 
   step "7/8 Tailscale Funnel"
   local origin; origin="$(env_value PC_WORKER_PUBLIC_ORIGIN)"

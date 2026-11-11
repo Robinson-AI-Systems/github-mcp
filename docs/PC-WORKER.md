@@ -225,6 +225,38 @@ stopped, or while the release branch is *behind* the worker (a rewound branch is
 decision; it journals and stays put rather than downgrading). `install.sh` installs the updater
 and its timer whenever the source it installs from carries them.
 
+## The resolver guard (WORKER-RESOLV-GUARD-1)
+
+Twice on 2026-11-11 the worker came up at boot with an **empty `/etc/resolv.conf` capture**:
+dockerd started the host-networked container before WSL had populated the host resolver file,
+so every clone failed while the loopback healthcheck kept calling the worker healthy. A
+compose `dns:` pin cannot fix this — the worker is host-networked, so its resolver is the
+captured file, not a Docker setting. Two layers now watch it:
+
+- **In the worker:** a timed probe of `github.com` and `api.github.com` (2500 ms each, every
+  30 s) runs with the worker's own resolver. The verdict rides in signed capabilities, so
+  `github_server_status` shows the worker **down** when its resolver is broken, and `/health`
+  answers 503 in the same state.
+- **On the host:** `worker-resolv-guard.sh` (timer: first run 1 min after boot, then every
+  2 min) probes from *inside* the container with the same names and timeout. On a poisoned
+  verdict it closes admission with the worker's own pause gate (marker `worker-resolv-guard`),
+  drains on the updater's rule (no mutation locks, no established connections, 900 s cap —
+  a running job is never killed), then restarts the container, and recreates it once if the
+  capture is still poisoned. At most 3 attempts per poisoning; after that admission stays
+  closed with `attention` in the status until an operator repairs and runs `pc-worker resume`.
+  While the host's own resolver is still empty (the boot race itself) it defers — restarting
+  then would capture the same empty file. It stands down for RECLAIM, for the owner's pause,
+  and while an autoupdate holds the worker.
+
+```powershell
+wsl -u root -e /srv/robinson-git/pc-worker resolv-guard status   # latest probe, heal attempts, last receipt
+wsl -u root -e /srv/robinson-git/pc-worker resolv-guard run      # probe now instead of waiting for the timer
+```
+
+State lives in `/srv/robinson-git/resolv-guard/` (`status.json`, `receipts.jsonl`). Pause the
+guard itself with `touch /srv/robinson-git/.resolv-guard-pause`. `install.sh` installs the
+guard and its timer whenever the source it installs from carries them.
+
 ## Logs
 
 `pc-worker logs` (last 200 lines) or `pc-worker logs 1000`. The worker never logs keys, tokens, signatures or paths.

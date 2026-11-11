@@ -1,0 +1,12 @@
+[Unit]
+# WORKER-RESOLV-GUARD-1: one resolver guard cycle for the PC native Git worker (see worker-resolv-guard.sh).
+Description=Robinson native Git worker resolver guard (timed in-container probe, drain-first heal)
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/srv/robinson-git/worker-resolv-guard.sh
+# A cycle is normally seconds; a heal includes the drain cap (900 s) plus two (re)start waits.
+TimeoutStartSec=1500
+Nice=10

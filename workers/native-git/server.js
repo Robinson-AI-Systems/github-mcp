@@ -18,6 +18,7 @@ import {createResourceMonitor,resourcePolicyFromEnv,OWNER_PAUSE_FILE,OWNER_PAUSE
 import {uploadHttp,beginUpload,uploadStatus,applyUpload,pruneUploads} from './upload.js';
 import {downloadHttp,beginDownload,downloadStatus,pruneDownloads} from './download.js';
 import {remoteHttp,pruneRemotes} from './remote.js';
+import {createEgressMonitor} from './egress.js';
 import {gitDirectServer,directHost,directIdentity,readDirectFile} from './direct.js';
 import {transportSettings,removeLeftoverKeys} from './github-ssh.js';
 import {callBroker} from './remote.js';
@@ -47,7 +48,7 @@ export function workspaceLimitFromEnv(env = process.env) {
  if (!Number.isSafeInteger(n) || n < 1 || n > 1000) throw new TypeError('NATIVE_GIT_MAX_WORKSPACES must be a whole number from 1 to 1000.');
  return n;
 }
-export function nativeGitServer({ root, key, now = Date.now, allowLocalFixtures = false, fixtureRemote, resources, resourcePolicy = {}, singleWorkspaceId, singleBinding, authorityUrl, cloneTimeoutMs = 900000, cloneWaitMs = 30000, remote = {}, githubTransport = transportSettings({}), direct = null, buildCommit = workerBuildCommit(), pauseFile = root ? join(root, OWNER_PAUSE_FILE) : null, maxWorkspaces = null } = {}) {
+export function nativeGitServer({ root, key, now = Date.now, allowLocalFixtures = false, fixtureRemote, resources, resourcePolicy = {}, singleWorkspaceId, singleBinding, authorityUrl, cloneTimeoutMs = 900000, cloneWaitMs = 30000, remote = {}, githubTransport = transportSettings({}), direct = null, buildCommit = workerBuildCommit(), pauseFile = root ? join(root, OWNER_PAUSE_FILE) : null, maxWorkspaces = null, egressMonitor = null } = {}) {
  workerKey(key); const busy = new Set();
  // WORKER-POOL-1: an optional limit on workspaces held on this host (NATIVE_GIT_MAX_WORKSPACES); null = resources only.
  if (maxWorkspaces !== null && !(Number.isSafeInteger(maxWorkspaces) && maxWorkspaces > 0 && maxWorkspaces <= 1000)) throw new TypeError('Invalid native workspace limit.');
@@ -55,6 +56,11 @@ export function nativeGitServer({ root, key, now = Date.now, allowLocalFixtures 
  const activeCount = () => singleWorkspaceId ? Promise.resolve(null) : counter.countActive().catch(() => null);
  // PC-WORKER-1: `<storage>/.owner-pause` (deploy/pc/pc-worker pause) refuses new work; admitted work finishes.
  const monitor=resources??createResourceMonitor({root,policy:resourcePolicy,pauseFile});
+ // WORKER-RESOLV-GUARD-1: the worker's own timed resolver verdict, reported in signed
+ // capabilities and on /health. A self-created monitor starts here and stops with the
+ // server; an injected one (tests, embeddings) is only read.
+ const egress = egressMonitor ?? createEgressMonitor();
+ if (!egressMonitor) egress.start();
  const host = direct && !singleWorkspaceId ? directHost({ root, identity: direct.identity, env: direct.env ?? {}, local: allowLocalFixtures, stored: direct.stored ?? null, listen: direct.listen ?? listenDirect }) : null;
  const remoteCtx = () => ({ root, key, now, monitor, local: allowLocalFixtures, githubRemote: allowLocalFixtures && remote.github ? remote.github : GITHUB_REMOTE, brokerUrl: allowLocalFixtures && remote.broker ? remote.broker : BROKER_URL, fetchImpl: allowLocalFixtures && remote.fetch ? remote.fetch : fetch, githubTransport: allowLocalFixtures && remote.transport ? remote.transport : githubTransport, ...(allowLocalFixtures && remote.githubSsh ? { githubSshRemote: remote.githubSsh } : {}), ...(allowLocalFixtures && remote.limits ? { limits: remote.limits } : {}), ...(allowLocalFixtures && remote.freeDisk ? { freeDisk: remote.freeDisk } : {}) });
  const gitVersion=execFileSync('git',['--version'],{encoding:'utf8',timeout:2000}).trim();
@@ -67,7 +73,7 @@ export function nativeGitServer({ root, key, now = Date.now, allowLocalFixtures 
   const bodyDeadline = setTimeout(() => req.destroy(), 15000); bodyDeadline.unref(); req.once('end', () => clearTimeout(bodyDeadline)); res.once('close', () => clearTimeout(bodyDeadline));
   res.setHeader('Cache-Control', 'no-store'); res.setHeader('Content-Type', 'application/json');
   const send = (status, data) => { res.statusCode = status; res.end(JSON.stringify(data)); };
-  if (req.method === 'GET' && req.url === '/health') return send(200, { service: 'robinson-native-git', protocol: WORKER_PROTOCOL });
+  if (req.method === 'GET' && req.url === '/health') { const e = egress.report(); return send(e.status === 'down' ? 503 : 200, { service: 'robinson-native-git', protocol: WORKER_PROTOCOL, ...(e.status === 'unknown' ? {} : { egress: e.status }) }); }
   if(req.method==='POST'&&req.url==='/v1/authority'&&singleWorkspaceId&&authorityUrl){
    try{let body='';for await(const chunk of req){body+=chunk.toString();if(Buffer.byteLength(body)>16384)return send(413,{error:'request_too_large'});}const url=new URL(authorityUrl);if(url.protocol!=='https:'||url.username||url.password)throw new TypeError('Invalid fixed authority origin.');const answer=await fetch(url,{method:'POST',redirect:'error',signal:AbortSignal.timeout(10000),headers:{'Content-Type':'application/json','x-robinson-runtime-signature':String(req.headers['x-robinson-runtime-signature']??'')},body});let text='';for await(const chunk of answer.body){text+=Buffer.from(chunk).toString();if(Buffer.byteLength(text)>16384)throw new TypeError('Authority response is too large.');}res.statusCode=answer.status;const signature=answer.headers.get('x-robinson-signature');if(signature)res.setHeader('x-robinson-signature',signature);return res.end(text);}catch{return send(503,{error:'authority_unavailable'});}
   }
@@ -77,7 +83,7 @@ export function nativeGitServer({ root, key, now = Date.now, allowLocalFixtures 
    const chunks = []; let bytes = 0;
    for await (const chunk of req) { bytes += chunk.length; if (bytes > 2 * 1024 * 1024) return send(413, { error: 'request_too_large' }); const admitted=monitor.body(bytes);if(!admitted.allowed){res.setHeader('Retry-After','2');return send(429,{error:'worker_resource_pressure',reason:admitted.reason,phase:'admission',no_operation_started:true});}chunks.push(chunk); }
    claim = verifyWorkerBody(Buffer.concat(chunks).toString('utf8'), req.headers['x-robinson-signature'], key, now());
-   if (claim.action === 'capabilities') return send(200, { ready: true, protocol: WORKER_PROTOCOL, ...(buildCommit?{build_commit:buildCommit}:{}), native_git:gitVersion,max_concurrent:null,active_workspaces:await activeCount(),max_workspaces:maxWorkspaces,capacity_mode:'resource-aware',resource_policy:monitor.policy,admission:await monitor.check(),...(monitor.paused?.()?{owner_paused:true}:{}),workspace_lease:'idle-v1',repository_attachment:'sealed-mounted-v1',direct_upload:'quarantine-v1',direct_download:'one-time-v1',native_options:NATIVE_OPTIONS_VERSION,upload_apply:'delete-v1',upload_chunks:'chunks-v1',...(singleWorkspaceId?{}:{git_remote:'v1'}),...(host?.report()?{git_direct:host.report()}:{}),...(host?{git_direct_configure:'v1'}:{}),...(singleWorkspaceId?{repository:await repositoryMounts(join(root,singleWorkspaceId,'repo'))}:{}) });
+   if (claim.action === 'capabilities') return send(200, { ready: true, protocol: WORKER_PROTOCOL, egress: egress.report(), ...(buildCommit?{build_commit:buildCommit}:{}), native_git:gitVersion,max_concurrent:null,active_workspaces:await activeCount(),max_workspaces:maxWorkspaces,capacity_mode:'resource-aware',resource_policy:monitor.policy,admission:await monitor.check(),...(monitor.paused?.()?{owner_paused:true}:{}),workspace_lease:'idle-v1',repository_attachment:'sealed-mounted-v1',direct_upload:'quarantine-v1',direct_download:'one-time-v1',native_options:NATIVE_OPTIONS_VERSION,upload_apply:'delete-v1',upload_chunks:'chunks-v1',...(singleWorkspaceId?{}:{git_remote:'v1'}),...(host?.report()?{git_direct:host.report()}:{}),...(host?{git_direct_configure:'v1'}:{}),...(singleWorkspaceId?{repository:await repositoryMounts(join(root,singleWorkspaceId,'repo'))}:{}) });
    // GIT-DIRECT-2: the control plane configures (or, with origin null, turns off) the direct git host.
    if (claim.action === 'direct_configure') {
     if (!host) return send(404, { error: 'not_found' });
@@ -136,7 +142,7 @@ export function nativeGitServer({ root, key, now = Date.now, allowLocalFixtures 
  const maintenance = new NativeGitWorker({ root, authorize: async () => false, now });
  maintenance.recoverInterruptedClones().catch(() => process.stderr.write('Native Git clone recovery failed; inspect storage.\n'));
  const timer = setInterval(() => singleWorkspaceId?Promise.resolve():maintenance.prune({ skip: busy }).then(()=>pruneUploads(root,now())).then(()=>pruneDownloads(root,now())).then(()=>pruneRemotes(root,now())).then(()=>removeLeftoverKeys(root,{callBroker:(url,claim,body)=>callBroker(url,claim,body,{fetchImpl:allowLocalFixtures&&remote.fetch?remote.fetch:fetch}),now:now()})).catch(() => process.stderr.write('Native Git cleanup failed; inspect storage permissions and capacity.\n')), 60000); timer.unref();
- server.on('close', () => {clearInterval(timer);monitor.close();if(host?.server?.listening)host.server.close();});
+ server.on('close', () => {clearInterval(timer);monitor.close();if (!egressMonitor) egress.stop();if(host?.server?.listening)host.server.close();});
  // The direct git host shares the volume, resource monitor and remote core; it listens on its own port.
  if (host) {
   host.server = gitDirectServer({ ...remoteCtx(), config: () => host.config, identity: direct.identity, ...(allowLocalFixtures && remote.limiter ? { limiter: remote.limiter } : {}), ...(allowLocalFixtures && remote.directFetch ? { fetchImpl: remote.directFetch } : {}) });

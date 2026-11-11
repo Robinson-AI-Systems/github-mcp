@@ -27,6 +27,9 @@ Usage: pc-worker <command>
   autoupdate [cmd]        The between-jobs self-updater (WORKER-AUTOUPDATE-1): status (default),
                           run (check now), pause / resume (the updater only, not the worker),
                           log [lines] (its journal).
+  resolv-guard [cmd]      The resolver guard (WORKER-RESOLV-GUARD-1): status (default),
+                          run (check now), pause / resume (the guard only, not the worker),
+                          log [lines] (its journal).
 EOF
 }
 
@@ -208,6 +211,43 @@ except Exception as e:
   esac
 }
 
+cmd_resolv_guard() {
+  local sub="${1:-status}"; shift || true
+  local state_dir="$HOME_DIR/resolv-guard"
+  case "$sub" in
+    status)
+      say "Worker resolver guard (WORKER-RESOLV-GUARD-1)"
+      if [[ -e "$HOME_DIR/.resolv-guard-pause" ]]; then say "  guard       paused (operator file)"; else say "  guard       active"; fi
+      if command -v systemctl >/dev/null 2>&1; then say "  timer       $(systemctl is-active worker-resolv-guard.timer 2>/dev/null || echo unknown)"; fi
+      if [[ -f "$state_dir/status.json" ]]; then
+        python3 -c 'import json,sys
+try:
+    s=json.load(open(sys.argv[1]))
+    print("  state       %s - %s" % (s.get("state"), s.get("detail")))
+    print("  resolver    %s (probe %s ms)" % (s.get("resolver"), s.get("probe_ms")))
+    print("  checked     %s" % s.get("checked_at"))
+except Exception as e:
+    print("  status file unreadable:", e)' "$state_dir/status.json"
+      else
+        say "  state       no check recorded yet"
+      fi
+      if [[ -f "$state_dir/receipts.jsonl" ]]; then say "  last receipt $(tail -n 1 "$state_dir/receipts.jsonl")"; fi
+      ;;
+    run)
+      if command -v systemctl >/dev/null 2>&1; then systemctl start worker-resolv-guard.service; say "Resolver check started (worker-resolv-guard.service). Watch: $HOME_DIR/pc-worker resolv-guard log"
+      elif [[ -x "$HOME_DIR/worker-resolv-guard.sh" ]]; then "$HOME_DIR/worker-resolv-guard.sh"
+      else fail "The resolver guard is not installed. Run: $HOME_DIR/pc-worker update"; fi
+      ;;
+    pause) : > "$HOME_DIR/.resolv-guard-pause"; say "Resolver guard paused (the worker itself is untouched). Resume with: $HOME_DIR/pc-worker resolv-guard resume" ;;
+    resume) rm -f "$HOME_DIR/.resolv-guard-pause"; say "Resolver guard resumed." ;;
+    log)
+      local lines="${1:-100}"; [[ "$lines" =~ ^[0-9]+$ ]] || fail "log takes a number of lines."
+      if command -v journalctl >/dev/null 2>&1; then journalctl -u worker-resolv-guard.service --no-pager -n "$lines"; else fail "journalctl is not available here."; fi
+      ;;
+    *) fail "resolv-guard takes: status | run | pause | resume | log [lines]" ;;
+  esac
+}
+
 main() {
   local self
   self="$(readlink -f "${BASH_SOURCE[0]}")"
@@ -228,6 +268,7 @@ main() {
     recover-lease) cmd_recover_lease "$@" ;;
     update) exec bash "$HOME_DIR/src/deploy/pc/install.sh" --home "$HOME_DIR" "$@" ;;
     autoupdate) cmd_autoupdate "$@" ;;
+    resolv-guard) cmd_resolv_guard "$@" ;;
     -h|--help|help|"") usage ;;
     *) usage; exit 2 ;;
   esac
