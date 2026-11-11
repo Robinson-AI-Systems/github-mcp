@@ -3610,6 +3610,22 @@
       "ownerInputs": []
     },
     {
+      "id": "SWEEP-REPIN-1",
+      "title": "Playground sweep manager re-pins its derived sweep key after a signing-key rotation: fingerprint recorded at provisioning, drift proven against the provider's stored compose (only the sweep-key slot may differ), re-pin via compose.update + redeploy, legacy records backfilled; KEY-ROTATION sec.5 covers both derived-key dependents",
+      "batch": "FIN",
+      "design": "docs/pr-cards/SWEEP-REPIN-1.md",
+      "dependencies": [],
+      "card": "docs/pr-cards/SWEEP-REPIN-1.md",
+      "status": "IN_PROGRESS",
+      "migration": "none (manager record gains a keyFingerprint hash; no stored credential changes)",
+      "budget": 600,
+      "units": [
+        "SWEEP-REPIN-1"
+      ],
+      "readiness": "READY",
+      "ownerInputs": []
+    },
+    {
       "id": "PUSH-EXIT-PROBE-1",
       "title": "Push-exit gauge can check an internal route (GIT_DIRECT_HEALTH_URL) so it stops reporting a false down on the rack",
       "batch": "FIN",

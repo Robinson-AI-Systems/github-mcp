@@ -12,20 +12,53 @@ import {reconcileWarmRuntimes} from './warm-runtimes.js';
 import {stuckReason,markStuck,releaseTransferLock,isRuntimeOnlyCleanup} from './stuck.js';
 const hash=x=>createHash('sha256').update(x).digest('hex');
 export const sweepKey=env=>hash(signNativeWorkerBody(JSON.stringify({purpose:'robinson-playground-maintenance/v1',origin:publicOrigin(env)}),env));
+// The sweep key is derived from the server signing key, so a TOKEN_ENCRYPTION_KEY
+// rotation silently changes what a running manager should carry. Compare the
+// provider's stored compose with the freshly built one: the sweep key slot is
+// the only field that may legitimately differ. 'current' = stored key matches
+// the current derivation; 'stale' = only the key differs (re-pin it); 'other'
+// = anything else differs (an ownership problem, never a repair candidate).
+export function managerKeyDrift(storedFile,expectedFile){
+ if(storedFile===expectedFile)return 'current';
+ let stored,expected;try{stored=JSON.parse(storedFile);expected=JSON.parse(expectedFile);}catch{return 'other';}
+ const keyOf=x=>x?.services?.manager?.environment?.PLAYGROUND_SWEEP_KEY;
+ const masked=x=>{const copy=JSON.parse(JSON.stringify(x));const env=copy?.services?.manager?.environment;if(env&&typeof env==='object')delete env.PLAYGROUND_SWEEP_KEY;return JSON.stringify(copy);};
+ if(masked(stored)!==masked(expected))return 'other';
+ return keyOf(stored)===keyOf(expected)?'current':'stale';
+}
 export async function ensureProjectManager(ctx,config,provider){
  const root=rootAllocationDb(ctx),origin=publicOrigin(ctx.env),name='ras-pg-manager-'+hash(origin).slice(0,16),description='robinson-playground-manager/v1 '+hash(origin);
- let state=await root.getSetting('playground_manager');if(state?.phase==='running')return;
+ let state=await root.getSetting('playground_manager');
  const pinnedSource=state?.source??(config.image?{image:config.image}:{image:'ras-playground:'+config.sourceSha,build:{context:'https://github.com/Robinson-AI-Systems/github-mcp.git#'+config.sourceSha,dockerfile:'workers/coding-workspace/Dockerfile',target:'production'}});
  // JSONB normalizes object key order. Reconstruct the original pinned source
  // shape before byte-exact provider ownership comparison; never repin to the
  // current controller image merely because settings were read from Postgres.
  const source={image:pinnedSource.image,...(pinnedSource.build?{build:{context:pinnedSource.build.context,dockerfile:pinnedSource.build.dockerfile,target:pinnedSource.build.target}}:{})};
- const composeFile=JSON.stringify({name,services:{manager:{...source,user:'1000:1000',init:true,restart:'unless-stopped',read_only:true,cap_drop:['ALL'],security_opt:['no-new-privileges:true'],mem_limit:'128m',cpus:'0.1',command:['node','workers/coding-workspace/manager.js'],healthcheck:{disable:true},environment:{PLAYGROUND_SWEEP_URL:new URL('/api/playground/sweep',origin).href,PLAYGROUND_SWEEP_KEY:sweepKey(ctx.env)},tmpfs:['/tmp:rw,noexec,nosuid,nodev,size=16m,mode=1777']}}});
+ const key=sweepKey(ctx.env),composeFile=JSON.stringify({name,services:{manager:{...source,user:'1000:1000',init:true,restart:'unless-stopped',read_only:true,cap_drop:['ALL'],security_opt:['no-new-privileges:true'],mem_limit:'128m',cpus:'0.1',command:['node','workers/coding-workspace/manager.js'],healthcheck:{disable:true},environment:{PLAYGROUND_SWEEP_URL:new URL('/api/playground/sweep',origin).href,PLAYGROUND_SWEEP_KEY:key},tmpfs:['/tmp:rw,noexec,nosuid,nodev,size=16m,mode=1777']}}});
+ // Only a fingerprint of the derived key is recorded (never the key itself):
+ // it is what lets a later rotation be noticed on the running path below.
+ const keyFingerprint=hash(key);
  // Regenerated only in trusted memory: the manager's cleanup-only capability is
  // never stored in the ordinary allocation registry or returned by an MCP tool.
  let plan={name,description,composeFile,planHash:hash(composeFile),...(state?.providerAppName?{providerAppName:state.providerAppName}:{})};
  const save=async patch=>{const next=await root.compareAndSetSetting('playground_manager',state?.revision??0,{...state,...patch,revision:(state?.revision??0)+1});if(!next)throw new TypeError('Manager provisioning is already in progress.');state=next;};
- if(!state){await save({phase:'creating',name,description,source});const created=await provider.create(plan);if(!created?.composeId)throw new TypeError('Manager creation is uncertain.');plan=pinProviderIdentity(plan,created.appName);await save({phase:'created',composeId:created.composeId,providerAppName:plan.providerAppName});}
+ if(state?.phase==='running'){
+  if(state.keyFingerprint===keyFingerprint)return;
+  // The recorded fingerprint disagrees with the current derivation (or predates
+  // fingerprints): the running manager may carry a key the server no longer
+  // accepts. Prove what the provider actually holds before mutating anything.
+  if(typeof provider.stored!=='function'||typeof provider.update!=='function')throw new TypeError('Manager sweep-key re-pin is unavailable from this provider.');
+  const row=await provider.stored(state.composeId,plan);if(!row)throw new TypeError('Manager is recorded running but its provider compose is missing.');
+  const drift=managerKeyDrift(row.composeFile,composeFile);
+  if(drift==='other')throw new TypeError('Manager compose changed outside its sweep key; no mutation was sent.');
+  if(drift==='current'){await save({keyFingerprint});return;}
+  // Re-pin through the provider's own update path, then redeploy; the
+  // 'deploying' promotion below (or a later ensure) confirms the restart.
+  await provider.update(state.composeId,plan);
+  await save({phase:'deploying',dispatchVersion:1,keyFingerprint});
+  await provider.deploy(state.composeId,plan);
+ }
+ if(!state){await save({phase:'creating',name,description,source,keyFingerprint});const created=await provider.create(plan);if(!created?.composeId)throw new TypeError('Manager creation is uncertain.');plan=pinProviderIdentity(plan,created.appName);await save({phase:'created',composeId:created.composeId,providerAppName:plan.providerAppName});}
  else if(state.phase==='creating'){const matches=(await provider.inventory()).filter(x=>x.name===name||x.appName===name);if(matches.length!==1)throw new TypeError('Manager creation is uncertain; no duplicate was created.');const observed=await provider.inspect(matches[0].composeId,plan,{adoptAssignedName:true});plan=pinProviderIdentity(plan,observed.appName);await save({phase:'created',composeId:observed.composeId,providerAppName:plan.providerAppName,source});}
  if(!plan.providerAppName){const observed=await provider.inspect(state.composeId,plan,{adoptAssignedName:true});plan=pinProviderIdentity(plan,observed?.appName);await save({providerAppName:plan.providerAppName,source});}
  // The pre-suffix-fix controller recorded deploying before its ownership
