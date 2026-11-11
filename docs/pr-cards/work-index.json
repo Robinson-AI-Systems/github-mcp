@@ -3736,6 +3736,25 @@
       "ownerInputs": []
     },
     {
+      "id": "AUTOUPDATE-GATE-1",
+      "title": "The PC worker self-updater swaps for real and judges the public path from where callers stand: install.sh starts the new image under the updater's own pause, verification checks the running container's build, the public check falls back to the worker container (no WSL hairpin), and a failed target is held instead of retried every cycle",
+      "batch": "FIN",
+      "design": "docs/pr-cards/AUTOUPDATE-GATE-1.md",
+      "dependencies": [
+        "WORKER-AUTOUPDATE-1",
+        "PAUSE-ORIGIN-1"
+      ],
+      "card": "docs/pr-cards/AUTOUPDATE-GATE-1.md",
+      "status": "IN_PROGRESS",
+      "migration": "none (deploy/pc scripts; takes effect at the next kit install)",
+      "budget": 300,
+      "units": [
+        "AUTOUPDATE-GATE-1"
+      ],
+      "readiness": "READY",
+      "ownerInputs": []
+    },
+    {
       "id": "PLAY3-BOOT-RETRY-1",
       "title": "Playground host agent boot-retry: the system unit wants (not requires) docker.service and carries no start limit, provisioning convergence restates the settings as a drop-in on older installs, and the container form's rule is restart policy always — the 2026-11-11 boot left the agent down on a dependency-failed start job while Docker recovered in seconds",
       "batch": "FIN",
