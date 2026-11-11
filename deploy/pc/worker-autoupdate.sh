@@ -249,6 +249,10 @@ verify_build() {  # verify_build <expected sha>; all gates must pass
   local want="$1" i
   [[ "$(current_build)" == "$want" ]] || { journal "verify: SOURCE_COMMIT is $(current_build), expected $want"; return 1; }
   ensure_started "$want" || { journal "verify: container for $want could not be started"; return 1; }
+  # The container IMAGE is the ground truth of what is running (capabilities report it too):
+  # a receipt may only name a build updated when the live container runs that build.
+  [[ "$(docker inspect -f '{{.Config.Image}}' robinson-git-native-git-1 2>/dev/null)" == "robinson-git-native:$want" ]] \
+    || { journal "verify: live container image is not $want"; return 1; }
   for i in $(seq 1 30); do [[ "$(container_state)" == "running healthy" ]] && break; sleep 2; done
   [[ "$(container_state)" == "running healthy" ]] || { journal "verify: container state is $(container_state)"; return 1; }
   local_health_ok || { journal "verify: local health endpoints do not answer"; return 1; }
