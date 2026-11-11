@@ -2643,6 +2643,26 @@
       "pr": []
     },
     {
+      "id": "HOST-DELEGATION-1",
+      "title": "Delegated Playground host approval under the owner's own connection",
+      "batch": "FIN",
+      "design": "docs/pr-cards/HOST-DELEGATION-1.md",
+      "dependencies": [
+        "PLAY-2",
+        "FLEET-3"
+      ],
+      "card": "docs/pr-cards/HOST-DELEGATION-1.md",
+      "status": "IN_PROGRESS",
+      "migration": "none: approval provenance is an additive field on the existing enrollment record",
+      "budget": 800,
+      "units": [
+        "HOST-DELEGATION-1"
+      ],
+      "readiness": "READY",
+      "ownerInputs": [],
+      "pr": []
+    },
+    {
       "id": "FLEET-1",
       "title": "Right-sized Playground runtimes and Git-only workspaces",
       "batch": "FIN",
