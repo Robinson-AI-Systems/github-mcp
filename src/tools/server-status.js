@@ -166,20 +166,6 @@ const directOrigin = (env) => {
     return url.protocol === 'https:' && !url.username && !url.password && url.pathname === '/' && !url.search && !url.hash ? url.origin : null;
   } catch { return null; }
 };
-// PUSH-EXIT-PROBE-1 (2026-11-11): when this service runs on the same machine as the push exit (the rack on the owner's
-// PC, whose push exit is that PC's own Tailscale Funnel address), the public address cannot be reached from here — the
-// connection would have to leave the machine and come straight back (a hairpin) — even though it answers from everywhere
-// else and real pushes land. GIT_DIRECT_HEALTH_URL names an internal route to the same listener's /health; the gauge then
-// checks that route and says so. Unset: the public address is checked exactly as before. A malformed value is reported,
-// never guessed around. The address itself is never returned.
-const directHealthUrl = (env) => {
-  const raw = env.GIT_DIRECT_HEALTH_URL;
-  if (raw === undefined || raw === null || raw === '') return null;
-  try {
-    const url = new URL(String(raw));
-    return (url.protocol === 'https:' || url.protocol === 'http:') && !url.username && !url.password && url.pathname === '/health' && !url.search && !url.hash ? url.href : 'invalid';
-  } catch { return 'invalid'; }
-};
 async function checkDirect(ctx, env, budget, slow) {
   const origin = directOrigin(env);
   if (!origin) return null;
@@ -188,20 +174,35 @@ async function checkDirect(ctx, env, budget, slow) {
   const exit = directHostOf(env);
   if (!exit) return { status: 'down', reason: 'GIT_DIRECT_HOST names no configured worker host, so no push exit is in use; git goes through this service\'s own domain (pushes up to about 25 MB).' };
   if (!hostAllowed(ctx, exit)) return null;
-  const internal = directHealthUrl(env);
-  if (internal === 'invalid') return { status: 'down', exit: exit.name, reason: 'GIT_DIRECT_HEALTH_URL is not an http(s) address ending in /health, so the push exit was not checked. git over this service\'s own domain is unaffected.' };
   const start = performance.now();
   const r = await bounded((async () => {
-    const res = await ctx.fetch(internal ?? `${origin}/health`, { redirect: 'error', signal: AbortSignal.timeout(budget) });
+    const res = await ctx.fetch(`${origin}/health`, { redirect: 'error', signal: AbortSignal.timeout(budget) });
     return { ok: res.status === 200 };
   })(), budget);
   const ms = elapsed(start);
-  const named = { exit: exit.name, checked: internal ? 'internal_route' : 'public_address' };
-  const route = internal ? ' (checked on its internal route; its public address cannot be tested from the same machine)' : '';
-  if (r.timeout) return { status: 'down', ...named, reason: `The push exit (direct git host) did not answer within ${Math.round(budget / 1000)} s${route}.` };
-  if (r.error || !r.value.ok) return { status: 'down', ...named, reason: `The push exit (direct git host) did not report healthy${route}. git over this service's own domain still works.` };
-  if (ms > slow.direct_git) return { status: 'degraded', ...named, ms, reason: `The push exit (direct git host) answered, but slowly${route}.` };
-  return internal ? { status: 'ok', ...named, ms, note: 'Checked on the push exit\'s internal route; its public address cannot be tested from the same machine.' } : { status: 'ok', ...named, ms };
+  const named = { exit: exit.name };
+  // PUSH-EXIT-PROBE-1: `unanswered` marks a probe that never got a healthy answer, so the caller can corroborate it.
+  if (r.timeout) return { status: 'down', ...named, unanswered: origin, reason: `The push exit (direct git host) did not answer within ${Math.round(budget / 1000)} s.` };
+  if (r.error || !r.value.ok) return { status: 'down', ...named, unanswered: origin, reason: 'The push exit (direct git host) did not report healthy. git over this service\'s own domain still works.' };
+  return ms > slow.direct_git ? { status: 'degraded', ...named, ms, reason: 'The push exit (direct git host) answered, but slowly.' } : { status: 'ok', ...named, ms };
+}
+
+// PUSH-EXIT-PROBE-1 (2026-11-11): on the rack, this service runs on the same PC as its push exit, and the push exit's
+// public address (the PC's own Tailscale Funnel origin) cannot be reached from inside that PC, though it answers from
+// everywhere else and real pushes land. When the probe gets no healthy answer, but the push exit is the primary host
+// and that host's signed capabilities (checked in the same read) report its direct git host on exactly this origin,
+// the gauge says "degraded" with that reason, never "ok": the listener itself was not probed. Anything else stays down.
+export function corroborateDirect(direct, worker, env) {
+  if (!direct?.unanswered) return direct;
+  const { unanswered, ...rest } = direct;
+  const exit = directHostOf(env);
+  const reported = worker?.cap?.git_direct?.origin;
+  let reportedOrigin = null;
+  try { reportedOrigin = typeof reported === 'string' ? new URL(reported).origin : null; } catch { reportedOrigin = null; }
+  const corroborated = exit?.role === 'primary' && worker?.check && worker.check.status !== 'down' && worker.cap?.ready === true && reportedOrigin === unanswered;
+  if (!corroborated) return rest;
+  return { status: 'degraded', exit: rest.exit, corroborated_by: 'worker_report',
+    reason: 'The push exit\'s public address did not answer from this server (it may be on the same machine, where its own public address cannot be reached), but the worker\'s signed report says its direct git host is set up on that address. Its listener was not checked directly; a real push is the proof.' };
 }
 
 const managerCommit = (source) => {
@@ -322,7 +323,7 @@ export async function serverStatus(args, ctx, { budgetMs = STATUS_BUDGET_MS, slo
     out.workers = { native_git: nativeGit, playground: { runtime_image: runtime, ...(pool?.manager ? { manager: pool.manager } : {}) } };
   }
   if (want.has('health')) {
-    const checks = { database, worker: worker.check, ...(workerPool ? { worker_pool: workerPool } : {}), ...(direct ? { direct_git: direct } : {}), ...(pool?.check ? { playground_pool: pool.check } : {}) };
+    const checks = { database, worker: worker.check, ...(workerPool ? { worker_pool: workerPool } : {}), ...(direct ? { direct_git: corroborateDirect(direct, worker, env) } : {}), ...(pool?.check ? { playground_pool: pool.check } : {}) };
     out.health = { overall: worst(Object.values(checks)), ...checks };
   }
   if (want.has('warnings')) out.warnings = warningsFor({ release, worker: workerFacts, image, history: historyValue });

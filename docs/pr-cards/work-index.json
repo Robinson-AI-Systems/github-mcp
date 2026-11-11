@@ -3627,7 +3627,7 @@
     },
     {
       "id": "PUSH-EXIT-PROBE-1",
-      "title": "Push-exit gauge can check an internal route (GIT_DIRECT_HEALTH_URL) so it stops reporting a false down on the rack",
+      "title": "Push-exit gauge: an unreachable probe corroborated by the primary worker's signed report reads degraded, not down (rack hairpin)",
       "batch": "FIN",
       "design": "docs/pr-cards/PUSH-EXIT-PROBE-1.md",
       "dependencies": [
