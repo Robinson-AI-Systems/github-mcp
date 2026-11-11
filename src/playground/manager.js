@@ -108,7 +108,23 @@ export async function sweepAllocations({root,load=allocationScope,authorityOf=al
    // Device allocations are cleaned up through their own machine; Dokploy rows use their own pool.
    if(s.placement==='device'){const result=await disposeAllocation(ctx,{row:{id:s.workspace,owner:s.owner,repo:s.repo},...s.native});if(!result.disposed)pending++;continue;}
    const config=dokployConfig(env,s.pool),provider=providerFactory(config,{fetch:ctx.fetch});
-   if(!s.composeId&&!['requested','waiting_resources','disposed'].includes(s.phase)){const matches=(await provider.inventory()).filter(a=>a.name===s.plan.name||a.appName===s.plan.name);if(matches.length!==1){pending++;continue;}const observed=await provider.inspect(matches[0].composeId,s.plan,{adoptAssignedName:true});const next=await ctx.db.compareAndSetSetting('playground.'+s.binding.slice(0,40),s.revision,{...s,composeId:observed.composeId,plan:pinProviderIdentity(s.plan,observed.appName),revision:s.revision+1});if(!next){pending++;continue;}await indexAllocation(ctx,next);ctx.stored=next;}
+   if(!s.composeId&&!['requested','waiting_resources','disposed'].includes(s.phase)){const matches=(await provider.inventory()).filter(a=>a.name===s.plan.name||a.appName===s.plan.name);
+    // SWEEP-ORPHAN-1: a cleanup-requested record whose provider app was never created
+    // (no composeId, and this fresh inventory read finds zero matches for its plan
+    // name) has nothing at the provider to dispose and no handle to adopt, so the
+    // one-match adoption below can never take it and it defers every cycle forever
+    // (the Nov-8 record job_b4dc31759005e8d8, proven live 2026-11-11 across 16
+    // healthy cycles). Retire it in place with the same terminal write
+    // disposeAllocation makes for a never-allocated row, plus orphan journaling so
+    // the closure is auditable by read-back; later cycles close the native source
+    // through the ordinary disposed-record path. Every other shape is unchanged:
+    // exactly one match still adopts, more than one still defers, a record without
+    // cleanupRequested still defers, and an inventory read failure throws into the
+    // row catch (pending) before any write, so nothing is ever retired on an
+    // unreadable inventory. The record arrived here through the same scope load and
+    // cleanup gate as the adoption path, so the same ownership/tenant guards passed.
+    if(matches.length===0&&s.cleanupRequested){const retired={...s,phase:'disposed',disposed:true,disposedAt:now(),neverAllocated:true,orphanRetired:true,orphanReason:'provider_inventory_zero_matches',revision:s.revision+1};delete retired.ingress;const next=await ctx.db.compareAndSetSetting('playground.'+s.binding.slice(0,40),s.revision,retired);if(!next){pending++;continue;}await indexAllocation(ctx,next);ctx.stored=next;disposed++;continue;}
+    if(matches.length!==1){pending++;continue;}const observed=await provider.inspect(matches[0].composeId,s.plan,{adoptAssignedName:true});const next=await ctx.db.compareAndSetSetting('playground.'+s.binding.slice(0,40),s.revision,{...s,composeId:observed.composeId,plan:pinProviderIdentity(s.plan,observed.appName),revision:s.revision+1});if(!next){pending++;continue;}await indexAllocation(ctx,next);ctx.stored=next;}
    const record={row:{id:s.workspace,owner:s.owner,repo:s.repo},...s.native};
    if(runtimeOnly)await releaseTransferLock(ctx,s);
    const result=await disposeAllocation(ctx,record,{config,provider});
