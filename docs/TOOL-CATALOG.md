@@ -142,8 +142,8 @@ Agent-facing runtime operations through the existing search/describe/call contra
 | `github_playground_cancel` | Stop an execution process group and verify terminal state; does not claim allocation disposal | P | N | I | B,O,Op | F | PLAY-1 |
 | `github_playground_workspace` | `setup` (one call: provision, replace a stalled runtime, attach or resume as needed, then report `ready`; repeat to continue), `git_access` (short-lived read-only Git key for this repository inside the runtime) or provision (optional `size` small/medium/large), attach, resume, privately preview or dispose the exact owned allocation with independent readback | P | N | I | B,O,Op | F | PLAY-1 |
 | `github_playground_run` | One command at a branch/tag/SHA in a fresh right-sized runtime: open, provision, run, return exit code and log tail, dispose; resumable by requestKey | P·Prod* | N | I | B,O,Op | F | FLEET-2 |
-| `github_playground_hosts` | List this connection's enrolled Playground hosts and pairings, with status and approval provenance | — | N | I | B,O,Op | R | PLAY-3 |
-| `github_playground_host_pairing` | Begin, approve or revoke a Playground host pairing for this connection; approval is recorded on the host record as owner-delegated (the device itself can never approve) | P | N | I | B,O,Op | F | PLAY-3 |
+| `github_playground_hosts` | List this connection's enrolled Playground hosts and pairings, with status and approval provenance | — | N | I | B,O,Op | R | HOST-DELEGATION-1 |
+| `github_playground_host_pairing` | Begin, approve or revoke a Playground host pairing for this connection; approval is recorded on the host record as owner-delegated (the device itself can never approve) | P | N | I | B,O,Op | F | HOST-DELEGATION-1 |
 
 ## Files, commits and git data (`github_content_*, github_commit_*, github_git_*`) — 28
 
@@ -958,7 +958,7 @@ Metered actions with no published per-use price (larger runners, Copilot agent a
 
 ## Totals
 
-**Totals:** 514 tools: 508 hand-built + 6 universal (`github_api_*`, `github_graphql_*`), plus guided settings for every
+**Totals:** 516 tools: 510 hand-built + 6 universal (`github_api_*`, `github_graphql_*`), plus guided settings for every
 dashboard-only owner setting. By profile (lowest profile that has the tool): read_only 162, everyday adds 85
 (everyday lists 247), full adds 118 (full lists 407; `github_tenant_remove` only on the owner's own direct connection, so everyone else sees 403). In compact mode (`docs/designs/BATCH-C.md`) an agent
 loads only about 25 tools up front (meta-tools, whoami, universal search, workflows) and reaches the rest through
