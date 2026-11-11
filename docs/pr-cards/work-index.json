@@ -3608,6 +3608,25 @@
       ],
       "readiness": "READY",
       "ownerInputs": []
+    },
+    {
+      "id": "PUSH-EXIT-PROBE-1",
+      "title": "Push-exit gauge can check an internal route (GIT_DIRECT_HEALTH_URL) so it stops reporting a false down on the rack",
+      "batch": "FIN",
+      "design": "docs/pr-cards/PUSH-EXIT-PROBE-1.md",
+      "dependencies": [
+        "PUSH-EXIT-1",
+        "SRV-STATUS-1"
+      ],
+      "card": "docs/pr-cards/PUSH-EXIT-PROBE-1.md",
+      "status": "IN_PROGRESS",
+      "migration": "none",
+      "budget": 900,
+      "units": [
+        "PUSH-EXIT-PROBE-1"
+      ],
+      "readiness": "READY",
+      "ownerInputs": []
     }
   ],
   "gatewayBoundary": {
