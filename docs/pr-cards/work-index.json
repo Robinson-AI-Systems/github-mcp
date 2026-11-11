@@ -3716,6 +3716,26 @@
       "ownerInputs": []
     },
     {
+      "id": "PAUSE-ORIGIN-1",
+      "title": "A worker admission pause says who holds it: the owner, the self-updater or the name-lookup guard — a failed self-update no longer reads as \"paused by its owner (the computer is in use)\"",
+      "batch": "FIN",
+      "design": "docs/pr-cards/PAUSE-ORIGIN-1.md",
+      "dependencies": [
+        "PC-WORKER-1",
+        "WORKER-AUTOUPDATE-1",
+        "WORKER-RESOLV-GUARD-1"
+      ],
+      "card": "docs/pr-cards/PAUSE-ORIGIN-1.md",
+      "status": "IN_PROGRESS",
+      "migration": "none (reason code unchanged; one added field held_by)",
+      "budget": 300,
+      "units": [
+        "PAUSE-ORIGIN-1"
+      ],
+      "readiness": "READY",
+      "ownerInputs": []
+    },
+    {
       "id": "PLAY3-BOOT-RETRY-1",
       "title": "Playground host agent boot-retry: the system unit wants (not requires) docker.service and carries no start limit, provisioning convergence restates the settings as a drop-in on older installs, and the container form's rule is restart policy always — the 2026-11-11 boot left the agent down on a dependency-failed start job while Docker recovered in seconds",
       "batch": "FIN",

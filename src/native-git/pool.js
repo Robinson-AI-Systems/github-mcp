@@ -47,7 +47,11 @@ export function judgeHost(host, cap, { download = false, workspace = true } = {}
  const base = { active, max };
  if (!host.enabled) return { ...base, state: 'disabled' };
  if (!cap || typeof cap !== 'object' || cap.ready !== true) return { ...base, state: 'unavailable' };
- if (cap.owner_paused === true || cap.admission?.reason === 'owner_paused') return { ...base, state: 'paused' };
+ if (cap.owner_paused === true || cap.admission?.reason === 'owner_paused') {
+  // PAUSE-ORIGIN-1: a maintenance pause names its holder; the owner's own pause stays plain "paused".
+  const by = { updater: 'self-updater', resolver_guard: 'name-lookup guard' }[cap.admission?.held_by];
+  return { ...base, state: 'paused', ...(by ? { reason: by } : {}) };
+ }
  if ((workspace && cap.capacity_mode !== 'resource-aware') || (download && cap.direct_download !== 'one-time-v1')) return { ...base, state: 'update_required' };
  // A workspace needs resource-based admission; the git remote (workspace: false) only needs no explicit refusal.
  if (workspace ? cap.admission?.allowed !== true : cap.admission?.allowed === false) return { ...base, state: 'busy', reason: reasonText(cap.admission?.reason) ?? 'resource_observation_unavailable' };

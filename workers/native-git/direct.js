@@ -25,7 +25,7 @@ import { mkdir, readFile, realpath, writeFile, rename, rm, lstat } from 'node:fs
 import { join } from 'node:path';
 import { DIRECT_HEADER, GIT_REALM, KEY_PREFIX, basicPassword, cleanOrigin, directPayload, parseGitRequest, parseSecret } from '../../src/git-remote/wire.js';
 import { serveRemote } from './remote.js';
-import { OWNER_PAUSED, OWNER_PAUSED_TEXT } from './resources.js';
+import { OWNER_PAUSED, pausedText } from './resources.js';
 
 const plainText = (res, status, message, headers = {}) => {
  if (res.headersSent) { res.destroy(); return; }
@@ -210,7 +210,7 @@ export function gitDirectServer(o) {
    let url; try { url = new URL(req.url, 'http://direct.invalid'); } catch { req.resume(); return plainText(res, 404, 'Not found.'); }
    if (req.method === 'GET' && url.pathname === '/health') return plainText(res, 200, 'ok');
    // PC-WORKER-1: the owner pause refuses new git requests before any key check or authorization call.
-   if (o.monitor?.paused?.()) { req.resume(); return plainText(res, 503, OWNER_PAUSED_TEXT, { 'Retry-After': String(OWNER_PAUSED.retryAfterSeconds) }); }
+   if (o.monitor?.paused?.()) { req.resume(); return plainText(res, 503, pausedText(o.monitor.pauseHolder?.()), { 'Retry-After': String(OWNER_PAUSED.retryAfterSeconds) }); }
    const config = current();
    if (!config) { req.resume(); return plainText(res, 404, 'The direct git host is turned off on this worker. Ask your AI to call github_git_remote_setup and use the address it gives.'); }
    const host = new URL(config.origin).host;
