@@ -19,6 +19,11 @@ chown -R ras-playground:ras-playground /home/ras-playground
 need_pkgs=""
 command -v docker >/dev/null 2>&1 || need_pkgs="$need_pkgs docker.io"
 docker compose version >/dev/null 2>&1 || need_pkgs="$need_pkgs docker-compose-v2"
+# The allocation build uses a remote git build context: the classic-builder
+# fallback needs a local git binary, and BuildKit needs the buildx plugin.
+# Without both, the first allocation_up order is refused on the device.
+docker buildx version >/dev/null 2>&1 || need_pkgs="$need_pkgs docker-buildx"
+command -v git >/dev/null 2>&1 || need_pkgs="$need_pkgs git"
 [ -x /usr/bin/unattended-upgrade ] || need_pkgs="$need_pkgs unattended-upgrades"
 if [ -n "$need_pkgs" ]; then
   export DEBIAN_FRONTEND=noninteractive

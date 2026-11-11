@@ -13,6 +13,8 @@ package_update: true
 packages:
   - docker.io
   - docker-compose-v2
+  - docker-buildx
+  - git
   - unattended-upgrades
   - ca-certificates
   - curl
