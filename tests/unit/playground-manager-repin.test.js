@@ -42,6 +42,26 @@ it('classifies sweep-key drift exactly: only the key slot may differ',()=>{
  expect(managerKeyDrift(JSON.stringify(other),file('a'.repeat(64)))).toBe('other');
  expect(managerKeyDrift('not json',file('a'.repeat(64)))).toBe('other');
 });
+it('tolerates exactly one provider normalization: the live stored compose has no healthcheck where the expected carries {disable: true}',()=>{
+ // Fixture modeled on the LIVE stored manager compose (read back from the
+ // provider 2026-11-11): every field of the expected compose is present
+ // except the healthcheck, which the provider's read-back drops entirely.
+ const expected=key=>JSON.stringify({name:'ras-pg-manager-x',services:{manager:{image:'fixture-image',user:'1000:1000',init:true,restart:'unless-stopped',read_only:true,cap_drop:['ALL'],security_opt:['no-new-privileges:true'],mem_limit:'128m',cpus:'0.1',command:['node','workers/coding-workspace/manager.js'],healthcheck:{disable:true},environment:{PLAYGROUND_SWEEP_URL:'https://mcp.example.test/api/playground/sweep',PLAYGROUND_SWEEP_KEY:key},tmpfs:['/tmp:rw,noexec,nosuid,nodev,size=16m,mode=1777']}}});
+ const storedLive=key=>{const doc=JSON.parse(expected(key));delete doc.services.manager.healthcheck;return JSON.stringify(doc);};
+ // Same key, only the normalization: still the re-pin path, so the update
+ // writes the expected compose (healthcheck included) back.
+ expect(managerKeyDrift(storedLive('a'.repeat(64)),expected('a'.repeat(64)))).toBe('stale');
+ // Rotated key plus the normalization: still 'stale', never a refusal.
+ expect(managerKeyDrift(storedLive('a'.repeat(64)),expected('b'.repeat(64)))).toBe('stale');
+ // A healthcheck of any other shape is NOT the proven normalization.
+ const disabledFalse=JSON.parse(expected('a'.repeat(64)));disabledFalse.services.manager.healthcheck={disable:false};
+ expect(managerKeyDrift(JSON.stringify(disabledFalse),expected('a'.repeat(64)))).toBe('other');
+ const realCheck=JSON.parse(expected('a'.repeat(64)));realCheck.services.manager.healthcheck={test:['CMD','true'],interval:'30s'};
+ expect(managerKeyDrift(JSON.stringify(realCheck),expected('a'.repeat(64)))).toBe('other');
+ // The normalization buys no cover for a second difference beside it.
+ const plusForeign=JSON.parse(storedLive('a'.repeat(64)));plusForeign.services.manager.mem_limit='256m';
+ expect(managerKeyDrift(JSON.stringify(plusForeign),expected('a'.repeat(64)))).toBe('other');
+});
 it('re-pins the manager after a signing-key rotation and the sweep authenticates with the new key only',async()=>{
  const w=await world(),provider=managerProvider();
  await ensureProjectManager(w.ctx,config,provider);
@@ -85,6 +105,35 @@ it('backfills a legacy running record without churn when its key still matches, 
  await ensureProjectManager(w.ctx,config,provider);
  expect(provider.calls).toEqual(['update','deploy']);
  expect(JSON.parse(provider.row.composeFile).services.manager.environment.PLAYGROUND_SWEEP_KEY).toBe(sweepKey(w.ctx.env));
+});
+it('re-pins a legacy running manager whose stored compose carries the provider normalization (the live 2026-11-11 fire shape)',async()=>{
+ const w=await world(),provider=managerProvider();
+ await ensureProjectManager(w.ctx,config,provider);
+ // The live record predates fingerprints and the provider's stored compose
+ // has no healthcheck: exactly the shape the deliberate fire hit, which the
+ // pre-fix classifier refused as 'other' and stranded every pool ensure.
+ const current=await w.db.getSetting('playground_manager');
+ const legacy={...current};delete legacy.keyFingerprint;
+ await w.db.setSetting('playground_manager',legacy);
+ const normalized=JSON.parse(provider.row.composeFile);delete normalized.services.manager.healthcheck;
+ provider.row.composeFile=JSON.stringify(normalized);
+ provider.calls.length=0;
+ await ensureProjectManager(w.ctx,config,provider);
+ expect(provider.calls).toEqual(['update','deploy']);
+ const after=await w.db.getSetting('playground_manager');
+ expect(after).toMatchObject({phase:'running',keyFingerprint:hash(sweepKey(w.ctx.env))});
+ // The update wrote the expected compose back, healthcheck included.
+ expect(JSON.parse(provider.row.composeFile).services.manager.healthcheck).toEqual({disable:true});
+});
+it('still refuses when the provider normalization arrives with a foreign change beside it',async()=>{
+ const w=await world(),provider=managerProvider();
+ await ensureProjectManager(w.ctx,config,provider);
+ const tampered=JSON.parse(provider.row.composeFile);delete tampered.services.manager.healthcheck;tampered.services.manager.mem_limit='512m';
+ provider.row.composeFile=JSON.stringify(tampered);
+ w.ctx.env={...w.ctx.env,TOKEN_ENCRYPTION_KEY:randomBytes(32).toString('base64url')};
+ provider.calls.length=0;
+ await expect(ensureProjectManager(w.ctx,config,provider)).rejects.toThrow(/outside its sweep key/);
+ expect(provider.calls).toEqual([]);
 });
 it('refuses to mutate a running manager whose compose changed outside the sweep key',async()=>{
  const w=await world(),provider=managerProvider();
