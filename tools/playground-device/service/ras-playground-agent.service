@@ -5,10 +5,21 @@
 [Unit]
 Description=Robinson Playground host agent (this computer runs its owner's Playground work)
 After=network-online.target docker.service
-Wants=network-online.target
-Requires=docker.service
-StartLimitIntervalSec=600
-StartLimitBurst=5
+Wants=network-online.target docker.service
+# docker.service is a Wants, never a Requires. With Requires, a failed
+# docker start cancels the agent's own start job (result 'dependency')
+# and nothing ever retries it — at the 2026-11-11 boot dockerd's first
+# start failed on an iptables chain race and recovered seconds later,
+# yet the agent stayed down until started by hand. Ordering still comes
+# from After=; the agent tolerates the engine being absent (it reports
+# Docker as not running and keeps leasing), so starting without it is
+# safe and it picks the engine up when the engine arrives.
+# No start limit: with Restart=always and RestartSec=5s the retry
+# cadence is already bounded below, while a burst limit (previously 5
+# starts per 600 s) turns any dependency outage longer than ~30 s at
+# boot into a permanent failure. StartLimitIntervalSec=0 disables the
+# limiter so a bad boot can never wedge the agent for good.
+StartLimitIntervalSec=0
 
 [Service]
 Type=simple

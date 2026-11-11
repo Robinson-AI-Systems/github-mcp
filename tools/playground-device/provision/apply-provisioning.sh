@@ -48,6 +48,27 @@ systemctl enable unattended-upgrades 2>/dev/null || true
 # The agent unit is enabled by the installer once payload files are placed;
 # enable here too when present so recovery converges without Windows help.
 if [ -f /etc/systemd/system/ras-playground-agent.service ]; then
+  # Boot-retry convergence (PLAY3-BOOT-RETRY-1): restate the agent unit's
+  # boot-retry settings as a drop-in so an install whose base unit predates
+  # them converges in place. An empty Requires= resets the dependency list
+  # (dropping a fatal docker.service requirement), Wants= keeps Docker
+  # ordered but non-fatal, and StartLimitIntervalSec=0 stops a start limit
+  # from wedging the agent permanently after a bad boot. The base unit in
+  # service/ras-playground-agent.service carries the same settings; the
+  # drop-in only ever agrees with it. Why: at the 2026-11-11 boot a failed
+  # first dockerd start (an iptables chain race, recovered in seconds)
+  # failed the agent's Requires-linked start job with result 'dependency'
+  # and nothing retried it — the agent waited for a human.
+  mkdir -p /etc/systemd/system/ras-playground-agent.service.d
+  cat > /etc/systemd/system/ras-playground-agent.service.d/10-boot-retry.conf <<'DROPIN'
+# PLAY-3 boot-retry convergence — written by apply-provisioning.sh.
+# Mirrors service/ras-playground-agent.service; see that file for why.
+[Unit]
+Requires=
+Wants=docker.service
+StartLimitIntervalSec=0
+DROPIN
+  systemctl daemon-reload 2>/dev/null || true
   systemctl enable ras-playground-agent 2>/dev/null || true
 fi
 date -u +%FT%TZ > "$MARKER"
