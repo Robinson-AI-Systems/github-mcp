@@ -11,6 +11,7 @@ on:
       - 'src/github/custom-secret-rules.js'
       - 'src/github/scanner-policy.js'
       - 'src/github/file-protection.js'
+      - 'src/github/placeholder-guard.js'
       - 'vendor/gitleaks/**'
       - '.github/workflows/native-git-image.yml'
   workflow_dispatch:

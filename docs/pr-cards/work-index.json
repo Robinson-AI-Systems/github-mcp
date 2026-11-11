@@ -3677,6 +3677,25 @@
       "ownerInputs": []
     },
     {
+      "id": "HIDDEN-GUARD-1",
+      "title": "Never commit the redaction placeholder in place of real text: every native push, put_file, push_files and edit_files refuses a change that turns an existing line into its [hidden] form; code interpolations ({pw}, ${PW}, %s) in a connection-string or password slot are no longer treated as credentials, so reads stop blanking them and their restore is accepted",
+      "batch": "FIN",
+      "design": "docs/pr-cards/HIDDEN-GUARD-1.md",
+      "dependencies": [
+        "PUSH-FIXTURE-1",
+        "GIT-UPLOAD-1"
+      ],
+      "card": "docs/pr-cards/HIDDEN-GUARD-1.md",
+      "status": "IN_PROGRESS",
+      "migration": "none",
+      "budget": 900,
+      "units": [
+        "HIDDEN-GUARD-1"
+      ],
+      "readiness": "READY",
+      "ownerInputs": []
+    },
+    {
       "id": "WORKER-RESOLV-GUARD-1",
       "title": "PC native Git worker never runs silently with a broken resolver: the worker's own timed egress verdict in signed capabilities and on /health, github_server_status down on that verdict, and a PC-kit guard that probes in-container every 2 min and heals a poisoned resolv.conf capture (restart, then recreate) at a job boundary on the auto-updater's drain rule",
       "batch": "FIN",
