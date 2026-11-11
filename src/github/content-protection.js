@@ -30,12 +30,15 @@ const DATABASE_VARIABLE = /\b(?:db|database|postgres(?:ql)?|mysql|mariadb|mongo(
 export const INTERPOLATION=/^(?:\{[A-Za-z_][\w.]*(?:![rsa])?(?::[^{}]*)?\}|\$\{[A-Za-z_][\w.]*\}|\$[A-Za-z_]\w*|%(?:\([A-Za-z_]\w*\))?s|\{\{\s*[A-Za-z_][\w.]*\s*\}\})$/;
 export const isInterpolation=value=>INTERPOLATION.test(value);
 /** Return a literal's range, excluding quote delimiters. Never evaluate code or expand variables. */
-function* databaseMatches(text) {
+function* databaseMatches(text,options={}) {
  for (const m of text.matchAll(DATABASE_URI)) {
   const first = m[0].indexOf('://')+3, at = m[0].lastIndexOf('@'), colon = m[0].indexOf(':',first);
   // HIDDEN-GUARD-1: a password slot holding only a code interpolation ({pw}, ${PW}, $PW, %s, {{ pw }}) is
   // source code, not a credential; treating it as one blanked real code in reads and refused its restore.
   const slot=at > colon ? m[0].slice(colon+1,at) : '';
+  // FIXTURE-URI-1: under the push/write opt-in (PUSH-FIXTURE-1/2), a documented fake password (FAKE…, or an evident
+  // placeholder such as example-password) in a connection string is test or doc text; reads still hide it.
+  if (allowsFixtures(options) && isEvidentPlaceholder(slot)) continue;
   if (at > colon && colon >= first && at > colon+1 && slot!==HIDDEN && !isInterpolation(slot)) yield { index:m.index+colon+1,length:at-colon-1,rule:'database-uri-password',description:'Password in a database connection URI' };
  }
  for (const m of text.matchAll(PASSWORD_FIELD)) {
@@ -90,7 +93,7 @@ function* credentialMatches(text,options={}) {
   if(fixtures&&isDocumentedFixture(m[0],RULE_INFO[index][0])){seen?.add(`${m.index}:${m[0].length}`);continue;}
   yield* remember([{index:m.index,length:m[0].length,rule:RULE_INFO[index][0],description:RULE_INFO[index][1]}]);
  }
- yield* remember(databaseMatches(text));yield* remember(openSecretMatches(text));
+ yield* remember(databaseMatches(text,options));yield* remember(openSecretMatches(text));
  for(const m of text.matchAll(GENERIC_ASSIGNMENT)){const value=assignedLiteral(text,m.index+m[0].length),literal=text.slice(value.index,value.index+value.length);if(value.length>=10&&!seen?.has(`${value.index}:${value.length}`)&&entropy(literal)>=3.5&&!(fixtures&&isEvidentPlaceholder(literal)))yield {...value,rule:'generic-credential-assignment',description:'High-entropy literal assigned to an explicit credential key'};}
 }
 function reportMatches(text,matches,{maxFindings=30}={}) {

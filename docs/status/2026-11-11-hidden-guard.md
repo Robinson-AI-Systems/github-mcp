@@ -16,3 +16,6 @@ server, because content protection treated `{mig_pw}` as a password, while it ac
 credential-shaped content.
 
 Card: `docs/pr-cards/HIDDEN-GUARD-1.md`. Repair of the damaged file: development-rack #63.
+
+**FIXTURE-URI-1 (same day).** A documented fake connection-string password (`FAKE`, as AGENTS.md files require) is
+now allowed in pushed files; reads still hide it. It had made neon-mcp's AGENTS.md uneditable through any tool.
