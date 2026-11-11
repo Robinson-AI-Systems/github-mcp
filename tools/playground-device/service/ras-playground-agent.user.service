@@ -1,0 +1,23 @@
+# PLAY-3 §1.3 — Linux hand-rolled path: the same agent under systemd --user.
+# Enable with: systemctl --user enable --now ras-playground-agent.service
+# and `loginctl enable-linger $USER` so it survives logout. The installer
+# (Windows) uses the system unit in its own distro instead; this unit is for
+# a person running the agent on their own Linux machine by hand.
+[Unit]
+Description=Robinson Playground host agent (user service)
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=600
+StartLimitBurst=5
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/env node %h/.config/ras-playground/run.mjs run
+Environment=RAS_PLAYGROUND_SUPERVISED=1
+Restart=always
+RestartSec=5s
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=default.target

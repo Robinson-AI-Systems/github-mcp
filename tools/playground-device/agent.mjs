@@ -2,7 +2,8 @@
 // Robinson Playground host agent (FLEET-3). Turns a computer or server YOU control
 // into a Playground host for YOUR OWN connection. It only makes outbound HTTPS
 // requests: no tunnel, no open port, no public IP. Needs Node 22+ and Docker
-// with Compose v2 (Linux, macOS, or Windows with WSL2 + Docker Desktop).
+// Engine with Compose v2. On Windows the PLAY-3 installer provides both inside
+// its own WSL2 distro (Docker Desktop is never used); see README.
 //
 //   node agent.mjs join --device DEVICE_ID --code PAIRING_CODE   (from My connection)
 //   node agent.mjs run                                          (keep running; see README)
@@ -16,9 +17,10 @@ import {createHash, createPublicKey, sign, verify} from 'node:crypto';
 import {execFile} from 'node:child_process';
 import {mkdir, readFile, writeFile, rm, statfs} from 'node:fs/promises';
 import {homedir, cpus, totalmem, freemem, platform, availableParallelism} from 'node:os';
-import {join} from 'node:path';
+import {join, dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {loadOrCreateDeviceKey} from './pair.mjs';
+import {applyUpdate} from './update.mjs';
 
 export const AGENT_VERSION = 'fleet-agent/1';
 const DEFAULT_SERVER = 'https://github.robinsonaisystems.com';
@@ -38,8 +40,8 @@ export function defaultExec(cmd, args, {timeoutMs = 120000, input} = {}) {
 }
 
 export class HostAgent {
-  constructor({dir = join(homedir(), '.config', 'ras-playground'), exec = defaultExec, fetchImpl = fetch, now = Date.now, sleep = sleepMs, log = m => process.stdout.write(m + '\n')} = {}) {
-    Object.assign(this, {dir, exec, fetchImpl, now, sleep, log});
+  constructor({dir = join(homedir(), '.config', 'ras-playground'), exec = defaultExec, fetchImpl = fetch, now = Date.now, sleep = sleepMs, log = m => process.stdout.write(m + '\n'), exit = c => process.exit(c), supervised = process.env.RAS_PLAYGROUND_SUPERVISED === '1'} = {}) {
+    Object.assign(this, {dir, exec, fetchImpl, now, sleep, log, exit, supervised});
     this.statePath = join(dir, 'agent.json');
     this.work = new Map(); this.inflight = new Set();
   }
@@ -86,6 +88,16 @@ export class HostAgent {
     return order;
   }
 
+  // PLAY-3 §5.1: the running payload's version is the version.json beside
+  // this file when the launcher shim installed one (that file is the update
+  // receipt: a new payload's first check-in reports its new version here);
+  // the installer-placed payload reports the built-in AGENT_VERSION.
+  async payloadVersion() {
+    if (this._payloadVersion !== undefined) return this._payloadVersion;
+    try { const v = JSON.parse(await readFile(join(dirname(fileURLToPath(import.meta.url)), 'version.json'), 'utf8')).version; this._payloadVersion = typeof v === 'string' && v ? v : AGENT_VERSION; }
+    catch { this._payloadVersion = AGENT_VERSION; }
+    return this._payloadVersion;
+  }
   async capacity() {
     let freeDiskBytes = null;
     try { const root = await this.exec('docker', ['info', '--format', '{{.DockerRootDir}}'], {timeoutMs: 15000}); const s = await statfs(root).catch(() => statfs(homedir())); freeDiskBytes = Number(s.bavail) * Number(s.bsize); } catch { /* unknown */ }
@@ -93,14 +105,39 @@ export class HostAgent {
     try { docker = await this.exec('docker', ['version', '--format', '{{.Server.Version}}'], {timeoutMs: 15000}); } catch { /* not running */ }
     try { compose = await this.exec('docker', ['compose', 'version', '--short'], {timeoutMs: 15000}); } catch { /* missing */ }
     return {cpus: typeof availableParallelism === 'function' ? availableParallelism() : cpus().length, memoryBytes: totalmem(), freeMemoryBytes: freemem(), freeDiskBytes,
-      docker, compose, agent: AGENT_VERSION, platform: platform(), allocations: Object.keys(this.state.allocations ?? {})};
+      docker, compose, agent: await this.payloadVersion(), platform: platform(), allocations: Object.keys(this.state.allocations ?? {})};
+  }
+
+  // PLAY-3 §5.1: the launcher shim leaves this file when it rolls a bad
+  // update back; the next successful check-in carries it to the control
+  // plane and then clears it.
+  async takeUpdateReport() {
+    const p = join(this.dir, 'pending-update-report.json');
+    try { const r = JSON.parse(await readFile(p, 'utf8')); return {report: r, clear: async () => { await rm(p, {force: true}); }}; } catch { return {report: null, clear: async () => {}}; }
+  }
+  // PLAY-3 §5.1: a signed agentUpdate advertisement on the check-in response.
+  // Only a supervised agent (systemd unit / launcher shim sets
+  // RAS_PLAYGROUND_SUPERVISED=1) may apply one — it exits so the supervisor
+  // restarts it into the new payload. A foreground agent only logs it: the
+  // person running it by hand stays in charge of their own terminal.
+  async maybeUpdate(ad) {
+    if (!ad) return null;
+    if (!this.supervised) { this.log('An agent update is available; it will be applied by the service supervisor.'); return {applied: false, reason: 'not_supervised'}; }
+    try {
+      const r = await applyUpdate({dir: this.dir, ad, controlKey: this.state.controlKey, currentVersion: await this.payloadVersion(),
+        fetchImpl: this.fetchImpl, isIdle: () => this.inflight.size === 0, hasAllocations: () => Object.keys(this.state.allocations ?? {}).length > 0, log: this.log});
+      if (r.applied) { this.log('Restarting into agent ' + r.version + '.'); this.exit(0); }
+      return r;
+    } catch (e) { this.log('Agent update refused: ' + e.message); return {applied: false, reason: e.message}; }
   }
 
   // One check-in: report capacity, receive and start signed orders.
   async checkInOnce() {
-    const res = await this.post('/api/fleet/checkin', await this.signed('robinson-fleet-checkin/v1', {capacity: await this.capacity()}));
+    const {report: updateReport, clear: clearUpdateReport} = await this.takeUpdateReport();
+    const res = await this.post('/api/fleet/checkin', await this.signed('robinson-fleet-checkin/v1', {capacity: await this.capacity(), ...(updateReport ? {agentUpdateReport: updateReport} : {})}));
     if (res.status === 410) { this.log('This machine was removed from your connection. Stopping its runtimes.'); await this.terminate(); return {revoked: true}; }
     if (res.status !== 200) return {retryAfterMs: 15000, status: res.status};
+    if (updateReport) await clearUpdateReport();
     for (const o of res.body.orders ?? []) {
       let order; try { order = this.verifyOrder(o); } catch (e) { this.log('Ignored an order: ' + e.message); continue; }
       const lane = order.payload?.binding ?? order.payload?.bindingPrefix ?? order.kind;
@@ -109,6 +146,7 @@ export class HostAgent {
       if (order.kind !== 'relay') this.work.set(lane, job);
       this.inflight.add(job); job.finally(() => this.inflight.delete(job));
     }
+    if (res.body.agentUpdate) { await this.settle(); await this.maybeUpdate(res.body.agentUpdate); }
     return {status: res.body.status, pollAfterMs: res.body.pollAfterMs ?? 0, orders: (res.body.orders ?? []).length};
   }
   async report(order, result) {
@@ -238,8 +276,24 @@ export class HostAgent {
     return {allAbsent: all};
   }
 
+  // PLAY-3 §6 startup reconciliation (distro/engine death, machine reboot):
+  // recorded allocations are verified against Docker reality before the
+  // first check-in reports them. An allocation whose containers are gone is
+  // retired through down() — which only clears the record when absence is
+  // proven — never silently resurrected and never blindly trusted.
+  async reconcile() {
+    let retired = 0;
+    for (const [binding, a] of Object.entries(this.state?.allocations ?? {})) {
+      let live = false;
+      try { live = (await this.exec('docker', ['compose', '-p', a.project, '-f', a.file, 'ps', '-q'], {timeoutMs: 30000})).split('\n').filter(Boolean).length > 0; } catch { live = false; }
+      if (!live) { const e = await this.down({binding, project: a.project}); if (!this.state.allocations?.[binding]) { retired++; this.log('Reconciled allocation ' + a.project + ': no live containers; retired with absence evidence ' + JSON.stringify(e) + '.'); } }
+    }
+    return {retired};
+  }
+
   async run({forever = true} = {}) {
     if (!await this.load()) throw fail('Not joined yet. Run: node agent.mjs join --device ID --code CODE');
+    await this.reconcile();
     this.log('Robinson Playground host agent running for device ' + this.state.deviceId + '. Press Ctrl+C to stop.');
     let backoff = 1000;
     do {
