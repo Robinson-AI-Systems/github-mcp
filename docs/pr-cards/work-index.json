@@ -3730,6 +3730,25 @@
       ],
       "readiness": "READY",
       "ownerInputs": []
+    },
+    {
+      "id": "FIXTURE-URI-1",
+      "title": "A documented fake connection-string password (FAKE…, evident placeholders) passes pushes under the fixture opt-in; reads still hide it; real passwords still refused",
+      "batch": "FIN",
+      "design": "docs/pr-cards/FIXTURE-URI-1.md",
+      "dependencies": [
+        "PUSH-FIXTURE-2",
+        "HIDDEN-GUARD-1"
+      ],
+      "card": "docs/pr-cards/FIXTURE-URI-1.md",
+      "status": "IN_PROGRESS",
+      "migration": "none",
+      "budget": 300,
+      "units": [
+        "FIXTURE-URI-1"
+      ],
+      "readiness": "READY",
+      "ownerInputs": []
     }
   ],
   "gatewayBoundary": {

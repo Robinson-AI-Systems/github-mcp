@@ -99,3 +99,19 @@ describe('the native worker refuses a push that blanks lines', () => {
     await expect(refuse(base)).resolves.toBeUndefined();
   });
 });
+
+// FIXTURE-URI-1: a documented fake password in a connection string (AGENTS.md: "Fake values only: …user:FAKE@…") is
+// allowed in pushed files under the fixture opt-in, still hidden in reads, and real passwords are still refused.
+describe('documented fake connection-string passwords', () => {
+  const PGQ = 'postgresql' + '://';
+  it('lets the FAKE example through pushes and still hides it in reads', () => {
+    const doc = 'Fake values only: `' + PGQ + 'user:' + 'FAKE' + '@localhost/db`.';
+    expect(containsCredential(doc, { fixtures: 'allow' })).toBe(false);
+    expect(containsCredential(doc)).toBe(true);
+    expect(redact(doc)).toContain(H);
+  });
+  it('still refuses a real-looking password on push', () => {
+    const real = PGQ + 'app:' + 'Xk29' + 'fPq7zLm3' + '@db/app';
+    expect(containsCredential(real, { fixtures: 'allow' })).toBe(true);
+  });
+});
