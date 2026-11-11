@@ -1,0 +1,27 @@
+#cloud-config
+# PLAY-3 §3 step 3 — first-boot provisioning for the installer-owned
+# PlaygroundWorker distro (official Ubuntu WSL rootfs; cloud-init runs this
+# on the distro's first boot). Mirrored idempotently by apply-provisioning.sh
+# for re-provisioning and for images where cloud-init does not run — running
+# either, both, or neither-then-the-script converges to the same state.
+users:
+  - name: ras-playground
+    lock_passwd: true
+    shell: /bin/bash
+    groups: [docker]
+package_update: true
+packages:
+  - docker.io
+  - docker-compose-v2
+  - unattended-upgrades
+  - ca-certificates
+  - curl
+write_files:
+  - path: /etc/apt/apt.conf.d/20auto-upgrades-playground
+    content: |
+      APT::Periodic::Update-Package-Lists "1";
+      APT::Periodic::Unattended-Upgrade "1";
+runcmd:
+  - [systemctl, enable, --now, docker]
+  - [systemctl, enable, unattended-upgrades]
+  - [bash, /usr/local/lib/ras-playground/apply-provisioning.sh]

@@ -2623,6 +2623,26 @@
       ]
     },
     {
+      "id": "PLAY-3",
+      "title": "The always-on host service form and the grandma-proof installer",
+      "batch": "FIN",
+      "design": "docs/pr-cards/PLAY-3.md",
+      "dependencies": [
+        "PLAY-2",
+        "FLEET-3"
+      ],
+      "card": "docs/pr-cards/PLAY-3.md",
+      "status": "IN_PROGRESS",
+      "migration": "none: installer and host service form only; the check-in agentUpdate advertisement is additive and optional on the existing response",
+      "budget": 800,
+      "units": [
+        "PLAY-3"
+      ],
+      "readiness": "READY",
+      "ownerInputs": [],
+      "pr": []
+    },
+    {
       "id": "FLEET-1",
       "title": "Right-sized Playground runtimes and Git-only workspaces",
       "batch": "FIN",
