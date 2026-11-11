@@ -12,7 +12,6 @@
 // to a simulated owner click. An agent calling without the owner's Full
 // connection scope is refused; a device from another tenant or client is
 // invisible to this scope and cannot be approved through it.
-import {createHash} from 'node:crypto';
 import {defineRead} from './define-read.js';
 import {defineGithubWrite} from './define-github-write.js';
 import {createEnrolledHostStore} from '../playground/enrolled-hosts.js';
@@ -64,12 +63,10 @@ const pairing = defineGithubWrite({name: 'github_playground_host_pairing', area:
   properties: {
     operation: {type: 'string', enum: ['begin', 'approve', 'revoke']},
     device_id: DEVICE,
-    delegation_note: {type: 'string', maxLength: 200, description: 'With approve: the owner instruction this approval rests on, recorded on the host record (for example “Owner instruction 2026-11-11, main chat”)'},
-    requestKey: {type: 'string', minLength: 1, maxLength: 128, description: 'A stable key for this exact intent; reuse it only to inspect or retry the same pairing action'}
+    delegation_note: {type: 'string', maxLength: 200, description: 'With approve: the owner instruction this approval rests on, recorded on the host record (for example “Owner instruction 2026-11-11, main chat”)'}
   },
   required: ['operation', 'requestKey'],
   declarations: {production: 'never', confirm: 'when-needed', profiles: ['full']},
-  requestKey: (ctx, args) => 'rmcp_host_pairing_' + createHash('sha256').update(JSON.stringify([ctx.connection?.client_id ?? null, args.requestKey])).digest('hex'),
   target: (args, ctx) => ({owner: ctx.connection.default_account, scope: 'server', kind: 'playground-host'}),
   read: async (args, ctx) => {
     try { const store = await hostStore(ctx); const hosts = await store.list(); return {device: hosts.find(h => h.deviceId === args.device_id) ?? null, hosts: hosts.length}; }
