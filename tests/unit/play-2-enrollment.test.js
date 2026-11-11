@@ -35,7 +35,7 @@ describe('PLAY-2 enrolled host pairing is a separate user-owned trust boundary',
   const claimed=await store.claim(claimArgs(start,device));
   expect(claimed).toMatchObject({status:'pending_confirm',fingerprint:deviceFingerprint(device.publicKey)});
   await expect(store.claim(claimArgs(start,device))).rejects.toThrow(/already used/);
-  expect(await store.approve(start.deviceId)).toEqual({deviceId:start.deviceId,status:'pending_canary',fingerprint:claimed.fingerprint});
+  expect(await store.approve(start.deviceId)).toEqual({deviceId:start.deviceId,status:'pending_canary',fingerprint:claimed.fingerprint,approval:{via:'my-connection',clientId:'client-1',at:1_000_000}});
   expect((await store.list())[0].status).toBe('pending_canary');
   expect(await store.revoke(start.deviceId)).toEqual({deviceId:start.deviceId,status:'revoked',cleanupConfirmed:true});
   expect((await store.list())[0].status).toBe('revoked');
