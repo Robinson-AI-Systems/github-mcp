@@ -53,12 +53,14 @@ describe('PLAY-3 pre-flight classification (F1–F14)', () => {
     expect(r.primary).toMatchObject({code: 'F11', page: 's-mode'});
   });
   it('detours pending updates (F3) before BIOS (F1)', () => {
-    const r = classifyPreflight({...goodFacts, pendingReboot: true, cpuVirtualizationFirmware: false});
+    const r = classifyPreflight({...goodFacts, pendingReboot: true, cpuVirtualizationFirmware: false, hypervisorPresent: false});
     expect(r.primary.code).toBe('F3');
     expect(r.detours.map(d => d.code)).toContain('F1');
   });
   it('detours BIOS-off virtualization (F1) with the BIOS page', () => {
-    expect(classifyPreflight({...goodFacts, cpuVirtualizationFirmware: false}).primary).toMatchObject({code: 'F1', page: 'bios-virtualization'});
+    expect(classifyPreflight({...goodFacts, cpuVirtualizationFirmware: false, hypervisorPresent: false}).primary).toMatchObject({code: 'F1', page: 'bios-virtualization'});
+    // Live finding 2026-11-11 (instance #1): a running hypervisor (WSL2 already working) refutes the firmware flag -- no F1.
+    expect(classifyPreflight({...goodFacts, cpuVirtualizationFirmware: false}).detours.map(d => d.code)).not.toContain('F1');
   });
   it('detours a standard account (F5), low disk (F4) and old Windows (F9)', () => {
     expect(classifyPreflight({...goodFacts, isAdmin: false}).primary.code).toBe('F5');

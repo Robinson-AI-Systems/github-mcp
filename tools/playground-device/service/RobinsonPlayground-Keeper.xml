@@ -18,6 +18,7 @@
   </Triggers>
   <Principals>
     <Principal id="Author">
+      <UserId>%USERID%</UserId>
       <LogonType>InteractiveToken</LogonType>
       <RunLevel>LeastPrivilege</RunLevel>
     </Principal>
