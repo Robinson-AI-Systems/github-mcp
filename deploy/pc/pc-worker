@@ -24,6 +24,9 @@ Usage: pc-worker <command>
   logs [lines]            The last lines of the worker log (default 200; never follows).
   recover-lease <id>      After a hard stop: release one workspace's interrupted lock (worker stopped).
   update [install args]   Run install.sh again (for example: update --commit <full-sha>).
+  autoupdate [cmd]        The between-jobs self-updater (WORKER-AUTOUPDATE-1): status (default),
+                          run (check now), pause / resume (the updater only, not the worker),
+                          log [lines] (its journal).
 EOF
 }
 
@@ -168,6 +171,43 @@ cmd_recover_lease() {
   say "Released. Resume, then have the agent inspect the workspace and remote refs before any new change."
 }
 
+cmd_autoupdate() {
+  local sub="${1:-status}"; shift || true
+  local state_dir="$HOME_DIR/autoupdate"
+  case "$sub" in
+    status)
+      say "Worker auto-updater (WORKER-AUTOUPDATE-1)"
+      if [[ -e "$HOME_DIR/.autoupdate-pause" ]]; then say "  updater     paused (operator file)"; else say "  updater     active"; fi
+      if command -v systemctl >/dev/null 2>&1; then say "  timer       $(systemctl is-active worker-autoupdate.timer 2>/dev/null || echo unknown)"; fi
+      if [[ -f "$state_dir/status.json" ]]; then
+        python3 -c 'import json,sys
+try:
+    s=json.load(open(sys.argv[1]))
+    print("  state       %s - %s" % (s.get("state"), s.get("detail")))
+    print("  builds      worker %s / release %s (current: %s)" % (s.get("worker_build"), s.get("paired_build"), s.get("current")))
+    print("  checked     %s" % s.get("checked_at"))
+except Exception as e:
+    print("  status file unreadable:", e)' "$state_dir/status.json"
+      else
+        say "  state       no check recorded yet"
+      fi
+      if [[ -f "$state_dir/receipts.jsonl" ]]; then say "  last receipt $(tail -n 1 "$state_dir/receipts.jsonl")"; fi
+      ;;
+    run)
+      if command -v systemctl >/dev/null 2>&1; then systemctl start worker-autoupdate.service; say "Update check started (worker-autoupdate.service). Watch: $HOME_DIR/pc-worker autoupdate log"
+      elif [[ -x "$HOME_DIR/worker-autoupdate.sh" ]]; then "$HOME_DIR/worker-autoupdate.sh"
+      else fail "The auto-updater is not installed. Run: $HOME_DIR/pc-worker update"; fi
+      ;;
+    pause) : > "$HOME_DIR/.autoupdate-pause"; say "Auto-updater paused (the worker itself is untouched). Resume with: $HOME_DIR/pc-worker autoupdate resume" ;;
+    resume) rm -f "$HOME_DIR/.autoupdate-pause"; say "Auto-updater resumed." ;;
+    log)
+      local lines="${1:-100}"; [[ "$lines" =~ ^[0-9]+$ ]] || fail "log takes a number of lines."
+      if command -v journalctl >/dev/null 2>&1; then journalctl -u worker-autoupdate.service --no-pager -n "$lines"; else fail "journalctl is not available here."; fi
+      ;;
+    *) fail "autoupdate takes: status | run | pause | resume | log [lines]" ;;
+  esac
+}
+
 main() {
   local self
   self="$(readlink -f "${BASH_SOURCE[0]}")"
@@ -187,6 +227,7 @@ main() {
     logs) cmd_logs "$@" ;;
     recover-lease) cmd_recover_lease "$@" ;;
     update) exec bash "$HOME_DIR/src/deploy/pc/install.sh" --home "$HOME_DIR" "$@" ;;
+    autoupdate) cmd_autoupdate "$@" ;;
     -h|--help|help|"") usage ;;
     *) usage; exit 2 ;;
   esac

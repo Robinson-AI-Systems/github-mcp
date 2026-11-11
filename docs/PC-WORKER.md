@@ -184,6 +184,47 @@ build is then answered from Docker's cache in seconds). Workspaces and settings 
 `docker image ls robinson-git-native` and removed one by one with `docker image rm robinson-git-native:<sha>`; never
 run a global prune on this PC (other containers live there).
 
+## Automatic updates between jobs (WORKER-AUTOUPDATE-1, owner order 2026-11-11)
+
+The worker no longer waits for a quiet day to be updated. A small updater
+(`/srv/robinson-git/worker-autoupdate.sh`, run by `worker-autoupdate.timer` every 10 minutes)
+keeps it on the server's release build:
+
+1. It compares the worker's build (`SOURCE_COMMIT` in `.env`) with the tip of the `live` branch —
+   the same ref `pc-worker update` installs by default, and the commit `github_server_status`
+   reports as the server's release. Equal means nothing to do.
+2. When a newer build exists it closes admission with the worker's own owner-pause file (marked
+   `worker-autoupdate`, so it is never confused with the owner's own pause, which it never
+   touches or overrides), then waits for admitted work to finish: no `mutation.lock` files and
+   no established connections to the worker ports, held for a short quiet window. The wait is
+   capped at 900 s — the longest single operation the worker itself allows (a 15-minute clone).
+   Past the cap the update **defers** to the next cycle; a running job is never stopped for an
+   update. That is the "between jobs" rule: on a busy day the update slips into the first gap
+   between operations instead of waiting for idle hours that may never come.
+3. The swap is the normal one (`pc-worker update --commit <target>`): the new image builds first,
+   then the container is recreated; `.env` settings are kept and the MCP's current control
+   public key is re-fetched, so a key rotation re-pins through the same path as a manual update.
+4. Before admission reopens, the new build must prove itself: container healthy, both local
+   health endpoints, the public Funnel health, the pinned control key matching the key the MCP
+   serves, and the container still carrying the `.env` GitHub HTTP version. Any failure rolls
+   back automatically to the previous build (its image is still on disk) and journals the
+   failure loudly; if the rollback itself cannot be verified, admission stays closed (new work
+   fails over to the pool's other host) until an operator repairs it and runs `pc-worker resume`.
+
+Every attempt leaves a receipt in `/srv/robinson-git/autoupdate/receipts.jsonl` (from/to builds,
+how long admission was paused, the result), and the current state is one read:
+
+```bash
+wsl -u root -e /srv/robinson-git/pc-worker autoupdate status   # state, both builds, last receipt
+wsl -u root -e /srv/robinson-git/pc-worker autoupdate run      # check now instead of waiting for the timer
+wsl -u root -e /srv/robinson-git/pc-worker autoupdate pause    # stop the updater only (worker untouched)
+```
+
+The updater does nothing while the PC's RECLAIM flag is set, while the worker is owner-paused or
+stopped, or while the release branch is *behind* the worker (a rewound branch is a human
+decision; it journals and stays put rather than downgrading). `install.sh` installs the updater
+and its timer whenever the source it installs from carries them.
+
 ## Logs
 
 `pc-worker logs` (last 200 lines) or `pc-worker logs 1000`. The worker never logs keys, tokens, signatures or paths.

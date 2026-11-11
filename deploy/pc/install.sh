@@ -196,6 +196,26 @@ main() {
   fi
   install -m 755 "$SRC/deploy/pc/pc-worker" "$home/pc-worker"
   ok "control script: $home/pc-worker (pause | resume | status | stop | logs)"
+  # WORKER-AUTOUPDATE-1: the between-jobs self-updater. Installed only when this source carries
+  # it (an older release simply leaves any installed updater untouched); the copy is atomic
+  # (temp + rename) because install.sh itself runs under the updater during a swap.
+  if [[ -f "$SRC/deploy/pc/worker-autoupdate.sh" ]]; then
+    local au_tmp="$home/.worker-autoupdate.sh.tmp"
+    install -m 755 "$SRC/deploy/pc/worker-autoupdate.sh" "$au_tmp" && mv "$au_tmp" "$home/worker-autoupdate.sh"
+    ok "auto-updater: $home/worker-autoupdate.sh (checks every 10 min, updates between jobs; pc-worker autoupdate status)"
+    if command -v systemctl >/dev/null 2>&1 && [[ -d /etc/systemd/system ]]; then
+      install -m 644 "$SRC/deploy/pc/worker-autoupdate.service" /etc/systemd/system/worker-autoupdate.service
+      install -m 644 "$SRC/deploy/pc/worker-autoupdate.timer" /etc/systemd/system/worker-autoupdate.timer
+      systemctl daemon-reload >/dev/null 2>&1 || true
+      if systemctl enable --now worker-autoupdate.timer >/dev/null 2>&1; then
+        ok "auto-updater timer enabled (worker-autoupdate.timer)"
+      else
+        note "could not enable worker-autoupdate.timer; enable it with: systemctl enable --now worker-autoupdate.timer"
+      fi
+    else
+      note "systemd not found; the auto-updater script is installed but its timer is not. Run it from any scheduler: $home/worker-autoupdate.sh"
+    fi
+  fi
 
   step "7/8 Tailscale Funnel"
   local origin; origin="$(env_value PC_WORKER_PUBLIC_ORIGIN)"
