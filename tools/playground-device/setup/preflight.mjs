@@ -31,7 +31,7 @@ export function classifyPreflight(facts) {
   if (!facts) return {verdict: 'detour', detours: [{code: 'F14', page: DETOUR_PAGES.F14, what: 'Setup could not read this computer\u2019s state.'}], warnings, facts: {}};
   if (facts.smode) detours.push({code: 'F11', page: DETOUR_PAGES.F11, what: 'This PC is in Windows S mode, which only allows Store apps.'});
   if (facts.pendingReboot || (facts.pendingUpdateCount ?? 0) > 0) detours.push({code: 'F3', page: DETOUR_PAGES.F3, what: 'Windows has updates waiting to finish.'});
-  if (facts.cpuVirtualizationFirmware === false) detours.push({code: 'F1', page: DETOUR_PAGES.F1, what: 'Hardware virtualization is turned off in this PC\u2019s BIOS settings.'});
+  if (facts.cpuVirtualizationFirmware === false && facts.hypervisorPresent !== true) detours.push({code: 'F1', page: DETOUR_PAGES.F1, what: 'Hardware virtualization is turned off in this PC\u2019s BIOS settings.'});
   if (facts.hypervisorPresent === false && facts.cpuVirtualizationFirmware !== true) detours.push({code: 'F2', page: DETOUR_PAGES.F2, what: 'Windows could not start its virtual machine platform.'});
   if (!facts.os?.isWindows11) detours.push({code: 'F9', page: DETOUR_PAGES.F9, what: 'This setup supports Windows 11. Older Windows versions are not supported yet.'});
   if (facts.wslPresent === false && facts.wslFeatureEnabled === false && facts.vmPlatformEnabled === false) detours.push({code: 'F10', page: DETOUR_PAGES.F10, what: 'The Windows virtualization features could not be enabled.'});

@@ -10,7 +10,7 @@ $script:PlaygroundDistroName = 'PlaygroundWorker'
 # RELEASE INPUTS — pinned by the release that ships the installer (URL is
 # the official Ubuntu WSL image; the hash is filled in by the release after
 # the step-3 battery downloads and hashes the exact image).
-$script:UbuntuWslRootfsUrl = 'https://cloud-images.ubuntu.com/wsl/releases/noble/current/ubuntu-noble-wsl-amd64-rootfs.tar.gz'
+$script:UbuntuWslRootfsUrl = 'https://cloud-images.ubuntu.com/wsl/releases/noble/current/ubuntu-noble-wsl-amd64-24.04lts.rootfs.tar.gz'
 $script:UbuntuWslRootfsSha256 = ''
 
 function Invoke-WslTimeout {
@@ -19,7 +19,11 @@ function Invoke-WslTimeout {
   try {
     $p = Start-Process -FilePath 'wsl.exe' -ArgumentList $Arguments -NoNewWindow -PassThru -RedirectStandardOutput $out -RedirectStandardError $err
     if (-not $p.WaitForExit($TimeoutSec * 1000)) { try { $p.Kill() } catch {}; throw "wsl $($Arguments -join ' ') timed out after ${TimeoutSec}s (F14)" }
-    return [pscustomobject]@{ ExitCode = $p.ExitCode; StdOut = (Get-Content $out -Raw -ErrorAction SilentlyContinue); StdErr = (Get-Content $err -Raw -ErrorAction SilentlyContinue) }
+    $code = $p.ExitCode; if ($null -eq $code) { try { $p.Refresh() } catch {}; $code = $p.ExitCode }
+    $stderrText = (Get-Content $err -Raw -ErrorAction SilentlyContinue)
+    # Live finding 2026-11-11 (instance #1): Start-Process can leave ExitCode null after a fully successful wsl run (the import and the payload chain both landed while reporting null). A null code with an empty stderr is success; a null code WITH stderr keeps the caller's failure vocabulary.
+    if ($null -eq $code -and [string]::IsNullOrWhiteSpace($stderrText)) { $code = 0 }
+    return [pscustomobject]@{ ExitCode = $code; StdOut = (Get-Content $out -Raw -ErrorAction SilentlyContinue); StdErr = $stderrText }
   } finally { Remove-Item $out, $err -Force -ErrorAction SilentlyContinue }
 }
 

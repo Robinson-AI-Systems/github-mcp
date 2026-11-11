@@ -31,7 +31,7 @@ function Get-ProbeFacts {
     smode = $sMode; pendingReboot = $pendingReboot; pendingUpdateCount = 0
     cpuVirtualizationFirmware = [bool]$cpu.VirtualizationFirmwareEnabled; hypervisorPresent = [bool]$cs.HypervisorPresent
     wslFeatureEnabled = $featuresOn; vmPlatformEnabled = $featuresOn; wslPresent = $wslPresent
-    isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+    isAdmin = $( $adm = $false; try { $short = (([Security.Principal.WindowsIdentity]::GetCurrent().Name -split '\\')[-1]); $adm = [bool](((Get-LocalGroupMember -Group 'Administrators' -ErrorAction Stop | ForEach-Object { ($_.Name -split '\\')[-1] }) -contains $short)) } catch {}; if (-not $adm) { $adm = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator) }; $adm )
     freeDiskBytes = if ($drive) { [int64]$drive.Free } else { $null }
     avProducts = $av; conflictingAv = $false
     installerBusy = [bool](Get-Process -Name 'msiexec' -ErrorAction SilentlyContinue)
@@ -49,7 +49,7 @@ function Classify-Facts { param($F)
   $detours = @()
   if ($F.smode) { $detours += @{ code = 'F11'; what = 'This PC is in Windows S mode, which only allows Store apps.' } }
   if ($F.pendingReboot -or $F.pendingUpdateCount -gt 0) { $detours += @{ code = 'F3'; what = 'Windows has updates waiting to finish.' } }
-  if ($F.cpuVirtualizationFirmware -eq $false) { $detours += @{ code = 'F1'; what = 'Hardware virtualization is turned off in this PC''s BIOS settings.' } }
+  if ($F.cpuVirtualizationFirmware -eq $false -and $F.hypervisorPresent -ne $true) { $detours += @{ code = 'F1'; what = 'Hardware virtualization is turned off in this PC''s BIOS settings.' } }
   if ($F.hypervisorPresent -eq $false -and $F.cpuVirtualizationFirmware -ne $true) { $detours += @{ code = 'F2'; what = 'Windows could not start its virtual machine platform.' } }
   if (-not $F.os.isWindows11) { $detours += @{ code = 'F9'; what = 'This setup supports Windows 11. Older Windows versions are not supported yet.' } }
   if ($F.wslPresent -eq $false -and $F.wslFeatureEnabled -eq $false -and $F.vmPlatformEnabled -eq $false) { $detours += @{ code = 'F10'; what = 'The Windows virtualization features could not be enabled.' } }
@@ -79,7 +79,7 @@ function Get-ElevationBatch { param($Facts)
 }
 
 function Register-PlaygroundTasks { param([string]$PayloadDir)
-  $xml = (Get-Content (Join-Path $PayloadDir 'service\RobinsonPlayground-Keeper.xml') -Raw).Replace('%DISTRO%', $script:DistroName)
+  $xml = (Get-Content (Join-Path $PayloadDir 'service\RobinsonPlayground-Keeper.xml') -Raw).Replace('%DISTRO%', $script:DistroName).Replace('%USERID%', [Security.Principal.WindowsIdentity]::GetCurrent().User.Value)
   $xmlPath = "$script:StateDir\keeper.xml"; Set-Content -Path $xmlPath -Value $xml -Encoding Unicode
   & schtasks.exe /Create /TN $script:KeeperTask /XML $xmlPath /F | Out-Null
   $resumeAction = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$script:StateDir\setup.ps1`" -Resume"

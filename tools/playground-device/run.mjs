@@ -15,7 +15,7 @@
 // starts the previous payload instead. A bad update degrades to "still on
 // the old version, control plane informed", never to a dead machine.
 import {spawn} from 'node:child_process';
-import {readFile, writeFile, rename, stat} from 'node:fs/promises';
+import {readFile, writeFile, rename, stat, mkdir} from 'node:fs/promises';
 import {join, dirname} from 'node:path';
 import {homedir} from 'node:os';
 import {fileURLToPath} from 'node:url';
@@ -36,6 +36,7 @@ export async function resolvePayload({dir, here = HERE} = {}) {
 }
 
 async function writeReport(dir, report) {
+  await mkdir(dir, {recursive: true});
   const tmp = join(dir, 'pending-update-report.json.tmp');
   await writeFile(tmp, JSON.stringify(report), {mode: 0o600});
   await rename(tmp, join(dir, 'pending-update-report.json'));
@@ -45,6 +46,7 @@ async function loadCrashes(dir, now) {
   try { const s = JSON.parse(await readFile(join(dir, 'payload-crashes.json'), 'utf8')); return Array.isArray(s) ? s.filter(t => now() - t < CRASH_WINDOW_MS) : []; } catch { return []; }
 }
 async function saveCrashes(dir, crashes) {
+  await mkdir(dir, {recursive: true});
   const tmp = join(dir, 'payload-crashes.json.tmp');
   await writeFile(tmp, JSON.stringify(crashes), {mode: 0o600});
   await rename(tmp, join(dir, 'payload-crashes.json'));

@@ -2643,6 +2643,25 @@
       "pr": []
     },
     {
+      "id": "PLAY-3-FIXES",
+      "title": "Step-6 live findings folded back into the installer",
+      "batch": "FIN",
+      "design": "docs/pr-cards/PLAY-3-FIXES.md",
+      "dependencies": [
+        "PLAY-3"
+      ],
+      "card": "docs/pr-cards/PLAY-3-FIXES.md",
+      "status": "IN_PROGRESS",
+      "migration": "none: installer robustness fixes only; no protocol or record changes",
+      "budget": 800,
+      "units": [
+        "PLAY-3-FIXES"
+      ],
+      "readiness": "READY",
+      "ownerInputs": [],
+      "pr": []
+    },
+    {
       "id": "HOST-DELEGATION-1",
       "title": "Delegated Playground host approval under the owner's own connection",
       "batch": "FIN",
@@ -3632,7 +3651,7 @@
       "docs/pr-cards/RESULT-OWN-KEYS.md",
       "docs/pr-cards/RESULT-OFFSET-METADATA.md"
     ],
-    "sourceAndAutomated": "All five #151\u2013#155 source implementations accepted by the complete seven exact-head CI/release gates; #155 merger/final-main CI must still be observed independently.",
+    "sourceAndAutomated": "All five #151–#155 source implementations accepted by the complete seven exact-head CI/release gates; #155 merger/final-main CI must still be observed independently.",
     "deployedExactRevision": "UNVERIFIED for this batch; last independently observed production source #146",
     "authenticatedCustomMcp": "UNVERIFIED",
     "directOAuth": "UNVERIFIED",
