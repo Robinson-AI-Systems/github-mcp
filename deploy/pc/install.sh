@@ -173,7 +173,11 @@ main() {
       fail "Port $port is already in use inside WSL. Pick free ports with PC_WORKER_API_PORT / PC_WORKER_GIT_PORT in $ENV_FILE."
     fi
   done
-  if [[ -e "$data/.owner-pause" ]]; then
+  # AUTOUPDATE-GATE-1: the self-updater closes admission with its own marked pause and then calls this
+  # script; under THAT pause the new image must start (the new container reads the same pause file, so
+  # admission stays closed until the updater verifies and reopens it). Only someone else's pause, the
+  # owner's, means "do not start".
+  if [[ -e "$data/.owner-pause" ]] && ! grep -q "worker-autoupdate" "$data/.owner-pause" 2>/dev/null; then
     note "The worker is paused by its owner; the new image is built but not started. Start it with: $home/pc-worker resume"
   else
     compose up -d --no-build native-git >/dev/null || fail "The container did not start. See: $home/pc-worker logs"

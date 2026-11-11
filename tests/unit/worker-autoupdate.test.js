@@ -60,6 +60,35 @@ describe('WORKER-AUTOUPDATE-1: the PC worker updates itself between jobs (owner 
     expect(updater).toMatch(/flock -n 9/);
   });
 
+  it('AUTOUPDATE-GATE-1: the public check also runs from inside the worker container (no host hairpin)', () => {
+    const gate = updater.slice(updater.indexOf('public_health_ok() {'), updater.indexOf('key_pin_ok() {'));
+    expect(gate).toMatch(/curl -fsS --max-time 10 "\$origin\/health" >\/dev\/null 2>&1 && return 0/);
+    expect(gate).toMatch(/docker exec "\$WORKER_CONTAINER" node -e/);
+    expect(updater).toContain('WORKER_CONTAINER="robinson-git-native-git-1"');
+  });
+
+  it('AUTOUPDATE-GATE-1: a target that failed verification is held, not retried every cycle', () => {
+    expect(updater).toContain('FAILED_TARGET_FILE="$STATE_DIR/failed-target"');
+    // recorded the moment verification fails, before the rollback
+    expect(updater).toMatch(/rolling back to \$current"\n  printf '%s\\n' "\$target" > "\$FAILED_TARGET_FILE"/);
+    // checked before any admission pause is written
+    expect(updater.indexOf('already failed verification here')).toBeLessThan(updater.indexOf("printf 'paused %s %s\\n'"));
+    expect(updater).toContain('write_status "holding"');
+    // cleared by a verified update
+    expect(updater).toContain('rm -f "$PAUSE_FILE" "$FAILED_TARGET_FILE"');
+  });
+
+  it("AUTOUPDATE-GATE-1: under the updater's own pause install.sh starts the new image; only the owner's pause holds it", () => {
+    expect(install).toMatch(/if \[\[ -e "\$data\/\.owner-pause" \]\] && ! grep -q "worker-autoupdate" "\$data\/\.owner-pause"/);
+  });
+
+  it('AUTOUPDATE-GATE-1: verification checks the RUNNING container build, not only the .env record', () => {
+    const verify = updater.slice(updater.indexOf('verify_build() {'), updater.indexOf('main() {'));
+    expect(verify).toContain('running="$(running_build)"');
+    expect(updater).toMatch(/running_build\(\) \{\n  docker inspect -f .*"\$WORKER_CONTAINER"/);
+    expect(updater).toContain("sed -n 's/^NATIVE_GIT_BUILD_COMMIT=//p'");
+  });
+
   it('never downgrades: a rewound release branch is journaled and skipped', () => {
     expect(updater).toMatch(/merge-base --is-ancestor "\$target" "\$current"/);
     expect(updater).toContain('not downgrading');

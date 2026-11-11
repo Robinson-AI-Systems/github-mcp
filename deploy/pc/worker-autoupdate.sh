@@ -39,9 +39,13 @@ RELEASE_REF="live"
 STATE_DIR="$HOME_DIR/autoupdate"
 STATUS_FILE="$STATE_DIR/status.json"
 RECEIPTS_FILE="$STATE_DIR/receipts.jsonl"
+# AUTOUPDATE-GATE-1: a target that failed verification is not retried every cycle (each retry closed
+# admission again); the updater holds until the release branch moves or an operator clears this file.
+FAILED_TARGET_FILE="$STATE_DIR/failed-target"
 UPDATER_PAUSE="$HOME_DIR/.autoupdate-pause"
 RECLAIM_FILE="${WORKER_AUTOUPDATE_RECLAIM_FILE:-/mnt/c/VivienneHome/RECLAIM}"
 PAUSE_MARKER="worker-autoupdate"
+WORKER_CONTAINER="robinson-git-native-git-1"
 MAX_DRAIN_SECONDS="${WORKER_AUTOUPDATE_MAX_DRAIN_SECONDS:-900}"
 [[ "$MAX_DRAIN_SECONDS" =~ ^[0-9]+$ ]] || MAX_DRAIN_SECONDS=900
 POLL_SECONDS=5
@@ -149,9 +153,17 @@ local_health_ok() {
     && curl -fsS --max-time 3 "http://127.0.0.1:${GIT_PORT}/health" >/dev/null 2>&1
 }
 public_health_ok() {
+  # AUTOUPDATE-GATE-1 (2026-11-11): the public path is proven from where its consumers stand. The WSL
+  # host cannot always reach its own Funnel name (it can resolve to the PC's own tailnet address,
+  # which refuses the device itself: the recorded hairpin class), so a host-only probe failed a good
+  # build AND its rollback at 14:45 and left admission closed. Try the host first, then the same
+  # request from inside the worker container, which resolves and egresses like every other caller.
   local origin; origin="$(env_value PC_WORKER_PUBLIC_ORIGIN "")"
   [[ -n "$origin" ]] || return 1
-  curl -fsS --max-time 10 "$origin/health" >/dev/null 2>&1
+  curl -fsS --max-time 10 "$origin/health" >/dev/null 2>&1 && return 0
+  docker exec "$WORKER_CONTAINER" node -e \
+    'fetch(process.argv[1]+"/health",{signal:AbortSignal.timeout(10000)}).then(r=>process.exit(r.ok?0:1),()=>process.exit(1))' \
+    "$origin" >/dev/null 2>&1
 }
 key_pin_ok() {
   # The signing relationship: the control public key pinned in .env must equal the key the MCP
@@ -173,6 +185,10 @@ http_version_ok() {
     | sed -n 's/^NATIVE_GIT_GITHUB_HTTP_VERSION=//p' | head -n 1)"
   [[ "$have" == "$want" ]]
 }
+running_build() {
+  docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$WORKER_CONTAINER" 2>/dev/null \
+    | sed -n 's/^NATIVE_GIT_BUILD_COMMIT=//p' | head -n 1
+}
 locks_present() { compgen -G "$DATA_DIR/git_*/mutation.lock" >/dev/null 2>&1; }
 conns_present() { ss -Htn state established "( sport = :${API_PORT} or sport = :${GIT_PORT} )" 2>/dev/null | grep -q .; }
 drained() { ! locks_present && ! conns_present; }
@@ -180,6 +196,9 @@ drained() { ! locks_present && ! conns_present; }
 verify_build() {  # verify_build <expected sha>; all gates must pass
   local want="$1" i
   [[ "$(current_build)" == "$want" ]] || { journal "verify: SOURCE_COMMIT is $(current_build), expected $want"; return 1; }
+  # AUTOUPDATE-GATE-1: the RUNNING container must be the new build, not just the .env record.
+  local running; running="$(running_build)"
+  [[ "$running" == "$want" ]] || { journal "verify: the running container is build ${running:-unknown}, expected $want"; return 1; }
   for i in $(seq 1 30); do [[ "$(container_state)" == "running healthy" ]] && break; sleep 2; done
   [[ "$(container_state)" == "running healthy" ]] || { journal "verify: container state is $(container_state)"; return 1; }
   local_health_ok || { journal "verify: local health endpoints do not answer"; return 1; }
@@ -226,6 +245,12 @@ main() {
       write_status "check_failed" "could not read the release branch tip" "$current" "" ""
       return 0
     fi
+  fi
+
+  if [[ -f "$FAILED_TARGET_FILE" && "$(cat "$FAILED_TARGET_FILE" 2>/dev/null)" == "$target" ]]; then
+    journal "skip: $target already failed verification here; holding on $current until $RELEASE_REF moves or an operator removes $FAILED_TARGET_FILE"
+    write_status "holding" "$target failed verification earlier; not retried until the release branch moves" "$current" "$target" ""
+    return 0
   fi
 
   if [[ "$target" == "$current" ]]; then
@@ -283,7 +308,7 @@ main() {
   fi
 
   if verify_build "$target"; then
-    rm -f "$PAUSE_FILE"; pause_owned=0; finished=1; clear_pending
+    rm -f "$PAUSE_FILE" "$FAILED_TARGET_FILE"; pause_owned=0; finished=1; clear_pending
     local paused_total=$(( $(now_s) - pause_started ))
     journal "UPDATED: $current -> $target; admission reopened after ${paused_total}s paused"
     receipt "updated" "$current" "$target" "$paused_total" "health, control-key pin, env and public path verified"
@@ -293,6 +318,7 @@ main() {
 
   # --- Roll back automatically; the previous image is still on disk.
   journal "verification failed on $target; rolling back to $current"
+  printf '%s\n' "$target" > "$FAILED_TARGET_FILE" 2>/dev/null || true
   local rb_log="$STATE_DIR/last-rollback.log"
   "$HOME_DIR/pc-worker" update --commit "$current" >"$rb_log" 2>&1 || journal "rollback install also reported failure (see $rb_log)"
   if verify_build "$current"; then
