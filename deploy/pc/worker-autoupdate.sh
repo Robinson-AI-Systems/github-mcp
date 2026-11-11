@@ -151,7 +151,14 @@ local_health_ok() {
 public_health_ok() {
   local origin; origin="$(env_value PC_WORKER_PUBLIC_ORIGIN "")"
   [[ -n "$origin" ]] || return 1
-  curl -fsS --max-time 10 "$origin/health" >/dev/null 2>&1
+  curl -fsS --max-time 10 "$origin/health" >/dev/null 2>&1 && return 0
+  # WSL cannot always reach this host's own Funnel name (mirrored networking refuses the
+  # loopback to its own public name instantly, while the name answers fine publicly — found
+  # live 2026-11-11: both update attempts failed this gate on a healthy old build). The
+  # Windows side of the same machine exercises the same public route; accept its answer.
+  local wincurl="/mnt/c/Windows/System32/curl.exe"
+  [[ -x "$wincurl" ]] || return 1
+  "$wincurl" -fsS --max-time 10 "$origin/health" >/dev/null 2>&1
 }
 key_pin_ok() {
   # The signing relationship: the control public key pinned in .env must equal the key the MCP
@@ -176,6 +183,47 @@ http_version_ok() {
 locks_present() { compgen -G "$DATA_DIR/git_*/mutation.lock" >/dev/null 2>&1; }
 conns_present() { ss -Htn state established "( sport = :${API_PORT} or sport = :${GIT_PORT} )" 2>/dev/null | grep -q .; }
 drained() { ! locks_present && ! conns_present; }
+
+# Builds must never depend on the Docker Desktop integration share (its read-only ISO can go
+# unreadable while the Engine stays healthy; found live 2026-11-11, when every plugin binary on
+# the share failed with EIO and no image could build). The kit's own Docker config carries its
+# own buildx (seeded by preflight_build_env below) and no credential store.
+KIT_DOCKER_CONFIG="$STATE_DIR/docker"
+seed_plugin() {  # seed_plugin <name> <repo> <version> <asset>
+  local name="$1" repo="$2" v="$3" asset="$4" dst base
+  dst="$KIT_DOCKER_CONFIG/cli-plugins/$name"
+  if [[ ! -x "$dst" ]]; then
+    base="https://github.com/$repo/releases/download"
+    curl -fsSL --max-time 180 -o "$dst.tmp" "$base/$v/$asset" || return 1
+    curl -fsSL --max-time 30 -o "$STATE_DIR/$name.checksums" "$base/$v/checksums.txt" || return 1
+    ( cd "$STATE_DIR" && echo "$(grep "$asset\$" "$name.checksums" | awk '{print $1}')  $dst.tmp" | sha256sum -c - >/dev/null ) || return 1
+    mv "$dst.tmp" "$dst"
+  fi
+  chmod 755 "$dst"
+}
+seed_plugins() {
+  # The kit Docker config must be SELF-CONTAINED: install.sh's prerequisite check runs
+  # `docker compose version`, and a config carrying buildx alone fails it (found live
+  # 2026-11-11, second attempt). Seed both plugins the install path needs, each verified
+  # against its release checksums.
+  mkdir -p "$KIT_DOCKER_CONFIG/cli-plugins"
+  printf '{}\n' > "$KIT_DOCKER_CONFIG/config.json"
+  seed_plugin docker-buildx docker/buildx v0.29.1 buildx-v0.29.1.linux-amd64 || return 1
+  seed_plugin docker-compose docker/compose v2.40.3 docker-compose-linux-x86_64 || return 1
+}
+kit_plugins_ok() {
+  DOCKER_CONFIG="$KIT_DOCKER_CONFIG" docker buildx version >/dev/null 2>&1 \
+    && DOCKER_CONFIG="$KIT_DOCKER_CONFIG" docker compose version >/dev/null 2>&1
+}
+preflight_build() {
+  # A worker image must be buildable BEFORE admission closes; if the build machinery itself is
+  # broken, defer loudly and leave git service completely untouched.
+  if docker buildx version >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then return 0; fi
+  journal "preflight: the ambient docker plugins are not runnable; seeding the kit plugins and retrying"
+  seed_plugins || return 1
+  kit_plugins_ok || return 1
+  export DOCKER_CONFIG="$KIT_DOCKER_CONFIG"
+}
 
 verify_build() {  # verify_build <expected sha>; all gates must pass
   local want="$1" i
@@ -244,6 +292,14 @@ main() {
     write_status "attention" "release branch is behind the worker build; not downgrading" "$current" "$target" ""
     return 0
   fi
+
+  if ! preflight_build; then
+    journal "DEFERRED: the Docker build machinery on this PC is broken (buildx not runnable); update deferred BEFORE closing admission, git service untouched"
+    receipt "deferred" "$current" "$target" 0 "build machinery preflight failed (docker buildx not runnable); deferred before admission closed"
+    write_status "attention" "docker buildx is not runnable on this PC; update deferred before admission closed" "$current" "$target" "$(pending_since_for "$target")"
+    return 0
+  fi
+  if [[ -n "${DOCKER_CONFIG:-}" ]]; then journal "builds will use the kit Docker config ($DOCKER_CONFIG)"; fi
 
   local pending_since; pending_since="$(pending_since_for "$target")"
   local pending_age=$(( $(now_s) - $(date -u -d "$pending_since" +%s 2>/dev/null || now_s) ))
