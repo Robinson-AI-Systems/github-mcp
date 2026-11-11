@@ -12,7 +12,9 @@ import {ensureProjectManager,sweepKey,managerKeyDrift,sweep,sweepAllocations} fr
 const hash=x=>createHash('sha256').update(x).digest('hex');
 const config={origin:'https://dokploy.example.test',key:'FAKE_PROVIDER_KEY',project:'fixture',environment:'fixture-env',image:'fixture-image',worker:'git_'+'a'.repeat(32),nativeBinding:'b'.repeat(64),ingress:'107.90.116.157'};
 const closes=[];afterEach(async()=>{for(const close of closes.splice(0))await close();});
-async function world(){const w=await makeWorld({profile:'full',mode:'production',gates:[]});closes.push(await prepareNativeWorld(w,{existing:true}));w.ctx.env.PUBLIC_BASE_URL='https://mcp.example.test';return w;}
+async function world(){const w=await makeWorld({profile:'full',mode:'production',gates:[]});closes.push(await prepareNativeWorld(w,{existing:true}));const env={...w.ctx.env,PUBLIC_BASE_URL:'https://mcp.example.test'};delete env.NATIVE_GIT_WORKER_KEY;w.ctx={...w.ctx,env};return w;}
+// (No NATIVE_GIT_WORKER_KEY above: production derives the signing key from
+// TOKEN_ENCRYPTION_KEY, which is exactly the derivation a rotation changes.)
 // A provider stand-in that holds the manager compose exactly as Dokploy would:
 // create stores the file, inspect byte-compares it, update replaces it.
 function managerProvider(){
