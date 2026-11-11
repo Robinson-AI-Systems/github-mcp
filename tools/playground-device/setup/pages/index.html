@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>Add your computer — Robinson Playground setup</title><style>body{font-family:'Segoe UI',system-ui,sans-serif;max-width:640px;margin:40px auto;padding:0 20px;color:#1c1c22;line-height:1.55}
+h1{font-size:26px} .accent{color:#9A7BFF} .card{border:1px solid #ddd;border-radius:12px;padding:20px;margin:20px 0}
+.btn{display:inline-block;background:#9A7BFF;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600}
+code{background:#f2f0fa;padding:2px 6px;border-radius:4px} small{color:#555}</style></head>
+<body>
+<h1>Add this computer to <span class="accent">your Playground</span></h1>
+<p>Your AI assistant can run builds and tests on computers you own. This setup turns this PC into one of those computers. It only makes outbound connections — no open ports, no public address — and it runs only your own work.</p>
+<div class="card"><p><strong>What happens</strong></p>
+<ol><li>Setup checks this PC (about a minute).</li>
+<li>Windows asks once for administrator permission.</li>
+<li>Setup installs its own private workspace on this PC — a separate Linux area with its own Docker. Anything already here (your files, Docker Desktop, other Linux installs) is left exactly as it is.</li>
+<li>You approve this computer on your My connection page — that is the second and last decision.</li></ol>
+<p>Total: about 5 minutes of your attention. If Windows needs one restart, setup resumes by itself when you sign back in.</p></div>
+<p><a class="btn" href="setup.ps1" download>Download setup</a></p>
+<p><small>Run the downloaded file and follow the screens. Windows may warn you the file is not signed yet — choose “More info”, then “Run anyway”. Revoking the computer later, on My connection, stops and deletes its runtimes.</small></p>
+</body></html>

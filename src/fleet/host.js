@@ -3,8 +3,28 @@
 import {randomBytes} from 'node:crypto';
 import {CHECKIN,REPORT,ORDER,peekDevice,verifyDeviceRequest,cleanCapacity,readinessPassed} from './protocol.js';
 import {enqueue,take,complete,read} from './mailbox.js';
-import {signFleetOrderBody} from '../native-git/signing.js';
+import {signFleetOrderBody,signAgentReleaseBody} from '../native-git/signing.js';
 const hostKey=id=>'pg_host.'+id;
+// PLAY-3 §5.1: the newest signed agent release, advertised on the check-in
+// response only when the operator has configured a release (all three env
+// values). The advertisement is signed with the same fleet key that signs
+// orders; the agent verifies it against the key pinned at join, checks the
+// bundle hash after download, and refuses downgrades itself.
+export function agentUpdateAdvertisement(env){
+ const version=env?.PLAYGROUND_AGENT_LATEST_VERSION,bundleSha256=env?.PLAYGROUND_AGENT_BUNDLE_SHA256,bundleUrl=env?.PLAYGROUND_AGENT_BUNDLE_URL;
+ if(typeof version!=='string'||!/^[A-Za-z0-9][A-Za-z0-9./-]{0,60}$/.test(version)||!/^[a-f0-9]{64}$/.test(bundleSha256??'')||typeof bundleUrl!=='string')return null;
+ let url;try{url=new URL(bundleUrl);}catch{return null;}
+ if(url.protocol!=='https:'||url.username||url.password)return null;
+ const minimumProtocol=Number(env?.PLAYGROUND_AGENT_MIN_PROTOCOL);
+ const body=JSON.stringify({purpose:'robinson-playground-agent-release/v1',version,bundleSha256,bundleUrl,...(Number.isSafeInteger(minimumProtocol)&&minimumProtocol>1?{minimumProtocol}:{})});
+ return {body,signature:signAgentReleaseBody(body,env)};
+}
+const cleanUpdateReport=r=>{
+ if(!r||typeof r!=='object'||Array.isArray(r))return null;
+ const s=(v,n)=>typeof v==='string'?v.slice(0,n):null;
+ const out={failedVersion:s(r.failedVersion,60),rolledBackTo:s(r.rolledBackTo,60),at:s(r.at,40),reason:s(r.reason,60)};
+ return out.failedVersion||out.rolledBackTo?out:null;
+};
 const deny=reason=>Object.assign(new TypeError('Host request was not accepted.'),{safeCode:'fleet_denied',reason});
 const sleepDefault=ms=>new Promise(r=>setTimeout(r,ms));
 const READINESS_RETRY_MS=300000;
@@ -47,6 +67,8 @@ export async function checkIn(scope,{body,signature,env,now=Date.now,waitMs=2000
  if(scope.grantActive===false)throw deny('grant_inactive');
  let {host,request,agentGeneration}=await verifiedHost(scope,body,signature,CHECKIN,now);
  const patch={lastLeaseAt:now(),capacity:cleanCapacity(request.capacity)};
+ const updateReport=cleanUpdateReport(request.agentUpdateReport);
+ if(updateReport)patch.agentUpdateReport={...updateReport,receivedAt:now()};
  if(host.status==='pending_canary'&&!host.readinessOrder&&!(host.readinessRetryAt>now())){
   const order=await enqueue(scope.db,{deviceId:host.deviceId,generation:host.generation,kind:'readiness',payload:{nonce:randomBytes(16).toString('hex')},ttlMs:600000,now});
   patch.readinessOrder=order.id;
@@ -58,7 +80,8 @@ export async function checkIn(scope,{body,signature,env,now=Date.now,waitMs=2000
  host=await saveHost(scope.db,host.deviceId,current=>({...patch,...(current.readinessOrder&&patch.readinessOrder?{readinessOrder:current.readinessOrder}:{}),...(current.terminateOrder&&patch.terminateOrder?{terminateOrder:current.terminateOrder}:{})}));
  const until=now()+Math.max(0,Math.min(waitMs,25000));let orders=[];
  for(;;){orders=await take(scope.db,host.deviceId,{now});if(orders.length||now()>=until)break;await sleep(pollMs);}
- return {status:host.status,orders:orders.map(m=>signOrder(m,env)),serverTime:now(),pollAfterMs:orders.length?0:1000};
+ const agentUpdate=agentUpdateAdvertisement(env);
+ return {status:host.status,orders:orders.map(m=>signOrder(m,env)),serverTime:now(),pollAfterMs:orders.length?0:1000,...(agentUpdate?{agentUpdate}:{})};
 }
 export async function report(scope,{body,signature,now=Date.now}){
  let {host,request,agentGeneration}=await verifiedHost(scope,body,signature,REPORT,now);
