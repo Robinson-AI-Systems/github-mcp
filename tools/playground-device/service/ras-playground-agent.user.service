@@ -7,8 +7,10 @@
 Description=Robinson Playground host agent (user service)
 After=network-online.target
 Wants=network-online.target
-StartLimitIntervalSec=600
-StartLimitBurst=5
+# No start limit, mirroring the system unit: RestartSec bounds the retry
+# cadence, and a burst limit could wedge the agent permanently after a
+# cluster of crashes at boot.
+StartLimitIntervalSec=0
 
 [Service]
 Type=simple
