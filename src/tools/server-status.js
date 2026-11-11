@@ -181,9 +181,28 @@ async function checkDirect(ctx, env, budget, slow) {
   })(), budget);
   const ms = elapsed(start);
   const named = { exit: exit.name };
-  if (r.timeout) return { status: 'down', ...named, reason: `The push exit (direct git host) did not answer within ${Math.round(budget / 1000)} s.` };
-  if (r.error || !r.value.ok) return { status: 'down', ...named, reason: 'The push exit (direct git host) did not report healthy. git over this service\'s own domain still works.' };
+  // PUSH-EXIT-PROBE-1: `unanswered` marks a probe that never got a healthy answer, so the caller can corroborate it.
+  if (r.timeout) return { status: 'down', ...named, unanswered: origin, reason: `The push exit (direct git host) did not answer within ${Math.round(budget / 1000)} s.` };
+  if (r.error || !r.value.ok) return { status: 'down', ...named, unanswered: origin, reason: 'The push exit (direct git host) did not report healthy. git over this service\'s own domain still works.' };
   return ms > slow.direct_git ? { status: 'degraded', ...named, ms, reason: 'The push exit (direct git host) answered, but slowly.' } : { status: 'ok', ...named, ms };
+}
+
+// PUSH-EXIT-PROBE-1 (2026-11-11): on the rack, this service runs on the same PC as its push exit, and the push exit's
+// public address (the PC's own Tailscale Funnel origin) cannot be reached from inside that PC, though it answers from
+// everywhere else and real pushes land. When the probe gets no healthy answer, but the push exit is the primary host
+// and that host's signed capabilities (checked in the same read) report its direct git host on exactly this origin,
+// the gauge says "degraded" with that reason, never "ok": the listener itself was not probed. Anything else stays down.
+export function corroborateDirect(direct, worker, env) {
+  if (!direct?.unanswered) return direct;
+  const { unanswered, ...rest } = direct;
+  const exit = directHostOf(env);
+  const reported = worker?.cap?.git_direct?.origin;
+  let reportedOrigin = null;
+  try { reportedOrigin = typeof reported === 'string' ? new URL(reported).origin : null; } catch { reportedOrigin = null; }
+  const corroborated = exit?.role === 'primary' && worker?.check && worker.check.status !== 'down' && worker.cap?.ready === true && reportedOrigin === unanswered;
+  if (!corroborated) return rest;
+  return { status: 'degraded', exit: rest.exit, corroborated_by: 'worker_report',
+    reason: 'The push exit\'s public address did not answer from this server (it may be on the same machine, where its own public address cannot be reached), but the worker\'s signed report says its direct git host is set up on that address. Its listener was not checked directly; a real push is the proof.' };
 }
 
 const managerCommit = (source) => {
@@ -304,7 +323,7 @@ export async function serverStatus(args, ctx, { budgetMs = STATUS_BUDGET_MS, slo
     out.workers = { native_git: nativeGit, playground: { runtime_image: runtime, ...(pool?.manager ? { manager: pool.manager } : {}) } };
   }
   if (want.has('health')) {
-    const checks = { database, worker: worker.check, ...(workerPool ? { worker_pool: workerPool } : {}), ...(direct ? { direct_git: direct } : {}), ...(pool?.check ? { playground_pool: pool.check } : {}) };
+    const checks = { database, worker: worker.check, ...(workerPool ? { worker_pool: workerPool } : {}), ...(direct ? { direct_git: corroborateDirect(direct, worker, env) } : {}), ...(pool?.check ? { playground_pool: pool.check } : {}) };
     out.health = { overall: worst(Object.values(checks)), ...checks };
   }
   if (want.has('warnings')) out.warnings = warningsFor({ release, worker: workerFacts, image, history: historyValue });

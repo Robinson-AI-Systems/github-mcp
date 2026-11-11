@@ -109,6 +109,37 @@ describe('github_server_status', () => {
     }
   });
 
+  it('PUSH-EXIT-PROBE-1: an unanswered push-exit probe is degraded, not down, only when the primary worker\'s signed report names that origin', async () => {
+    // Healthy probe: unchanged, and no corroboration fields.
+    let out = await world().run({ fields: ['health'] });
+    expect(out.health.direct_git).toEqual({ status: 'ok', exit: expect.any(String), ms: expect.any(Number) });
+
+    // The rack-on-the-PC case: the public address cannot be reached from here, the primary worker reports it.
+    for (const over of [{ direct: 503 }, { hang: ['git.internal-host.example.test'] }]) {
+      _resetServerStatusCache();
+      out = await world(over).run({ fields: ['health'] }, { budgetMs: 200 });
+      expect(out.health.direct_git).toMatchObject({ status: 'degraded', corroborated_by: 'worker_report', reason: expect.stringContaining('was not checked directly') });
+      expect(out.health.direct_git.unanswered).toBeUndefined();
+      expect(JSON.stringify(out)).not.toContain('internal-host');
+    }
+
+    // No corroboration: worker down, worker not ready, or the worker reports a different origin or none.
+    const cap = world().s.cap;
+    for (const over of [
+      { direct: 503, workerDown: true },
+      { direct: 503, cap: { ...cap, ready: false } },
+      { direct: 503, cap: { ...cap, git_direct: { ...cap.git_direct, origin: 'https://other.example.test' } } },
+      { direct: 503, cap: { ...cap, git_direct: undefined } },
+      { direct: 503, env: { ...SECRET_ENV, NATIVE_GIT_WORKER_DRAINING: 'true' } }
+    ]) {
+      _resetServerStatusCache();
+      out = await world(over).run({ fields: ['health'] });
+      expect(out.health.direct_git).toMatchObject({ status: 'down' });
+      expect(out.health.direct_git.corroborated_by).toBeUndefined();
+      expect(out.health.direct_git.unanswered).toBeUndefined();
+    }
+  });
+
   it('marks each health state and the overall worst state', async () => {
     let out = await world({ dbSetting: async () => { throw new Error('boom'); }, workerDown: true, direct: 503 }).run({ fields: ['health'] });
     expect(out.health).toMatchObject({ overall: 'down', database: { status: 'down', reason: expect.any(String) }, worker: { status: 'down', reason: expect.stringContaining('could not be reached') }, direct_git: { status: 'down' } });
