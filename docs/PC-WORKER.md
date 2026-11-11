@@ -211,6 +211,14 @@ keeps it on the server's release build:
    failure loudly; if the rollback itself cannot be verified, admission stays closed (new work
    fails over to the pool's other host) until an operator repairs it and runs `pc-worker resume`.
 
+Before any of that, the updater proves the PC can actually build an image (`docker buildx`
+runs) — closing admission for a swap that cannot build would pause git service for nothing.
+Builds here otherwise resolve the buildx plugin from Docker Desktop's integration share, a
+read-only ISO that went unreadable on 2026-11-11 while the Engine stayed healthy (every plugin
+read failed, so *no* worker image could build — the fix is a checksum-verified buildx of the
+kit's own, seeded under the updater's state folder with `DOCKER_CONFIG` pinned there; if even
+that fails, the update defers before admission closes and the receipt says why).
+
 Every attempt leaves a receipt in `/srv/robinson-git/autoupdate/receipts.jsonl` (from/to builds,
 how long admission was paused, the result), and the current state is one read:
 

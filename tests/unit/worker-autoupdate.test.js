@@ -60,6 +60,13 @@ describe('WORKER-AUTOUPDATE-1: the PC worker updates itself between jobs (owner 
     expect(updater).toMatch(/flock -n 9/);
   });
 
+  it('preflights the build machinery and defers before closing admission when it is broken', () => {
+    expect(updater).toContain('preflight_build');
+    expect(updater).toMatch(/receipt "deferred"[^;]*build machinery preflight failed/);
+    expect(updater.indexOf('preflight_build; then')).toBeLessThan(updater.indexOf('pause_owned=1'));
+    expect(updater).toContain('KIT_DOCKER_CONFIG="$STATE_DIR/docker"');
+  });
+
   it('never downgrades: a rewound release branch is journaled and skipped', () => {
     expect(updater).toMatch(/merge-base --is-ancestor "\$target" "\$current"/);
     expect(updater).toContain('not downgrading');

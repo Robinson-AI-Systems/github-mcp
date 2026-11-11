@@ -46,6 +46,14 @@ and a connector fixture (clone/write/commit/push/read-back) on the final build.
   signing relationship is preserved by construction — the swap is install.sh itself, which
   re-fetches the MCP's current control public key on every run (the 2026-11-10 re-pin path),
   and the updater verifies the pin afterwards.
+- **Build-machinery preflight.** A swap is pointless if the image cannot build, and closing
+  admission first would pause git service for nothing: before draining, the updater proves
+  `docker buildx` runs. Builds on this PC otherwise resolve plugins from Docker Desktop's
+  integration share (a read-only ISO that went unreadable on 2026-11-11 while the Engine stayed
+  healthy — every plugin read failed EIO and *no* worker image could build, including manual
+  rollbacks). When the ambient buildx is broken, the updater seeds its own checksum-verified
+  buildx under its state folder and pins `DOCKER_CONFIG` there for the swap; when even that
+  fails it defers *before* closing admission and says so in the receipt.
 - **Install path.** `install.sh` installs the script + units (atomically — it runs under the
   updater during a swap) whenever the source it installs from carries them, and enables the
   timer; an older release leaves an installed updater untouched.

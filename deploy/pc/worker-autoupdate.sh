@@ -177,6 +177,35 @@ locks_present() { compgen -G "$DATA_DIR/git_*/mutation.lock" >/dev/null 2>&1; }
 conns_present() { ss -Htn state established "( sport = :${API_PORT} or sport = :${GIT_PORT} )" 2>/dev/null | grep -q .; }
 drained() { ! locks_present && ! conns_present; }
 
+# Builds must never depend on the Docker Desktop integration share (its read-only ISO can go
+# unreadable while the Engine stays healthy; found live 2026-11-11, when every plugin binary on
+# the share failed with EIO and no image could build). The kit's own Docker config carries its
+# own buildx (seeded by preflight_build_env below) and no credential store.
+KIT_DOCKER_CONFIG="$STATE_DIR/docker"
+seed_buildx() {
+  mkdir -p "$KIT_DOCKER_CONFIG/cli-plugins"
+  printf '{}\n' > "$KIT_DOCKER_CONFIG/config.json"
+  local dst="$KIT_DOCKER_CONFIG/cli-plugins/docker-buildx"
+  if [[ ! -x "$dst" ]]; then
+    local v="v0.29.1" base="https://github.com/docker/buildx/releases/download"
+    curl -fsSL --max-time 120 -o "$dst.tmp" "$base/$v/buildx-$v.linux-amd64" || return 1
+    curl -fsSL --max-time 30 -o "$STATE_DIR/buildx.checksums" "$base/$v/checksums.txt" || return 1
+    ( cd "$STATE_DIR" && echo "$(grep "buildx-$v.linux-amd64\$" buildx.checksums | awk '{print $1}')  $dst.tmp" | sha256sum -c - >/dev/null ) || return 1
+    mv "$dst.tmp" "$dst"
+  fi
+  chmod 755 "$dst"
+  "$dst" version >/dev/null 2>&1
+}
+preflight_build() {
+  # A worker image must be buildable BEFORE admission closes; if the build machinery itself is
+  # broken, defer loudly and leave git service completely untouched.
+  if docker buildx version >/dev/null 2>&1; then return 0; fi
+  journal "preflight: docker buildx is not runnable; seeding the kit buildx and retrying"
+  seed_buildx || return 1
+  export DOCKER_CONFIG="$KIT_DOCKER_CONFIG"
+  docker buildx version >/dev/null 2>&1
+}
+
 verify_build() {  # verify_build <expected sha>; all gates must pass
   local want="$1" i
   [[ "$(current_build)" == "$want" ]] || { journal "verify: SOURCE_COMMIT is $(current_build), expected $want"; return 1; }
@@ -244,6 +273,14 @@ main() {
     write_status "attention" "release branch is behind the worker build; not downgrading" "$current" "$target" ""
     return 0
   fi
+
+  if ! preflight_build; then
+    journal "DEFERRED: the Docker build machinery on this PC is broken (buildx not runnable); update deferred BEFORE closing admission, git service untouched"
+    receipt "deferred" "$current" "$target" 0 "build machinery preflight failed (docker buildx not runnable); deferred before admission closed"
+    write_status "attention" "docker buildx is not runnable on this PC; update deferred before admission closed" "$current" "$target" "$(pending_since_for "$target")"
+    return 0
+  fi
+  if [[ -n "${DOCKER_CONFIG:-}" ]]; then journal "builds will use the kit Docker config ($DOCKER_CONFIG)"; fi
 
   local pending_since; pending_since="$(pending_since_for "$target")"
   local pending_age=$(( $(now_s) - $(date -u -d "$pending_since" +%s 2>/dev/null || now_s) ))
