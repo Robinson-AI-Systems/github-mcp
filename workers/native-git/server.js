@@ -14,7 +14,7 @@ import { verifyWorkerBody, workerKey, nativeWorkspaceId, WORKER_PROTOCOL } from 
 import { NATIVE_OPTIONS_VERSION } from '../../src/native-git/commands.js';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import {createResourceMonitor,resourcePolicyFromEnv,OWNER_PAUSE_FILE,OWNER_PAUSED_TEXT} from './resources.js';
+import {createResourceMonitor,resourcePolicyFromEnv,OWNER_PAUSE_FILE,pausedText} from './resources.js';
 import {uploadHttp,beginUpload,uploadStatus,applyUpload,pruneUploads} from './upload.js';
 import {downloadHttp,beginDownload,downloadStatus,pruneDownloads} from './download.js';
 import {remoteHttp,pruneRemotes} from './remote.js';
@@ -101,7 +101,7 @@ export function nativeGitServer({ root, key, now = Date.now, allowLocalFixtures 
    if(claim.action!=='close'&&!(claim.action==='inspect'&&claim.renewLease===false)){
     const needsDisk=['open','upload_begin','upload_apply','download_begin'].includes(claim.action)||claim.action==='run'&&!['remove_file','clean'].includes(claim.operation);
     const admitted=await monitor.check({needsDisk});
-    if(!admitted.allowed){res.setHeader('Retry-After',String(admitted.retryAfterSeconds??2));return send(429,{error:'worker_resource_pressure',reason:admitted.reason,phase:'admission',no_operation_started:true,next:admitted.reason==='owner_paused'?OWNER_PAUSED_TEXT:'Measured worker resources are under pressure. Inspect state, then retry after resources recover.'});}
+    if(!admitted.allowed){res.setHeader('Retry-After',String(admitted.retryAfterSeconds??2));return send(429,{error:'worker_resource_pressure',reason:admitted.reason,...(admitted.held_by?{held_by:admitted.held_by}:{}),phase:'admission',no_operation_started:true,next:admitted.reason==='owner_paused'?pausedText(admitted.held_by):'Measured worker resources are under pressure. Inspect state, then retry after resources recover.'});}
    }
    // WORKER-POOL-1: a full host refuses a new clone before anything starts (the control plane then tries the next host).
    if(claim.action==='open'&&maxWorkspaces!==null){const active=await activeCount();if(active===null||active>=maxWorkspaces){res.setHeader('Retry-After','60');return send(429,{error:'worker_resource_pressure',reason:'workspace_limit',phase:'admission',no_operation_started:true,next:'This host holds its maximum number of workspaces. Close a finished workspace, or try again later.'});}}
