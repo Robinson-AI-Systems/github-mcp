@@ -16,15 +16,31 @@ export const sweepKey=env=>hash(signNativeWorkerBody(JSON.stringify({purpose:'ro
 // rotation silently changes what a running manager should carry. Compare the
 // provider's stored compose with the freshly built one: the sweep key slot is
 // the only field that may legitimately differ. 'current' = stored key matches
-// the current derivation; 'stale' = only the key differs (re-pin it); 'other'
-// = anything else differs (an ownership problem, never a repair candidate).
+// the current derivation and nothing else differs; 'stale' = only the key
+// differs, or the sole difference is a proven provider normalization (below) —
+// either way the repair is the same re-pin, whose update writes the expected
+// compose back; 'other' = anything else differs (an ownership problem, never
+// a repair candidate).
+// Provider normalization (Dokploy, proven from the live stored manager
+// compose on 2026-11-11): the provider's read-back drops the manager's no-op
+// `healthcheck: {disable: true}` — the stored compose carries no healthcheck
+// at all. Absent and exactly {disable: true} are therefore the same shape
+// here, in either direction. This is the ONLY tolerated normalization: a
+// healthcheck of any other shape, or any second difference beside it, is
+// foreign and still classifies 'other'.
+const isDisabledHealthcheck=h=>!!h&&typeof h==='object'&&!Array.isArray(h)&&Object.keys(h).length===1&&h.disable===true;
 export function managerKeyDrift(storedFile,expectedFile){
  if(storedFile===expectedFile)return 'current';
  let stored,expected;try{stored=JSON.parse(storedFile);expected=JSON.parse(expectedFile);}catch{return 'other';}
  const keyOf=x=>x?.services?.manager?.environment?.PLAYGROUND_SWEEP_KEY;
- const masked=x=>{const copy=JSON.parse(JSON.stringify(x));const env=copy?.services?.manager?.environment;if(env&&typeof env==='object')delete env.PLAYGROUND_SWEEP_KEY;return JSON.stringify(copy);};
- if(masked(stored)!==masked(expected))return 'other';
- return keyOf(stored)===keyOf(expected)?'current':'stale';
+ const masked=x=>{const copy=JSON.parse(JSON.stringify(x));const env=copy?.services?.manager?.environment;if(env&&typeof env==='object')delete env.PLAYGROUND_SWEEP_KEY;return copy;};
+ let normalizedOnly=false;
+ if(JSON.stringify(masked(stored))!==JSON.stringify(masked(expected))){
+  const normalized=x=>{const copy=masked(x);const svc=copy?.services?.manager;if(svc&&typeof svc==='object'&&isDisabledHealthcheck(svc.healthcheck))delete svc.healthcheck;return JSON.stringify(copy);};
+  if(normalized(stored)!==normalized(expected))return 'other';
+  normalizedOnly=true;
+ }
+ return !normalizedOnly&&keyOf(stored)===keyOf(expected)?'current':'stale';
 }
 export async function ensureProjectManager(ctx,config,provider){
  const root=rootAllocationDb(ctx),origin=publicOrigin(ctx.env),name='ras-pg-manager-'+hash(origin).slice(0,16),description='robinson-playground-manager/v1 '+hash(origin);

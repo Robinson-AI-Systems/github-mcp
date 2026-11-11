@@ -3626,6 +3626,22 @@
       "ownerInputs": []
     },
     {
+      "id": "SWEEP-REPIN-2",
+      "title": "Sweep manager drift classifier tolerates the one proven provider normalization: Dokploy read-back drops the manager no-op healthcheck {disable: true}, so a stored compose missing it (live shape, 2026-11-11 deliberate fire) classifies stale and takes the re-pin path instead of refusing; any other healthcheck shape or any second difference still refuses as other",
+      "batch": "FIN",
+      "design": "docs/pr-cards/SWEEP-REPIN-2.md",
+      "dependencies": [],
+      "card": "docs/pr-cards/SWEEP-REPIN-2.md",
+      "status": "IN_PROGRESS",
+      "migration": "none (classifier tolerance only; no record or credential changes)",
+      "budget": 600,
+      "units": [
+        "SWEEP-REPIN-2"
+      ],
+      "readiness": "READY",
+      "ownerInputs": []
+    },
+    {
       "id": "PUSH-EXIT-PROBE-1",
       "title": "Push-exit gauge: an unreachable probe corroborated by the primary worker's signed report reads degraded, not down (rack hairpin)",
       "batch": "FIN",
