@@ -148,6 +148,26 @@ local_health_ok() {
   curl -fsS --max-time 3 "http://127.0.0.1:${API_PORT}/health" >/dev/null 2>&1 \
     && curl -fsS --max-time 3 "http://127.0.0.1:${GIT_PORT}/health" >/dev/null 2>&1
 }
+ensure_started() {
+  # install.sh builds the new image but, while our admission pause is up, deliberately does
+  # NOT start it (its step 6: "the worker is paused by its owner; the new image is built but
+  # not started"). The swap therefore has to start the container itself once the build is in
+  # place, with the pause still held so no work is admitted mid-verify. Found live 2026-11-11:
+  # without this, verify chased a container that was never recreated and the public-health
+  # gate was blamed for it.
+  local want="$1" cur="" i
+  cur="$(docker inspect -f '{{.Config.Image}}' robinson-git-native-git-1 2>/dev/null || true)"
+  if [[ "$cur" == "robinson-git-native:$want" && "$(container_state)" == running* ]]; then return 0; fi
+  ( cd "$HOME_DIR/src" && docker compose --project-name robinson-git --env-file "$ENV_FILE" \
+      -f deploy/pc/compose.yaml up -d --no-build native-git ) >/dev/null 2>&1 || return 1
+  for i in $(seq 1 15); do
+    cur="$(docker inspect -f '{{.Config.Image}}' robinson-git-native-git-1 2>/dev/null || true)"
+    [[ "$cur" == "robinson-git-native:$want" ]] && return 0
+    sleep 2
+  done
+  return 1
+}
+
 public_health_ok() {
   local origin; origin="$(env_value PC_WORKER_PUBLIC_ORIGIN "")"
   [[ -n "$origin" ]] || return 1
@@ -228,6 +248,7 @@ preflight_build() {
 verify_build() {  # verify_build <expected sha>; all gates must pass
   local want="$1" i
   [[ "$(current_build)" == "$want" ]] || { journal "verify: SOURCE_COMMIT is $(current_build), expected $want"; return 1; }
+  ensure_started "$want" || { journal "verify: container for $want could not be started"; return 1; }
   for i in $(seq 1 30); do [[ "$(container_state)" == "running healthy" ]] && break; sleep 2; done
   [[ "$(container_state)" == "running healthy" ]] || { journal "verify: container state is $(container_state)"; return 1; }
   local_health_ok || { journal "verify: local health endpoints do not answer"; return 1; }

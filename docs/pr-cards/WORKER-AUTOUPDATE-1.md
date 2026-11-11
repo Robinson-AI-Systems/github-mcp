@@ -61,6 +61,11 @@ and a connector fixture (clone/write/commit/push/read-back) on the final build.
   refuses this host's own Funnel name instantly (mirrored networking) while the name answers
   fine publicly, so the gate falls back to the Windows-side curl on the same machine — without
   that, every verify (including of a healthy rollback build) failed and admission stayed shut.
+- **Third live lesson (2026-11-11, the successful run).** install.sh *builds* the new image
+  but, while the admission pause is up, deliberately does not start it — so the updater's
+  verify must start the freshly built container itself (`compose up -d --no-build`, pause
+  still held) before checking health. The first version's verify instead chased the still-
+  running old container and misattributed the failure to the public path.
 - **Install path.** `install.sh` installs the script + units (atomically — it runs under the
   updater during a swap) whenever the source it installs from carries them, and enables the
   timer; an older release leaves an installed updater untouched.

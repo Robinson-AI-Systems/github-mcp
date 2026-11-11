@@ -73,6 +73,12 @@ describe('WORKER-AUTOUPDATE-1: the PC worker updates itself between jobs (owner 
     expect(updater).toContain('docker compose version');
   });
 
+  it('starts the freshly built container itself: install.sh builds but does not start while paused', () => {
+    expect(updater).toContain('ensure_started');
+    expect(updater).toContain('up -d --no-build native-git');
+    expect(updater.indexOf('ensure_started "$want"')).toBeGreaterThan(updater.indexOf('verify_build()'));
+  });
+
   it('checks public health from the Windows side when the WSL side cannot reach the Funnel name', () => {
     expect(updater).toContain('/mnt/c/Windows/System32/curl.exe');
     expect(updater).toMatch(/public_health_ok\(\)[\s\S]*?curl\.exe/);
