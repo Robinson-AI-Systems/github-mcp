@@ -109,6 +109,45 @@ describe('github_server_status', () => {
     }
   });
 
+  it('PUSH-EXIT-PROBE-1: with GIT_DIRECT_HEALTH_URL it checks the internal route, says so, and never shows the address', async () => {
+    const INTERNAL = 'http://127.0.0.1:47301/health';
+    let out = await world().run({ fields: ['health'] });
+    expect(out.health.direct_git).toMatchObject({ status: 'ok', checked: 'public_address' });
+    expect(out.health.direct_git.note).toBeUndefined();
+
+    // The rack-on-the-PC case: the public address hairpins (refused here), the internal route answers.
+    _resetServerStatusCache();
+    const w = world({ env: { ...SECRET_ENV, GIT_DIRECT_HEALTH_URL: INTERNAL } });
+    const base = w.ctx.fetch;
+    w.ctx.fetch = async (url, init) => {
+      if (String(url) === INTERNAL) return new Response('ok', { status: 200 });
+      if (new URL(url).host === 'git.internal-host.example.test') { w.calls.push('GET git.internal-host.example.test/health'); throw new TypeError('fetch failed'); }
+      return base(url, init);
+    };
+    out = await w.run({ fields: ['health'] });
+    expect(out.health.direct_git).toMatchObject({ status: 'ok', checked: 'internal_route', note: expect.stringContaining('cannot be tested from the same machine') });
+    expect(w.calls.some((c) => c.includes('git.internal-host.example.test'))).toBe(false);
+    expect(JSON.stringify(out)).not.toContain('127.0.0.1');
+    expect(JSON.stringify(out)).not.toContain('47301');
+
+    // The internal route failing is still down, named as the internal route.
+    _resetServerStatusCache();
+    const d = world({ env: { ...SECRET_ENV, GIT_DIRECT_HEALTH_URL: INTERNAL } });
+    d.ctx.fetch = async (url, init) => (String(url) === INTERNAL ? new Response('no', { status: 503 }) : world().ctx.fetch(url, init));
+    out = await d.run({ fields: ['health'] });
+    expect(out.health.direct_git).toMatchObject({ status: 'down', checked: 'internal_route', reason: expect.stringContaining('internal route') });
+
+    // A malformed value is reported, never guessed around, and nothing is fetched for it.
+    for (const bad of ['ftp://127.0.0.1/health', 'http://127.0.0.1:47301/', 'http://user:pw@127.0.0.1/health', 'http://127.0.0.1/health?x=1', 'not a url']) {
+      _resetServerStatusCache();
+      const b = world({ env: { ...SECRET_ENV, GIT_DIRECT_HEALTH_URL: bad } });
+      out = await b.run({ fields: ['health'] });
+      expect(out.health.direct_git).toMatchObject({ status: 'down', reason: expect.stringContaining('GIT_DIRECT_HEALTH_URL') });
+      expect(JSON.stringify(out)).not.toContain('pw@');
+      expect(b.calls.some((c) => c.includes('git.internal-host.example.test'))).toBe(false);
+    }
+  });
+
   it('marks each health state and the overall worst state', async () => {
     let out = await world({ dbSetting: async () => { throw new Error('boom'); }, workerDown: true, direct: 503 }).run({ fields: ['health'] });
     expect(out.health).toMatchObject({ overall: 'down', database: { status: 'down', reason: expect.any(String) }, worker: { status: 'down', reason: expect.stringContaining('could not be reached') }, direct_git: { status: 'down' } });

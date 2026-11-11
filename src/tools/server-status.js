@@ -166,6 +166,20 @@ const directOrigin = (env) => {
     return url.protocol === 'https:' && !url.username && !url.password && url.pathname === '/' && !url.search && !url.hash ? url.origin : null;
   } catch { return null; }
 };
+// PUSH-EXIT-PROBE-1 (2026-11-11): when this service runs on the same machine as the push exit (the rack on the owner's
+// PC, whose push exit is that PC's own Tailscale Funnel address), the public address cannot be reached from here — the
+// connection would have to leave the machine and come straight back (a hairpin) — even though it answers from everywhere
+// else and real pushes land. GIT_DIRECT_HEALTH_URL names an internal route to the same listener's /health; the gauge then
+// checks that route and says so. Unset: the public address is checked exactly as before. A malformed value is reported,
+// never guessed around. The address itself is never returned.
+const directHealthUrl = (env) => {
+  const raw = env.GIT_DIRECT_HEALTH_URL;
+  if (raw === undefined || raw === null || raw === '') return null;
+  try {
+    const url = new URL(String(raw));
+    return (url.protocol === 'https:' || url.protocol === 'http:') && !url.username && !url.password && url.pathname === '/health' && !url.search && !url.hash ? url.href : 'invalid';
+  } catch { return 'invalid'; }
+};
 async function checkDirect(ctx, env, budget, slow) {
   const origin = directOrigin(env);
   if (!origin) return null;
@@ -174,16 +188,20 @@ async function checkDirect(ctx, env, budget, slow) {
   const exit = directHostOf(env);
   if (!exit) return { status: 'down', reason: 'GIT_DIRECT_HOST names no configured worker host, so no push exit is in use; git goes through this service\'s own domain (pushes up to about 25 MB).' };
   if (!hostAllowed(ctx, exit)) return null;
+  const internal = directHealthUrl(env);
+  if (internal === 'invalid') return { status: 'down', exit: exit.name, reason: 'GIT_DIRECT_HEALTH_URL is not an http(s) address ending in /health, so the push exit was not checked. git over this service\'s own domain is unaffected.' };
   const start = performance.now();
   const r = await bounded((async () => {
-    const res = await ctx.fetch(`${origin}/health`, { redirect: 'error', signal: AbortSignal.timeout(budget) });
+    const res = await ctx.fetch(internal ?? `${origin}/health`, { redirect: 'error', signal: AbortSignal.timeout(budget) });
     return { ok: res.status === 200 };
   })(), budget);
   const ms = elapsed(start);
-  const named = { exit: exit.name };
-  if (r.timeout) return { status: 'down', ...named, reason: `The push exit (direct git host) did not answer within ${Math.round(budget / 1000)} s.` };
-  if (r.error || !r.value.ok) return { status: 'down', ...named, reason: 'The push exit (direct git host) did not report healthy. git over this service\'s own domain still works.' };
-  return ms > slow.direct_git ? { status: 'degraded', ...named, ms, reason: 'The push exit (direct git host) answered, but slowly.' } : { status: 'ok', ...named, ms };
+  const named = { exit: exit.name, checked: internal ? 'internal_route' : 'public_address' };
+  const route = internal ? ' (checked on its internal route; its public address cannot be tested from the same machine)' : '';
+  if (r.timeout) return { status: 'down', ...named, reason: `The push exit (direct git host) did not answer within ${Math.round(budget / 1000)} s${route}.` };
+  if (r.error || !r.value.ok) return { status: 'down', ...named, reason: `The push exit (direct git host) did not report healthy${route}. git over this service's own domain still works.` };
+  if (ms > slow.direct_git) return { status: 'degraded', ...named, ms, reason: `The push exit (direct git host) answered, but slowly${route}.` };
+  return internal ? { status: 'ok', ...named, ms, note: 'Checked on the push exit\'s internal route; its public address cannot be tested from the same machine.' } : { status: 'ok', ...named, ms };
 }
 
 const managerCommit = (source) => {
