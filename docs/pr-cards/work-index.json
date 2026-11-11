@@ -3551,6 +3551,24 @@
       "readiness": "READY",
       "ownerInputs": [],
       "pr": []
+    },
+    {
+      "id": "WORKER-AUTOUPDATE-1",
+      "title": "PC native Git worker self-updates between jobs: 10-minute check against the live branch tip, admission drain at a job boundary (900 s cap, then defer, never kill), verified swap via pc-worker update, automatic rollback, receipts + one-read status",
+      "batch": "FIN",
+      "design": "docs/pr-cards/WORKER-AUTOUPDATE-1.md",
+      "dependencies": [
+        "PC-WORKER-1"
+      ],
+      "card": "docs/pr-cards/WORKER-AUTOUPDATE-1.md",
+      "status": "IN_PROGRESS",
+      "migration": "none (updater state in /srv/robinson-git/autoupdate/ on the PC)",
+      "budget": 900,
+      "units": [
+        "WORKER-AUTOUPDATE-1"
+      ],
+      "readiness": "READY",
+      "ownerInputs": []
     }
   ],
   "gatewayBoundary": {
