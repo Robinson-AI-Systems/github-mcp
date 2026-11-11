@@ -79,4 +79,19 @@ for c in CARDS:
 
 # Local links in changed Markdown files (archive snapshots excluded).
 try:
-    changed = subprocess.check_output(['git', 'diff', '--name-only', 'origin/main'],… [671 more characters left out]
+    changed = subprocess.check_output(['git', 'diff', '--name-only', 'origin/main'], cwd=ROOT, text=True,
+                                      stderr=subprocess.DEVNULL).splitlines()
+except subprocess.CalledProcessError:
+    changed = [str(p.relative_to(ROOT)) for p in ROOT.glob('docs/**/*.md')] + ['AGENTS.md']
+for name in changed:
+    p = ROOT / name
+    if p.suffix != '.md' or not p.exists() or '/archive/' in name:
+        continue
+    for target in re.findall(r'\]\(([^)#:\s]+)(?:#[^)]*)?\)', p.read_text()):
+        if not (p.parent / target).exists():
+            errors.append(f'{name}: broken link {target}')
+
+if errors:
+    print('\n'.join(errors))
+    sys.exit(1)
+print(f"work-index OK: {len(CARDS)} cards, {len(REQUIRED_BATCHES)} batches")
