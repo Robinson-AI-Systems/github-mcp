@@ -97,7 +97,10 @@ it('download: an attached workspace is served from the runtime copy through the 
  const res = await fetch(w.local(archive.result.url)); expect(res.status).toBe(200);
  const names = execFileSync('tar', ['-tzf', '-'], { input: Buffer.from(await res.arrayBuffer()), encoding: 'utf8' }).split('\n').filter(Boolean).sort();
  expect(names).toEqual(['file.txt', 'runtime.txt']);
- expect((await fetch(w.local(archive.result.url))).status).toBe(410); // single use
+ // single use: the worker records the serve as used just AFTER the last byte (G7), so poll briefly
+ let again = 0;
+ for (let i = 0; i < 40 && again !== 410; i++) { again = (await fetch(w.local(archive.result.url))).status; if (again !== 410) await new Promise(r => setTimeout(r, 50)); }
+ expect(again).toBe(410);
 }, 60000);
 
 it('upload: an archive goes to the runtime copy through the single domain and applies there', async () => {
