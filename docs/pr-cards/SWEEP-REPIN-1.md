@@ -33,6 +33,16 @@ head, and — once a release carrying the fix is live and a manager ensure has r
 sweep cursor advances past revision 31113 and the queued disposal (af37) completes through the
 sweep. The live half rides the nightly train; no manual release is part of this card.
 
+## Drift check
+
+Builds on the existing Playground manager provisioning (`src/playground/manager.js`) and the
+Dokploy pool provider (`src/playground/dokploy.js`): the `compose.update` operation the
+provider uses everywhere else becomes an allowed op for this provider too, behind the same
+ownership checks as `create`/`inspect`. New: the `keyFingerprint` field on the manager record
+(a hash, never key material), the `managerKeyDrift` classifier, and the provider's
+`stored`/`update` pair. No tool schema, database migration, routing, authority, or attestation
+change; the sweep key stays derived from the signing key with the same cleanup-only scope.
+
 ## Design (and why)
 
 - **Detection lives on the existing touchpoint.** `ensureProjectManager` already runs on every
