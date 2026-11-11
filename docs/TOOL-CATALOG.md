@@ -131,7 +131,7 @@ Card(s): D-1.
 | `github_repo_set_custom_properties` | Set custom property values on a repository | P | N | I | O | F | D-1 built #29 |
 | `github_repo_star` | Star or unstar a repository as Chris (uses your master token when added) | P | C | U | Op | E | D-1 built #29 |
 
-## Robinson Playground commands (`github_playground_*`) — 5
+## Robinson Playground commands (`github_playground_*`) — 7
 
 Agent-facing runtime operations through the existing search/describe/call contract. Clone queues an allocation automatically (unless `runtime: none`); `github_playground_workspace` provisions, attaches, resumes, previews or disposes it. Commands need an attached allocation; absence is reported as a Git-only fallback, never a shell in the shared Git worker. Guide: [CODING-WORKSPACES](CODING-WORKSPACES.md).
 
@@ -142,6 +142,8 @@ Agent-facing runtime operations through the existing search/describe/call contra
 | `github_playground_cancel` | Stop an execution process group and verify terminal state; does not claim allocation disposal | P | N | I | B,O,Op | F | PLAY-1 |
 | `github_playground_workspace` | `setup` (one call: provision, replace a stalled runtime, attach or resume as needed, then report `ready`; repeat to continue), `git_access` (short-lived read-only Git key for this repository inside the runtime) or provision (optional `size` small/medium/large), attach, resume, privately preview or dispose the exact owned allocation with independent readback | P | N | I | B,O,Op | F | PLAY-1 |
 | `github_playground_run` | One command at a branch/tag/SHA in a fresh right-sized runtime: open, provision, run, return exit code and log tail, dispose; resumable by requestKey | P·Prod* | N | I | B,O,Op | F | FLEET-2 |
+| `github_playground_hosts` | List this connection's enrolled Playground hosts and pairings, with status and approval provenance | — | N | I | B,O,Op | R | PLAY-3 |
+| `github_playground_host_pairing` | Begin, approve or revoke a Playground host pairing for this connection; approval is recorded on the host record as owner-delegated (the device itself can never approve) | P | N | I | B,O,Op | F | PLAY-3 |
 
 ## Files, commits and git data (`github_content_*, github_commit_*, github_git_*`) — 28
 

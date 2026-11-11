@@ -57,7 +57,7 @@ export function createEnrolledHostStore({db,root,tenantId,identityId,clientId,no
       generation:h.generation,pairedAt:h.pairedAt??null,transportVerifiedAt:h.transportVerifiedAt??null,localCanaryAt:h.localCanaryAt??null,
       localCanaryImage:h.localCanaryImage??null,localCanaryBinding:h.localCanaryBinding??null,
       transport:h.transport??'tunnel',lastCheckInAt:h.lastLeaseAt??null,capacity:h.capacity??null,
-      revocationPending:h.status==='revocation_pending',lapsed:lapsed(h)
+      revocationPending:h.status==='revocation_pending',lapsed:lapsed(h),approval:h.approval??null
     }));
   };
   // An unclaimed or unconfirmed pairing whose window passed can never progress,
@@ -99,15 +99,25 @@ export function createEnrolledHostStore({db,root,tenantId,identityId,clientId,no
     if(!url)await root.setSetting(deviceRouteKey(deviceId),{kind:'fleet-device-route',tenantId,identityId,clientId,deviceId});
     return {deviceId,status:'pending_confirm',fingerprint:fp,origin:url,transport:url?'tunnel':'dial-out'};
   }
-  async function approve(deviceId){
+  // Approval provenance is part of the record, always: the My connection page
+  // records {via:'my-connection'}; the delegated agent route (PLAY-3 amendment,
+  // github_playground_host_pairing) records {via:'owner-delegated-agent'} plus
+  // the calling client and any delegation note the owner supplied. The device
+  // being approved can never write this field: approve() is only reachable
+  // from owner-side scopes (the authenticated page flow, or a tool call under
+  // the owner's own Full connection) — never from the device side.
+  async function approve(deviceId,via=null){
     if(!validId(deviceId))throw safe('Unknown device.');
+    const approval={via:typeof via?.via==='string'?via.via.slice(0,40):'my-connection',
+      clientId:typeof via?.clientId==='string'?via.clientId:clientId,at:current(),
+      ...(typeof via?.note==='string'&&via.note?{note:via.note.slice(0,200)}:{})};
     const saved=await cas(db,keyFor(deviceId),h=>{
       if(h?.tenantId!==tenantId||h.identityId!==identityId||h.clientId!==clientId||h.status!=='pending_confirm'||h.expiresAt<=current()||
          !h.publicKey||!h.fingerprint||!h.origin&&h.transport!=='dial-out')return null;
-      return {...h,status:'pending_canary',pairedAt:current(),codeHash:null,expiresAt:null};
+      return {...h,status:'pending_canary',pairedAt:current(),codeHash:null,expiresAt:null,approval};
     });
     if(!saved)throw safe('The device must first prove its key; reconnect and verify its fingerprint.');
-    return {deviceId,status:'pending_canary',fingerprint:saved.fingerprint};
+    return {deviceId,status:'pending_canary',fingerprint:saved.fingerprint,approval};
   }
   async function probe(deviceId){
     if(!validId(deviceId))throw safe('Unknown device.');
