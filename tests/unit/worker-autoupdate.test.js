@@ -60,11 +60,30 @@ describe('WORKER-AUTOUPDATE-1: the PC worker updates itself between jobs (owner 
     expect(updater).toMatch(/flock -n 9/);
   });
 
-  it('AUTOUPDATE-GATE-1: the public check also runs from inside the worker container (no host hairpin)', () => {
+  it('AUTOUPDATE-GATE-2: the public check avoids the host hairpin and never gates the build', () => {
     const gate = updater.slice(updater.indexOf('public_health_ok() {'), updater.indexOf('key_pin_ok() {'));
-    expect(gate).toMatch(/curl -fsS --max-time 10 "\$origin\/health" >\/dev\/null 2>&1 && return 0/);
-    expect(gate).toMatch(/docker exec "\$WORKER_CONTAINER" node -e/);
-    expect(updater).toContain('WORKER_CONTAINER="robinson-git-native-git-1"');
+    // host resolution, then a public DoH resolution of the same origin, then the canonical origins
+    expect(gate).toMatch(/curl -fsS --max-time 10 "\$origin\/health"/);
+    expect(gate).toMatch(/--doh-url https:\/\/1\.1\.1\.1\/dns-query "\$origin\/health"/);
+    expect(gate).toContain('PC_WORKER_CANONICAL_ORIGINS "https://gitworker.robinsonaisystems.com"');
+    // the worker is host-networked: probing "from inside the container" is the same vantage
+    expect(gate).not.toMatch(/docker exec/);
+    const verify = updater.slice(updater.indexOf('verify_build() {'), updater.indexOf('main() {'));
+    expect(verify).toContain('PUBLIC_PATH="unverified from this host"');
+    expect(verify).not.toMatch(/public_health_ok \|\| \{[^}]*return 1/);
+    expect(verify.trimEnd().endsWith('return 0\n}') || /return 0\n\}\s*$/.test(verify)).toBe(true);
+  });
+
+  it('AUTOUPDATE-GATE-2: the updater starts the new build itself if the install left the old one running', () => {
+    expect(updater).toMatch(/ensure_running\(\) \{/);
+    expect(updater).toMatch(/up -d --no-build native-git/);
+    expect(updater).toMatch(/journal "install\.sh completed for \$target"\n    ensure_running "\$target"/);
+    expect(updater).toMatch(/ensure_running "\$current" \|\| journal/);
+  });
+
+  it('AUTOUPDATE-GATE-2: a rollback keeps this updater (the failed-target hold survives)', () => {
+    expect(updater).toContain('cp -p "$0" "$STATE_DIR/updater.keep"');
+    expect(updater).toMatch(/mv "\$HOME_DIR\/\.worker-autoupdate\.sh\.keep\.tmp" "\$HOME_DIR\/worker-autoupdate\.sh"/);
   });
 
   it('AUTOUPDATE-GATE-1: a target that failed verification is held, not retried every cycle', () => {
