@@ -1127,3 +1127,5 @@ Workspace ready report and Git access (2026-11-03, AGENT-FB-3): `github_playgrou
 Merge anyway (2026-11-11, MERGE-ANYWAY-1): `github_workflow_merge_when_green` stays green-only and the recommended tool; a repository whose workflows never ran for the commit counts as having nothing to wait for. When only CI or review is missing it returns `warnings` and names the fallback `github_workflow_merge_anyway`, which needs an `acknowledge` code plus a specific `reason` before it merges.
 
 Any base branch (2026-11-12, OTHER-BASE-PUSH-1): `github_workflow_merge_when_green` merges a PR into any base branch, not only the default; `github_git_remote_setup`'s command also turns `push.negotiate` off.
+
+Intentional branch (2026-11-12, OTHER-BASE-PUSH-1): merging a PR into a non-default branch needs `mergeIntoBranch` naming that branch, else `needs_branch_confirmation`; applies to `github_workflow_merge_when_green` and `github_workflow_merge_anyway`.

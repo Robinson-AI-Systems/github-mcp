@@ -194,12 +194,19 @@ describe('W-1 full PR status and resumable guarded open',()=>{
 
 describe('W-2 exact-head and one-step stack conveyor',()=>{
   const args={repo:'app',number:4,expectedHeadSha:A,confirm:true,requestKey:'w2-merge'};
-  it('merges a PR whose base is a working branch, not the default branch (2026-11-12)',async()=>{
-    const f=fixture({prs:{4:ready(4,{base:'feature-parent'})},extra:{github_pr_merge:(a,prs)=>{
+  it('merges into a non-default branch only when the caller names that branch (2026-11-12)',async()=>{
+    const mk=()=>fixture({prs:{4:ready(4,{base:'feature-parent'})},extra:{github_pr_merge:(a,prs)=>{
       prs[4]={...prs[4],state:'closed',merged:true};
       return {status:'applied',number:4,merged:true,merge_commit:C};
     }}});
-    const x=body(await mergeWorkflows.github_workflow_merge_when_green(args,f.ctx));
+    const f0=mk();
+    const none=body(await mergeWorkflows.github_workflow_merge_when_green(args,f0.ctx));
+    expect(none).toMatchObject({status:'needs_branch_confirmation',done:false,pr_base:'feature-parent'});
+    expect(writes(f0)).toHaveLength(0);
+    const wrong=body(await mergeWorkflows.github_workflow_merge_when_green({...args,mergeIntoBranch:'main'},mk().ctx));
+    expect(wrong.status).toBe('needs_branch_confirmation');
+    const f=mk();
+    const x=body(await mergeWorkflows.github_workflow_merge_when_green({...args,mergeIntoBranch:'feature-parent'},f.ctx));
     expect(x).toMatchObject({status:'merged',done:true,number:4});
   });
   it('refuses stale SHA, draft, conflicts, missing CI, unreadable threads, and review rejection',async()=>{

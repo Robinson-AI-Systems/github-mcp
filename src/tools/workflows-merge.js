@@ -79,6 +79,12 @@ async function mergeOne(a,ctx){
   // still rechecks the exact head and branch state immediately before mutation.
   let [p,r]=await Promise.all([pr(ctx,s,a.number),repo(ctx,s)]);
   if(!r?.default_branch)return refuse('Default-branch provider evidence unavailable.');
+  // Owner feedback 2026-11-12: merging into anything but the default branch must be deliberate. The caller names the branch it
+  // means to merge into; a mismatch or a missing name stops here, before any CI wait or write.
+  if(p&&p.state==='open'&&p.base&&p.base!==r.default_branch&&a.mergeIntoBranch!==p.base)
+    return reply({status:'needs_branch_confirmation',done:false,number:a.number,pr_base:p.base,default_branch:r.default_branch,
+      ...(a.mergeIntoBranch?{you_said:a.mergeIntoBranch}:{}),
+      next:'PR #'+a.number+' targets "'+p.base+'", not the default branch "'+r.default_branch+'". If merging into "'+p.base+'" is intentional (for example a release or parent branch), call again with the same arguments plus mergeIntoBranch: "'+p.base+'". If you meant to merge into "'+r.default_branch+'", retarget the PR first with github_pr_update.'});
   let why=blockers(p,a.expectedHeadSha,r.default_branch,{override:a.overrideRules===true});
   // CONN-FB-1: optionally wait (inside this call's time budget) when the ONLY thing missing is checks that are still
   // running. A red check, any other blocker, or a moved head is never waited on; the merge path below is unchanged.
@@ -239,7 +245,7 @@ const whenTool={
   description:'Guarded exact-head, green-CI PR merge.',
   usesRegistry:true,passthrough:true,profiles:['everyday','full'],delegatedWrites:['github_pr_merge'],
   inputSchema:{type:'object',properties:{...common,number:NUMBER,expectedHeadSha:SHA,
-    overrideRules:{type:'boolean'},overrideReason:{type:'string',minLength:10,maxLength:200},waitForChecks:{type:'boolean'}},
+    overrideRules:{type:'boolean'},overrideReason:{type:'string',minLength:10,maxLength:200},waitForChecks:{type:'boolean'},mergeIntoBranch:{type:'string',maxLength:255}},
     required:['repo','number','expectedHeadSha'],additionalProperties:false},
   annotations:{readOnlyHint:false,destructiveHint:true,idempotentHint:false,openWorldHint:true}
 };
@@ -274,7 +280,7 @@ const anywayTool={
   name:'github_workflow_merge_anyway',area:'workflow',audience:['B'],compact:true,
   description:'Fallback: merge at the exact head when CI or review is missing, after an acknowledgement and a written reason. Prefer github_workflow_merge_when_green.',
   usesRegistry:true,passthrough:true,profiles:['everyday','full'],delegatedWrites:['github_pr_merge'],
-  inputSchema:{type:'object',properties:{...common,number:NUMBER,expectedHeadSha:SHA,acknowledge:{type:'string',maxLength:16},reason:{type:'string',maxLength:200}},
+  inputSchema:{type:'object',properties:{...common,number:NUMBER,expectedHeadSha:SHA,acknowledge:{type:'string',maxLength:16},mergeIntoBranch:{type:'string',maxLength:255},reason:{type:'string',maxLength:200}},
     required:['repo','number','expectedHeadSha'],additionalProperties:false},
   annotations:{readOnlyHint:false,destructiveHint:true,idempotentHint:false,openWorldHint:true}
 };
