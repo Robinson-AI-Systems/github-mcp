@@ -677,7 +677,7 @@ Card(s): P-1 … P-3. P-1 implementation in PR #206: additive, versioned known_p
 | `github_profile_get` | One profile: repos, production branches and environments, required checks, workflows with write access, owned settings | — | N | — | B,O | R | P-1 built #206 |
 | `github_profile_draft` | Turn what an agent found in a codebase (workflows, branches, environments, required checks) into a draft profile and APP-NEEDS text | — | N | — | B,O | R | P-3 built #209 |
 
-## Workflows (`github_workflow_*`) — 18
+## Workflows (`github_workflow_*`) — 19
 
 Card(s): P-2, P-3, W-1 … W-7. P-2 built in PR #207 as a non-read-only composed workflow: inspection is read-only, but a single explicitly named repair invokes an existing independently guarded write. Never claim unverified process rows or unreadable provider settings are healthy. Whole jobs in one call, answered in plain English with `structuredContent` (`docs/designs/BATCH-W.md`). W-3/W-4 add verified review disposition and CI recovery workflows; their genuine deployed acceptance remains queued. W-1 and W-2 were implemented together in PR #210; status is read-only, while open/merge workflows delegate to the existing journaled and independently guarded writers. A staged PR open or stack progresses one write at a time and requires a fresh call for the next step.
 
@@ -686,6 +686,7 @@ Card(s): P-2, P-3, W-1 … W-7. P-2 built in PR #207 as a non-read-only composed
 | `github_workflow_pr_status` | PR checks/reviews/stack plus strict current-base diagnostics and concrete next action; an absent checks payload is reported as an explicit unknown state, never a bare null | — | N | I | B,Op | R | W-1 built #210 |
 | `github_workflow_open_pr` | Idempotently find an existing PR from bounded normalized head/base inventory without duplicating it; create only through guarded writer, then add missing labels separately | P·M | N | I | B | E | W-1 built #210 |
 | `github_workflow_merge_when_green` | Merge at the exact head SHA only when required checks are green there and no review thread is unresolved; otherwise says what is missing | C·Prod* | F | I | B | E | W-2 built #210 |
+| `github_workflow_merge_anyway` | Deliberate fallback when CI or review is missing: lists the warnings, then merges at the exact head only after `acknowledge` (a code tied to that head and those warnings) and a written `reason` (20+ characters, recorded); never skips hard blockers | C·Prod* | F | I | B | E | MERGE-ANYWAY-1 |
 | `github_workflow_merge_stack` | Merge a stack bottom-up: retarget each PR to the default branch, require fresh green CI at its head, merge; stops at the first PR that is not ready | C·Prod* | N | I | B | E | W-2 built #210 |
 | `github_workflow_review_threads` | Unresolved review threads with file context; after fixes, reply and resolve each one verified at the current head | P·M | N | I | B | E | W-3 built #214 |
 | `github_workflow_merge_automation_status` | Read GitHub-native auto-merge arming, connection-scoped exact-head receipt where known, and pending CI/review constraints; do not infer arming from mergeability | — | N | I | B,Op | R | C-14 #433 |
@@ -962,7 +963,7 @@ Metered actions with no published per-use price (larger runners, Copilot agent a
 
 ## Totals
 
-**Totals:** 516 tools: 510 hand-built + 6 universal (`github_api_*`, `github_graphql_*`), plus guided settings for every
+**Totals:** 517 tools: 511 hand-built + 6 universal (`github_api_*`, `github_graphql_*`), plus guided settings for every
 dashboard-only owner setting. By profile (lowest profile that has the tool): read_only 162, everyday adds 85
 (everyday lists 247), full adds 118 (full lists 407; `github_tenant_remove` only on the owner's own direct connection, so everyone else sees 403). In compact mode (`docs/designs/BATCH-C.md`) an agent
 loads only about 25 tools up front (meta-tools, whoami, universal search, workflows) and reaches the rest through
@@ -1007,7 +1008,7 @@ loads only about 25 tools up front (meta-tools, whoami, universal search, workfl
 | Projects v2 lifecycle | 15 |
 | Public profiles, following and star lists | 13 |
 | Project profiles | 3 |
-| Workflows | 18 |
+| Workflows | 19 |
 | Everything else on GitHub: the universal tools | 6 |
 | Batch Y-9d financial and Copilot operations | 17 |
 | GitHub Enterprise | 16 |
@@ -1015,7 +1016,7 @@ loads only about 25 tools up front (meta-tools, whoami, universal search, workfl
 | Code quality and GitHub help | 4 |
 | Robinson Playground commands | 5 |
 | CAP-6 gated families: merge queue, Copilot coding agent, feature check | 5 |
-| **Total** | **516** |
+| **Total** | **517** |
 
 <!-- #108: experimental RTC HTTPS reader bridges only server/meta read tools using existing guarded dispatch; RTC 1 certification is not claimed. -->
 
@@ -1122,3 +1123,5 @@ Collaborator hint (2026-11-01): an account outside the connection now says how t
 Agent feedback fixes (2026-11-02, AGENT-FB-1): `github_playground_workspace` gains operation `setup` — one call that provisions, replaces a stalled runtime, attaches the repository or resumes a stopped runtime from wherever the allocation is (never during a user dispose, never waiting for a deployment; a repeat with the same `requestKey` continues). Cut results carry `kept_result.continue` / `text_continue`; every `github_get_result` page reports `complete` and its own `continue`; `github_get_result` accepts `startLine`/`endLine` with exactly one field in `fields` to read earlier lines of a long log (≤500 lines or ~24,000 characters a call, `next_window` to carry on). `session:prepare --publish` accepts a fresh one-time read-only address in `SESSION_FETCH_URL`.
 
 Workspace ready report and Git access (2026-11-03, AGENT-FB-3): `github_playground_workspace` `setup` now returns `ready` once attached (execution_ready, active_branch, limits, runtime facts; from the runtime's signed capabilities answer, `command_run: false`), and new operation `git_access` (hours 1-4, default 2) gives the runtime a read-only Git key for this one repository, never shown and cancelled if the runtime refuses it (needs the updated runtime image). `github_git_workspace_read` `capabilities` lists `operation_options` for every native Git operation and `preferred_workflow` (native Git first; REST commit tools stay as fallback). No tool added or removed.
+
+Merge anyway (2026-11-11, MERGE-ANYWAY-1): `github_workflow_merge_when_green` stays green-only and the recommended tool; a repository whose workflows never ran for the commit counts as having nothing to wait for. When only CI or review is missing it returns `warnings` and names the fallback `github_workflow_merge_anyway`, which needs an `acknowledge` code plus a specific `reason` before it merges.

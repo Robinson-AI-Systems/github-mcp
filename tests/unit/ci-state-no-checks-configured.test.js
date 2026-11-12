@@ -37,10 +37,15 @@ describe('ciState: repository with no checks configured', () => {
     const r = await call(octokit({ workflows: 0, suites: [{ status: 'in_progress', latest_check_runs_count: 1 }] }));
     expect(r.green).toBe(false);
   });
-  it('keeps waiting (not green) when workflows exist but nothing has reported yet', async () => {
-    const r = await call(octokit({ workflows: 2 }));
+  it('keeps waiting (not green) when workflows exist but nothing has reported yet and the commit is recent', async () => {
+    const r = await call(octokit({ workflows: 2, committed: new Date(NOW - 60000).toISOString() }));
     expect(r.green).toBe(false);
     expect(r.problems[0]).toMatch(/no checks have reported/);
+  });
+  it('is green when workflows exist but none ran for a commit older than ten minutes (manual-only or not for pull requests)', async () => {
+    const r = await call(octokit({ workflows: 2 }));
+    expect(r).toMatchObject({ green: true, known: true, basis: 'no-checks-configured', no_ci_reason: 'none_ran', problems: [] });
+    expect(r.notes.join(' ')).toMatch(/none of its workflows ran/);
   });
   it('is unknown-safe: an unreadable workflow list never becomes green', async () => {
     const r = await call(octokit({ workflowsError: err(403, 'Resource not accessible') }));

@@ -154,9 +154,11 @@ export async function ciState(octokit, { owner, repo, baseBranch, headSha, now =
     // Same proof the waiting tool uses: zero workflows, no live check suite, and a commit old enough that CI would have started.
     const none = basis === 'all-checks' && !errors.length && (statuses ?? []).length === 0
       ? await runsNoCi(octokit, p, headSha, now, committedAt) : null;
-    if (none === 'no_ci') {
-      notes.push('This repository has no required checks and no GitHub Actions workflows, so no check can ever report; there is nothing to wait for. Review, conflict and threads are still enforced.');
-      return { green: errors.length ? null : true, known: errors.length === 0, basis: 'no-checks-configured', checks, problems: [], notes, errors, strict_up_to_date, policy_sources, all_runs: [] };
+    if (none === 'no_ci' || none === 'none_ran') {
+      notes.push(none === 'no_ci'
+        ? 'This repository has no required checks and no GitHub Actions workflows, so no check can ever report; there is nothing to wait for. Review, conflict and threads are still enforced.'
+        : 'This repository has no required checks, and none of its workflows ran for this commit in the ten minutes since it was made (for example they are manual-only or do not run on pull requests), so none is coming; there is nothing to wait for. Review, conflict and threads are still enforced.');
+      return { green: errors.length ? null : true, known: errors.length === 0, basis: 'no-checks-configured', no_ci_reason: none, checks, problems: [], notes, errors, strict_up_to_date, policy_sources, all_runs: [] };
     }
     problems.push('no checks have reported on this commit yet; CI usually starts within a minute of a push (github_check_wait waits for it)');
   }
