@@ -44,10 +44,10 @@ function makeRoot(record){
    const old=indexes.get(key);if(revision!==(old?.revision??0))return null;indexes.set(key,value);return value;},
   listPlaygroundIndexes:async()=>[{setting:indexKey,value:indexes.get(indexKey)}]};
 }
-function providerFake({inventory=[],inventoryError=null}={}){
+function providerFake({inventory=[],inventoryError=null,inventorySequence=null}={}){
  const calls={inventory:0,inspect:[],stop:0,remove:0,absent:0};
  return {calls,
-  inventory:async()=>{calls.inventory++;if(inventoryError)throw inventoryError;return inventory;},
+  inventory:async()=>{calls.inventory++;if(inventorySequence){const step=inventorySequence[Math.min(calls.inventory-1,inventorySequence.length-1)];if(step instanceof Error)throw step;return step;}if(inventoryError)throw inventoryError;return inventory;},
   inspect:async(id,plan)=>{calls.inspect.push(id);return {composeId:id,appName:plan.name+'-x1abcd',composeStatus:'done'};},
   stop:async()=>{calls.stop++;},containers:async()=>[],remove:async()=>{calls.remove++;},
   absent:async()=>{calls.absent++;return true;}};
@@ -62,11 +62,12 @@ async function runSweep(record,provider){
 it('retires a cleanup-requested record whose provider app was never created (the live Nov-8 shape)',async()=>{
  const provider=providerFake({inventory:[]});
  const {result,db,root}=await runSweep(liveRecord(),provider);
- expect(provider.calls.inventory).toBe(1);
+ // SECOND-SHIFT-608: retirement requires TWO fresh zero-match reads.
+ expect(provider.calls.inventory).toBe(2);
  expect(result).toMatchObject({inspected:1,disposed:1,pending:0});
  const retired=db.current;
  expect(retired).toMatchObject({phase:'disposed',disposed:true,disposedAt:NOW,neverAllocated:true,
-  orphanRetired:true,orphanReason:'provider_inventory_zero_matches',revision:4,workspace:'job_b4dc31759005e8d8'});
+  orphanRetired:true,orphanReason:'provider_inventory_zero_matches',orphanEvidence:{inventoryMatches:0,inventoryReads:2},revision:4,workspace:'job_b4dc31759005e8d8'});
  expect(retired.composeId).toBeUndefined();
  // The index the sweep reads back carries the same terminal, journaled record,
  // and the cursor still advanced past the row.
@@ -102,6 +103,39 @@ it('never takes the orphan path for a record that already holds a composeId',asy
  expect(provider.calls.inventory).toBe(0);
  expect(db.current).toMatchObject({phase:'disposed',disposed:true,cleanupEvidence:'provider_readback'});
  expect(db.current.orphanRetired).toBeUndefined();
+});
+it('SECOND-SHIFT-608: an app visible only under the provider-assigned suffixed appName is NOT retired — it adopts',async()=>{
+ // Dokploy assigns appName = plan.name + '-' + 6 chars even when appName was
+ // supplied (pinProviderIdentity); the pre-hardening exact-only filter treated
+ // this row as zero matches and would have retired a live app.
+ const provider=providerFake({inventory:[{name:'renamed-by-provider',appName:PLAN_NAME+'-x1abcd',composeId:'suffixed-compose-1'}]});
+ const {db}=await runSweep(liveRecord(),provider);
+ expect(provider.calls.inspect).toContain('suffixed-compose-1');
+ expect(db.current).toMatchObject({phase:'disposed',disposed:true,composeId:'suffixed-compose-1',cleanupEvidence:'provider_readback'});
+ expect(db.current.orphanRetired).toBeUndefined();
+});
+it('SECOND-SHIFT-608: an app visible only under its binding-stamped description is NOT retired — it adopts',async()=>{
+ const DESCRIPTION='robinson-playground/v1 binding=fixturebinding plan=fixtureplan';
+ const record=liveRecord({plan:{name:PLAN_NAME,planHash:'b'.repeat(64),description:DESCRIPTION}});
+ const provider=providerFake({inventory:[{name:'renamed-by-provider',appName:'renamed-by-provider-zz9999',description:DESCRIPTION,composeId:'described-compose-1'}]});
+ const {db}=await runSweep(record,provider);
+ expect(provider.calls.inspect).toContain('described-compose-1');
+ expect(db.current).toMatchObject({phase:'disposed',disposed:true,composeId:'described-compose-1'});
+ expect(db.current.orphanRetired).toBeUndefined();
+});
+it('SECOND-SHIFT-608: defers when the confirming second read finds the app the first read missed',async()=>{
+ const provider=providerFake({inventorySequence:[[],[{name:PLAN_NAME,composeId:'late-compose-1'}]]});
+ const {result,db}=await runSweep(liveRecord(),provider);
+ expect(provider.calls.inventory).toBe(2);
+ expect(result).toMatchObject({inspected:1,disposed:0,pending:1});
+ expect(db.writes).toEqual([]);expect(db.current.phase).toBe('creating');expect(db.current.orphanRetired).toBeUndefined();
+});
+it('SECOND-SHIFT-608: defers when the confirming second read itself fails — nothing retires on an unconfirmed zero',async()=>{
+ const provider=providerFake({inventorySequence:[[],new Error('provider unreachable')]});
+ const {result,db}=await runSweep(liveRecord(),provider);
+ expect(provider.calls.inventory).toBe(2);
+ expect(result).toMatchObject({inspected:1,disposed:0,pending:1});
+ expect(db.writes).toEqual([]);expect(db.current.phase).toBe('creating');expect(db.current.orphanRetired).toBeUndefined();
 });
 it('keeps exactly-one-match adoption unchanged: the record adopts, then disposes through the provider',async()=>{
  const provider=providerFake({inventory:[{name:PLAN_NAME,composeId:'found-compose-1'}]});
