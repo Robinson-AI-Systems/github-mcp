@@ -1129,3 +1129,5 @@ Merge anyway (2026-11-11, MERGE-ANYWAY-1): `github_workflow_merge_when_green` st
 Any base branch (2026-11-12, OTHER-BASE-PUSH-1): `github_workflow_merge_when_green` merges a PR into any base branch, not only the default; `github_git_remote_setup`'s command also turns `push.negotiate` off.
 
 Intentional branch (2026-11-12, OTHER-BASE-PUSH-1): merging a PR into a non-default branch needs `mergeIntoBranch` naming that branch, else `needs_branch_confirmation`; applies to `github_workflow_merge_when_green` and `github_workflow_merge_anyway`.
+
+Merge SHA (2026-11-12, MERGE-SHA-1): a confirmed `github_workflow_merge_when_green` always returns `merge_commit` (writer answer, else the fresh PR read).

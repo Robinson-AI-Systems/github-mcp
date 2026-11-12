@@ -150,7 +150,9 @@ async function mergeOne(a,ctx){
   const pending=a.overrideRules===true&&['pending','enqueued'].includes(result.result?.status);
   return reply({status:after?.merged===true?'merged':pending?'pending':'unconfirmed',
     done:after?.merged===true,number:a.number,
-    merge_commit:result.merge_commit??null,
+    // Owner feedback 2026-11-12: return the verified merge SHA. The writer's answer first, then the fresh PR read (GitHub records the
+    // real merge commit there once merged), so callers need no extra branch lookup before checking CI on the merged commit.
+    merge_commit:result.merge_commit??result.result?.merge_commit??(after?.merged===true?after.test_merge_sha??after.merge_commit_sha:null)??null,
     next:after?.merged===true?'Merge confirmed from a fresh independent PR read.':pending
       ?'GitHub accepted the request for background processing; inspect its later result before claiming the PR merged.':
       'Provider merge response was applied but fresh readback did not confirm it; inspect before retrying.'});

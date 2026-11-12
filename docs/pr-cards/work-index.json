@@ -3838,6 +3838,22 @@
       ],
       "readiness": "READY",
       "ownerInputs": []
+    },
+    {
+      "id": "MERGE-SHA-1",
+      "title": "Return the verified merge SHA after merge-when-green",
+      "batch": "FIN",
+      "design": "docs/pr-cards/MERGE-SHA-1.md",
+      "dependencies": [],
+      "card": "docs/pr-cards/MERGE-SHA-1.md",
+      "status": "IN_PROGRESS",
+      "migration": "none",
+      "budget": 300,
+      "units": [
+        "MERGE-SHA-1"
+      ],
+      "readiness": "READY",
+      "ownerInputs": []
     }
   ],
   "gatewayBoundary": {
