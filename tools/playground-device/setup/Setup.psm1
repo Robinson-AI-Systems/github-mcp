@@ -30,8 +30,11 @@ function Get-ProbeFacts {
     os = @{ build = [int]($os.BuildNumber); edition = $os.Caption; isWindows11 = [int]($os.BuildNumber) -ge 22000 }
     smode = $sMode; pendingReboot = $pendingReboot; pendingUpdateCount = 0
     cpuVirtualizationFirmware = [bool]$cpu.VirtualizationFirmwareEnabled; hypervisorPresent = [bool]$cs.HypervisorPresent
+    # isAdmin compares SIDs, never short names (SECOND-SHIFT-602): a local account
+    # and a domain/Microsoft account can share a short name across scopes, which
+    # made the old name test report admin for a non-admin account.
     wslFeatureEnabled = $featuresOn; vmPlatformEnabled = $featuresOn; wslPresent = $wslPresent
-    isAdmin = $( $adm = $false; try { $short = (([Security.Principal.WindowsIdentity]::GetCurrent().Name -split '\\')[-1]); $adm = [bool](((Get-LocalGroupMember -Group 'Administrators' -ErrorAction Stop | ForEach-Object { ($_.Name -split '\\')[-1] }) -contains $short)) } catch {}; if (-not $adm) { $adm = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator) }; $adm )
+    isAdmin = $( $adm = $false; try { $sid = [Security.Principal.WindowsIdentity]::GetCurrent().User; $adm = [bool](((Get-LocalGroupMember -Group 'Administrators' -ErrorAction Stop | ForEach-Object { $_.SID }) -contains $sid)) } catch {}; if (-not $adm) { $adm = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator) }; $adm )
     freeDiskBytes = if ($drive) { [int64]$drive.Free } else { $null }
     avProducts = $av; conflictingAv = $false
     installerBusy = [bool](Get-Process -Name 'msiexec' -ErrorAction SilentlyContinue)
