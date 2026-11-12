@@ -7,7 +7,7 @@
 
 **Unknown tool names (2026-11-09):** `github_call` errors for an unknown or hidden tool add "Did you mean: …" with close visible names (a guessed `github_api_request` points at `github_api_read`, the general read-only GET tool).
 
-**Owner feedback 2026-11-11:** a write whose first read-back does not show the result is read back once more after a short pause before it is called `unconfirmed` (the change is never sent twice); `github_actions_dispatch` is confirmed by GitHub's 204 and reports the run it started when it can find it, and `inputs` accepts a name-to-value object as well as a list of `{name, value}`. A call with no `owner` on a connection with several accounts uses the single account that holds the repository when the default account does not.
+**Owner feedback 2026-11-11:** a write whose first read-back finds nothing (or fails) is read back once more after a short pause before it is called `unconfirmed` (the change is never sent twice); `github_actions_dispatch` is confirmed by GitHub's 204 and reports the run it started when it can find it, and `inputs` accepts a name-to-value object as well as a list of `{name, value}`. A call with no `owner` on a connection with several accounts uses the single account that holds the repository when the default account does not.
 
 **Owner feedback 2026-11-10 (early failure):** `github_check_wait` returns at once, still `still_running`, with `failed_runs` when a check run at the head has failed while a required check (typically the roll-up `ci`) has not reported; `github_actions_get_run_logs_summary` with `pr` or `ref` also explains a failed job inside a run that is still in progress.
 

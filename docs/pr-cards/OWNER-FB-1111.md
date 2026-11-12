@@ -6,7 +6,7 @@ Chris reported in chat on 2026-11-11 19:02 MST: several writes said "accepted, b
 
 ## Outcome and acceptance
 
-Outcome: a write is read back twice before it is called unconfirmed; a workflow start is confirmed by GitHub's 204; a call with no owner finds the single connected account that holds the repository; `inputs` accepts an object. Accepted when `tests/unit/owner-feedback-2026-11-11.test.js` covers each.
+Outcome: a write whose first read-back finds nothing is read back once more before it is called unconfirmed; a workflow start is confirmed by GitHub's 204; a call with no owner finds the single connected account that holds the repository; `inputs` accepts an object. Accepted when `tests/unit/owner-feedback-2026-11-11.test.js` covers each.
 
 ## Drift check
 

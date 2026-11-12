@@ -290,12 +290,14 @@ export function defineWrite(spec) {
     const pause = ctx.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
     for (let attempt = 0; attempt < 2 && !confirmed; attempt += 1) {
       if (attempt > 0) await pause(1200);
-      note = null;
+      note = null; let unreadable = false;
       try {
         after = await readAfter({ args, ctx, target: tgt, before, response, startedAt });
         confirmed = (await verify({ args, ctx, target: tgt, before, after, response })) === true;
         if (!confirmed) note = 'GitHub accepted the request, but reading it back did not show the expected result.';
-      } catch { note = 'GitHub accepted the request, but the result could not be read back to confirm it.'; }
+      } catch { unreadable = true; note = 'GitHub accepted the request, but the result could not be read back to confirm it.'; }
+      // Only a read-back that found nothing (or failed) looks like GitHub lagging; one that read a different state is a real mismatch.
+      if (!unreadable && after !== null && after !== undefined) break;
     }
     let inv = null;
     try { inv = confirmed ? inverse({ args, ctx, target: tgt, before, after, response }) : null; } catch { inv = null; }
