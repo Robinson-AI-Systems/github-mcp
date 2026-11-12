@@ -194,11 +194,19 @@ describe('W-1 full PR status and resumable guarded open',()=>{
 
 describe('W-2 exact-head and one-step stack conveyor',()=>{
   const args={repo:'app',number:4,expectedHeadSha:A,confirm:true,requestKey:'w2-merge'};
+  it('merges a PR whose base is a working branch, not the default branch (2026-11-12)',async()=>{
+    const f=fixture({prs:{4:ready(4,{base:'feature-parent'})},extra:{github_pr_merge:(a,prs)=>{
+      prs[4]={...prs[4],state:'closed',merged:true};
+      return {status:'applied',number:4,merged:true,merge_commit:C};
+    }}});
+    const x=body(await mergeWorkflows.github_workflow_merge_when_green(args,f.ctx));
+    expect(x).toMatchObject({status:'merged',done:true,number:4});
+  });
   it('refuses stale SHA, draft, conflicts, missing CI, unreadable threads, and review rejection',async()=>{
     const cases=[
       {head_sha:B},{draft:true},{mergeable:false},{checks:{green:null}},
       {threads:{unknown:'provider denied'}},{threads:{unresolved:2}},
-      {review_decision:'CHANGES_REQUESTED'},{base:'feature-parent'}
+      {review_decision:'CHANGES_REQUESTED'}
     ];
     for(const changes of cases){
       const f=fixture({prs:{4:ready(4,changes)},extra:{github_pr_merge:{status:'applied'}}});

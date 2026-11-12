@@ -35,7 +35,7 @@ const REPO = { type: 'string', minLength: 1, maxLength: 100, pattern: '^[A-Za-z0
 /** Measured live 2026-11-03: without a declared length (git streams packs over 1 MiB in chunked encoding) every push
  *  over ~4 MB got HTTP 502 from the hosting proxy; with http.postBuffer set (git sends Content-Length) 6–25 MB pushed
  *  and 40 MB was cut off. The setup command sets postBuffer for this one address. */
-export const PUSH_NOTE = 'Pushes up to about 25 MB each work through this domain (the setup command sets git http.postBuffer for it); larger ones may be cut off by the hosting proxy. For huge binary files use github_git_workspace_upload (chunked) or push in smaller commits. If git prints "push negotiation failed; proceeding anyway", the push still lands: your git has push.negotiate on and this address does not offer it. Silence it inside the clone with `git config push.negotiate false`.';
+export const PUSH_NOTE = 'Pushes up to about 25 MB each work through this domain (the setup command sets git http.postBuffer for it); larger ones may be cut off by the hosting proxy. For huge binary files use github_git_workspace_upload (chunked) or push in smaller commits. The setup command also turns push.negotiate off, because this address does not offer it; if git still prints "push negotiation failed; proceeding anyway" the push still lands, and `git config push.negotiate false` silences it.';
 
 const MiB = 1024 * 1024;
 const sizeText = n => n >= 1024 * MiB ? `${Math.round(n / (1024 * MiB) * 10) / 10} GB` : `${Math.round(n / MiB)} MB`;
@@ -52,10 +52,10 @@ const credentialFor = (origin, file) => `git config --global --replace-all crede
 export function setupCommand(origin, code, remoteUrl, direct = null) {
  const file = '$HOME/.git-credentials-robinson';
  const exchange = `curl -fsS --proto =https --max-redirs 0 --data-urlencode 'code=${code}' ${origin}/git-remote/exchange`;
- if (!direct) return `${credentialFor(origin, file)} && git config --global http.${origin}.postBuffer 209715200` +
+ if (!direct) return `${credentialFor(origin, file)} && git config --global http.${origin}.postBuffer 209715200 && git config --global push.negotiate false` +
   ` && K="$(${exchange})" && printf '%s\\n' "$K" | git credential approve && unset K && echo "git remote ready: ${remoteUrl}"`;
  return `(set -e; S='store --file="${file}"'; for O in ${origin} ${direct}; do git config --global --replace-all credential.$O.helper ''; git config --global --add credential.$O.helper "$S"; git config --global credential.$O.useHttpPath true; done; ` +
-  `git config --global http.${origin}.postBuffer 209715200; K="$(${exchange})"; for H in ${new URL(origin).host} ${new URL(direct).host}; do printf '%s\\n' "$K" | sed "s/^host=.*/host=$H/" | git credential approve; done; echo "git remote ready: ${remoteUrl}")`;
+  `git config --global http.${origin}.postBuffer 209715200; git config --global push.negotiate false; K="$(${exchange})"; for H in ${new URL(origin).host} ${new URL(direct).host}; do printf '%s\\n' "$K" | sed "s/^host=.*/host=$H/" | git credential approve; done; echo "git remote ready: ${remoteUrl}")`;
 }
 
 /** Which domains a sandbox must allow, with a wildcard hint only when both share a parent domain. */
