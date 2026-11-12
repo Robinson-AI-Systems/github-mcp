@@ -285,7 +285,19 @@ export class HostAgent {
     let retired = 0;
     for (const [binding, a] of Object.entries(this.state?.allocations ?? {})) {
       let live = false;
-      try { live = (await this.exec('docker', ['compose', '-p', a.project, '-f', a.file, 'ps', '-q'], {timeoutMs: 30000})).split('\n').filter(Boolean).length > 0; } catch { live = false; }
+      try { live = (await this.exec('docker', ['compose', '-p', a.project, '-f', a.file, 'ps', '-q'], {timeoutMs: 30000})).split('\n').filter(Boolean).length > 0; }
+      catch (err) {
+        // SECOND-SHIFT-599: a probe that could not run (daemon busy, the 30s
+        // timeout expiring under boot load) is INDETERMINATE, not absence.
+        // down() issues `docker compose down -v` BEFORE its own absence
+        // verification, so calling it on a probe error could tear down a live
+        // allocation — volumes included — the moment the daemon answers
+        // again. Skip this allocation this cycle; the next reconcile (or the
+        // check-in loop) retries with a working probe. Absence is acted on
+        // only from a successful probe that returned zero containers.
+        this.log('Reconcile probe failed for allocation ' + a.project + ' (' + (err?.message || err) + '); indeterminate — skipping this cycle, no down issued.');
+        continue;
+      }
       if (!live) { const e = await this.down({binding, project: a.project}); if (!this.state.allocations?.[binding]) { retired++; this.log('Reconciled allocation ' + a.project + ': no live containers; retired with absence evidence ' + JSON.stringify(e) + '.'); } }
     }
     return {retired};
