@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { guardedResultBody } from '../core/result-envelope.js';
 // W-2: no direct mutations; compose existing expected-head and production-guarded writers.
 // One mutating step per invocation. A stack advances after a fresh read on the next call.
@@ -21,6 +22,10 @@ async function invoke(ctx,name,args){
 async function pr(ctx,s,number){return invoke(ctx,'github_pr_get',{...s,number});}
 async function repo(ctx,s){return invoke(ctx,'github_repo_get',s);}
 const CI_NOT_GREEN='Required CI checks are not proven green at this head.';
+const isSoft=(w)=>w===CI_NOT_GREEN||w==='Review decision blocks merge.'||/^Review threads could not be verified/.test(w)||/ unresolved review threads\.$/.test(w);
+const softAdvice=(w)=>w===CI_NOT_GREEN?'Add a CI workflow that runs on pull requests (or fix the failing check), or confirm yourself that the change is safe.'
+  :w==='Review decision blocks merge.'?'Get the requested review or approval (a self review is fine where the owner allows it), or confirm yourself that the change is safe.'
+  :'Resolve the review threads, or confirm yourself that nothing in them matters.';
 function blockers(p,expected,defaultBranch,{override=false}={}){
   const missing=[];
   if(!p)return ['PR provider read is unavailable.'];
@@ -81,7 +86,7 @@ async function mergeOne(a,ctx){
     const budget=Math.floor((46000-(now(ctx)-start)-16000)/1000);
     if(budget>=5){
       const waited=await invoke(ctx,'github_check_wait',{...s,pr:a.number,expectedHeadSha:a.expectedHeadSha,timeoutSeconds:Math.min(budget,30)});
-      if(waited?.overall!=='green')return reply({status:waited?.status==='head_moved'?'not_ready':'checks_running',done:false,number:a.number,
+      if(waited?.overall!=='green'&&waited?.overall!=='no_ci')return reply({status:waited?.status==='head_moved'?'not_ready':'checks_running',done:false,number:a.number,
         expected_head:a.expectedHeadSha,checks:waited?.overall??'unknown',waited_seconds:waited?.waited_seconds??null,
         ...(waited?.still_running?{still_running:waited.still_running}:{}),...(waited?.not_reported_yet?{not_reported_yet:waited.not_reported_yet}:{}),
         next:waited?.overall==='red'?'A required check failed; fix it, push, and call again with the new head.':
@@ -97,9 +102,19 @@ async function mergeOne(a,ctx){
   if(why.length===1&&why[0]===CI_NOT_GREEN&&p?.checks?.green===false&&!(p.checks.items??[]).some(x=>x.state==='failure'))
     return reply({status:'checks_running',done:false,number:a.number,expected_head:a.expectedHeadSha,actual_head:p?.head_sha??null,blockers:why,
       next:'Required checks have not finished at this head (not started yet, or still running; GitHub can take several minutes to start them). Nothing needs repairing. Call github_workflow_merge_when_green again with waitForChecks: true, or wait with github_check_wait.'});
-  if(why.length)return reply({status:'not_ready',done:false,number:a.number,
-    expected_head:a.expectedHeadSha,actual_head:p?.head_sha??null,
-    blockers:why,next:'Repair the listed conditions, then re-read the exact PR.'});
+  if(why.length){
+    // Owner feedback 2026-11-11: this tool stays strictly green-only. When the ONLY things missing are advisory (CI not green or not
+    // set up, review, threads), name them as warnings and point to the deliberate fallback tool. Hard facts never get that pointer.
+    const soft=why.filter(isSoft);
+    if(soft.length===why.length){
+      return reply({status:'not_ready',done:false,number:a.number,expected_head:a.expectedHeadSha,actual_head:p?.head_sha??null,
+        blockers:why,warnings:why.map(w=>({warning:w,suggestion:softAdvice(w)})),fallback_tool:'github_workflow_merge_anyway',
+        next:'This tool only merges when everything is green, and it is the recommended way to merge. Not green: '+why.join(' ')+' Best: set up what is missing (CI that runs on pull requests, a review) and call again. If you have double-checked the change yourself and merging anyway is intentional, use github_workflow_merge_anyway (it asks you to confirm and give a reason).'});
+    }
+    return reply({status:'not_ready',done:false,number:a.number,
+      expected_head:a.expectedHeadSha,actual_head:p?.head_sha??null,
+      blockers:why,next:'Repair the listed conditions, then re-read the exact PR.'});
+  }
   if(stop(start,ctx))return reply({status:'pending',done:false,
     next:'Workflow budget ended without a merge attempt.'});
   const result=await invoke(ctx,'github_pr_merge',{...s,number:a.number,
@@ -236,5 +251,31 @@ const stackTool={
     required:['repo'],additionalProperties:false},
   annotations:{readOnlyHint:false,destructiveHint:true,idempotentHint:false,openWorldHint:true}
 };
-export const tools=[whenTool,stackTool];
-export const handlers={[whenTool.name]:mergeOne,[stackTool.name]:mergeStack};
+const ackToken=(p,soft)=>createHash('sha256').update(p.head_sha+'|'+soft.join('|')).digest('hex').slice(0,8);
+// The deliberate fallback (owner feedback 2026-11-11): merge without green, with a small bump so it is never an accident.
+async function mergeAnyway(a,ctx){
+  if(!authorize(ctx))return refuse('Merge workflows require an everyday or full connection.');
+  const s=scope(a);
+  const [p,r]=await Promise.all([pr(ctx,s,a.number),repo(ctx,s)]);
+  if(!r?.default_branch)return refuse('Default-branch provider evidence unavailable.');
+  const why=blockers(p,a.expectedHeadSha,r.default_branch);
+  const hard=why.filter(w=>!isSoft(w));
+  if(hard.length)return reply({status:'not_ready',done:false,number:a.number,blockers:hard,next:'Something hard stops this merge (not just missing CI or review). Fix it first; merging anyway cannot skip it.'});
+  if(!why.length)return reply({status:'use_merge_when_green',done:false,number:a.number,next:'Everything is green. Merge with github_workflow_merge_when_green, the normal tool.'});
+  const token=ackToken(p,why),reason=String(a.reason??'').trim();
+  const good=a.acknowledge===token&&reason.length>=20&&reason.split(/\s+/).length>=4&&!/^<.*>$/.test(reason);
+  if(!good)return reply({status:'needs_acknowledgement',done:false,number:a.number,expected_head:a.expectedHeadSha,
+    warnings:why.map(w=>({warning:w,suggestion:softAdvice(w)})),acknowledge:token,
+    next:'Merging without green is allowed but must be intentional. Preferably set up what is missing first. If you have double-checked the change yourself, call github_workflow_merge_anyway again with the same arguments plus acknowledge: "'+token+'" and reason: a real sentence (20+ characters) saying what you checked. The reason is recorded.'});
+  return mergeOne({...a,overrideRules:true,overrideReason:reason.slice(0,200)},ctx);
+}
+const anywayTool={
+  name:'github_workflow_merge_anyway',area:'workflow',audience:['B'],compact:true,
+  description:'Fallback: merge at the exact head when CI or review is missing, after an acknowledgement and a written reason. Prefer github_workflow_merge_when_green.',
+  usesRegistry:true,passthrough:true,profiles:['everyday','full'],delegatedWrites:['github_pr_merge'],
+  inputSchema:{type:'object',properties:{...common,number:NUMBER,expectedHeadSha:SHA,acknowledge:{type:'string',maxLength:16},reason:{type:'string',maxLength:200}},
+    required:['repo','number','expectedHeadSha'],additionalProperties:false},
+  annotations:{readOnlyHint:false,destructiveHint:true,idempotentHint:false,openWorldHint:true}
+};
+export const tools=[whenTool,anywayTool,stackTool];
+export const handlers={[whenTool.name]:mergeOne,[anywayTool.name]:mergeAnyway,[stackTool.name]:mergeStack};

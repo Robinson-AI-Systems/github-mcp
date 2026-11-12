@@ -3806,6 +3806,22 @@
       ],
       "readiness": "READY",
       "ownerInputs": []
+    },
+    {
+      "id": "MERGE-ANYWAY-1",
+      "title": "Merge when green never waits on missing CI; a deliberate merge-anyway fallback needs an acknowledgement and a written reason",
+      "batch": "FIN",
+      "design": "docs/pr-cards/MERGE-ANYWAY-1.md",
+      "dependencies": [],
+      "card": "docs/pr-cards/MERGE-ANYWAY-1.md",
+      "status": "IN_PROGRESS",
+      "migration": "none",
+      "budget": 300,
+      "units": [
+        "MERGE-ANYWAY-1"
+      ],
+      "readiness": "READY",
+      "ownerInputs": []
     }
   ],
   "gatewayBoundary": {
