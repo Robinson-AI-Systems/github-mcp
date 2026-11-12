@@ -21,7 +21,7 @@ function fakeExec(live) {
     throw new Error('unexpected docker call: ' + s);
   };
 }
-async function agentWithAllocations(live) {
+async function agentWithAllocations(live, execOverride) {
   const d = await mkdtemp(join(tmpdir(), 'play3-agent-')); cleanups.push(() => rm(d, {recursive: true, force: true}));
   const file = join(d, 'allocations', PROJECT, 'compose.json');
   await mkdir(join(d, 'allocations', PROJECT), {recursive: true});
@@ -30,7 +30,7 @@ async function agentWithAllocations(live) {
     allocations: {[BINDING]: {project: PROJECT, port: 41234, file}}};
   await writeFile(join(d, 'agent.json'), JSON.stringify(state));
   const logs = [];
-  const agent = new HostAgent({dir: d, exec: fakeExec(live), fetchImpl: async () => { throw new Error('no network in this test'); }, log: m => logs.push(m), exit: () => { throw new Error('agent tried to exit'); }});
+  const agent = new HostAgent({dir: d, exec: execOverride ?? fakeExec(live), fetchImpl: async () => { throw new Error('no network in this test'); }, log: m => logs.push(m), exit: () => { throw new Error('agent tried to exit'); }});
   await agent.load();
   return {agent, logs};
 }
@@ -46,6 +46,17 @@ describe('PLAY-3 startup reconciliation', () => {
     const {agent} = await agentWithAllocations(new Set([PROJECT]));
     expect(await agent.reconcile()).toEqual({retired: 0});
     expect(agent.state.allocations[BINDING]).toBeDefined();
+  });
+  it('SECOND-SHIFT-599: a probe that throws is indeterminate — no down is issued and the allocation is kept', async () => {
+    const calls = [];
+    const throwingExec = async (cmd, a) => { calls.push(a.join(' ')); throw new Error('daemon busy (probe timed out)'); };
+    const {agent, logs} = await agentWithAllocations(new Set([PROJECT]), throwingExec);
+    expect(await agent.reconcile()).toEqual({retired: 0});
+    expect(agent.state.allocations[BINDING]).toBeDefined();
+    // The harm this pins: down() runs `compose down -v` before its own absence
+    // check, so on a mere probe error it must never be called at all.
+    expect(calls.some(s => /(^| )down( |$)/.test(s))).toBe(false);
+    expect(logs.some(l => l.includes('indeterminate'))).toBe(true);
   });
 });
 

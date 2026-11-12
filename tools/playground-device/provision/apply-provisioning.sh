@@ -68,7 +68,14 @@ Requires=
 Wants=docker.service
 StartLimitIntervalSec=0
 DROPIN
-  systemctl daemon-reload 2>/dev/null || true
+  # SECOND-SHIFT-610: a failed daemon-reload leaves systemd running the OLD
+  # unit while the new drop-in sits on disk — the exact silently-unrepaired
+  # state this script exists to converge. Refuse the converged marker rather
+  # than claim a repair that did not take; the next provision run retries.
+  if ! systemctl daemon-reload 2>/dev/null; then
+    echo "apply-provisioning: systemctl daemon-reload failed after writing the boot-retry drop-in; NOT marking provisioning converged" >&2
+    exit 1
+  fi
   systemctl enable ras-playground-agent 2>/dev/null || true
 fi
 date -u +%FT%TZ > "$MARKER"

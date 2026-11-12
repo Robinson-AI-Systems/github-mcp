@@ -224,8 +224,13 @@ main() {
   # Same install discipline as the updater: only when this source carries it, atomic copy.
   if [[ -f "$SRC/deploy/pc/worker-resolv-guard.sh" ]]; then
     local guard_tmp="$home/.worker-resolv-guard.sh.tmp"
-    install -m 755 "$SRC/deploy/pc/worker-resolv-guard.sh" "$guard_tmp" && mv "$guard_tmp" "$home/worker-resolv-guard.sh"
-    ok "resolver guard: $home/worker-resolv-guard.sh (probes the worker's resolver every 2 min, heals at a job boundary; pc-worker resolv-guard status)"
+    # SECOND-SHIFT-611: the ok line used to print unconditionally after this
+    # copy — a failed install reported a working guard that was not there.
+    if install -m 755 "$SRC/deploy/pc/worker-resolv-guard.sh" "$guard_tmp" && mv "$guard_tmp" "$home/worker-resolv-guard.sh"; then
+      ok "resolver guard: $home/worker-resolv-guard.sh (probes the worker's resolver every 2 min, heals at a job boundary; pc-worker resolv-guard status)"
+    else
+      note "could not install the resolver guard script to $home/worker-resolv-guard.sh; copy it manually from $SRC/deploy/pc/worker-resolv-guard.sh and re-run this installer"
+    fi
     if command -v systemctl >/dev/null 2>&1 && [[ -d /etc/systemd/system ]]; then
       install -m 644 "$SRC/deploy/pc/worker-resolv-guard.service" /etc/systemd/system/worker-resolv-guard.service
       install -m 644 "$SRC/deploy/pc/worker-resolv-guard.timer" /etc/systemd/system/worker-resolv-guard.timer
