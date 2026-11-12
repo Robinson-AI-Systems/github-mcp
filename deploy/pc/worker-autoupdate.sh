@@ -117,7 +117,18 @@ r = {
   "admission_paused_seconds": int(os.environ["PAUSE_SECONDS"] or 0),
   "note": os.environ["NOTE"],
 }
-with open(os.environ["RECEIPTS_FILE"], "a") as f: f.write(json.dumps(r) + "\n")
+path = os.environ["RECEIPTS_FILE"]
+# One object per line even if someone appended a line without its newline.
+lead = ""
+try:
+  with open(path, "rb") as f:
+    f.seek(0, 2)
+    if f.tell() > 0:
+      f.seek(-1, 2)
+      lead = "" if f.read(1) == b"\n" else "\n"
+except FileNotFoundError:
+  pass
+with open(path, "a") as f: f.write(lead + json.dumps(r) + "\n")
 PYEOF
 }
 
