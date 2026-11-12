@@ -92,7 +92,7 @@ export function checkWrites(tools, catalog) {
         continue;
       }
       if(tool.passthrough===true&&tool.usesRegistry===true&&
-        ['github_workflow_rerun_failed_ci','github_workflow_review_threads','github_workflow_open_pr','github_workflow_merge_when_green',
+        ['github_workflow_rerun_failed_ci','github_workflow_review_threads','github_workflow_open_pr','github_workflow_merge_when_green','github_workflow_merge_anyway',
           'github_workflow_merge_stack'].includes(tool.name)){
         const delegates=tool.delegatedWrites;
         const p=tool.inputSchema?.properties;
