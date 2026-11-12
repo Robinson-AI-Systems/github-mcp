@@ -108,6 +108,12 @@ describe('WORKER-AUTOUPDATE-1: the PC worker updates itself between jobs (owner 
     expect(updater).toContain("sed -n 's/^NATIVE_GIT_BUILD_COMMIT=//p'");
   });
 
+  it('receipts stay one JSON object per line even after a hand-written line without a newline', () => {
+    const block = updater.slice(updater.indexOf('receipt() {'), updater.indexOf('pending_since_for() {'));
+    expect(block).toContain('lead = "" if f.read(1) == b"\\n" else "\\n"');
+    expect(block).toContain('f.write(lead + json.dumps(r) + "\\n")');
+  });
+
   it('never downgrades: a rewound release branch is journaled and skipped', () => {
     expect(updater).toMatch(/merge-base --is-ancestor "\$target" "\$current"/);
     expect(updater).toContain('not downgrading');
