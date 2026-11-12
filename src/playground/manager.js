@@ -85,6 +85,17 @@ export async function ensureProjectManager(ctx,config,provider){
  if(state.phase==='created'){await save({phase:'deploying',dispatchVersion:1});await provider.deploy(state.composeId,plan);}
  if(state.phase==='deploying'&&(await provider.inspect(state.composeId,plan))?.composeStatus==='done')await save({phase:'running'});
 }
+// Provider existence matching for the sweep (SECOND-SHIFT-608): a live app for
+// a plan can appear in provider inventory under any of the plan's identity
+// forms — name === plan.name (the stored-row adoption invariant), appName ===
+// plan.name, appName in the provider-assigned suffixed form (Dokploy assigns
+// plan.name + '-' + a 6-character suffix even when appName was supplied;
+// pinProviderIdentity in dokploy.js), or only under its stored description,
+// which embeds the binding and the plan hash and is unique per allocation.
+// Matching accepts exactly those forms and nothing looser: a substring or
+// bare-prefix match could adopt a stranger's app, and in the orphan path a
+// missed form is the difference between a live app and a false retirement.
+function planInventoryMatches(rows,plan){return(rows??[]).filter(a=>a&&(a.name===plan.name||a.appName===plan.name||(typeof a.appName==='string'&&a.appName.startsWith(plan.name+'-')&&/^[a-z0-9]{6}$/.test(a.appName.slice(plan.name.length+1)))||(plan.description&&a.description===plan.description)));}
 export async function sweepAllocations({root,load=allocationScope,authorityOf=allocationAuthority,env=process.env,budgetMs=20000,now=Date.now,providerFactory=dokployProvider,fetch=globalThis.fetch,warm=reconcileWarmRuntimes}={}){
  const start=now(),cursor=await root.getSetting('playground_sweep_cursor'),rows=await root.listPlaygroundIndexes({after:cursor?.after??'',limit:50});let inspected=0,disposed=0,pending=0,after=cursor?.after??'';
  for(const row of rows){if(now()-start>=budgetMs)break;const indexed=row.value.allocation;after=row.setting;inspected++;
@@ -108,10 +119,10 @@ export async function sweepAllocations({root,load=allocationScope,authorityOf=al
    // Device allocations are cleaned up through their own machine; Dokploy rows use their own pool.
    if(s.placement==='device'){const result=await disposeAllocation(ctx,{row:{id:s.workspace,owner:s.owner,repo:s.repo},...s.native});if(!result.disposed)pending++;continue;}
    const config=dokployConfig(env,s.pool),provider=providerFactory(config,{fetch:ctx.fetch});
-   if(!s.composeId&&!['requested','waiting_resources','disposed'].includes(s.phase)){const matches=(await provider.inventory()).filter(a=>a.name===s.plan.name||a.appName===s.plan.name);
+   if(!s.composeId&&!['requested','waiting_resources','disposed'].includes(s.phase)){const matches=planInventoryMatches(await provider.inventory(),s.plan);
     // SWEEP-ORPHAN-1: a cleanup-requested record whose provider app was never created
-    // (no composeId, and this fresh inventory read finds zero matches for its plan
-    // name) has nothing at the provider to dispose and no handle to adopt, so the
+    // (no composeId, and this fresh inventory read finds zero matches for its plan)
+    // has nothing at the provider to dispose and no handle to adopt, so the
     // one-match adoption below can never take it and it defers every cycle forever
     // (the Nov-8 record job_b4dc31759005e8d8, proven live 2026-11-11 across 16
     // healthy cycles). Retire it in place with the same terminal write
@@ -123,7 +134,18 @@ export async function sweepAllocations({root,load=allocationScope,authorityOf=al
     // row catch (pending) before any write, so nothing is ever retired on an
     // unreadable inventory. The record arrived here through the same scope load and
     // cleanup gate as the adoption path, so the same ownership/tenant guards passed.
-    if(matches.length===0&&s.cleanupRequested){const retired={...s,phase:'disposed',disposed:true,disposedAt:now(),neverAllocated:true,orphanRetired:true,orphanReason:'provider_inventory_zero_matches',revision:s.revision+1};delete retired.ingress;const next=await ctx.db.compareAndSetSetting('playground.'+s.binding.slice(0,40),s.revision,retired);if(!next){pending++;continue;}await indexAllocation(ctx,next);ctx.stored=next;disposed++;continue;}
+    // SECOND-SHIFT-608 (2026-11-12 review hardening): retirement is the dangerous
+    // direction, so its existence proof is the strictest in this file. The match
+    // above runs on the plan's full provider identity (planInventoryMatches: exact
+    // name, exact appName, the provider-assigned suffixed appName form, or the
+    // binding-stamped stored description) — not exact-name equality alone, which
+    // the SWEEP-ORPHAN-1 card's own acceptance wording never limited it to
+    // ("zero matches (exact or prefix)") and which the provider's assigned-name
+    // rule (pinProviderIdentity) shows is one field of several. And a SECOND
+    // fresh inventory read must agree zero before the record retires: one
+    // successful-but-stale read is not proof of non-existence. A confirming read
+    // that finds anything, or throws, defers — existence wins over tidiness.
+    if(matches.length===0&&s.cleanupRequested){const confirm=planInventoryMatches(await provider.inventory(),s.plan);if(confirm.length!==0){pending++;continue;}const retired={...s,phase:'disposed',disposed:true,disposedAt:now(),neverAllocated:true,orphanRetired:true,orphanReason:'provider_inventory_zero_matches',orphanEvidence:{inventoryMatches:0,inventoryReads:2},revision:s.revision+1};delete retired.ingress;const next=await ctx.db.compareAndSetSetting('playground.'+s.binding.slice(0,40),s.revision,retired);if(!next){pending++;continue;}await indexAllocation(ctx,next);ctx.stored=next;disposed++;continue;}
     if(matches.length!==1){pending++;continue;}const observed=await provider.inspect(matches[0].composeId,s.plan,{adoptAssignedName:true});const next=await ctx.db.compareAndSetSetting('playground.'+s.binding.slice(0,40),s.revision,{...s,composeId:observed.composeId,plan:pinProviderIdentity(s.plan,observed.appName),revision:s.revision+1});if(!next){pending++;continue;}await indexAllocation(ctx,next);ctx.stored=next;}
    const record={row:{id:s.workspace,owner:s.owner,repo:s.repo},...s.native};
    if(runtimeOnly)await releaseTransferLock(ctx,s);

@@ -53,3 +53,26 @@ retirement is justified only by the conjunction of cleanupRequested, a proven-em
 inventory read, and the sweep's own scope/authority gates). No database record is hand-edited:
 the orphaned record retires through the shipped code on its normal cycles, or this card does
 not close.
+
+## Hardening — SECOND-SHIFT-608 (2026-11-12)
+
+The 2026-11-12 Second Shift review flagged this card's shipped seam as its Critical
+finding: retirement keyed on exact-name-equality zero matches, from a single inventory
+read. Verification against the shipped code confirmed the gap in two parts. (1) This
+card's acceptance (iii) above says zero matches "(exact or prefix)", but the shipped
+filter tested only `name === plan.name || appName === plan.name` — and the provider's
+own assignment rule (`pinProviderIdentity` in `src/playground/dokploy.js`) proves
+Dokploy assigns `appName = plan.name + '-' + a 6-character suffix` even when appName
+was supplied, so the inventory identity of a live app is wider than one exact field.
+(2) A single successful inventory read was the whole existence proof.
+
+The hardening, confined to the same adoption seam: existence matching now runs on the
+plan's full provider identity (`planInventoryMatches`: exact name, exact appName, the
+provider-assigned suffixed appName form, or the binding-stamped stored description —
+never a bare substring/prefix), and a cleanup-requested zero-match record retires only
+after a SECOND fresh inventory read also yields zero matches under that wider net; a
+confirming read that finds anything or throws defers. The terminal write gains
+`orphanEvidence: {inventoryMatches: 0, inventoryReads: 2}`. Unit tests add: the
+suffixed-appName-only row adopts instead of retiring; the description-only row adopts;
+a second read that finds the app defers; a second read that fails defers. Adoption,
+multi-match deferral, the composeId path and the no-request deferral are unchanged.
