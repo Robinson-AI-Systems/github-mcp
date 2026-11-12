@@ -41,8 +41,9 @@ describe('PLAY-3 agent boot-retry contract (user unit)', () => {
 describe('PLAY-3 provisioning convergence restates the boot-retry settings', () => {
   it('writes the boot-retry drop-in for an existing install', () => {
     expect(apply).toMatch(/ras-playground-agent\.service\.d\/10-boot-retry\.conf/);
-    // The empty Requires= line is the dependency-list reset: it drops a
-    // fatal docker.service requirement from an older base unit.
+    // The drop-in restates the boot-retry settings the shipped base unit
+    // carries. Its empty Requires= line alone did not clear an older base
+    // unit's Requires= on systemd 255 — see apply-provisioning.sh.
     expect(apply).toMatch(/\nRequires=\n/);
     expect(apply).toMatch(/Wants=docker\.service/);
     expect(apply).toMatch(/StartLimitIntervalSec=0/);
