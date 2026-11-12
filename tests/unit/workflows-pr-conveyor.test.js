@@ -270,6 +270,14 @@ describe('W-2 exact-head and one-step stack conveyor',()=>{
       error:'User protected list forbids overrides'});
     expect(writes(d)).toHaveLength(1);
   });
+  it('returns the merge SHA from the fresh PR read when the writer does not include it (2026-11-12)',async()=>{
+    const f=fixture({extra:{github_pr_merge:(a,prs)=>{
+      prs[4]={...prs[4],state:'closed',merged:true,test_merge_sha:C};
+      return {status:'applied',number:4,merged:true};
+    }}});
+    const x=body(await mergeWorkflows.github_workflow_merge_when_green(args,f.ctx));
+    expect(x).toMatchObject({status:'merged',done:true,merge_commit:C});
+  });
   it('delegates exact head, merge method and independent guarded confirm; verifies provider readback',async()=>{
     const f=fixture({extra:{github_pr_merge:(a,prs)=>{
       prs[4]={...prs[4],state:'closed',merged:true};
