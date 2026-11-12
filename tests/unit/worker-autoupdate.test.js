@@ -114,6 +114,24 @@ describe('WORKER-AUTOUPDATE-1: the PC worker updates itself between jobs (owner 
     expect(block).toContain('f.write(lead + json.dumps(r) + "\\n")');
   });
 
+  it('preflights the build machinery and defers before closing admission when it is broken', () => {
+    expect(updater).toContain('preflight_build');
+    expect(updater).toMatch(/receipt "deferred"[^;]*build machinery preflight failed/);
+    expect(updater.indexOf('preflight_build; then')).toBeLessThan(updater.indexOf('pause_owned=1'));
+    expect(updater).toContain('KIT_DOCKER_CONFIG="$STATE_DIR/docker"');
+    // the kit config is self-contained: install.sh checks `docker compose version`, so the
+    // kit seeds BOTH plugins it needs, checksum-verified
+    expect(updater).toContain('seed_plugin docker-buildx');
+    expect(updater).toContain('seed_plugin docker-compose');
+    expect(updater).toContain('sha256sum -c -');
+    expect(updater).toContain('docker compose version');
+  });
+
+  it('checks public health from the Windows side when the WSL side cannot reach the Funnel name', () => {
+    expect(updater).toContain('/mnt/c/Windows/System32/curl.exe');
+    expect(updater).toMatch(/public_health_ok\(\)[\s\S]*?curl\.exe/);
+  });
+
   it('never downgrades: a rewound release branch is journaled and skipped', () => {
     expect(updater).toMatch(/merge-base --is-ancestor "\$target" "\$current"/);
     expect(updater).toContain('not downgrading');
