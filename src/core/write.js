@@ -266,6 +266,7 @@ export function defineWrite(spec) {
 
     // 5. Send exactly once, read back, compare.
     let response; let sent = false; let failure = null;
+    const startedAt = new Date(typeof ctx.now === 'function' ? ctx.now() : Date.now()).toISOString();
     try { response = await apply({ args, ctx, target: tgt, before, requestKey: key, classification }); sent = true; } catch (error) { failure = error; }
     if (!sent) {
       // A failure that proves nothing started (the apply step refused before any
@@ -283,11 +284,19 @@ export function defineWrite(spec) {
         ...(rejected ? {} : { warning: 'GitHub may or may not have applied this. Check the current state before trying again.' }) }, true);
     }
     let after = null; let confirmed = false; let note = null;
-    try {
-      after = await readAfter({ args, ctx, target: tgt, before, response });
-      confirmed = (await verify({ args, ctx, target: tgt, before, after, response })) === true;
-      if (!confirmed) note = 'GitHub accepted the request, but reading it back did not show the expected result.';
-    } catch { note = 'GitHub accepted the request, but the result could not be read back to confirm it.'; }
+    // Owner feedback 2026-11-11: several writes that had succeeded were reported as "reading it back did not show the expected result".
+    // GitHub can lag a moment behind its own write, so read back once more after a short pause before giving up. The change itself
+    // is never sent again.
+    const pause = ctx.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
+    for (let attempt = 0; attempt < 2 && !confirmed; attempt += 1) {
+      if (attempt > 0) await pause(1200);
+      note = null;
+      try {
+        after = await readAfter({ args, ctx, target: tgt, before, response, startedAt });
+        confirmed = (await verify({ args, ctx, target: tgt, before, after, response })) === true;
+        if (!confirmed) note = 'GitHub accepted the request, but reading it back did not show the expected result.';
+      } catch { note = 'GitHub accepted the request, but the result could not be read back to confirm it.'; }
+    }
     let inv = null;
     try { inv = confirmed ? inverse({ args, ctx, target: tgt, before, after, response }) : null; } catch { inv = null; }
     const githubRequestId = response?.headers?.['x-github-request-id'] ?? null;

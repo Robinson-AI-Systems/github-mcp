@@ -1,0 +1,5 @@
+# 2026-11-11: three owner-reported problems
+
+- **"Reading it back did not show the expected result" on writes that had worked.** A write that is not confirmed by its first read-back is now read back once more after a short pause (GitHub can lag behind its own write); the change itself is never sent twice. `github_actions_dispatch` was the clearest case: GitHub answers 204 with no run id, so nothing could be read back. It now looks for the run it started, and GitHub's 204 counts as the acceptance.
+- **No owner named.** A call without `owner` looked only in the connection's default account. When the connection has several accounts, the default does not hold the repository and exactly one other account does, that account is used. A read that fails leaves the call unchanged.
+- **Workflow inputs as an object.** `inputs` on `github_actions_dispatch` takes the usual name-to-value object as well as the list of name/value pairs.
