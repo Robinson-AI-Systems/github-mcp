@@ -32,7 +32,8 @@ function blockers(p,expected,defaultBranch,{override=false}={}){
   if(p.state!=='open'||p.merged)missing.push('PR is not open and unmerged.');
   if(p.draft)missing.push('PR is still a draft.');
   if(p.head_sha!==expected)missing.push('Expected head does not match the latest actual head.');
-  if(p.base!==defaultBranch)missing.push('PR is not based on the actual default branch.');
+  // Owner feedback 2026-11-12: a PR into a release or parent branch is a normal merge. GitHub's own rules for that base branch and the
+  // guarded merge writer still apply; only the default-branch-only restriction is gone.
   if(p.mergeable!==true)missing.push('GitHub did not confirm mergeability.');
   // Explicit override only skips local CI/review vetoes so the underlying
   // guarded merge can check the person, settings, reason, exact head, and

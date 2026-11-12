@@ -56,4 +56,21 @@ describe('merge_when_green: missing CI and review', () => {
     expect(hard.status).toBe('not_ready');
     expect(hard.acknowledge).toBeUndefined();
   }, 120000);
+
+  it('merges into a branch other than main (no default-branch-only blocker); the setup command turns push.negotiate off', async () => {
+    const w = await makeWorld({ advanceClockOnSleep: true, profile: 'full' });
+    w.gh.when('GET /repos/{owner}/{repo}').reply(200, { default_branch: 'main', name: 'hello' });
+    w.gh.when('GET /repos/{owner}/{repo}/pulls/{pull_number}').reply(200, { number: 7, state: 'open', draft: false, merged: false, mergeable: true, mergeable_state: 'clean', head: { ref: 'work', sha: A }, base: { ref: 'release/1', sha: B } });
+    w.gh.when('POST /graphql').reply(200, { data: { repository: { pullRequest: { reviewDecision: null, reviewThreads: { totalCount: 0, pageInfo: { hasNextPage: false }, nodes: [] } } } } });
+    w.gh.when('GET /repos/{owner}/{repo}/rules/branches/{branch}').reply(200, []);
+    w.gh.when('GET /repos/{owner}/{repo}/branches/{branch}/protection/required_status_checks').reply(404, { message: 'Not Found' });
+    w.gh.when('GET /repos/{owner}/{repo}/commits/{ref}/check-runs').reply(200, { total_count: 1, check_runs: [{ id: 1, name: 'ci', status: 'completed', conclusion: 'success', started_at: '2026-11-02T10:00:00Z', completed_at: '2026-11-02T10:01:00Z' }] });
+    w.gh.when('GET /repos/{owner}/{repo}/commits/{ref}/status').reply(200, { state: 'success', statuses: [] });
+    const out = parse(await call(w, 'github_workflow_merge_when_green', { repo: 'hello', number: 7, expectedHeadSha: A, dryRun: true }));
+    expect(JSON.stringify(out)).not.toMatch(/default branch/);
+    expect(out.blockers ?? []).toEqual([]);
+    const { setupCommand } = await import('../../src/tools/git-remote.js');
+    expect(setupCommand('https://x.test', 'c', 'https://x.test/r.git')).toContain('push.negotiate false');
+    expect(setupCommand('https://x.test', 'c', 'https://x.test/r.git', 'https://d.test')).toContain('push.negotiate false');
+  }, 120000);
 });

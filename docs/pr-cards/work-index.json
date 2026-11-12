@@ -3822,6 +3822,22 @@
       ],
       "readiness": "READY",
       "ownerInputs": []
+    },
+    {
+      "id": "OTHER-BASE-PUSH-1",
+      "title": "Merge into any base branch; silence the push-negotiation warning",
+      "batch": "FIN",
+      "design": "docs/pr-cards/OTHER-BASE-PUSH-1.md",
+      "dependencies": [],
+      "card": "docs/pr-cards/OTHER-BASE-PUSH-1.md",
+      "status": "IN_PROGRESS",
+      "migration": "none",
+      "budget": 300,
+      "units": [
+        "OTHER-BASE-PUSH-1"
+      ],
+      "readiness": "READY",
+      "ownerInputs": []
     }
   ],
   "gatewayBoundary": {
