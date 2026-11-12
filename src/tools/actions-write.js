@@ -74,8 +74,18 @@ const dispatch = defineGithubWrite({
     return (await octo(ctx, target.owner)).request('POST /repos/{owner}/{repo}/actions/workflows/{workflow_id}/dispatches', { ...p(target), workflow_id: before.workflow.id, ref: args.ref,
       ...(args.inputs?.length ? { inputs: Object.fromEntries(args.inputs.map((i) => [i.name, i.value])) } : {}) });
   },
-  readAfter: ({ ctx, target, response }) => (response?.data?.workflow_run_id ? getRun(ctx, target, response.data.workflow_run_id) : null),
-  verify: ({ after }) => after !== null && after !== undefined,
+  // Owner feedback 2026-11-11: a start that GitHub accepted (204) was reported as "reading it back did not show the expected result"
+  // because GitHub returns no run id. Look for the newest dispatched run on that ref made since the request; the 204 itself is the
+  // acceptance, so a run that is not visible yet does not make the start unconfirmed.
+  readAfter: async ({ ctx, target, before, response, startedAt }) => {
+    if (response?.data?.workflow_run_id) return getRun(ctx, target, response.data.workflow_run_id);
+    const since = Date.parse(startedAt ?? '') || 0;
+    try {
+      const runs = (await (await octo(ctx, target.owner)).request('GET /repos/{owner}/{repo}/actions/workflows/{workflow_id}/runs', { ...p(target), workflow_id: before.workflow.id, event: 'workflow_dispatch', branch: target.ref, per_page: 5 })).data.workflow_runs ?? [];
+      return runs.find((r) => Date.parse(r.created_at ?? '') >= since - 5000) ?? null;
+    } catch { return null; }
+  },
+  verify: ({ after, response }) => (after !== null && after !== undefined) || response?.status === 204,
   inverse: ({ target, after }) => (after?.id ? { tool: 'github_actions_cancel_run', args: { owner: target.owner, repo: target.repo, runId: after.id } } : null),
   present: ({ after }) => ({ run_id: after?.id, status: after?.status, html_url: after?.html_url })
 });
