@@ -3755,6 +3755,24 @@
       "ownerInputs": []
     },
     {
+      "id": "AUTOUPDATE-GATE-2",
+      "title": "The PC worker self-updater cannot lock itself out over the public path: the public check avoids the host hairpin (public DoH, canonical origin) and is advisory, the updater starts the built image itself, and a rollback keeps the running updater",
+      "batch": "FIN",
+      "design": "docs/pr-cards/AUTOUPDATE-GATE-2.md",
+      "dependencies": [
+        "AUTOUPDATE-GATE-1"
+      ],
+      "card": "docs/pr-cards/AUTOUPDATE-GATE-2.md",
+      "status": "IN_PROGRESS",
+      "migration": "none (deploy/pc scripts; takes effect at the next kit install)",
+      "budget": 300,
+      "units": [
+        "AUTOUPDATE-GATE-2"
+      ],
+      "readiness": "READY",
+      "ownerInputs": []
+    },
+    {
       "id": "PLAY3-BOOT-RETRY-1",
       "title": "Playground host agent boot-retry: the system unit wants (not requires) docker.service and carries no start limit, provisioning convergence restates the settings as a drop-in on older installs, and the container form's rule is restart policy always — the 2026-11-11 boot left the agent down on a dependency-failed start job while Docker recovered in seconds",
       "batch": "FIN",

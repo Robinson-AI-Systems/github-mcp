@@ -153,17 +153,23 @@ local_health_ok() {
     && curl -fsS --max-time 3 "http://127.0.0.1:${GIT_PORT}/health" >/dev/null 2>&1
 }
 public_health_ok() {
-  # AUTOUPDATE-GATE-1 (2026-11-11): the public path is proven from where its consumers stand. The WSL
-  # host cannot always reach its own Funnel name (it can resolve to the PC's own tailnet address,
-  # which refuses the device itself: the recorded hairpin class), so a host-only probe failed a good
-  # build AND its rollback at 14:45 and left admission closed. Try the host first, then the same
-  # request from inside the worker container, which resolves and egresses like every other caller.
+  # AUTOUPDATE-GATE-2 (2026-11-11): the WSL host often cannot reach its own Funnel name (MagicDNS
+  # answers with the PC's own tailnet address, which refuses the device itself: the hairpin class),
+  # and the worker container is host-networked, so probing "from inside the container" is the same
+  # vantage. Try, in order: the Funnel origin as the host resolves it; the same origin resolved by a
+  # public DNS-over-HTTPS resolver (the address the internet uses, not the tailnet one); and the
+  # canonical origins the MCP server calls (PC_WORKER_CANONICAL_ORIGINS, Cloudflare-fronted).
   local origin; origin="$(env_value PC_WORKER_PUBLIC_ORIGIN "")"
-  [[ -n "$origin" ]] || return 1
-  curl -fsS --max-time 10 "$origin/health" >/dev/null 2>&1 && return 0
-  docker exec "$WORKER_CONTAINER" node -e \
-    'fetch(process.argv[1]+"/health",{signal:AbortSignal.timeout(10000)}).then(r=>process.exit(r.ok?0:1),()=>process.exit(1))' \
-    "$origin" >/dev/null 2>&1
+  local canonical; canonical="$(env_value PC_WORKER_CANONICAL_ORIGINS "https://gitworker.robinsonaisystems.com")"
+  if [[ -n "$origin" ]]; then
+    curl -fsS --max-time 10 "$origin/health" >/dev/null 2>&1 && return 0
+    curl -fsS --max-time 10 --doh-url https://1.1.1.1/dns-query "$origin/health" >/dev/null 2>&1 && return 0
+  fi
+  local c
+  for c in $canonical; do
+    curl -fsS --max-time 10 "${c%/}/health" >/dev/null 2>&1 && return 0
+  done
+  return 1
 }
 key_pin_ok() {
   # The signing relationship: the control public key pinned in .env must equal the key the MCP
@@ -185,6 +191,18 @@ http_version_ok() {
     | sed -n 's/^NATIVE_GIT_GITHUB_HTTP_VERSION=//p' | head -n 1)"
   [[ "$have" == "$want" ]]
 }
+# AUTOUPDATE-GATE-2: start the built image if the install script left the previous container running
+# (an install.sh older than AUTOUPDATE-GATE-1 never starts under the updater's own pause; which
+# install.sh runs is the one already in src/, so the first update after a kit refresh hit this).
+ensure_running() {  # ensure_running <sha>
+  local want="$1" i
+  [[ "$(running_build)" == "$want" ]] && return 0
+  journal "install left build $(running_build) running; starting $want under the updater's pause"
+  docker compose --project-name robinson-git --env-file "$ENV_FILE" -f "$HOME_DIR/src/deploy/pc/compose.yaml" \
+    up -d --no-build native-git >/dev/null 2>&1 || return 1
+  for i in $(seq 1 45); do [[ "$(running_build)" == "$want" ]] && local_health_ok && return 0; sleep 2; done
+  return 1
+}
 running_build() {
   docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$WORKER_CONTAINER" 2>/dev/null \
     | sed -n 's/^NATIVE_GIT_BUILD_COMMIT=//p' | head -n 1
@@ -204,8 +222,15 @@ verify_build() {  # verify_build <expected sha>; all gates must pass
   local_health_ok || { journal "verify: local health endpoints do not answer"; return 1; }
   key_pin_ok || { journal "verify: pinned control key does not match the key the MCP serves"; return 1; }
   http_version_ok || { journal "verify: container GitHub HTTP version differs from .env"; return 1; }
-  for i in $(seq 1 5); do public_health_ok && break; sleep 12; done
-  public_health_ok || { journal "verify: public Funnel health does not answer"; return 1; }
+  # AUTOUPDATE-GATE-2: the public path is ADVISORY. It depends on Funnel/Cloudflare/DNS, not on the
+  # build; a probe that cannot see the public path from this host failed the new build AND the
+  # rollback on 2026-11-11 (twice) and closed admission for nothing. Everything the build controls is
+  # gated above; reachability from outside is judged by the MCP server's signed check and the pool,
+  # which skip an unreachable host.
+  PUBLIC_PATH="verified"
+  for i in $(seq 1 3); do public_health_ok && return 0; sleep 10; done
+  PUBLIC_PATH="unverified from this host"
+  journal "verify: WARNING public health did not answer from this host (advisory: a host-vantage limit, not a build gate; the server's signed check and the pool judge outside reachability)"
   return 0
 }
 
@@ -301,8 +326,13 @@ main() {
 
   # --- Swap with the existing control (build first, then recreate; .env settings are kept).
   local swap_log="$STATE_DIR/last-update.log"
+  # AUTOUPDATE-GATE-2: keep THIS updater. A rollback reinstalls the kit from the previous commit,
+  # which would replace the running updater with an older one (on 2026-11-11 that dropped the
+  # failed-target hold and the next cycle retried the same target).
+  cp -p "$0" "$STATE_DIR/updater.keep" 2>/dev/null || true
   if "$HOME_DIR/pc-worker" update --commit "$target" >"$swap_log" 2>&1; then
     journal "install.sh completed for $target"
+    ensure_running "$target" || journal "the new build $target did not come up"
   else
     journal "install.sh FAILED for $target (see $swap_log); rolling back"
   fi
@@ -311,7 +341,7 @@ main() {
     rm -f "$PAUSE_FILE" "$FAILED_TARGET_FILE"; pause_owned=0; finished=1; clear_pending
     local paused_total=$(( $(now_s) - pause_started ))
     journal "UPDATED: $current -> $target; admission reopened after ${paused_total}s paused"
-    receipt "updated" "$current" "$target" "$paused_total" "health, control-key pin, env and public path verified"
+    receipt "updated" "$current" "$target" "$paused_total" "health, control-key pin, env and running build verified; public path ${PUBLIC_PATH:-verified}"
     write_status "current" "updated and verified; admission open" "$target" "$target" ""
     return 0
   fi
@@ -321,6 +351,12 @@ main() {
   printf '%s\n' "$target" > "$FAILED_TARGET_FILE" 2>/dev/null || true
   local rb_log="$STATE_DIR/last-rollback.log"
   "$HOME_DIR/pc-worker" update --commit "$current" >"$rb_log" 2>&1 || journal "rollback install also reported failure (see $rb_log)"
+  ensure_running "$current" || journal "the previous build $current did not come up"
+  if [[ -s "$STATE_DIR/updater.keep" ]]; then
+    install -m 755 "$STATE_DIR/updater.keep" "$HOME_DIR/.worker-autoupdate.sh.keep.tmp" \
+      && mv "$HOME_DIR/.worker-autoupdate.sh.keep.tmp" "$HOME_DIR/worker-autoupdate.sh" \
+      && journal "kept this updater across the rollback (the previous kit's updater was not restored)"
+  fi
   if verify_build "$current"; then
     rm -f "$PAUSE_FILE"; pause_owned=0; finished=1
     local paused_total=$(( $(now_s) - pause_started ))
