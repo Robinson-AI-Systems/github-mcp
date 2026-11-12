@@ -6,7 +6,7 @@ Chris forwarded an agent report (2026-11-12 04:02 MST): merge-when-green will no
 
 ## Outcome and acceptance
 
-Outcome: `github_workflow_merge_when_green` no longer refuses a PR whose base is not the default branch (GitHub's rules for that base and the guarded merge writer still apply); the git setup command turns `push.negotiate` off. Accepted by `tests/unit/merge-anyway-1.test.js`.
+Outcome: merging into a non-default branch needs `mergeIntoBranch` naming that branch (otherwise `needs_branch_confirmation`); `github_workflow_merge_when_green` no longer refuses a PR whose base is not the default branch (GitHub's rules for that base and the guarded merge writer still apply); the git setup command turns `push.negotiate` off. Accepted by `tests/unit/merge-anyway-1.test.js`.
 
 ## Drift check
 

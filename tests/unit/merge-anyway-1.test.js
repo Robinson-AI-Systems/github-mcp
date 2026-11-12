@@ -66,7 +66,7 @@ describe('merge_when_green: missing CI and review', () => {
     w.gh.when('GET /repos/{owner}/{repo}/branches/{branch}/protection/required_status_checks').reply(404, { message: 'Not Found' });
     w.gh.when('GET /repos/{owner}/{repo}/commits/{ref}/check-runs').reply(200, { total_count: 1, check_runs: [{ id: 1, name: 'ci', status: 'completed', conclusion: 'success', started_at: '2026-11-02T10:00:00Z', completed_at: '2026-11-02T10:01:00Z' }] });
     w.gh.when('GET /repos/{owner}/{repo}/commits/{ref}/status').reply(200, { state: 'success', statuses: [] });
-    const out = parse(await call(w, 'github_workflow_merge_when_green', { repo: 'hello', number: 7, expectedHeadSha: A, dryRun: true }));
+    const out = parse(await call(w, 'github_workflow_merge_when_green', { repo: 'hello', number: 7, expectedHeadSha: A, dryRun: true, mergeIntoBranch: 'release/1' }));
     expect(JSON.stringify(out)).not.toMatch(/default branch/);
     expect(out.blockers ?? []).toEqual([]);
     const { setupCommand } = await import('../../src/tools/git-remote.js');
