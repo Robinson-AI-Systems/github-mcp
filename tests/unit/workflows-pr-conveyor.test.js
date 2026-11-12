@@ -278,6 +278,22 @@ describe('W-2 exact-head and one-step stack conveyor',()=>{
     const x=body(await mergeWorkflows.github_workflow_merge_when_green(args,f.ctx));
     expect(x).toMatchObject({status:'merged',done:true,merge_commit:C});
   });
+  it('re-reads once when the provider read comes back empty, and never judges an empty answer (2026-11-12)',async()=>{
+    const f=fixture({extra:{github_pr_merge:(a,prs)=>{prs[4]={...prs[4],state:'closed',merged:true};return {status:'applied',number:4,merged:true,merge_commit:C};}}});
+    const real=f.ctx.callTool;let flaked=0;
+    f.ctx.callTool=async(name,a)=>{
+      if(name==='github_pr_get'&&flaked<1){flaked++;return {structuredContent:{},content:[{type:'text',text:'{}'}]};}
+      return real(name,a);
+    };
+    const x=body(await mergeWorkflows.github_workflow_merge_when_green(args,f.ctx));
+    expect(flaked).toBe(1);
+    expect(x).toMatchObject({status:'merged',done:true});
+    const g=fixture();const r2=g.ctx.callTool;
+    g.ctx.callTool=async(name,a)=>name==='github_pr_get'?{structuredContent:{},content:[{type:'text',text:'{}'}]}:r2(name,a);
+    const y=body(await mergeWorkflows.github_workflow_merge_when_green(args,g.ctx));
+    expect(y.blockers).toEqual(['PR provider read is unavailable.']);
+    expect(writes(g)).toHaveLength(0);
+  });
   it('delegates exact head, merge method and independent guarded confirm; verifies provider readback',async()=>{
     const f=fixture({extra:{github_pr_merge:(a,prs)=>{
       prs[4]={...prs[4],state:'closed',merged:true};

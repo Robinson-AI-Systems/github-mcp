@@ -6,7 +6,7 @@ Chris forwarded an agent report (2026-11-12 06:33 MST): merges were confirmed bu
 
 ## Outcome and acceptance
 
-Outcome: a confirmed merge returns the real merge commit SHA (writer answer, else the fresh PR read). Accepted by the new case in `tests/unit/workflows-pr-conveyor.test.js`.
+Outcome: an empty or failed provider read is retried once and never judged; a confirmed merge returns the real merge commit SHA (writer answer, else the fresh PR read). Accepted by the new case in `tests/unit/workflows-pr-conveyor.test.js`.
 
 ## Drift check
 

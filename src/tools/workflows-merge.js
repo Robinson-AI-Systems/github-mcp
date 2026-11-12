@@ -19,8 +19,20 @@ async function invoke(ctx,name,args){
   if(typeof ctx.callTool!=='function')throw new Error('Guarded tool dispatch is unavailable.');
   return shape(await ctx.callTool(name,args));
 }
-async function pr(ctx,s,number){return invoke(ctx,'github_pr_get',{...s,number});}
-async function repo(ctx,s){return invoke(ctx,'github_repo_get',s);}
+// Owner glitch hunt 2026-11-12: one merge call got a read answer with no head or state in it (a transient provider read failure)
+// and reported five false blockers. A usable read has the fields the checks need; otherwise read once more after a short pause,
+// and if it is still unusable report the read as unavailable (null) instead of judging an empty answer.
+const pause=(ctx,ms)=>typeof ctx.sleep==='function'?ctx.sleep(ms):new Promise(r=>setTimeout(r,ms));
+async function reliable(ctx,name,args,usable){
+  for(let i=0;i<2;i++){
+    const x=await invoke(ctx,name,args);
+    if(x&&usable(x))return x;
+    if(i===0)await pause(ctx,1200);
+  }
+  return null;
+}
+const pr=(ctx,s,number)=>reliable(ctx,'github_pr_get',{...s,number},x=>typeof x.head_sha==='string'&&typeof x.state==='string');
+const repo=(ctx,s)=>reliable(ctx,'github_repo_get',s,x=>typeof x.default_branch==='string');
 const CI_NOT_GREEN='Required CI checks are not proven green at this head.';
 const isSoft=(w)=>w===CI_NOT_GREEN||w==='Review decision blocks merge.'||/^Review threads could not be verified/.test(w)||/ unresolved review threads\.$/.test(w);
 const softAdvice=(w)=>w===CI_NOT_GREEN?'Add a CI workflow that runs on pull requests (or fix the failing check), or confirm yourself that the change is safe.'
