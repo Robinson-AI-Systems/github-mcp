@@ -62,12 +62,12 @@ and a connector fixture (clone/write/commit/push/read-back) on the final build.
   fine publicly, so the gate falls back to the Windows-side curl on the same machine — without
   that, every verify (including of a healthy rollback build) failed and admission stayed shut.
 - **Carried forward onto the GATE line (2026-11-12).** PR #601 (these fixes) sat blocked while
-  AUTOUPDATE-GATE-1/GATE-2 landed the same lessons in their own form on main: the preflight and
-  self-contained kit above, `ensure_running` (the swap starts the built container under the
-  pause), verify's running-build ground-truth gate, and the public probe reframed as advisory
-  with host/DoH/canonical vantages. The one #601 change that had not landed — the Windows-side
-  curl vantage for the public-health probe — is carried forward as the probe's final fallback
-  in the replacement PR; #601 itself is closed as superseded.
+  AUTOUPDATE-GATE-1/GATE-2 landed two of its lessons in their own form on main: `ensure_running`
+  (the swap starts the built container under the pause) and verify's running-build ground-truth
+  gate, with the public probe reframed as advisory (host, DoH and canonical vantages). The rest
+  of #601 had not landed and is carried forward by its replacement PR: the build-machinery
+  preflight with the self-contained kit above, and the Windows-side curl vantage as the public
+  probe's final fallback. #601 itself is closed as superseded.
 - **Install path.** `install.sh` installs the script + units (atomically — it runs under the
   updater during a swap) whenever the source it installs from carries them, and enables the
   timer; an older release leaves an installed updater untouched.
