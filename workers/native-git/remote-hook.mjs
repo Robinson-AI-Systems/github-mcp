@@ -82,14 +82,14 @@ async function main() {
  const scanStart = Date.now();
  if (created.length) {
   let findings;
-  try { findings = await withProtectionContext(() => withRepositoryProtection(rules, () => scan(created))); }
+  try { findings = await withProtectionContext(() => withRepositoryProtection(rules, () => scan(created, settings))); }
   catch (error) { await report('refused', { reason: error?.reason ?? 'content scan did not finish' }); if (error?.lines) say(...error.lines); else say(error?.refusal ? error.message : 'Refused: the pushed content could not be checked, so nothing was pushed. Push fewer or smaller files.'); return 1; }
   if (findings.length) {
    const first = findings[0];
    await report('refused', { reason: 'credential-shaped content' });
    say(`Refused: content protection found credential-shaped content in ${findings.length} file(s) or commit message(s), first ${JSON.stringify(first.path.slice(0, 120))} (${first.lines.length ? first.lines.join(', ') : first.rules.join(', ')}).`,
     'Nothing was pushed to GitHub. Remove the value from your commits (git commit --amend or git rebase -i), keep real secrets in protected setup, then push again.',
-    'If this is a false positive, check it with github_secret_scanner and the repository scanner settings.');
+    'If it is a deliberate fake test value, the repository owner can allow exactly that value in that file: github_content_protection_check lists each finding\'s value_fingerprint, then github_secret_scanner configure adds a suppression with pushException: true and that valueFingerprint (pinned to the current blob for verification). Edits elsewhere in the file keep the exception.');
    return 1;
   }
  }
@@ -319,7 +319,7 @@ async function planParts(updates) {
  return { cuts, sizes, total };
 }
 
-async function scan(heads) {
+async function scan(heads, settings = null) {
  const listed = await runGit([...gitPrefix(), 'rev-list', '--objects', ...heads, '--not', '--all'], { cwd: process.cwd(), env, timeoutMs: 120000, maxOutputBytes: 64 * MiB });
  if (listed.code !== 0) throw Object.assign(new TypeError('Refused: the pushed commits could not be read, so nothing was pushed.'), { refusal: true });
  const names = new Map();
@@ -337,7 +337,7 @@ async function scan(heads) {
  }
  const findings = [];
  const label = new Map(ids.map(o => [o.id, o.type === 'blob' ? names.get(o.id) || o.id : `${o.type} message ${o.id.slice(0, 12)}`]));
- if (ids.length) await catObjects(env.ROBINSON_REMOTE_ROOT, process.cwd(), ids.map(o => o.id), (id, _type, bytes) => { const found = findingFor(label.get(id) ?? id, bytes); if (found) findings.push(found); }, { env, timeoutMs: 300000 });
+ if (ids.length) await catObjects(env.ROBINSON_REMOTE_ROOT, process.cwd(), ids.map(o => o.id), (id, _type, bytes) => { const found = findingFor(label.get(id) ?? id, bytes, settings); if (found) findings.push(found); }, { env, timeoutMs: 300000 });
  return findings;
 }
 
