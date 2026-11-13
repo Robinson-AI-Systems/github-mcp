@@ -22,6 +22,13 @@ export const A1_ROUTES = [
 
 const MULTI_SEGMENT = new Set(['path']);
 
+// Reads that production code makes on every CI judgement but that most tests do not care about. A test that does care
+// configures the route itself with when(); otherwise these neutral answers apply. (2026-11-12: ciState also reads the
+// workflow runs at the head commit; "none" is the neutral answer.)
+const DEFAULT_REPLIES = {
+  'GET /repos/{owner}/{repo}/actions/runs': { status: 200, body: { total_count: 0, workflow_runs: [] } }
+};
+
 function compile(route) {
   const [method, template] = route.split(' ');
   const names = [];
@@ -156,7 +163,7 @@ export function makeFakeGitHub({ routes = [], baseUrl = 'https://api.github.com'
         return json(422, { message: `fake GitHub: ${hit.route} request does not match the vendored OpenAPI description`, errors: problems });
       }
     }
-    const reply = replies.get(hit.route);
+    const reply = replies.get(hit.route) ?? DEFAULT_REPLIES[hit.route];
     if (!reply) {
       return json(501, { message: `fake GitHub: no reply configured for ${hit.route}` });
     }

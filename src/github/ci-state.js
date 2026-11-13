@@ -147,6 +147,25 @@ export async function ciState(octokit, { owner, repo, baseBranch, headSha, now =
     checks = [...names.map((context) => evaluate({ context, appId: null })), ...(statuses ?? []).filter((s) => !names.includes(s.context)).map((s) => ({ context: s.context, state: statusState(s.state), source: 'status' }))];
   }
   const problems = checks.filter((c) => c.state !== 'success').map((c) => `${c.context}: ${c.state}`);
+  // Owner feedback 2026-11-12 (PenPal #68/#69): with nothing marked required, "every check that exists" was judged before a
+  // just-pushed workflow had created its check runs, so a fast check that had already passed made the commit look green and
+  // the merge went through before the tests started. Workflow RUNS exist before their jobs' check runs do: when any workflow
+  // run at this exact commit is still queued or running, or ended badly, the commit is not green yet.
+  if (basis === 'all-checks' && checks.length) {
+    const wf = await tryRead(async () => (await octokit.request('GET /repos/{owner}/{repo}/actions/runs', { ...p, head_sha: headSha, per_page: 50 })).data.workflow_runs ?? []);
+    if (!wf.ok && wf.status === 404) {
+      // Actions is off for this repository (or the route is absent): no workflow run can be pending.
+    } else if (!wf.ok) {
+      if (wf.planLimited) notes.push('workflow runs are not readable on this plan; only the check runs that have reported were judged');
+      else errors.push(`the workflow runs at this commit could not be read${wf.status ? ` (HTTP ${wf.status})` : ''}`);
+    } else {
+      for (const w of wf.data) {
+        const name = w.name ?? w.path ?? `workflow run ${w.id}`;
+        if (w.status !== 'completed') problems.push(`workflow "${name}": ${w.status ?? 'pending'} (its checks have not all reported yet)`);
+        else if (FAILING.has(w.conclusion)) problems.push(`workflow "${name}": ${w.conclusion}`);
+      }
+    }
+  }
   if (!checks.length) {
     // A repository with nothing required, no commit statuses and no GitHub Actions workflow at all can never report a check, so
     // "wait for CI" would last forever. GitHub's own merge box allows such a merge. Only a successful read that proves zero

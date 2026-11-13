@@ -3862,11 +3862,27 @@
       "design": "docs/pr-cards/SETUP-FWD-HOST-1.md",
       "dependencies": [],
       "card": "docs/pr-cards/SETUP-FWD-HOST-1.md",
-      "status": "IN_PROGRESS",
+      "status": "MERGED",
       "migration": "none",
       "budget": 300,
       "units": [
         "SETUP-FWD-HOST-1"
+      ],
+      "readiness": "READY",
+      "ownerInputs": []
+    },
+    {
+      "id": "MERGE-WAIT-WF-1",
+      "title": "merge_when_green waits for workflow runs that have not reported their checks yet",
+      "batch": "FIN",
+      "design": "docs/pr-cards/MERGE-WAIT-WF-1.md",
+      "dependencies": [],
+      "card": "docs/pr-cards/MERGE-WAIT-WF-1.md",
+      "status": "IN_PROGRESS",
+      "migration": "none",
+      "budget": 300,
+      "units": [
+        "MERGE-WAIT-WF-1"
       ],
       "readiness": "READY",
       "ownerInputs": []

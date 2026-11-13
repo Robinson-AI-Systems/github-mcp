@@ -9,6 +9,7 @@ function octokit({ rules, classic, runs = [] }) {
     async request(route) {
       if (route.includes('/rules/branches/')) { if (rules instanceof Error) throw rules; return { data: rules ?? [] }; }
       if (route.includes('/protection/required_status_checks')) { if (classic instanceof Error) throw classic; return { data: classic }; }
+      if (route === 'GET /repos/{owner}/{repo}/actions/runs') return { data: { total_count: 0, workflow_runs: [] } };
       if (route.includes('/check-runs')) return { data: { check_runs: runs } };
       if (route.includes('/status')) return { data: { statuses: [] } };
       throw new Error('unexpected ' + route);
