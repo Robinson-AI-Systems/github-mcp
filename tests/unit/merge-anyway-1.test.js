@@ -21,6 +21,7 @@ describe('merge_when_green: missing CI and review', () => {
       w.gh.when('GET /repos/{owner}/{repo}/rules/branches/{branch}').reply(200, []);
       w.gh.when('GET /repos/{owner}/{repo}/branches/{branch}/protection/required_status_checks').reply(404, { message: 'Not Found' });
       w.gh.when('GET /repos/{owner}/{repo}/commits/{ref}/check-runs').reply(200, { total_count: 0, check_runs: [] });
+      w.gh.when('GET /repos/{owner}/{repo}/actions/runs').reply(200, { total_count: 0, workflow_runs: [] });
       w.gh.when('GET /repos/{owner}/{repo}/commits/{ref}/status').reply(200, { state: 'pending', statuses: [] });
       w.gh.when('GET /repos/{owner}/{repo}/actions/workflows').reply(200, { total_count: 1, workflows: [{ id: 1, node_id: 'W_1', name: 'manual', path: '.github/workflows/m.yml', state: 'active', created_at: '2026-01-01T00:00:00Z', updated_at: '2026-01-01T00:00:00Z', url: 'https://api.github.com/x', html_url: 'https://github.com/x', badge_url: 'https://github.com/x' }] });
       w.gh.when('GET /repos/{owner}/{repo}/commits/{ref}/check-suites').reply(200, { total_count: 0, check_suites: [] });
@@ -38,6 +39,7 @@ describe('merge_when_green: missing CI and review', () => {
     w.gh.when('GET /repos/{owner}/{repo}/rules/branches/{branch}').reply(200, []);
     w.gh.when('GET /repos/{owner}/{repo}/branches/{branch}/protection/required_status_checks').reply(404, { message: 'Not Found' });
     w.gh.when('GET /repos/{owner}/{repo}/commits/{ref}/check-runs').reply(200, { total_count: 1, check_runs: [{ id: 1, name: 'ci', status: 'completed', conclusion: 'failure', started_at: '2026-11-02T10:00:00Z', completed_at: '2026-11-02T10:01:00Z' }] });
+    w.gh.when('GET /repos/{owner}/{repo}/actions/runs').reply(200, { total_count: 0, workflow_runs: [] });
     w.gh.when('GET /repos/{owner}/{repo}/commits/{ref}/status').reply(200, { state: 'failure', statuses: [] });
     const strict = parse(await call(w, 'github_workflow_merge_when_green', { repo: 'hello', number: 6, expectedHeadSha: A, confirm: true }));
     expect(strict).toMatchObject({ status: 'not_ready', fallback_tool: 'github_workflow_merge_anyway' });
@@ -65,6 +67,7 @@ describe('merge_when_green: missing CI and review', () => {
     w.gh.when('GET /repos/{owner}/{repo}/rules/branches/{branch}').reply(200, []);
     w.gh.when('GET /repos/{owner}/{repo}/branches/{branch}/protection/required_status_checks').reply(404, { message: 'Not Found' });
     w.gh.when('GET /repos/{owner}/{repo}/commits/{ref}/check-runs').reply(200, { total_count: 1, check_runs: [{ id: 1, name: 'ci', status: 'completed', conclusion: 'success', started_at: '2026-11-02T10:00:00Z', completed_at: '2026-11-02T10:01:00Z' }] });
+    w.gh.when('GET /repos/{owner}/{repo}/actions/runs').reply(200, { total_count: 0, workflow_runs: [] });
     w.gh.when('GET /repos/{owner}/{repo}/commits/{ref}/status').reply(200, { state: 'success', statuses: [] });
     const out = parse(await call(w, 'github_workflow_merge_when_green', { repo: 'hello', number: 7, expectedHeadSha: A, dryRun: true, mergeIntoBranch: 'release/1' }));
     expect(JSON.stringify(out)).not.toMatch(/default branch/);
