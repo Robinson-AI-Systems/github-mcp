@@ -13,7 +13,7 @@ import { join } from 'node:path';
 import { Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { createGunzip } from 'node:zlib';
-import { activeProtectionReport, containsCredential } from '../../src/github/content-protection.js';
+import { blockingPushFindings } from '../../src/github/file-protection.js';
 import { value } from '../../src/native-git/commands.js';
 import { UPLOAD_CHUNK_GRACE_MS, UPLOAD_CHUNK_MAX_BYTES, UPLOAD_MAX_BYTES, UPLOAD_TTL_MS, verifyUploadCapability } from '../../src/native-git/protocol.js';
 import { ARCHIVE_LIMITS, entryPath, openArchive } from './archive.js';
@@ -411,12 +411,12 @@ export function catObjects(root, repo, ids, onObject, { timeoutMs = 120000, env 
   });
 }
 
-const PUSHED_CONTENT = Object.freeze({ fixtures: 'allow' });
-export function findingFor(label, bytes) {
+export function findingFor(label, bytes, settings = null) {
   const text = bytes.toString('utf8');
   // PUSH-FIXTURE-1: pushed and uploaded content allows documented FAKE test tokens (git remote, direct host, workspace upload).
-  if (!containsCredential(text, PUSHED_CONTENT)) return null;
-  const findings = activeProtectionReport(text, PUSHED_CONTENT).findings;
+  // FIXTURE-EXCEPTION-1: and the owner's exact-value push exceptions for this path (repository scanner settings).
+  const findings = blockingPushFindings(label, text, settings);
+  if (!findings.length) return null;
   const rules = [...new Set(findings.map(f => f.rule))].slice(0, 3);
   // NATIVE-ERGO-1: say where (line and rule, never the value) so a false positive can be found and reported.
   return { path: label, rules, lines: findings.slice(0, 3).map(f => `line ${f.line} (${f.rule})`) };

@@ -3878,11 +3878,27 @@
       "design": "docs/pr-cards/MERGE-WAIT-WF-1.md",
       "dependencies": [],
       "card": "docs/pr-cards/MERGE-WAIT-WF-1.md",
-      "status": "IN_PROGRESS",
+      "status": "MERGED",
       "migration": "none",
       "budget": 300,
       "units": [
         "MERGE-WAIT-WF-1"
+      ],
+      "readiness": "READY",
+      "ownerInputs": []
+    },
+    {
+      "id": "FIXTURE-EXCEPTION-1",
+      "title": "Owner push exceptions for one exact fake value in one file",
+      "batch": "FIN",
+      "design": "docs/pr-cards/FIXTURE-EXCEPTION-1.md",
+      "dependencies": [],
+      "card": "docs/pr-cards/FIXTURE-EXCEPTION-1.md",
+      "status": "IN_PROGRESS",
+      "migration": "none",
+      "budget": 300,
+      "units": [
+        "FIXTURE-EXCEPTION-1"
       ],
       "readiness": "READY",
       "ownerInputs": []
