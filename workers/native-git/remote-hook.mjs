@@ -89,7 +89,7 @@ async function main() {
    await report('refused', { reason: 'credential-shaped content' });
    say(`Refused: content protection found credential-shaped content in ${findings.length} file(s) or commit message(s), first ${JSON.stringify(first.path.slice(0, 120))} (${first.lines.length ? first.lines.join(', ') : first.rules.join(', ')}).`,
     'Nothing was pushed to GitHub. Remove the value from your commits (git commit --amend or git rebase -i), keep real secrets in protected setup, then push again.',
-    'If it is a deliberate fake test value, the repository owner can allow exactly that value in that file: github_content_protection_check lists each finding\'s value_fingerprint, then github_secret_scanner configure adds a suppression with pushException: true and that valueFingerprint (pinned to the current blob for verification). Edits elsewhere in the file keep the exception.');
+    'If it is a deliberate fake test value, the repository owner can allow exactly that value in that file: github_secret_scanner check lists each finding\'s value_fingerprint, then github_secret_scanner configure adds a suppression with pushException: true and that valueFingerprint (pinned to the current blob for verification). Edits elsewhere in the file keep the exception.');
    return 1;
   }
  }

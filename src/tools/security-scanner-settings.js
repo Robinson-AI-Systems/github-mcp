@@ -49,16 +49,16 @@ const configure=defineGithubWrite({name:'github_security_scanner_configure',area
  verify:({after:a,response:r})=>a.revision===r.revision&&stableScannerJson(a.settings)===stableScannerJson(r.settings)&&a.post_verification.every(c=>c.after_detected===c.expected_after&&c.before_detected===c.expected_before),
  inverse:({before:b,after:a,target:t})=>({tool:'github_security_scanner_configure',args:{owner:t.owner,repo:t.repo,expectedRevision:a.revision,changes:b.settings,reason:'Restore the previous journaled scanner configuration',verification:b.test.map(c=>({path:c.path,blobSha:c.blobSha,rule:c.rule,...(c.fingerprint?{fingerprint:c.fingerprint}:{}),door:c.door,expectedBefore:c.after_detected,expectedAfter:c.before_detected}))}}),present:({after:a})=>summary(a)});
 const gateway={name:'github_secret_scanner',area:'security',audience:['B','O','Op'],compact:true,usesRegistry:true,passthrough:true,
- description:'Secret scanner: settings, scan/preview, configure, rollback or offer a profile. Detailed schemas load on demand.',
- guidance:'Describe github_security_scanner_get_settings for settings/profile offers; github_security_scan_files for scan/preview; github_security_scanner_configure for changes/rollback. Call this gateway with action and those arguments. Every change needs a reason and pinned verification cases; no secret values.',
- inputSchema:{type:'object',properties:{action:{type:'string',enum:['settings','scan','preview','configure','rollback','offer']},args:{type:'object',additionalProperties:true}},required:['action'],additionalProperties:false},
+ description:'Secret scanner: settings, scan/preview, check a refused file, configure (incl. push exceptions for fake test values), rollback, offer. Schemas load on demand.',
+ guidance:'Describe github_security_scanner_get_settings for settings/profile offers; github_security_scan_files for scan/preview; github_content_protection_check for check (any file size; gives each finding\'s fingerprint and value_fingerprint); github_security_scanner_configure for changes/rollback. A push refused for a deliberate fake test value: check the file, then configure a suppression with pushException:true and that valueFingerprint, verified through door "push". Call this gateway with action and those arguments. Every change needs a reason and pinned verification cases; no secret values.',
+ inputSchema:{type:'object',properties:{action:{type:'string',enum:['settings','scan','preview','check','configure','rollback','offer']},args:{type:'object',additionalProperties:true}},required:['action'],additionalProperties:false},
  annotations:{readOnlyHint:false,destructiveHint:true,idempotentHint:false,openWorldHint:true}};
 export const tools=[get.tool,configure.tool,gateway];
 export const handlers={
  [get.tool.name]:get.handler,[configure.tool.name]:configure.handler,
  [gateway.name]:async(a,c)=>{
-  const tool={settings:get.tool.name,offer:get.tool.name,scan:'github_security_scan_files',preview:'github_security_scan_files',configure:configure.tool.name,rollback:configure.tool.name}[a.action];
-  if(!tool)throw new TypeError('Choose settings, scan, preview, configure or rollback.');
+  const tool={settings:get.tool.name,offer:get.tool.name,scan:'github_security_scan_files',preview:'github_security_scan_files',check:'github_content_protection_check',configure:configure.tool.name,rollback:configure.tool.name}[a.action];
+  if(!tool)throw new TypeError('Choose settings, scan, preview, check, configure or rollback.');
   if(a.action==='offer'&&!a.args?.targetRepo)throw new TypeError('Offer requires source repo and targetRepo; nothing is automatically copied.');
   if(a.action==='preview'&&a.args?.previewSettings===undefined)throw new TypeError('Preview requires previewSettings; describe github_security_scan_files for its schema.');
   if(a.action==='rollback'&&a.args?.rollbackRevision===undefined)throw new TypeError('Rollback requires expectedRevision and rollbackRevision.');
