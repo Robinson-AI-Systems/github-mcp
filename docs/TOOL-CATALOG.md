@@ -1140,5 +1140,7 @@ Reliable reads (2026-11-12, MERGE-SHA-1): `github_workflow_merge_when_green` re-
 
 Agent feedback (2026-11-13, AGENT-FB-1113): `github_security_scanner_configure` adds or removes single exceptions with `changes.addSuppressions` / `changes.removeSuppressions`; `github_actions_get_job_log` takes `search` (+ `contextLines`, `maxMatches`); `github_workflow_merge_when_green` names a red check (`failed_checks`, `why_tool`); this server's own refusals are `invalid_request`, not network errors.
 
+Scanner configure (2026-11-14, SCANNER-CFG-1114): a request the read step refuses (settings or verification checks) answers with that reason (`refusedBy: request`, `invalid_request`, not retryable) instead of "the current state could not be read"; the credential refusal names the field path; verification cases accept `valueFingerprint` as an alias of `fingerprint`.
+
 Second Shift fixes (2026-11-14): errors from this server's own code read as `internal_error` (write layer: `uncertain`), its own refusals as `invalid_request`, GitHub's as `provider_rejected`; push refusal receipts that fail to save are reported (`receipts.error`) and the push hook says so.
 Removing a scanner exception needs a verification that actually ran (before/after detection recorded) (Second Shift 2026-11-14).

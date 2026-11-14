@@ -3938,6 +3938,24 @@
       ],
       "readiness": "READY",
       "ownerInputs": []
+    },
+    {
+      "id": "SCANNER-CFG-1114",
+      "title": "Scanner configure says why it refused (not 'state could not be read'); names the field; valueFingerprint alias",
+      "batch": "FIN",
+      "design": "docs/pr-cards/SCANNER-CFG-1114.md",
+      "dependencies": [
+        "AGENT-FB-1113"
+      ],
+      "card": "docs/pr-cards/SCANNER-CFG-1114.md",
+      "status": "MERGED",
+      "migration": "none",
+      "budget": 150,
+      "units": [
+        "SCANNER-CFG-1114"
+      ],
+      "readiness": "READY",
+      "ownerInputs": []
     }
   ],
   "gatewayBoundary": {

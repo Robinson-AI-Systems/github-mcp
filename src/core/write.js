@@ -158,9 +158,19 @@ export function defineWrite(spec) {
       const text = `REFUSED (${by}): ${reason}`;
       try { await log({ summary: text, dryRun: true, confirmed: false, ...recordFields() }); } catch { /* the refusal still stands */ }
       return out({ done: false, status: 'refused_by_guard', refusedBy: by,
-        reason_code:by==='read'&&/^[a-z][a-z0-9_]{1,63}$/.test(readError?.safeCode??'')?readError.safeCode:'guard_'+String(by).toLowerCase().replace(/[^a-z0-9]+/g,'_').slice(0,50),
-        retryable:by==='read'&&readError?.safeRetryable===true,no_change_sent:true,error: reason, ...(classification.production ? { production: classification.production } : {}) }, true);
+        reason_code:by==='request'?'invalid_request':by==='read'&&/^[a-z][a-z0-9_]{1,63}$/.test(readError?.safeCode??'')?readError.safeCode:'guard_'+String(by).toLowerCase().replace(/[^a-z0-9]+/g,'_').slice(0,50),
+        retryable:by==='read'&&readError?.safeRetryable===true,no_change_sent:true,error: reason, ...(classification.production && by !== 'request' ? { production: classification.production } : {}) }, true);
     };
+
+    // The read step also checks the request (2026-11-14: a scanner configure whose reason held a URL
+    // shape was refused by the settings check, but answered "current state could not be read, try
+    // again", hiding the real reason and inviting a pointless retry). This server's own refusal is the
+    // request's fault, whatever the connection's mode: say what it was; retrying it unchanged won't help.
+    // A dry run shows the same reason as its preview warning.
+    // (A read error that already carries its own safe message and code keeps that path, below.)
+    if (readFailed && args.dryRun !== true && readError?.safeMessage !== true && isOwnRefusal(readError) && typeof readError.message === 'string'
+      && readError.message.length > 0 && readError.message.length <= 500)
+      return refuse('request', `No change was sent. ${readError.message}`);
 
     // A strict-spend tool asks everyone, the owner included, and never runs with a cost that could not be worked out.
     const asksFirst = !ownerDirected || decl.strictSpend;
@@ -192,7 +202,8 @@ export function defineWrite(spec) {
     const line = marks.length ? `${summary} ${marks.map((m) => `${m}.`).join(' ')}` : summary;
     const needsConfirm = asksFirst && (decl.confirm === 'always' || decl.spend || classification.spendUnknown || !!classification.production || !!classification.accessWidening
       || classification.notifies.length > 0 || classification.spendCents > 0 || forcedConfirm !== null);
-    const preflightWarning = readError?.safeMessage === true && typeof readError.message === 'string' && readError.message.length <= 300
+    const preflightWarning = (readError?.safeMessage === true && typeof readError.message === 'string' && readError.message.length <= 300)
+      || (isOwnRefusal(readError) && typeof readError?.message === 'string' && readError.message.length <= 500)
       ? readError.message : 'Required current-state preflight failed. This preview is incomplete; no operation was sent.';
     const preview = { done: false, ...(readFailed ? { preflight_failed: true,reason_code:'preflight_read_failed',no_change_sent:true,warning: preflightWarning } : {}),
       preview: line, needsConfirmation: !readFailed && needsConfirm && args.confirm !== true, ...(forcedConfirm ? { because: forcedConfirm } : {}) };
