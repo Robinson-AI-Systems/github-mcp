@@ -1,0 +1,101 @@
+{
+ "note": "SELF-SCAN-1: deliberate values that the push gate flags in this repository. Fingerprints only, never values. Add one only for a deliberate test value or false positive, with a reason.",
+ "exceptions": [
+  {
+   "rule": "database-uri-password",
+   "path": ".github/workflows/ci.yml",
+   "valueFingerprint": "c3340661ec96c63cf6598d5bad8c7737e82150fa3204a13d45759c9ea3d78e30",
+   "reason": "CI throwaway Postgres service password (127.0.0.1, CI only)"
+  },
+  {
+   "rule": "database-password-assignment",
+   "path": ".github/workflows/ci.yml",
+   "valueFingerprint": "1ca557e020be20f6137d5c0ac0b4666fa121f45c58acc6d9bee3ef8cf111d115",
+   "reason": "CI throwaway Postgres service password (127.0.0.1, CI only)"
+  },
+  {
+   "rule": "generic-credential-assignment",
+   "path": "tests/db/cap4-app-jwt-postgres.test.js",
+   "valueFingerprint": "757a21b3b9d103fbef719cd6b76844a64caff55532d02b62c20f94ae5c218cc1",
+   "reason": "deliberate test sample the scanner tests must detect"
+  },
+  {
+   "rule": "database-password-assignment",
+   "path": "tests/unit/conn-fb-1.test.js",
+   "valueFingerprint": "f3add4fd5afb0b293a218ba4bc08d674644681d01df05e954f6f015836d1212b",
+   "reason": "deliberate test sample the scanner tests must detect"
+  },
+  {
+   "rule": "database-connection-password",
+   "path": "tests/unit/database-password-protection.test.js",
+   "valueFingerprint": "a9bd9777abab73d859791336b91b60191754687097f8cc7155bdcf5e02a8fdb2",
+   "reason": "deliberate test sample the scanner tests must detect"
+  },
+  {
+   "rule": "database-connection-password",
+   "path": "tests/unit/database-password-protection.test.js",
+   "valueFingerprint": "3a656b00cc0f713ced66fd33b6326d6a11c70ab48df96202d71aa83c231f8bdb",
+   "reason": "deliberate test sample the scanner tests must detect"
+  },
+  {
+   "rule": "database-password-assignment",
+   "path": "tests/unit/open-secret-rules.test.js",
+   "valueFingerprint": "51e958c0978ebfba8624c189aa25cc316e69db8dccac5a0ae4991afbf7566471",
+   "reason": "deliberate test sample the scanner tests must detect"
+  },
+  {
+   "rule": "database-uri-password",
+   "path": "tests/unit/pub-1-tenancy.test.js",
+   "valueFingerprint": "25bd6da0608540076e06bf537bd5a2a51710592f1f0e67e635da31550095256c",
+   "reason": "deliberate test sample the scanner tests must detect"
+  },
+  {
+   "rule": "database-uri-password",
+   "path": "tests/unit/pub-2-routed-credential.test.js",
+   "valueFingerprint": "3e6b42568350c7b7ef4222af3b4d0b6a4ff2133ae4759a6abe0ea23d5cd8eb00",
+   "reason": "deliberate test sample the scanner tests must detect"
+  },
+  {
+   "rule": "database-uri-password",
+   "path": "tests/unit/server-tools.test.js",
+   "valueFingerprint": "753ca2588f081ca3644a8f78f1424f866c34904624937219c753da61a8a97243",
+   "reason": "deliberate test sample the scanner tests must detect"
+  },
+  {
+   "rule": "github-fine-grained-token",
+   "path": "tests/unit/smoke-readonly.test.js",
+   "valueFingerprint": "73f35a69964134597859b883f1a8eaed625fe87941ca30ee44e16ff8fefd4410",
+   "reason": "deliberate test sample the scanner tests must detect"
+  },
+  {
+   "rule": "database-uri-password",
+   "path": "tests/unit/tenant-http-namespace.test.js",
+   "valueFingerprint": "c95b7919c4ae88bc3e9f1d75f0c56ab931c0f52223d41dae7bd34518733fdfc2",
+   "reason": "deliberate test sample the scanner tests must detect"
+  },
+  {
+   "rule": "github-fine-grained-token",
+   "path": "tests/unit/universal-graphql.test.js",
+   "valueFingerprint": "2430811325c5d67036f729a2460ab5e8b8bfec37c2d8f14a11f924100807a6e3",
+   "reason": "deliberate test sample the scanner tests must detect"
+  },
+  {
+   "rule": "github-fine-grained-token",
+   "path": "tests/unit/universal.test.js",
+   "valueFingerprint": "b60f133c67b772476ce0fe1200d0201929ce04f8064a4ce0a3d15f15bd5bbe39",
+   "reason": "deliberate test sample the scanner tests must detect"
+  },
+  {
+   "rule": "private-key",
+   "path": "tests/unit/util.test.js",
+   "valueFingerprint": "1e1d9f7f09759c7129624cfb15199ac768257b0b1670cb05602ee71ab9cf7530",
+   "reason": "deliberate test sample the scanner tests must detect"
+  },
+  {
+   "rule": "github-token",
+   "path": "tests/unit/write-batch.test.js",
+   "valueFingerprint": "05f925f01903b2993ee3a2f7a9863f80b94a58b8ac33b616e025ef2ad828fbae",
+   "reason": "deliberate test sample the scanner tests must detect"
+  }
+ ]
+}

@@ -65,6 +65,7 @@ function* databaseMatches(text,options={}) {
   const literal=text.slice(value.index,value.index+value.length);
   if (isInterpolation(literal) || PASSWORD_LABEL.test(literal)) continue;
   if (allowsFixtures(options) && isEvidentPlaceholder(literal)) continue;
+  if (isCodeReference(literal,m[0])) continue;
   if (value.length) yield { ...value,rule:'database-connection-password',description:'Password or Pwd in a database connection string' };
  }
  for (const m of text.matchAll(DATABASE_VARIABLE)) {
@@ -100,8 +101,22 @@ function isDocumentedFixture(value,rule){
 // word FAKE or fake and holds none of the credential prefixes above. Mixed-case random text never qualifies under (a).
 // Redaction and the scanner report never pass the option, so outputs still hide these values.
 const PLACEHOLDER_WORDS=new Set(['fake','fixture','example','dummy','placeholder','wrong','test','sample','changeme','redacted']);
+// CODE-REF-1 (2026-11-14): source code that HANDS a password along is not a password. `password: token })`,
+// `password = basicPassword(req.headers.authorization)` and `password = cfg.db.password` name where a password comes
+// from; flagging them refused unchanged pushes of the wiki and git-host code. Still flagged: a bare value in a
+// connection string (`Password=abc;`) and a YAML-style `password: abc`.
+const CODE_LEAD=/^([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)([\s\S]*)$/;
+function isCodeReference(literal,operator){
+ const m=CODE_LEAD.exec(literal);if(!m)return false;
+ const [,lead,rest]=m;
+ if(rest.startsWith('(')&&/\)\s*$/.test(rest))return true;           // a call: basicPassword(...)
+ if(/^\s*[,})\]]/.test(rest))return true;                              // inside an object or argument list
+ return rest===''&&lead.includes('.')&&/[:\s]/.test(operator);           // a property path: cfg.db.password
+}
 function isEvidentPlaceholder(literal){
  if(/^(?:FAKE|fake)/.test(literal))return !OTHER_CREDENTIAL_PREFIX.test(literal);
+ // DOC-PLACEHOLDER-1: the bare word for a password (user:pass@, user:password@) in a sample is a placeholder.
+ if(/^(?:pass|password|passwd|pwd)$/.test(literal))return true;
  if(!/^[a-z0-9]+(?:[-_][a-z0-9]+)*$/.test(literal)||/\d{5}/.test(literal))return false;
  const words=literal.split(/[-_]/);return words.every(w=>w.length<=20)&&words.some(w=>PLACEHOLDER_WORDS.has(w));
 }
