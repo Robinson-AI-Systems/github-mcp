@@ -9,6 +9,9 @@ export function standardAliases(name, properties) {
  };
  add('runId',['run_id']);add('jobId',['job_id']);add('artifactId',['artifact_id']);
  add('max',['limit']);add('limit',['max']);
+ // ARG-NAMES-1 (2026-11-14): github_search_github takes query, github_repo_find took text; agents guessed wrong
+ // both ways. Each search tool accepts the other's name.
+ add('query',['text']);add('text',['query']);
  if(name.startsWith('github_pr_'))add('number',['pull_number','pr','issue_number']);
  add('issue_number',['number']);
  if(name==='github_branch_create')add('from',['fromRef']);

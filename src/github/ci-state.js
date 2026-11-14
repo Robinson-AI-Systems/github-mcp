@@ -82,7 +82,10 @@ export async function requiredChecks(octokit, { owner, repo, branch }) {
     else for (const context of classic.data.contexts ?? []) add(context, null);
   } else if (classic.planLimited) notes.push(`branch protection is not available for this repository on its GitHub plan, so none can require checks on ${branch}`);
   else if (classic.status !== 404) errors.push(`classic protection for ${branch} could not be read${classic.status ? ` (HTTP ${classic.status})` : ''}`);
-  return { required: [...found.values()], errors, notes,strict_up_to_date:errors.length?null:strict,policy_sources:sources };
+  // PLAN-RULES-1 (2026-11-14): on a plan without rulesets or branch protection for this repository (a private repo of a
+  // free organization) GitHub itself can enforce nothing on the branch — callers that rely on GitHub's rules must check.
+  const rules_unavailable = rules.planLimited === true && classic.planLimited === true;
+  return { required: [...found.values()], errors, notes,strict_up_to_date:errors.length?null:strict,policy_sources:sources, rules_unavailable };
 }
 
 const latestRun = runs => {
@@ -116,8 +119,8 @@ export async function ciState(octokit, { owner, repo, baseBranch, headSha, now =
     tryRead(() => allCheckRuns(octokit, { ...p, ref: headSha })),
     tryRead(async () => (await octokit.request('GET /repos/{owner}/{repo}/commits/{ref}/status', { ...p, ref: headSha })).data.statuses ?? [])
   ]);
-  const { required, errors, notes,strict_up_to_date,policy_sources } = policy;
-  if (!runsRead.ok) return { green: null, known: false, basis: 'required', checks: [], problems: [], notes, errors: [...errors, 'the check runs at this commit could not be read'] };
+  const { required, errors, notes,strict_up_to_date,policy_sources,rules_unavailable } = policy;
+  if (!runsRead.ok) return { green: null, known: false, basis: 'required', checks: [], problems: [], notes, rules_unavailable, errors: [...errors, 'the check runs at this commit could not be read'] };
   const runs = runsRead.data.items;
   if(!runsRead.data.complete)errors.push('check-run inventory exceeded its bound; required state is incomplete');
   const statuses = statusesRead.ok ? statusesRead.data : null;
@@ -177,10 +180,10 @@ export async function ciState(octokit, { owner, repo, baseBranch, headSha, now =
       notes.push(none === 'no_ci'
         ? 'This repository has no required checks and no GitHub Actions workflows, so no check can ever report; there is nothing to wait for. Review, conflict and threads are still enforced.'
         : 'This repository has no required checks, and none of its workflows ran for this commit in the ten minutes since it was made (for example they are manual-only or do not run on pull requests), so none is coming; there is nothing to wait for. Review, conflict and threads are still enforced.');
-      return { green: errors.length ? null : true, known: errors.length === 0, basis: 'no-checks-configured', no_ci_reason: none, checks, problems: [], notes, errors, strict_up_to_date, policy_sources, all_runs: [] };
+      return { green: errors.length ? null : true, known: errors.length === 0, basis: 'no-checks-configured', no_ci_reason: none, checks, problems: [], notes, errors, strict_up_to_date, policy_sources, rules_unavailable, all_runs: [] };
     }
     problems.push('no checks have reported on this commit yet; CI usually starts within a minute of a push (github_check_wait waits for it)');
   }
   // Any read that failed means the answer is unknown, never green.
-  return { green: errors.length ? null : problems.length === 0, known: errors.length === 0, basis, checks, problems, notes, errors,strict_up_to_date,policy_sources, all_runs: runBriefs(runs) };
+  return { green: errors.length ? null : problems.length === 0, known: errors.length === 0, basis, checks, problems, notes, errors,strict_up_to_date,policy_sources, rules_unavailable, all_runs: runBriefs(runs) };
 }

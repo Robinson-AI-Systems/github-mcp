@@ -116,7 +116,7 @@ Card(s): D-1.
 | `github_repo_get` | One repo: visibility, default branch, merge settings, protection summary, security features, custom properties | — | C | I | B,O,Op | R | D-1 built #27 |
 | `github_repo_get_vulnerability_alerts` | Independently read Dependabot vulnerability-alert enabled state, not alert count | — | N | I | B,O | R | W-7 built #218 |
 | `github_repo_set_vulnerability_alerts` | Enable or disable free Dependabot alerts with identity and independent readback | C·Prod | N | I | B,O | F | W-7 built #218 |
-| `github_repo_find` | Plain-words search across Chris's accounts (name, topic, description) | — | N | I | Op | R | D-1 built #27 |
+| `github_repo_find` | Plain-words search across Chris's accounts (name, topic, description); default account first, an account that cannot be searched is skipped and named (`skipped`), never fatal; `text` or `query` | — | N | I | Op | R | D-1 built #27 |
 | `github_repo_create` | New repository in an org or user account (private by default; public is access-widening) | P·A* | F | I | B | E | D-1 built #29 |
 | `github_repo_create_from_template` | New repository from a template repository | P·A* | C | I | B | E | D-1 built #29 |
 | `github_repo_update_settings` | Description, homepage, topics, features (issues, wiki, projects), merge options, delete-branch-on-merge, auto-merge allowed | P·Prod* | F | I | B,O | F | D-1 built #29 |
@@ -216,7 +216,7 @@ Card(s): E-1, E-2.
 | `github_pr_set_draft` | Convert to draft or mark ready for review (GraphQL) | P | N | I | B | E | E-1 (built #40) |
 | `github_pr_close` | Close without merging (head branch kept) | C | C | I | B | E | E-1 (built #40) |
 | `github_pr_update_branch` | Bring the PR branch up to date with its base (expected head SHA checked) | P | C | I | B | E | E-1 (built #40) |
-| `github_pr_merge` | Merge at an exact head SHA; refuses unless every required check is green at that SHA; production base needs a production connection | C·Prod* | F | I | B | E | E-2 (built #46) |
+| `github_pr_merge` | Merge at an exact head SHA; refuses unless every required check is green at that SHA (for the owner too where the repository's plan has no branch rules, so merge-only-when-green holds there; `github_workflow_merge_anyway` is the deliberate exception); production base needs a production connection | C·Prod* | F | I | B | E | E-2 (built #46) |
 | `github_pr_merge_async` | Same as `github_pr_merge` using GitHub's asynchronous merge (returns merged / failed / pending); `bypass_rules` only with GOD-6's `overrideRules` (reason, preview, confirm, as you) | C·Prod* | N | I | B | E | E-2 (built #46) |
 | `github_pr_set_auto_merge` | Turn auto-merge on (merges when GitHub's rules pass) or off (GraphQL) | C·Prod* | N | I | B | E | E-2 (built #46) |
 | `github_pr_list_stacks` | Pull request stacks in a repo, or one stack with its PRs in order | — | N | I | B | R | E-2 built #48 |
@@ -291,7 +291,7 @@ Card(s): F-3.
 | `github_project_set_item` | Add an issue/PR to a project or set an item's field value | C | N | I | Op | E | F-3 built #183 |
 | `github_project_remove_item` | Remove an item from a project | C | N | I | Op | E | F-3 built #183 |
 | `github_project_set_items` | Edit field values on up to 40 items of an organization project in one call; stops at the first failure and says what was done | C | N | I | Op | E | PAR-1 built |
-| `github_search_github` | Search code, issues, pull requests, commits, repositories or users with GitHub's search syntax (type chosen by argument); text from strangers and every commit message is marked `untrusted`; find organizations with type users and `type:org` in the query | — | C | I | B,Op | R | F-3 built #177 |
+| `github_search_github` | Search code, issues, pull requests, commits, repositories or users with GitHub's search syntax (type chosen by argument); text from strangers and every commit message is marked `untrusted`; find organizations with type users and `type:org` in the query; `query` or `text` | — | C | I | B,Op | R | F-3 built #177 |
 
 ## Actions: workflows, runs, jobs and logs (`github_actions_*`) — 13
 
@@ -471,7 +471,7 @@ Card(s): H-4.
 | `github_security_set_feature` | Enable/disable all provider-supported repo security switches: direct security_and_analysis PATCH, Dependabot PUT/DELETE and private-reporting PUT/DELETE, with paid/private notices, bypass access consent and exact independent readback | C·$*·Prod | F | I | O | F | H-4 built #195/#196/#224 |
 | `github_security_list_alerts` | Dependabot, code scanning or secret scanning alerts for a repo or org (kind chosen by argument) | — | C | I | O,B,Op | R | H-4 built #195/#196/#224 |
 | `github_security_scan_files` | Inspect up to 12 chosen GitHub-hosted files for common secret patterns; redacted locations only, not GitHub's full proprietary scan or local uncommitted changes | — | N | I | B,O,Op | R | PAR-2 |
-| `github_secret_scanner` | Compact direct scanner gateway: settings, scan/preview, check (file-protection findings with value fingerprints, any file size), configure (incl. push exceptions), rollback and profile offers; inner guards apply | as the tool | N | I | B,O,Op | R | PAR-2 |
+| `github_secret_scanner` | Compact direct scanner gateway: `describe` (every action's arguments and an example), `allow` (one call: exact push exceptions for a refused file's false positives, built from the guard's own findings), settings, scan/preview, check (file-protection findings with value fingerprints, any file size), configure (incl. push exceptions), rollback and profile offers; inner guards apply | as the tool | N | I | B,O,Op | R | PAR-2 |
 | `github_security_scanner_get_settings` | Read this repository's rules, receipts and portable profile; optionally preview an offer to another authorized repository | — | N | I | B,O,Op | R | PAR-2 |
 | `github_security_scanner_configure` | Revision-bound tuning with a reason, pinned-file retests and journaled receipt; exact-file exceptions only, owner only | P | N | I | O | F | PAR-2 |
 | `github_security_scan_guidance` | Inspect provider secret protection and prepare Robinson repository CI/local scanning plus official remote-engine connection steps | — | N | I | B,O,Op | R | PAR-2 |
@@ -1144,3 +1144,5 @@ Scanner configure (2026-11-14, SCANNER-CFG-1114): a request the read step refuse
 
 Second Shift fixes (2026-11-14): errors from this server's own code read as `internal_error` (write layer: `uncertain`), its own refusals as `invalid_request`, GitHub's as `provider_rejected`; push refusal receipts that fail to save are reported (`receipts.error`) and the push hook says so.
 Removing a scanner exception needs a verification that actually ran (before/after detection recorded) (Second Shift 2026-11-14).
+
+False alarms from ordinary app code (2026-11-14, PROSE-PASSWORD-1 / FORM-LABEL-1): a password key read as English wording (right after "your", "the", "new", "reset", "forgot"… on the same line, e.g. a "Reset your password: ${url}" email line) and a value that is only a code interpolation are not connection-string passwords; a literal that only names a password (`new-password`, `current-password`, `password_confirm`) is never an assigned password (a sign-in form's autocomplete ternary). Real connection strings, configs and high-entropy assignments are still caught.

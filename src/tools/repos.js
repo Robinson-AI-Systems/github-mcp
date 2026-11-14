@@ -73,18 +73,30 @@ export const repoFind = defineRead({
   required: ['text'],
   summaryType: 'repository',
   handler: (args, ctx) => plain(async () => {
+    const words = args.text;
     const allowed = ctx.connection.accounts;
     if (args.account && !allowed.some((a) => a.toLowerCase() === args.account.toLowerCase())) throw new TypeError(`"${args.account}" is not one of the GitHub accounts this connection may use (${allowed.join(', ')}).`);
-    const targets = args.account ? [args.account] : allowed;
-    const items = [];
+    // ACCOUNT-ORDER-1 (2026-11-14): a search across every account stopped at the first account it could not read
+    // (a linked account with no installation), so a search for the owner's own repo was refused. The default account
+    // is searched first; an account that cannot be searched is skipped and named, never fatal.
+    const def = ctx.connection.default_account;
+    const targets = args.account ? [args.account]
+      : [...allowed].sort((a, b) => (b === def) - (a === def));
+    const items = [], skipped = [];
     for (const login of targets) {
-      const { octokit } = await readerFor({ owner: login }, ctx);
-      const kind = await accountType(ctx, login);
-      const q = `${args.text.replace(/\b(user|org|repo|in|fork|is|archived):\S*/gi, '').trim()} ${kind === 'org' ? 'org' : 'user'}:${login}`.trim();
-      const { data } = await octokit.request('GET /search/repositories', { q, per_page: Math.min(args.max ?? 30, 100), sort: 'updated', order: 'desc' });
-      items.push(...(data.items ?? []));
+      try {
+        const { octokit } = await readerFor({ owner: login }, ctx);
+        const kind = await accountType(ctx, login);
+        const q = `${words.replace(/\b(user|org|repo|in|fork|is|archived):\S*/gi, '').trim()} ${kind === 'org' ? 'org' : 'user'}:${login}`.trim();
+        const { data } = await octokit.request('GET /search/repositories', { q, per_page: Math.min(args.max ?? 30, 100), sort: 'updated', order: 'desc' });
+        items.push(...(data.items ?? []));
+      } catch (error) {
+        if (args.account) throw error;
+        skipped.push({ account: login, why: error instanceof TypeError ? String(error.message).slice(0, 160) : 'could not be searched right now' });
+      }
     }
-    return { searched: targets, count: items.length, items: items.slice(0, args.max ?? 30) };
+    if (!items.length && skipped.length === targets.length) throw new TypeError(`No account could be searched: ${skipped.map((s) => `${s.account} (${s.why})`).join('; ')}`);
+    return { searched: targets.filter((t) => !skipped.some((s) => s.account === t)), ...(skipped.length ? { skipped } : {}), count: items.length, items: items.slice(0, args.max ?? 30) };
   })
 });
 
