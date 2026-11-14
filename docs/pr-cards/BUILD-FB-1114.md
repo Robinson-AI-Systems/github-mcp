@@ -30,3 +30,8 @@ Accepted by `tests/unit/fixes-2026-11-14.test.js`.
 
 Changes: `src/github/content-protection.js`, `src/github/ci-state.js`, `src/tools/security-scanner-settings.js`,
 `src/tools/repos.js`, `src/tools/argument-aliases.js`, `src/tools/summaries.js`, `src/tools/pulls-merge.js`; docs.
+
+## Follow-up
+
+`describe` was compact-by-default after a live check showed ~20 KB; `args.action` returns one action's full
+arguments (accepted by the same test file).

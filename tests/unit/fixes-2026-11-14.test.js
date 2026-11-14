@@ -43,6 +43,9 @@ describe('github_secret_scanner allow and describe (SCANNER-ALLOW-1)',()=>{
   expect(out.actions.allow.required).toEqual(['repo','path','reason']);
   expect(out.actions.configure.required).toEqual(expect.arrayContaining(['repo','expectedRevision','reason','verification']));
   expect(out.actions.configure.example.args.verification[0]).toMatchObject({door:'push',expectedBefore:true,expectedAfter:false});
+  expect(JSON.stringify(out).length).toBeLessThan(6000);
+  const full=parse(await call(w,'github_secret_scanner',{action:'describe',args:{action:'configure'}}));
+  expect(full.arguments.properties.verification.items.required).toEqual(expect.arrayContaining(['door','expectedBefore','expectedAfter']));
  });
  it('allow names every missing argument at once',async()=>{
   const w=await makeWorld({profile:'full'});
