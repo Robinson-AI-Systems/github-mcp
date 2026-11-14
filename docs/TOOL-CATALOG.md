@@ -1150,3 +1150,5 @@ False alarms from ordinary app code (2026-11-14, PROSE-PASSWORD-1 / FORM-LABEL-1
 One call to open a PR (2026-11-14, ONE-CALL-PR-1): `github_workflow_open_pr` (and its label follow-up, and `github_workflow_rerun_failed_ci`) pass `confirm`/`dryRun` to the guarded writer only when the caller gives them. Before, an omitted `confirm` was sent as `confirm: false`, which for the owner means preview-only, so every PR took two identical calls. An explicit `confirm: false` still previews.
 
 Dependency entries and documented fakes (2026-11-14, FIXTURE-DB-1): a `pgpass` package-lock entry written as source is not a password; on push/write, a FAKE or evident-placeholder value on a database password variable or connection field is test text (reads still hide it).
+
+Merging into another branch in one call (2026-11-14, MERGE-BASE-1): `github_workflow_merge_when_green` and `github_workflow_merge_anyway` describe `mergeIntoBranch` (the PR's base, for a PR into a non-default branch) on the tool itself and accept it as `base`, so the merge goes in one call; the deliberate-branch check is unchanged.
