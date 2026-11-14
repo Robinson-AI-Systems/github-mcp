@@ -1,4 +1,5 @@
 import { isOwnerConnection } from './authority.js';
+import { isInternalBug, isOwnRefusal } from './error-origin.js';
 // Contract-generic write lifecycle (B-1). Imports nothing service-specific: the service supplies how to name the target,
 // read its current state, classify the change, send it, read it back and explain a failure.
 //
@@ -272,7 +273,10 @@ export function defineWrite(spec) {
       // A failure that proves nothing started (the apply step refused before any
       // provider call) is reported as not applied, and the request key is released.
       const notStarted = failure?.noOperationStarted === true;
-      const rejected = notStarted || classifyError(failure) === 'rejected';
+      // Second Shift 2026-11-14: who failed matters. A fault in this server's own code is not a refusal (it may have
+      // stopped part-way, so it is uncertain); a refusal by this server's own checks is not GitHub's ("provider").
+      const internal = isInternalBug(failure);
+      const rejected = !internal && (notStarted || classifyError(failure) === 'rejected');
       let text;
       try { text = explain(failure, { args, ctx, target: tgt }); } catch { text = 'The change was not completed.'; }
       await ctx.db.finishChange(claim.id, { summary: `${rejected ? 'REJECTED' : 'UNCERTAIN'}: ${line}`, confirmed: false, releaseKey: rejected, actedAs: ctx.actor?.summary?.()?.as ?? null }).catch(() => {});
@@ -280,7 +284,7 @@ export function defineWrite(spec) {
       // A tool may attach small, plain facts to a definite refusal (e.g. the next value to send).
       const details = rejected && failure?.outcomeDetails && typeof failure.outcomeDetails === 'object' && !Array.isArray(failure.outcomeDetails)
         && Buffer.byteLength(JSON.stringify(failure.outcomeDetails)) <= 2048 ? { details: failure.outcomeDetails } : {};
-      return out({ done: false, status: rejected ? 'rejected' : 'uncertain',reason_code:rejected?'provider_rejected':'write_outcome_uncertain',retryable:rejected&&failure?.safeRetryable===true, requestKey: key, error: text, ...details,
+      return out({ done: false, status: rejected ? 'rejected' : 'uncertain',reason_code:internal?'internal_error':rejected?(isOwnRefusal(failure)?'invalid_request':'provider_rejected'):'write_outcome_uncertain',retryable:rejected&&failure?.safeRetryable===true, requestKey: key, error: text, ...details,
         ...(rejected ? {} : { warning: 'GitHub may or may not have applied this. Check the current state before trying again.' }) }, true);
     }
     let after = null; let confirmed = false; let note = null;

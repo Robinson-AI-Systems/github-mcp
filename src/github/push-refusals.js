@@ -40,6 +40,16 @@ export async function recordRefusals(db, owner, repo, receipts, now = Date.now()
  return clean.length;
 }
 
+/** Save receipts without ever failing the caller, but never silently either: the answer says whether they were
+ * saved, so the push hook can tell the person (Second Shift 2026-11-14: a failed save used to vanish). */
+export async function saveRefusalReceipts(db, owner, repo, receipts, { log = console.error } = {}) {
+ try { return { saved: await recordRefusals(db, owner, repo, receipts) }; }
+ catch (error) {
+  log('push refusal receipt not saved', `${owner}/${repo}`, String(error?.message ?? error).slice(0, 200));
+  return { saved: 0, error: 'the refusal receipt could not be saved' };
+ }
+}
+
 export async function refusalsFor(db, owner, repo, { path, blobSha }, now = Date.now()) {
  const stored = (await db.getSetting(refusalKey(owner, repo))) ?? { receipts: [] };
  return (Array.isArray(stored.receipts) ? stored.receipts : [])

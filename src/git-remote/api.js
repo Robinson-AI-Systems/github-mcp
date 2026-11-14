@@ -138,11 +138,14 @@ export async function broker(req, res, { env = process.env, openScope = openKeyS
    releaseKey: false, actedAs: ['you', 'app'].includes(body.actedAs) ? body.actedAs : null });
   await db.recordGitRemoteUse({ keyId: claim.key, service: 'push.result', outcome: outcome === 'applied' ? 'allowed' : outcome }).catch(() => {});
   // PUSH-REFUSAL-RECEIPTS-1: keep value-free receipts of a content-protection refusal for the owner's exception flow.
+  // A receipt that could not be saved is said out loud (Second Shift 2026-11-14: it used to vanish), so the
+  // hook can tell the person that the exception flow will not find this push.
+  let receipts;
   if (outcome === 'refused' && Array.isArray(body.refusedFindings) && body.refusedFindings.length) {
-   const { recordRefusals } = await import('../github/push-refusals.js');
-   await recordRefusals(db, owner, repo, body.refusedFindings).catch(() => {});
+   const { saveRefusalReceipts } = await import('../github/push-refusals.js');
+   receipts = await saveRefusalReceipts(db, owner, repo, body.refusedFindings);
   }
-  return json(res, 200, { recorded: true });
+  return json(res, 200, { recorded: true, ...(receipts ? { receipts } : {}) });
  }
  const { authorizeNativeRepo } = await import('../native-git/client.js');
  const { credentialFor } = await import('../github/client.js');
