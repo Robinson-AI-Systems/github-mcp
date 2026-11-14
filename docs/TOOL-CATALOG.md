@@ -1137,3 +1137,5 @@ Intentional branch (2026-11-12, OTHER-BASE-PUSH-1): merging a PR into a non-defa
 Merge SHA (2026-11-12, MERGE-SHA-1): a confirmed `github_workflow_merge_when_green` always returns `merge_commit` (writer answer, else the fresh PR read).
 
 Reliable reads (2026-11-12, MERGE-SHA-1): `github_workflow_merge_when_green` re-reads an empty or incomplete PR/repository answer once and otherwise reports "PR provider read is unavailable" rather than judging an empty answer.
+
+Agent feedback (2026-11-13, AGENT-FB-1113): `github_security_scanner_configure` adds or removes single exceptions with `changes.addSuppressions` / `changes.removeSuppressions`; `github_actions_get_job_log` takes `search` (+ `contextLines`, `maxMatches`); `github_workflow_merge_when_green` names a red check (`failed_checks`, `why_tool`); this server's own refusals are `invalid_request`, not network errors.

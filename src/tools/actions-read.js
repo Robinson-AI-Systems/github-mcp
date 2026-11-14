@@ -77,13 +77,16 @@ export const actionsGetRun = defineRead({
 
 export const actionsGetJobLog = defineRead({
   name: 'github_actions_get_job_log', boundedWindow:true, area: 'actions', audience: ['B', 'Op'],
-  description: 'Read a job log summary or full redacted text in hash-pinned character windows; no missing earlier lines.',
+  description: 'Read a job log: tail summary, full redacted text in hash-pinned windows, or search (text) for matches with context and a textOffset.',
   // Argument names match the response fields too (text_offset, next_text_offset), so a continuation can be copied as-is.
-  aliases: {jobId:['job_id'],textOffset:['text_offset'],maxChars:['max_chars'],expectedLogHash:['log_hash'],tailLines:['tail_lines']},
+  aliases: {jobId:['job_id'],textOffset:['text_offset'],maxChars:['max_chars'],expectedLogHash:['log_hash'],tailLines:['tail_lines'],contextLines:['context_lines'],maxMatches:['max_matches'],search:['grep','find']},
   properties: { owner: OWNER, repo: REPO, jobId: { type: 'integer', minimum: 1 }, tailLines: { type: 'integer', minimum: 10, maximum: 2000, description: 'Last lines to keep (default 400)' },
     fullText:{type:'boolean',description:'Return a redacted log window instead of the tail summary.'},
     textOffset:{type:'integer',minimum:0},maxChars:{type:'integer',minimum:1,maximum:4000},
-    expectedLogHash:{type:'string',pattern:'^[a-f0-9]{64}$'} },
+    expectedLogHash:{type:'string',pattern:'^[a-f0-9]{64}$'},
+    search:{type:'string',minLength:2,maxLength:200,description:'Find lines containing this text (case-insensitive, plain text, not a pattern). Returns each match with context lines and a textOffset to continue reading there with fullText.'},
+    contextLines:{type:'integer',minimum:0,maximum:30,description:'Lines of context around each search match (default 6).'},
+    maxMatches:{type:'integer',minimum:1,maximum:40,description:'Most matches to return (default 8).'} },
   required: ['repo', 'jobId'],
   handler: (args, ctx) => plain(async () => {
     const { owner, octokit } = await readerFor(args, ctx);
@@ -91,6 +94,26 @@ export const actionsGetJobLog = defineRead({
     const job = (await octokit.request('GET /repos/{owner}/{repo}/actions/jobs/{job_id}', p)).data;
     const res = await octokit.request('GET /repos/{owner}/{repo}/actions/jobs/{job_id}/logs', p);
     const text=textOfBody(res.data);
+    if(args.search!==undefined){
+      if(args.fullText===true||args.tailLines!==undefined||args.textOffset!==undefined||args.maxChars!==undefined)throw new TypeError('search cannot be combined with fullText, tailLines, textOffset or maxChars.');
+      if(Buffer.byteLength(text)>50*1024*1024)throw new TypeError('This log exceeds the 50 MB complete-read limit.');
+      const safe=redactExcerpt(text).replace(/[A-Za-z0-9+/=]{200,}/g,'[long encoded text removed]'),hash=createHash('sha256').update(safe).digest('hex');
+      const lines=safe.split('\n'),starts=[];let at=0;for(const l of lines){starts.push(at);at+=l.length+1;}
+      const needle=args.search.toLowerCase(),ctxN=args.contextLines??6,limit=args.maxMatches??8;
+      const clean=l=>l.replace(ANSI_TIME,'').replace(/\r$/,'').slice(0,400);
+      const hits=[];for(let i=0;i<lines.length;i++)if(lines[i].toLowerCase().includes(needle))hits.push(i);
+      const matches=[];let budget=6500,lastEnd=-1;
+      for(const i of hits){
+        if(matches.length>=limit)break;
+        if(i<=lastEnd)continue;
+        const from=Math.max(0,i-ctxN,lastEnd+1),to=Math.min(lines.length-1,i+ctxN);
+        const m={line:i+1,textOffset:starts[from],lines:lines.slice(from,to+1).map((l,k)=>`${from+k+1}${from+k===i?'>':':'} ${clean(l)}`)};
+        const cost=Buffer.byteLength(JSON.stringify(m));if(cost>budget)break;budget-=cost;matches.push(m);lastEnd=to;
+      }
+      return {job:{id:job.id,name:redactExcerpt(String(job.name??'')).slice(0,120)},search:args.search,total_matches:hits.length,returned:matches.length,
+        total_lines:lines.length,log_hash:hash,matches,redacted:true,untrusted:true,
+        how:'Read on from a match with fullText:true, textOffset (from the match) and expectedLogHash (log_hash).'};
+    }
     if(args.fullText===true){
       if(args.tailLines!==undefined)throw new TypeError('fullText cannot be combined with tailLines.');
       if(Buffer.byteLength(text)>50*1024*1024)throw new TypeError('This log exceeds the 50 MB complete-read limit.');

@@ -3920,6 +3920,24 @@
       ],
       "readiness": "READY",
       "ownerInputs": []
+    },
+    {
+      "id": "AGENT-FB-1113",
+      "title": "Agent feedback: add/remove scanner exceptions, honest validation errors, job log search, named red checks",
+      "batch": "FIN",
+      "design": "docs/pr-cards/AGENT-FB-1113.md",
+      "dependencies": [
+        "PUSH-REFUSAL-RECEIPTS-1"
+      ],
+      "card": "docs/pr-cards/AGENT-FB-1113.md",
+      "status": "IN_PROGRESS",
+      "migration": "none",
+      "budget": 300,
+      "units": [
+        "AGENT-FB-1113"
+      ],
+      "readiness": "READY",
+      "ownerInputs": []
     }
   ],
   "gatewayBoundary": {
