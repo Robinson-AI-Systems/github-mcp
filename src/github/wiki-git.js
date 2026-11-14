@@ -6,7 +6,7 @@ import git from 'isomorphic-git';
 import { memfs } from 'memfs';
 
 export const WIKI_LIMITS = Object.freeze({ pages: 200, totalBytes: 5 * 1024 * 1024, transferBytes: 20 * 1024 * 1024, pageBytes: 1024 * 1024 });
-export const WIKI_AUTHOR = Object.freeze({ name: 'Robinson GitHub MCP', email: 'noreply@users.noreply.github.com' });
+export const WIKI_AUTHOR = Object.freeze({ name: 'GitHub Unleashed', email: 'noreply@users.noreply.github.com' });
 const SEGMENT = /^[A-Za-z0-9._-]{1,100}$/;
 const PAGE = /^[A-Za-z0-9][A-Za-z0-9 _.-]{0,99}$/;
 const WIKI_PATH = /^\/[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+\.wiki\.git\//;

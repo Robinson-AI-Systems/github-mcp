@@ -307,7 +307,7 @@ Chris's go-ahead and a design for the two-step flow.
 - **`github_content_push_files` has no content scan.** The git remote, workspace upload, direct git host,
   `github_repo_change` and workspace `write_file` all refuse credential-shaped file content; the contents-API push tool
   does not, which is inconsistent. Adding the same gate (with the FAKE fixture opt-in) would close it.
-- **`src/github/wiki-git.js` false positive.** The git auth callback that hands the token to isomorphic-git as the
+- (Done 2026-11-14: the wiki author is now "GitHub Unleashed"; the file pushes unchanged otherwise.) **`src/github/wiki-git.js` false positive.** The git auth callback that hands the token to isomorphic-git as the
   password field is flagged as a password assignment by the generic rule, so that file cannot be pushed unchanged
   through the gate. Either a narrower rule (an identifier, not a quoted literal, is never a password) or a small code
   reshape would fix it. BRAND-UNLEASHED-1 left this file's text unchanged for that reason, so the wiki commit author

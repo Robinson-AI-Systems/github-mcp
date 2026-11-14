@@ -91,10 +91,25 @@ async function main() {
    const refusedFindings = findings.filter(f => f.blobSha && f.values).flatMap(f => f.values.map(v => ({ path: f.path, blobSha: f.blobSha, ...v }))).slice(0, 50);
    const reported = await report('refused', { reason: 'credential-shaped content', refusedFindings });
    const receiptLost = refusedFindings.length > 0 && !(reported?.receipts?.saved > 0);
+   // Issue #630: say which values were already on GitHub before this push (the person did not add them;
+   // touching the file made this push carry them again), and what will and will not clear the refusal.
+   const earlier = await alreadyOnGitHub(updates, refusedFindings, settings).catch(() => new Map());
+   const mark = r => { const where = earlier.get(`${r.path}\n${r.valueFingerprint}`); return where ? ` (already on ${where} before this push)` : ''; };
+   const allEarlier = refusedFindings.length > 0 && refusedFindings.every(r => earlier.has(`${r.path}\n${r.valueFingerprint}`));
+   const branch = nameOf((updates.find(u => u.new !== ZERO) ?? updates[0]).ref);
+   const firstFinding = refusedFindings[0];
    say(`Refused: content protection found credential-shaped content in ${findings.length} file(s) or commit message(s), first ${JSON.stringify(first.path.slice(0, 120))} (${first.lines.length ? first.lines.join(', ') : first.rules.join(', ')}).`,
-    'Nothing was pushed to GitHub. Remove the value from your commits (git commit --amend or git rebase -i), keep real secrets in protected setup, then push again.',
-    'If it is a deliberate fake test value, the repository owner can allow exactly that value in that file: github_secret_scanner check (path + blobSha below; it works for this refused file even though it is not on GitHub) lists each finding\'s value_fingerprint, then github_secret_scanner configure adds a suppression with pushException: true and that valueFingerprint, verified through door "push". Edits elsewhere in the file keep the exception.',
-    ...refusedFindings.slice(0, 6).map(r => `  ${JSON.stringify(r.path.slice(0, 120))} blobSha ${r.blobSha} line ${r.line} rule ${r.rule} value_fingerprint ${r.valueFingerprint}`),
+    'Nothing was pushed to GitHub. Remove the value from your commits: a new commit that removes it does not help, because every pushed commit is checked.',
+    `Without rewriting anything on GitHub: rebuild your change as one new commit on the remote tip without the value (git fetch, git reset --soft origin/${branch}, remove the value, git commit, git push). Or remove it from the commits themselves (git commit --amend, git rebase -i). Keep real secrets in protected setup.`,
+    ...(earlier.size ? [allEarlier
+      ? 'Every value below was already on GitHub before this push: it is refused now only because this push changes that file. Remove it in this push (it is still on GitHub in older commits; rotate it if it is real), or, if it is not a real credential, ask the owner for the exception below.'
+      : 'Values marked "already on ... before this push" were on GitHub already: this push carries them again because it changes that file.'] : []),
+    'If it is a deliberate fake test value or a false positive, the repository owner can allow exactly that value in that file (edits elsewhere in the file keep the exception). github_secret_scanner check (path + blobSha below; it works for this refused file even though it is not on GitHub) lists each finding\'s value_fingerprint; then:',
+    ...(firstFinding ? [`  github_secret_scanner ${JSON.stringify({ action: 'configure', args: { repo: slug.split('/').pop(), expectedRevision: Number.isSafeInteger(answer.scanner_policy?.revision) ? answer.scanner_policy.revision : '<settings revision>', reason: '<why this is not a real credential>',
+      verification: [{ door: 'push', path: firstFinding.path, blobSha: firstFinding.blobSha, rule: firstFinding.rule, valueFingerprint: firstFinding.valueFingerprint, expectedBefore: true, expectedAfter: false }],
+      changes: { addSuppressions: [{ rule: firstFinding.rule, path: firstFinding.path, blobSha: firstFinding.blobSha, pushException: true, valueFingerprint: firstFinding.valueFingerprint, reason: '<why this is not a real credential>' }] } } })}`,
+      '  (one verification case and one suppression per finding; write the reasons in plain words, without the value or anything shaped like a credential)'] : []),
+    ...refusedFindings.slice(0, 6).map(r => `  ${JSON.stringify(r.path.slice(0, 120))} blobSha ${r.blobSha} line ${r.line} rule ${r.rule} value_fingerprint ${r.valueFingerprint}${mark(r)}`),
     ...(receiptLost ? ['Note: the record of this refusal could not be saved, so github_secret_scanner check will not find it yet. Push again to record it.'] : []));
    return 1;
   }
@@ -323,6 +338,40 @@ async function planParts(updates) {
   `Refused: after splitting along each branch's main line, about ${sizeOf(rest)} of merged-in history remains, more than one push to GitHub may carry. Nothing was pushed to GitHub.`,
   'Next: push the merged-in branches first (git push origin <branch>), then this one.'] });
  return { cuts, sizes, total };
+}
+
+/**
+ * Issue #630: which refused values were already on GitHub before this push. For each refused (path, value
+ * fingerprint), look at the same path at each pushed ref's old tip (or the repository's default branch for a
+ * new ref) in the mirror and scan it the same way; a matching fingerprint there means the push did not add it.
+ * Returns a Map of `path\nvalueFingerprint` → branch name. Value-free throughout.
+ */
+async function alreadyOnGitHub(updates, refused, settings) {
+ const out = new Map();
+ if (!refused.length) return out;
+ const tips = [];
+ for (const u of updates) {
+  if (u.new === ZERO) continue;
+  if (u.old !== ZERO) tips.push({ sha: u.old, name: nameOf(u.ref) });
+  else {
+   const head = await runGit([...gitPrefix(), 'symbolic-ref', '--quiet', '--short', 'HEAD'], { cwd: process.cwd(), env, timeoutMs: 15000 });
+   const name = head.code === 0 ? head.stdout.trim() : '';
+   if (name) tips.push({ sha: 'refs/heads/' + name, name: `the default branch (${name})` });
+  }
+ }
+ const paths = [...new Set(refused.map(r => r.path))].slice(0, 20);
+ for (const tip of tips.slice(0, 10)) {
+  for (const path of paths) {
+   const shown = await runGit([...gitPrefix(), 'cat-file', 'blob', `${tip.sha}:${path}`], { cwd: process.cwd(), env, timeoutMs: 30000, maxOutputBytes: FILE_LIMIT });
+   if (shown.code !== 0) continue;
+   const found = findingFor(path, Buffer.from(shown.stdout), settings);
+   for (const v of found?.values ?? []) {
+    const key = `${path}\n${v.valueFingerprint}`;
+    if (!out.has(key)) out.set(key, tip.name);
+   }
+  }
+ }
+ return out;
 }
 
 async function scan(heads, settings = null) {
