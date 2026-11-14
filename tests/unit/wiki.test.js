@@ -44,7 +44,7 @@ describe('wiki tools', () => {
     expect(JSON.stringify(written.body)).not.toContain('hello wiki');
     expect((await run(w, 'github_wiki_read', { owner: O, repo: 'app', page: 'Notes' })).body.text).toBe('hello wiki');
     const server = await started();
-    expect(server.log('log', '-1', '--format=%an|%s')).toContain('Robinson GitHub MCP|Create Notes');
+    expect(server.log('log', '-1', '--format=%an|%s')).toContain('GitHub Unleashed|Create Notes');
     const auth = server.seen.map((r) => r.authorization).filter(Boolean);
     expect(auth.length).toBeGreaterThan(0);
     expect(auth.every((a) => a.startsWith('Basic '))).toBe(true);

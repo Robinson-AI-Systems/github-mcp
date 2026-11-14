@@ -2632,7 +2632,7 @@
         "FLEET-3"
       ],
       "card": "docs/pr-cards/PLAY-3.md",
-      "status": "IN_PROGRESS",
+      "status": "MERGED",
       "migration": "none: installer and host service form only; the check-in agentUpdate advertisement is additive and optional on the existing response",
       "budget": 800,
       "units": [
@@ -2651,7 +2651,7 @@
         "PLAY-3"
       ],
       "card": "docs/pr-cards/PLAY-3-FIXES.md",
-      "status": "IN_PROGRESS",
+      "status": "MERGED",
       "migration": "none: installer robustness fixes only; no protocol or record changes",
       "budget": 800,
       "units": [
@@ -2671,7 +2671,7 @@
         "FLEET-3"
       ],
       "card": "docs/pr-cards/HOST-DELEGATION-1.md",
-      "status": "IN_PROGRESS",
+      "status": "MERGED",
       "migration": "none: approval provenance is an additive field on the existing enrollment record",
       "budget": 800,
       "units": [
@@ -2756,7 +2756,7 @@
         "FLEET-6"
       ],
       "card": "docs/pr-cards/FLEET-5.md",
-      "status": "IN_PROGRESS",
+      "status": "MERGED",
       "migration": "none",
       "budget": 800,
       "units": [
@@ -3248,7 +3248,7 @@
         "GIT-DIRECT-2"
       ],
       "card": "docs/pr-cards/AGENT-FB-1.md",
-      "status": "IN_PROGRESS",
+      "status": "MERGED",
       "migration": "none",
       "budget": 700,
       "units": [
@@ -3266,7 +3266,7 @@
         "AGENT-FB-1"
       ],
       "card": "docs/pr-cards/AGENT-FB-3.md",
-      "status": "IN_PROGRESS",
+      "status": "MERGED",
       "migration": "none",
       "budget": 600,
       "units": [
@@ -3284,7 +3284,7 @@
         "GIT-DIRECT-2"
       ],
       "card": "docs/pr-cards/PC-WORKER-1.md",
-      "status": "IN_PROGRESS",
+      "status": "MERGED",
       "migration": "none (worker volume file .owner-pause)",
       "budget": 900,
       "units": [
@@ -3302,7 +3302,7 @@
         "PC-WORKER-1"
       ],
       "card": "docs/pr-cards/WORKER-POOL-1.md",
-      "status": "IN_PROGRESS",
+      "status": "MERGED",
       "migration": "none (stored setting native_git.worker_pool; git remote key index gains host)",
       "budget": 900,
       "units": [
@@ -3320,7 +3320,7 @@
         "WORKER-POOL-1"
       ],
       "card": "docs/pr-cards/WORKER-POOL-2.md",
-      "status": "IN_PROGRESS",
+      "status": "MERGED",
       "migration": "none (NATIVE_GIT_WORKER_POOL entries gain optional audience)",
       "budget": 600,
       "units": [
@@ -3391,7 +3391,7 @@
         "BRAND-1"
       ],
       "card": "docs/pr-cards/BRAND-UNLEASHED-1.md",
-      "status": "IN_PROGRESS",
+      "status": "MERGED",
       "migration": "none",
       "budget": 300,
       "units": [
@@ -3411,7 +3411,7 @@
         "WORKER-POOL-2"
       ],
       "card": "docs/pr-cards/PUSH-EXIT-1.md",
-      "status": "IN_PROGRESS",
+      "status": "MERGED",
       "migration": "none (new optional env GIT_DIRECT_HOST; compose gains a push-exit service)",
       "budget": 600,
       "units": [
@@ -3431,7 +3431,7 @@
         "PC-WORKER-1"
       ],
       "card": "docs/pr-cards/GIT-SSH-LEG-1.md",
-      "status": "IN_PROGRESS",
+      "status": "MERGED",
       "migration": "none (new optional worker env NATIVE_GIT_GITHUB_TRANSPORT / _SSH_PORT / _HTTP_VERSION; worker image gains openssh-client)",
       "budget": 700,
       "units": [
@@ -3450,7 +3450,7 @@
         "WORKER-POOL-2"
       ],
       "card": "docs/pr-cards/RELAY-OWNER-1.md",
-      "status": "IN_PROGRESS",
+      "status": "MERGED",
       "migration": "none (new optional protected setting OPERATOR_GITHUB_USER_ID)",
       "budget": 500,
       "units": [
@@ -3490,7 +3490,7 @@
         "CAP-7"
       ],
       "card": "docs/pr-cards/CAP-8.md",
-      "status": "IN_PROGRESS",
+      "status": "MERGED",
       "migration": "none",
       "budget": 650,
       "units": [
@@ -3509,7 +3509,7 @@
         "CAP-7"
       ],
       "card": "docs/pr-cards/CAP-9.md",
-      "status": "IN_PROGRESS",
+      "status": "MERGED",
       "migration": "none",
       "budget": 200,
       "units": [
@@ -3528,7 +3528,7 @@
         "CAP-7"
       ],
       "card": "docs/pr-cards/CAP-10.md",
-      "status": "IN_PROGRESS",
+      "status": "MERGED",
       "migration": "none",
       "budget": 200,
       "units": [
@@ -3545,7 +3545,7 @@
       "design": "docs/pr-cards/RACK-1.md",
       "dependencies": [],
       "card": "docs/pr-cards/RACK-1.md",
-      "status": "IN_PROGRESS",
+      "status": "MERGED",
       "migration": "none",
       "budget": 800,
       "units": [
@@ -3562,7 +3562,7 @@
       "design": "docs/pr-cards/DISC-1.md",
       "dependencies": [],
       "card": "docs/pr-cards/DISC-1.md",
-      "status": "IN_PROGRESS",
+      "status": "MERGED",
       "migration": "none",
       "budget": 300,
       "units": [
@@ -3581,7 +3581,7 @@
         "DISC-1"
       ],
       "card": "docs/pr-cards/DISC-2.md",
-      "status": "IN_PROGRESS",
+      "status": "MERGED",
       "migration": "none",
       "budget": 300,
       "units": [
@@ -3600,7 +3600,7 @@
         "PC-WORKER-1"
       ],
       "card": "docs/pr-cards/WORKER-AUTOUPDATE-1.md",
-      "status": "IN_PROGRESS",
+      "status": "MERGED",
       "migration": "none (updater state in /srv/robinson-git/autoupdate/ on the PC)",
       "budget": 900,
       "units": [
@@ -3616,7 +3616,7 @@
       "design": "docs/pr-cards/SWEEP-REPIN-1.md",
       "dependencies": [],
       "card": "docs/pr-cards/SWEEP-REPIN-1.md",
-      "status": "IN_PROGRESS",
+      "status": "MERGED",
       "migration": "none (manager record gains a keyFingerprint hash; no stored credential changes)",
       "budget": 600,
       "units": [
@@ -3632,7 +3632,7 @@
       "design": "docs/pr-cards/SWEEP-REPIN-2.md",
       "dependencies": [],
       "card": "docs/pr-cards/SWEEP-REPIN-2.md",
-      "status": "IN_PROGRESS",
+      "status": "MERGED",
       "migration": "none (classifier tolerance only; no record or credential changes)",
       "budget": 600,
       "units": [
@@ -3651,7 +3651,7 @@
         "SRV-STATUS-1"
       ],
       "card": "docs/pr-cards/PUSH-EXIT-PROBE-1.md",
-      "status": "IN_PROGRESS",
+      "status": "MERGED",
       "migration": "none",
       "budget": 900,
       "units": [
@@ -3667,7 +3667,7 @@
       "design": "docs/pr-cards/SWEEP-ORPHAN-1.md",
       "dependencies": [],
       "card": "docs/pr-cards/SWEEP-ORPHAN-1.md",
-      "status": "IN_PROGRESS",
+      "status": "MERGED",
       "migration": "none (sweep retires the orphaned record through its normal cycles; no hand edits, no schema or credential changes)",
       "budget": 600,
       "units": [
@@ -3686,7 +3686,7 @@
         "GIT-UPLOAD-1"
       ],
       "card": "docs/pr-cards/HIDDEN-GUARD-1.md",
-      "status": "IN_PROGRESS",
+      "status": "MERGED",
       "migration": "none",
       "budget": 900,
       "units": [
@@ -3706,7 +3706,7 @@
         "SRV-STATUS-1"
       ],
       "card": "docs/pr-cards/WORKER-RESOLV-GUARD-1.md",
-      "status": "IN_PROGRESS",
+      "status": "MERGED",
       "migration": "none (guard state in /srv/robinson-git/resolv-guard/ on the PC)",
       "budget": 900,
       "units": [
@@ -3726,7 +3726,7 @@
         "WORKER-RESOLV-GUARD-1"
       ],
       "card": "docs/pr-cards/PAUSE-ORIGIN-1.md",
-      "status": "IN_PROGRESS",
+      "status": "MERGED",
       "migration": "none (reason code unchanged; one added field held_by)",
       "budget": 300,
       "units": [
@@ -3745,7 +3745,7 @@
         "PAUSE-ORIGIN-1"
       ],
       "card": "docs/pr-cards/AUTOUPDATE-GATE-1.md",
-      "status": "IN_PROGRESS",
+      "status": "MERGED",
       "migration": "none (deploy/pc scripts; takes effect at the next kit install)",
       "budget": 300,
       "units": [
@@ -3763,7 +3763,7 @@
         "AUTOUPDATE-GATE-1"
       ],
       "card": "docs/pr-cards/AUTOUPDATE-GATE-2.md",
-      "status": "IN_PROGRESS",
+      "status": "MERGED",
       "migration": "none (deploy/pc scripts; takes effect at the next kit install)",
       "budget": 300,
       "units": [
@@ -3779,7 +3779,7 @@
       "design": "docs/pr-cards/PLAY3-BOOT-RETRY-1.md",
       "dependencies": [],
       "card": "docs/pr-cards/PLAY3-BOOT-RETRY-1.md",
-      "status": "IN_PROGRESS",
+      "status": "MERGED",
       "migration": "none (service definitions + provisioning convergence only; live devices converged in place, no schema or credential changes)",
       "budget": 600,
       "units": [
@@ -3798,7 +3798,7 @@
         "HIDDEN-GUARD-1"
       ],
       "card": "docs/pr-cards/FIXTURE-URI-1.md",
-      "status": "IN_PROGRESS",
+      "status": "MERGED",
       "migration": "none",
       "budget": 300,
       "units": [
@@ -3814,7 +3814,7 @@
       "design": "docs/pr-cards/MERGE-ANYWAY-1.md",
       "dependencies": [],
       "card": "docs/pr-cards/MERGE-ANYWAY-1.md",
-      "status": "IN_PROGRESS",
+      "status": "MERGED",
       "migration": "none",
       "budget": 300,
       "units": [
@@ -3830,7 +3830,7 @@
       "design": "docs/pr-cards/OTHER-BASE-PUSH-1.md",
       "dependencies": [],
       "card": "docs/pr-cards/OTHER-BASE-PUSH-1.md",
-      "status": "IN_PROGRESS",
+      "status": "MERGED",
       "migration": "none",
       "budget": 300,
       "units": [
@@ -3846,7 +3846,7 @@
       "design": "docs/pr-cards/MERGE-SHA-1.md",
       "dependencies": [],
       "card": "docs/pr-cards/MERGE-SHA-1.md",
-      "status": "IN_PROGRESS",
+      "status": "MERGED",
       "migration": "none",
       "budget": 300,
       "units": [
@@ -3894,7 +3894,7 @@
       "design": "docs/pr-cards/FIXTURE-EXCEPTION-1.md",
       "dependencies": [],
       "card": "docs/pr-cards/FIXTURE-EXCEPTION-1.md",
-      "status": "IN_PROGRESS",
+      "status": "MERGED",
       "migration": "none",
       "budget": 300,
       "units": [
@@ -4025,6 +4025,25 @@
       "budget": 40,
       "units": [
         "MERGE-BASE-1"
+      ],
+      "readiness": "READY",
+      "ownerInputs": []
+    },
+    {
+      "id": "ISSUE-630",
+      "title": "Push refusals name values already on GitHub, say a fixing commit will not help (with the non-rewriting route) and print the exact owner exception call",
+      "batch": "FIN",
+      "design": "docs/pr-cards/ISSUE-630.md",
+      "dependencies": [
+        "PUSH-REFUSAL-RECEIPTS-1",
+        "SCANNER-CFG-1114"
+      ],
+      "card": "docs/pr-cards/ISSUE-630.md",
+      "status": "MERGED",
+      "migration": "none",
+      "budget": 200,
+      "units": [
+        "ISSUE-630"
       ],
       "readiness": "READY",
       "ownerInputs": []

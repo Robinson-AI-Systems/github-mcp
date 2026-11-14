@@ -1142,6 +1142,8 @@ Agent feedback (2026-11-13, AGENT-FB-1113): `github_security_scanner_configure` 
 
 Scanner configure (2026-11-14, SCANNER-CFG-1114): a request the read step refuses (settings or verification checks) answers with that reason (`refusedBy: request`, `invalid_request`, not retryable) instead of "the current state could not be read"; the credential refusal names the field path; verification cases accept `valueFingerprint` as an alias of `fingerprint`.
 
+Git remote push refusals (2026-11-14, ISSUE-630) mark values that were already on the target branch before the push, say that a fixing commit on top will not clear the refusal (with the rebuild-on-the-remote-tip route), and print the exact `github_secret_scanner` configure call for the first finding.
+
 Second Shift fixes (2026-11-14): errors from this server's own code read as `internal_error` (write layer: `uncertain`), its own refusals as `invalid_request`, GitHub's as `provider_rejected`; push refusal receipts that fail to save are reported (`receipts.error`) and the push hook says so.
 Removing a scanner exception needs a verification that actually ran (before/after detection recorded) (Second Shift 2026-11-14).
 

@@ -69,6 +69,13 @@ describe('BRAND-UNLEASHED-1 product name', () => {
   });
 });
 
+describe('BRAND-UNLEASHED-1 follow-up (2026-11-14): the wiki commit author', () => {
+  it('commits wiki pages as GitHub Unleashed, not the old product name', () => {
+    expect(read('src/github/wiki-git.js')).toContain("WIKI_AUTHOR = Object.freeze({ name: 'GitHub Unleashed'");
+    expect(read('src/github/wiki-git.js')).not.toMatch(OLD);
+  });
+});
+
 describe('BRAND-UNLEASHED-1 accent', () => {
   it('uses the Arctic accent from the brand spec and keeps text on it readable', () => {
     expect(BRAND.arctic).toBe('#4DDFFF');
