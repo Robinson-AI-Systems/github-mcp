@@ -10,7 +10,7 @@ vi.mock('../../src/tools/github-read.js', async (orig) => {
 });
 
 const { findingFor } = await import('../../workers/native-git/upload.js');
-const { blockingPushFindings, valueFingerprint } = await import('../../src/github/file-protection.js');
+const { blockingPushFindings } = await import('../../src/github/file-protection.js');
 const { scannerSettings } = await import('../../src/github/scanner-policy.js');
 const { cleanReceipts, recordRefusals, refusalsFor, receiptBlocked, refusalKey } = await import('../../src/github/push-refusals.js');
 const { verifyScannerChange, assertScannerVerifications } = await import('../../src/tools/scanner-verification.js');

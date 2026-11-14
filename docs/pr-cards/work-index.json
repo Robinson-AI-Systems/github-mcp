@@ -3717,7 +3717,7 @@
     },
     {
       "id": "PAUSE-ORIGIN-1",
-      "title": "A worker admission pause says who holds it: the owner, the self-updater or the name-lookup guard — a failed self-update no longer reads as \"paused by its owner (the computer is in use)\"",
+      "title": "A worker admission pause says who holds it: the owner, the self-updater or the name-lookup guard \u2014 a failed self-update no longer reads as \"paused by its owner (the computer is in use)\"",
       "batch": "FIN",
       "design": "docs/pr-cards/PAUSE-ORIGIN-1.md",
       "dependencies": [
@@ -3774,7 +3774,7 @@
     },
     {
       "id": "PLAY3-BOOT-RETRY-1",
-      "title": "Playground host agent boot-retry: the system unit wants (not requires) docker.service and carries no start limit, provisioning convergence restates the settings as a drop-in on older installs, and the container form's rule is restart policy always — the 2026-11-11 boot left the agent down on a dependency-failed start job while Docker recovered in seconds",
+      "title": "Playground host agent boot-retry: the system unit wants (not requires) docker.service and carries no start limit, provisioning convergence restates the settings as a drop-in on older installs, and the container form's rule is restart policy always \u2014 the 2026-11-11 boot left the agent down on a dependency-failed start job while Docker recovered in seconds",
       "batch": "FIN",
       "design": "docs/pr-cards/PLAY3-BOOT-RETRY-1.md",
       "dependencies": [],
@@ -3790,7 +3790,7 @@
     },
     {
       "id": "FIXTURE-URI-1",
-      "title": "A documented fake connection-string password (FAKE…, evident placeholders) passes pushes under the fixture opt-in; reads still hide it; real passwords still refused",
+      "title": "A documented fake connection-string password (FAKE\u2026, evident placeholders) passes pushes under the fixture opt-in; reads still hide it; real passwords still refused",
       "batch": "FIN",
       "design": "docs/pr-cards/FIXTURE-URI-1.md",
       "dependencies": [
@@ -3902,6 +3902,24 @@
       ],
       "readiness": "READY",
       "ownerInputs": []
+    },
+    {
+      "id": "PUSH-REFUSAL-RECEIPTS-1",
+      "title": "Push exceptions for a refused file that never reached GitHub",
+      "batch": "FIN",
+      "design": "docs/pr-cards/PUSH-REFUSAL-RECEIPTS-1.md",
+      "dependencies": [
+        "FIXTURE-EXCEPTION-1"
+      ],
+      "card": "docs/pr-cards/PUSH-REFUSAL-RECEIPTS-1.md",
+      "status": "IN_PROGRESS",
+      "migration": "none",
+      "budget": 300,
+      "units": [
+        "PUSH-REFUSAL-RECEIPTS-1"
+      ],
+      "readiness": "READY",
+      "ownerInputs": []
     }
   ],
   "gatewayBoundary": {
@@ -3945,7 +3963,7 @@
       "docs/pr-cards/RESULT-OWN-KEYS.md",
       "docs/pr-cards/RESULT-OFFSET-METADATA.md"
     ],
-    "sourceAndAutomated": "All five #151–#155 source implementations accepted by the complete seven exact-head CI/release gates; #155 merger/final-main CI must still be observed independently.",
+    "sourceAndAutomated": "All five #151\u2013#155 source implementations accepted by the complete seven exact-head CI/release gates; #155 merger/final-main CI must still be observed independently.",
     "deployedExactRevision": "UNVERIFIED for this batch; last independently observed production source #146",
     "authenticatedCustomMcp": "UNVERIFIED",
     "directOAuth": "UNVERIFIED",
