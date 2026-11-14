@@ -304,7 +304,7 @@ Chris's go-ahead and a design for the two-step flow.
 
 ## 2026-11-03 — Content protection follow-ups (from PUSH-FIXTURE-1, not built; need Chris's say-so)
 
-- **`github_content_push_files` has no content scan.** The git remote, workspace upload, direct git host,
+- (Done 2026-11-14, CONTENT-SCAN-1: put_file, push_files and edit_files now scan like a push.) **`github_content_push_files` has no content scan.** The git remote, workspace upload, direct git host,
   `github_repo_change` and workspace `write_file` all refuse credential-shaped file content; the contents-API push tool
   does not, which is inconsistent. Adding the same gate (with the FAKE fixture opt-in) would close it.
 - (Done 2026-11-14: the wiki author is now "GitHub Unleashed"; the file pushes unchanged otherwise.) **`src/github/wiki-git.js` false positive.** The git auth callback that hands the token to isomorphic-git as the
@@ -312,7 +312,7 @@ Chris's go-ahead and a design for the two-step flow.
   through the gate. Either a narrower rule (an identifier, not a quoted literal, is never a password) or a small code
   reshape would fix it. BRAND-UNLEASHED-1 left this file's text unchanged for that reason, so the wiki commit author
   name there is still the old product name until this is fixed.
-- **The scanner's own file could not pass its own gate.** Comments in `src/github/content-protection.js` named the npm
+- (Done 2026-11-14, CONTENT-SCAN-1: `scripts/self-scan.mjs` runs in `npm run check`; the identifier false positive is fixed in the scanner, CODE-REF-1.) **The scanner's own file could not pass its own gate.** Comments in `src/github/content-protection.js` named the npm
   package for Postgres password files with a version as an assignment and quoted token shapes. PUSH-FIXTURE-1 reworded
   them; a CI check that scans the repository's own source with the gate would stop this coming back.
 - **Faster push exit than Dokploy's link (PUSH-EXIT-1, 2026-11-03).** The Dokploy push exit's inbound link measured

@@ -4065,6 +4065,25 @@
       ],
       "readiness": "READY",
       "ownerInputs": []
+    },
+    {
+      "id": "CONTENT-SCAN-1",
+      "title": "Contents-API writers refuse credential-shaped text like a push; CI scans the repository with the push gate; code that hands a password along is not a password",
+      "batch": "FIN",
+      "design": "docs/pr-cards/CONTENT-SCAN-1.md",
+      "dependencies": [
+        "PUSH-FIXTURE-1",
+        "FIXTURE-EXCEPTION-1"
+      ],
+      "card": "docs/pr-cards/CONTENT-SCAN-1.md",
+      "status": "MERGED",
+      "migration": "none",
+      "budget": 300,
+      "units": [
+        "CONTENT-SCAN-1"
+      ],
+      "readiness": "READY",
+      "ownerInputs": []
     }
   ],
   "gatewayBoundary": {

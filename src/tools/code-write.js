@@ -10,6 +10,8 @@ import { notifyOutsiders } from './people-guard.js';
 import { productionReason } from './production-guard.js';
 import { overridable } from './rule-override.js';
 import { blankedLines, blankingRefusalText, hasPlaceholder } from '../github/placeholder-guard.js';
+import { blockingPushFindings, valueFingerprint } from '../github/file-protection.js';
+import { loadScannerPolicy, defaultScannerSettings } from '../github/scanner-policy.js';
 
 const OWNER = { type: 'string', maxLength: 39, description: 'GitHub account (default: the connection\'s default account)' };
 const REPO = { type: 'string', minLength: 1, maxLength: 100 };
@@ -21,6 +23,41 @@ const short = (sha) => String(sha ?? '').slice(0, 7);
 const b64 = (text) => Buffer.from(text, 'utf8').toString('base64');
 const branchTarget = (args, ctx) => ({ owner: ownerOf(args, ctx), repo: args.repo, ref: args.branch, scope: 'repo' });
 const productionOf = (ctx, target) => productionReason(ctx, target);
+
+// CONTENT-SCAN-1 (2026-11-14, Chris approved): the contents-API writers refuse credential-shaped text the same way a
+// git push does (the same rules, documented FAKE fixtures allowed, and the owner's exact push exceptions for that path).
+// A value that is already in the file on the branch is not new exposure and does not block an edit elsewhere in it.
+async function scannerSettingsFor(ctx, target) {
+  try { return (await loadScannerPolicy(ctx.db, target.owner, target.repo)).settings; }
+  catch { return defaultScannerSettings(); }
+}
+const matchedValues = (path, text, settings) => {
+  const bytes = Buffer.from(text ?? '');
+  return blockingPushFindings(path, text ?? '', settings).map((f) => ({ ...f,
+    value: bytes.subarray(f.byte_offset, f.byte_offset + f.byte_length).toString() }));
+};
+/** entries: [{ path, text, previous? (string | () => Promise<string|null>) }]. Throws a refusal naming line, rule and fingerprint. */
+export async function refuseNewSecrets(ctx, target, entries) {
+  let settings = null;
+  const blocked = [];
+  for (const e of entries) {
+    if (typeof e.text !== 'string') continue;
+    settings ??= await scannerSettingsFor(ctx, target);
+    const found = matchedValues(e.path, e.text, settings);
+    if (!found.length) continue;
+    const prevText = typeof e.previous === 'function' ? await e.previous() : e.previous;
+    const already = new Set(matchedValues(e.path, prevText, settings).map((f) => `${f.rule}\u0000${f.value}`));
+    for (const f of found) if (!already.has(`${f.rule}\u0000${f.value}`)) blocked.push({ path: e.path, line: f.line, rule: f.rule, valueFingerprint: valueFingerprint(e.path, f.rule, f.value) });
+  }
+  if (!blocked.length) return;
+  const first = blocked[0];
+  const err = refusal(`Content protection refused this commit: ${blocked.length} credential-shaped value(s), first ${JSON.stringify(first.path.slice(0, 200))} line ${first.line} (${first.rule}). `
+    + 'Nothing was changed. Remove the value (real secrets belong in protected setup, not the repository). If it is a deliberate fake test value, '
+    + `allow exactly that value in that file with github_secret_scanner configure: addSuppressions [{ rule: "${first.rule}", path: "${first.path.slice(0, 200)}", pushException: true, valueFingerprint: "${first.valueFingerprint}", blobSha: <the file's blob sha>, reason: <why> }], then try again.`, 422);
+  err.code = 'content_protection';
+  err.findings = blocked.slice(0, 20);
+  throw err;
+}
 
 const readFile = (ctx, target, path, ref) => missing(async () => (await (await octo(ctx, target.owner)).request('GET /repos/{owner}/{repo}/contents/{path}', { owner: target.owner, repo: target.repo, path, ref })).data);
 const textOf = (file) => (file && file.encoding === 'base64' && typeof file.content === 'string' ? Buffer.from(file.content, 'base64') : null);
@@ -54,7 +91,11 @@ const contentPutFile = defineGithubWrite(overridable({
   required: ['repo', 'branch', 'path', 'message', 'content'],
   declarations: { production: 'when-target' },
   target: (args, ctx) => { cleanPath(args.path); return branchTarget(args, ctx); },
-  read: (args, ctx, target) => readFile(ctx, target, cleanPath(args.path), args.branch),
+  read: async (args, ctx, target) => {
+    const file = await readFile(ctx, target, cleanPath(args.path), args.branch);
+    await refuseNewSecrets(ctx, target, [{ path: cleanPath(args.path), text: args.content, previous: decodedText(file) }]);
+    return file;
+  },
   classify: ({ ctx, target }) => productionOf(ctx, target).then((production) => ({ production })),
   summarize: ({ args, before, target }) => {
     const where = `${slug(target.owner, target.repo)} on ${args.branch}`;
@@ -134,7 +175,14 @@ const contentPushFiles = defineGithubWrite(overridable({
   required: ['repo', 'branch', 'message', 'files'],
   declarations: { production: 'when-target' },
   target: (args, ctx) => { checkFiles(args.files); return branchTarget(args, ctx); },
-  read: (args, ctx, target) => headOf(ctx, target, args.branch),
+  read: async (args, ctx, target) => {
+    const head = await headOf(ctx, target, args.branch);
+    await refuseNewSecrets(ctx, target, args.files.filter((f) => !f.delete).map((f) => {
+      const path = cleanPath(f.path);
+      return { path, text: f.content, previous: async () => (head ? decodedText(await readFile(ctx, target, path, head)) : null) };
+    }));
+    return head;
+  },
   classify: ({ ctx, target }) => productionOf(ctx, target).then((production) => ({ production })),
   summarize: ({ args, before, target }) => {
     const writes = args.files.filter((f) => !f.delete).map((f) => f.path);
@@ -261,7 +309,10 @@ const contentEditFiles = defineGithubWrite(overridable({
       const path = cleanPath(f.path);
       files.push({ path, text: decodedText(await readFile(ctx, target, path, head)) });
     }
-    return { head, files };
+    const before = { head, files };
+    const { changes } = planEdits(args, before);
+    await refuseNewSecrets(ctx, target, changes.map((c) => ({ path: c.path, text: c.text, previous: files.find((x) => x.path === c.path)?.text ?? null })));
+    return before;
   },
   classify: ({ ctx, target }) => productionOf(ctx, target).then((production) => ({ production })),
   summarize: ({ args, before, target }) => {
