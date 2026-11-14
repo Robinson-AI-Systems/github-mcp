@@ -9,16 +9,20 @@
 //
 //   - On Vivienne's VM (the normal agent case): the command is handed to
 //     fleet-run (~/workspace/scripts/fleet-run), which snapshots the
-//     exact working tree — uncommitted changes included — and runs it on
-//     the first free bench surface (Chris's PC slot 1 -> PC slot 2 ->
-//     Workshop -> potato -> Dokploy last, container-shaped jobs only ->
-//     Vivienne's VM DEAD LAST: named in the order but never an automatic
-//     surface). Output streams back; the exit code is the bench run's;
-//     the run leaves a ~/workspace/fleet-jobs/ ledger entry. If no bench
-//     can take the job, fleet-run reports NO SLOT and this shim exits
-//     non-zero — there is NO fall-through to a local run. A heavy run on
-//     the VM is an explicit, reported exception only
-//     (FLEET_RUN_LOCAL=1, which prints a loud unledgered-run warning).
+//     exact working tree — uncommitted changes included — and places it
+//     through fleet-dispatch. As of 2026-11-13 fleet-dispatch tries the
+//     rack route first (fleet.work), then the benches; an unpinned run
+//     keeps retrying the benches for up to 300 s and only then falls back
+//     to the VM, and that fallback is logged in the ledger, never silent.
+//     Output streams back; the exit code is the placed run's; every run
+//     leaves a ~/workspace/fleet-jobs/ ledger entry. This shim itself
+//     never runs the suite locally on the VM: if fleet-run is missing or
+//     cannot start, it exits non-zero. A deliberate VM run is the
+//     explicit, reported exception FLEET_RUN_LOCAL=1 (loud, unledgered).
+//     Separately, the VM's ~/.npmrc script-shell (fleet-npm-shell, also
+//     2026-11-13) routes npm suites in any checkout via fleet-run; that
+//     is an extra net on the VM, not a replacement for this repo-level
+//     shim, which also covers direct `node`/non-npm callers.
 //   - On a bench (FLEET_ON_BENCH), in GitHub Actions (GITHUB_ACTIONS),
 //     or in a platform build (VERCEL): the original command runs
 //     directly, unchanged — CI behaviour is identical to before.

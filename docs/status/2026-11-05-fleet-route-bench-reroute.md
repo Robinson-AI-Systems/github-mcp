@@ -13,18 +13,22 @@ What changed in this repo (tooling only; no product code, no CI change):
   preserved verbatim in the new `fleetRoute` map.
 - On Vivienne's VM the shim hands the command to `fleet-run`
   (~/workspace/scripts/fleet-run): the exact working tree (uncommitted
-  changes included) is snapshotted as a git bundle, placed on the first
-  free bench surface through fleet-dispatch (PC slot 1 → PC slot 2 →
-  Workshop → potato → Dokploy last, container-shaped only → the VM DEAD
-  LAST, named but never an automatic surface), streamed back, and
-  exited with the bench run's exit code. The run leaves a
-  ~/workspace/fleet-jobs/ ledger entry (repo, command, branch,
-  snapshot, bench, unit, exit, duration).
-- NO fall-through: if no bench can take the job, the run is refused
-  with a NO SLOT report — it never silently executes on the VM. A local
-  run happens only where the command already belongs (a bench via
-  FLEET_ON_BENCH, GitHub Actions, a platform build) or as the explicit,
-  loud, unledgered exception FLEET_RUN_LOCAL=1.
+  changes included) is snapshotted as a git bundle and placed through
+  fleet-dispatch, streamed back, and exited with the placed run's exit
+  code. The run leaves a ~/workspace/fleet-jobs/ ledger entry (repo,
+  command, branch, snapshot, bench, unit, exit, duration).
+- Placement order (updated 2026-11-14 to match fleet-dispatch as of
+  2026-11-13): the rack route first (fleet.work), then the benches. An
+  unpinned run retries the benches for up to 300 s before a VM fallback,
+  and that fallback is recorded in the ledger — it is never silent.
+- This shim never runs the suite on the VM by itself: if fleet-run is
+  missing or fails to start, it exits non-zero. A local run happens only
+  where the command already belongs (a bench via FLEET_ON_BENCH, GitHub
+  Actions, a platform build) or as the explicit, loud, unledgered
+  exception FLEET_RUN_LOCAL=1.
+- The VM's ~/.npmrc script-shell (fleet-npm-shell, 2026-11-13) is an
+  additional net that routes npm suites in any checkout via fleet-run;
+  it does not replace this repo-level shim.
 - Declared non-reroutables (local, with a printed notice): watch modes
   and interactive debugging flags (--watch, --ui, --debug, --inspect).
   Live-target scripts (smoke:readonly, test:load, the rtc evidence
