@@ -35,6 +35,18 @@ describe('scanner false alarms from a starter app (PROSE-PASSWORD-1, FORM-LABEL-
  });
 });
 
+describe('dependency entries and documented fakes (FIXTURE-DB-1)',()=>{
+ it('a pgpass package-lock entry written as source is a dependency, not a password',()=>{
+  expect(findings(`'node_modules/pg${'pass'}': { version: '1.0.5', resolved: 'x' }`)).toEqual([]);
+ });
+ it('a FAKE database password passes the push guard but reads stay protected; a real-looking one is still caught',()=>{
+  const fake=`DB_${PWC.toUpperCase()} = "FAKE_ONLY_123"`,real=`DB_${PWC.toUpperCase()} = "Rl9xQ2vbN7kd"`;
+  expect(findings(fake)).toEqual([]);
+  expect(activeProtectionReport(fake).total_findings).toBe(1);
+  expect(findings(real)).toEqual(['database-password-assignment']);
+ });
+});
+
 describe('github_secret_scanner allow and describe (SCANNER-ALLOW-1)',()=>{
  it('describe lists every action with its arguments and an example',async()=>{
   const w=await makeWorld({profile:'full'});

@@ -344,15 +344,25 @@ describe('items 7, 12 and 14: missing branches and wrong-shape arguments', () =>
 });
 
 describe('items 6, 15, 17-20: results with the essentials', () => {
-  it('github_workflow_open_pr without confirm is a plain preview, not an uncertain write', async () => {
-    const w = await makeWorld({ profile: 'full' });
-    w.gh.when('GET /repos/{owner}/{repo}').reply(200, { default_branch: 'main', name: 'hello' });
-    w.gh.when('GET /repos/{owner}/{repo}/pulls').reply(200, []);
-    w.gh.when('GET /repos/{owner}/{repo}/git/ref/{ref}').reply(200, { ref: 'refs/heads/work', object: { sha: A } });
+  it('github_workflow_open_pr opens in ONE call for the owner; an explicit confirm:false is a plain preview (ONE-CALL-PR-1)', async () => {
+    const arrange = (w) => {
+      const pr = { number: 12, title: 'Add things', state: 'open', draft: false, merged: false, head: { ref: 'work', sha: A, repo: { full_name: 'example-org/hello' } }, base: { ref: 'main', sha: B }, mergeable: null, mergeable_state: 'unknown', html_url: 'https://github.com/example-org/hello/pull/12' };
+      w.gh.when('GET /repos/{owner}/{repo}').reply(200, { default_branch: 'main', name: 'hello' });
+      w.gh.when('GET /repos/{owner}/{repo}/pulls').reply(200, []);
+      w.gh.when('GET /repos/{owner}/{repo}/git/ref/{ref}').reply(200, { ref: 'refs/heads/work', object: { sha: A } });
+      w.gh.when('POST /repos/{owner}/{repo}/pulls').reply(201, pr);
+      w.gh.when('GET /repos/{owner}/{repo}/pulls/{pull_number}').reply(200, pr);
+    };
+    const w = await makeWorld({ profile: 'full' });arrange(w);
     const out = parse(await call(w, 'github_workflow_open_pr', { repo: 'hello', head: 'work', title: 'Add things' }));
-    expect(out.status).toBe('preview');
-    expect(out.next).toMatch(/Nothing was sent.*confirm: true/);
-    expect(JSON.stringify(out)).not.toMatch(/uncertain/);
+    expect(out).toMatchObject({ done: true, status: 'pr_opened', number: 12 });
+    expect(w.gh.calls.filter((c) => c.route === 'POST /repos/{owner}/{repo}/pulls')).toHaveLength(1);
+    const p = await makeWorld({ profile: 'full' });arrange(p);
+    const preview = parse(await call(p, 'github_workflow_open_pr', { repo: 'hello', head: 'work', title: 'Add things', confirm: false }));
+    expect(preview.status).toBe('preview');
+    expect(preview.next).toMatch(/Nothing was sent.*confirm: true/);
+    expect(JSON.stringify(preview)).not.toMatch(/uncertain/);
+    expect(p.gh.calls.filter((c) => c.route === 'POST /repos/{owner}/{repo}/pulls')).toHaveLength(0);
   });
   it('an opened PR reports number, URL, head/base, head SHA, state, draft and mergeability', async () => {
     const w = await makeWorld({ profile: 'full' });
