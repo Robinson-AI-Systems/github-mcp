@@ -96,12 +96,18 @@ export const handlers={
  [get.tool.name]:get.handler,[configure.tool.name]:configure.handler,
  [gateway.name]:async(a,c)=>{
   if(a.action==='describe'){
-   const actions={};
-   for(const [name,info] of Object.entries(ACTIONS)){
-    const schema=info.arguments??(info.tool===configure.tool.name?configure.tool.inputSchema:info.tool===get.tool.name?get.tool.inputSchema:c.registry?.tools?.find(t=>t.name===info.tool)?.inputSchema);
-    actions[name]={what:info.what,tool:info.tool,...(schema?{arguments:schema,required:schema.required??[]}:{}),example:info.example};
+   // Compact by default (every action: what, required arguments, example — about 3 KB); args.action asks for one
+   // action's full argument schema. The first version returned every full schema at once (about 20 KB).
+   const schemaOf=info=>info.arguments??(info.tool===configure.tool.name?configure.tool.inputSchema:info.tool===get.tool.name?get.tool.inputSchema:c.registry?.tools?.find(t=>t.name===info.tool)?.inputSchema);
+   const one=a.args?.action;
+   if(one!==undefined){
+    const info=ACTIONS[one];if(!info)throw new TypeError(`No action ${String(one).slice(0,40)}; choose one of ${Object.keys(ACTIONS).join(', ')}.`);
+    const schema=schemaOf(info);
+    return {content:[{type:'text',text:JSON.stringify({action:one,what:info.what,tool:info.tool,...(schema?{arguments:schema,required:schema.required??[]}:{}),example:info.example})}]};
    }
-   return {content:[{type:'text',text:JSON.stringify({how:'Call github_secret_scanner with {action, args}. args are the arguments listed for that action.',actions,never:'No secret value in any argument; exceptions are tied to an exact path, blob and value.'})}]};
+   const actions={};
+   for(const [name,info] of Object.entries(ACTIONS)){const schema=schemaOf(info);actions[name]={what:info.what,...(schema?{required:schema.required??[]}:{}),example:info.example};}
+   return {content:[{type:'text',text:JSON.stringify({how:'Call github_secret_scanner with {action, args}. For one action\'s full arguments: {action:"describe", args:{action:"<name>"}}.',actions,never:'No secret value in any argument; exceptions are tied to an exact path, blob and value.'})}]};
   }
   if(a.action==='allow')return allowFalsePositive(a,c);
   const tool={settings:get.tool.name,offer:get.tool.name,scan:'github_security_scan_files',preview:'github_security_scan_files',check:'github_content_protection_check',configure:configure.tool.name,rollback:configure.tool.name}[a.action];
