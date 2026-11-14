@@ -74,3 +74,39 @@ describe('the write layer names who failed', () => {
     expect(out).toMatchObject({ status: 'rejected', reason_code: 'provider_rejected' });
   });
 });
+
+import { scannerSettings } from '../../src/github/scanner-policy.js';
+import { assertTuneCoverage } from '../../src/tools/scanner-verification.js';
+import { createDispatch } from '../../src/tools/dispatch.js';
+import { registry } from '../../src/tools/index.js';
+
+describe('removing an exception needs a check that really ran (#2)', () => {
+  const ex = (path) => ({ rule: 'database-connection-password', path, blobSha: 'a'.repeat(40), reason: 'Synthetic fixture value', pushException: true, valueFingerprint: 'b'.repeat(64) });
+  const before = scannerSettings({ suppressions: [ex('a.js'), ex('b.js')] });
+  const after = scannerSettings({ removeSuppressions: [{ rule: 'database-connection-password', path: 'a.js', blobSha: 'a'.repeat(40) }] }, before);
+  it('identifiers alone, with no detection result, prove nothing', () => {
+    expect(() => assertTuneCoverage(before, after, [{ rule: 'database-connection-password', path: 'a.js', blobSha: 'a'.repeat(40) }])).toThrow(/would REMOVE 1/);
+  });
+  it('a check that ran (before/after detection recorded) proves the removal', () => {
+    expect(() => assertTuneCoverage(before, after, [{ rule: 'database-connection-password', path: 'a.js', blobSha: 'a'.repeat(40),
+      door: 'push', fingerprint: 'b'.repeat(64), before_detected: false, after_detected: true }])).not.toThrow();
+  });
+});
+
+describe('a failing commit STATUS is named too (#7)', () => {
+  it('failed_checks carries the status context', async () => {
+    const A = 'a'.repeat(40), B = 'b'.repeat(40);
+    const w = await makeWorld({ advanceClockOnSleep: true, profile: 'full' });
+    w.gh.when('GET /repos/{owner}/{repo}').reply(200, { default_branch: 'main', name: 'hello' });
+    w.gh.when('GET /repos/{owner}/{repo}/pulls/{pull_number}').reply(200, { number: 6, state: 'open', draft: false, merged: false, mergeable: true, head: { ref: 'work', sha: A }, base: { ref: 'main', sha: B } });
+    w.gh.when('POST /graphql').reply(200, { data: { repository: { pullRequest: { reviewDecision: null, reviewThreads: { totalCount: 0, pageInfo: { hasNextPage: false }, nodes: [] } } } } });
+    w.gh.when('GET /repos/{owner}/{repo}/rules/branches/{branch}').reply(200, []);
+    w.gh.when('GET /repos/{owner}/{repo}/branches/{branch}/protection/required_status_checks').reply(404, { message: 'Not Found' });
+    w.gh.when('GET /repos/{owner}/{repo}/commits/{ref}/check-runs').reply(200, { total_count: 0, check_runs: [] });
+    w.gh.when('GET /repos/{owner}/{repo}/commits/{ref}/status').reply(200, { state: 'failure', statuses: [{ context: 'review-gate', state: 'failure', updated_at: '2026-11-02T10:05:00Z' }] });
+    w.gh.when('GET /repos/{owner}/{repo}/actions/runs').reply(200, { total_count: 0, workflow_runs: [] });
+    const call = createDispatch({ env: w.ctx.env, credentials: w.credentials, fetch: w.gh.fetch, gates: [], now: w.ctx.now, sleep: w.ctx.sleep });
+    const out = parse(await call({ registry, name: 'github_workflow_merge_when_green', args: { repo: 'hello', number: 6, expectedHeadSha: A, waitForChecks: true, confirm: true }, connection: w.connection, db: w.db }));
+    expect(out.failed_checks).toEqual(['review-gate']);
+  });
+});

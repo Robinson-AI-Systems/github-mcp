@@ -11,3 +11,7 @@ Outcome: when nothing is marked required (a plan that can't hold rulesets or bra
 ## Drift check
 
 This is a read-only addition to `src/github/ci-state.js`, and only in the all-checks basis. The required-checks basis, the merge writer, the guards, and every other tool are unchanged, so it can only make a merge wait longer, never sooner. Status note: `docs/status/2026-11-12-merge-waits-for-starting-workflows.md`. See the drift protocol (DRIFT-PROTOCOL checklist B).
+
+## Merged
+
+Merged in PR #632 (merge commit fb131eaf, change d74930ac). That PR did not update this card; #633 set the status to MERGED without saying so (Second Shift 2026-11-14 #6). This line is the evidence.
