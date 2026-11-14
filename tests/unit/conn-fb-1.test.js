@@ -446,3 +446,37 @@ describe('items 6, 15, 17-20: results with the essentials', () => {
 function call(w, name, args) {
   return createDispatch({ env: w.ctx.env, credentials: w.credentials, fetch: w.gh.fetch, gates: [], now: w.ctx.now, sleep: w.ctx.sleep })({ registry, name, args, connection: w.connection, db: w.db });
 }
+
+describe('MERGE-PENDING-1: mergeable null right after a branch update', () => {
+  const setup = (w, prBodies) => {
+    w.gh.when('GET /repos/{owner}/{repo}').reply(200, { default_branch: 'main', name: 'hello' });
+    w.gh.when('GET /repos/{owner}/{repo}/pulls/{pull_number}').replySequence(prBodies.map((body) => ({ status: 200, body })));
+    w.gh.when('POST /graphql').reply(200, { data: { repository: { pullRequest: { reviewDecision: null, reviewThreads: { totalCount: 0, pageInfo: { hasNextPage: false }, nodes: [] } } } } });
+    w.gh.when('GET /repos/{owner}/{repo}/rules/branches/{branch}').reply(200, []);
+    w.gh.when('GET /repos/{owner}/{repo}/branches/{branch}/protection/required_status_checks').reply(404, { message: 'Not Found' });
+    w.gh.when('GET /repos/{owner}/{repo}/commits/{ref}/check-runs').reply(200, { total_count: 1, check_runs: [{ id: 1, name: 'ci', status: 'completed', conclusion: 'success', started_at: '2026-11-02T10:00:00Z', completed_at: '2026-11-02T10:01:00Z' }] });
+    w.gh.when('GET /repos/{owner}/{repo}/commits/{ref}/status').reply(200, { state: 'success', statuses: [] });
+  };
+  const body = (mergeable) => ({ number: 6, state: 'open', draft: false, merged: false, mergeable, head: { ref: 'work', sha: A }, base: { ref: 'main', sha: B } });
+  it('reads again while GitHub computes, and is not refused for it', async () => {
+    const w = await makeWorld({ advanceClockOnSleep: true, profile: 'full' });
+    setup(w, [body(null), body(null), body(true)]);
+    const out = parse(await call(w, 'github_workflow_merge_when_green', { repo: 'hello', number: 6, expectedHeadSha: A, waitForChecks: true, dryRun: true }));
+    expect(JSON.stringify(out)).not.toMatch(/did not confirm mergeability/);
+  });
+  it('still computing after the retries: a pending answer, not a fault', async () => {
+    const w = await makeWorld({ advanceClockOnSleep: true, profile: 'full' });
+    setup(w, Array.from({ length: 12 }, () => body(null)));
+    const out = parse(await call(w, 'github_workflow_merge_when_green', { repo: 'hello', number: 6, expectedHeadSha: A, waitForChecks: true, confirm: true }));
+    expect(out).toMatchObject({ status: 'mergeability_pending', done: false });
+    expect(out.next).toMatch(/Nothing needs repairing/);
+    expect(w.gh.calls.filter((c) => c.method === 'PUT')).toHaveLength(0);
+  });
+  it('a real conflict (mergeable false) is not waited on', async () => {
+    const w = await makeWorld({ advanceClockOnSleep: true, profile: 'full' });
+    setup(w, Array.from({ length: 12 }, () => body(false)));
+    const out = parse(await call(w, 'github_workflow_merge_when_green', { repo: 'hello', number: 6, expectedHeadSha: A, waitForChecks: true, confirm: true }));
+    expect(out.status).not.toBe('mergeability_pending');
+    expect(JSON.stringify(out)).toMatch(/did not confirm mergeability/);
+  });
+});
