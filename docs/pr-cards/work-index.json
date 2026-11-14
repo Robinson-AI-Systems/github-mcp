@@ -3974,6 +3974,24 @@
       ],
       "readiness": "READY",
       "ownerInputs": []
+    },
+    {
+      "id": "PRIVATE-LIST-1",
+      "title": "Personal account repo list includes private repositories (installation route; public-only fallback marked)",
+      "batch": "FIN",
+      "design": "docs/pr-cards/PRIVATE-LIST-1.md",
+      "dependencies": [
+        "BUILD-FB-1114"
+      ],
+      "card": "docs/pr-cards/PRIVATE-LIST-1.md",
+      "status": "MERGED",
+      "migration": "none",
+      "budget": 120,
+      "units": [
+        "PRIVATE-LIST-1"
+      ],
+      "readiness": "READY",
+      "ownerInputs": []
     }
   ],
   "gatewayBoundary": {

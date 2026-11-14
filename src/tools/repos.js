@@ -14,6 +14,31 @@ async function accountType(ctx, owner) {
   return row?.account_type === 'Organization' ? 'org' : 'user';
 }
 
+// PRIVATE-LIST-1 (2026-11-14): GET /users/{username}/repos returns PUBLIC repositories only, whoever asks, so listing a
+// person's own account left out every private repository. The connection reads a personal account through the App
+// installation on it, and GET /installation/repositories lists everything that installation can see, private included.
+// Only when that route is not available to the credential does the list fall back to the public route, and it says so.
+async function ownedUserRepos(octokit, owner, query, max) {
+  // Paged by hand: this route wraps its list ({ total_count, repositories }), and the generic pager's handling of
+  // wrapped lists depends on response fields some transports do not carry.
+  const all = [];
+  try {
+    for (let page = 1; page <= 10; page += 1) {
+      const { data } = await octokit.request('GET /installation/repositories', { per_page: 100, page });
+      const rows = Array.isArray(data?.repositories) ? data.repositories : null;
+      if (!rows) return null;
+      all.push(...rows);
+      if (rows.length < 100 || (Number.isInteger(data.total_count) && all.length >= data.total_count)) break;
+    }
+  } catch { return null; }
+  const want = (r) => (r.owner?.login ?? '').toLowerCase() === owner.toLowerCase()
+    && (query.type === 'public' ? !r.private : query.type === 'private' ? !!r.private
+      : query.type === 'forks' ? !!r.fork : query.type === 'sources' ? !r.fork : true);
+  const key = { created: 'created_at', updated: 'updated_at', pushed: 'pushed_at', full_name: 'full_name' }[query.sort] ?? 'pushed_at';
+  const kept = all.filter(want).sort((a, b) => String(a[key] ?? '').localeCompare(String(b[key] ?? '')) * (query.direction === 'asc' ? 1 : -1));
+  return { items: kept.slice(0, max), capped: kept.length > max };
+}
+
 export const repoList = defineRead({
   name: 'github_repo_list', area: 'repo', audience: ['B', 'Op'],
   description: 'List an account\'s repositories (type, sort, archived filter); newest activity first by default.',
@@ -30,12 +55,16 @@ export const repoList = defineRead({
     const { owner, octokit } = await readerFor(args, ctx);
     const kind = await accountType(ctx, owner);
     const query = { type: args.type ?? 'all', sort: args.sort ?? 'pushed', direction: args.direction ?? (args.sort === 'full_name' ? 'asc' : 'desc') };
-    const { items, capped } = kind === 'org'
-      ? await listAll(octokit, 'GET /orgs/{org}/repos', { org: owner, ...query }, { max: args.max ?? 100 })
-      : await listAll(octokit, 'GET /users/{username}/repos', { username: owner, ...query, type: ['all', 'owner', 'member'].includes(query.type) ? query.type : 'owner' }, { max: args.max ?? 100 });
+    let listed;
+    if (kind === 'org') listed = await listAll(octokit, 'GET /orgs/{org}/repos', { org: owner, ...query }, { max: args.max ?? 100 });
+    else if (query.type !== 'member') listed = await ownedUserRepos(octokit, owner, query, args.max ?? 100);
+    const publicOnly = !listed && kind !== 'org' && query.type !== 'member';
+    if (!listed) listed = await listAll(octokit, 'GET /users/{username}/repos', { username: owner, ...query, type: ['all', 'owner', 'member'].includes(query.type) ? query.type : 'owner' }, { max: args.max ?? 100 });
+    const { items, capped } = listed;
     const archived = args.archived ?? 'include';
     const kept = items.filter((r) => (archived === 'include' ? true : archived === 'only' ? r.archived === true : r.archived !== true));
-    return { owner, count: kept.length, ...(capped ? { more_exist: true, note: 'There are more repositories; raise max or narrow the type.' } : {}), items: kept };
+    return { owner, count: kept.length, ...(capped ? { more_exist: true, note: 'There are more repositories; raise max or narrow the type.' } : {}),
+      ...(publicOnly ? { public_only: true, public_only_note: 'GitHub lists only public repositories of a personal account on this route; private ones are not shown (github_repo_find searches private ones too).' } : {}), items: kept };
   })
 });
 
