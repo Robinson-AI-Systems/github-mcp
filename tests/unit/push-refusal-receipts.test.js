@@ -19,6 +19,11 @@ const { contentProtectionCheck } = await import('../../src/tools/code-read.js');
 const KEY = ['-----BEGIN', 'PRIVATE KEY-----\nMIIB\n-----END', 'PRIVATE KEY-----'].join(' ');
 const PATH = 'acceptance/check.py', BLOB = 'c'.repeat(40);
 const text = `planted = '${KEY.replace(/\n/g, '\\n')}'\n`;
+// The fingerprint, computed independently of findingFor (Second Shift 2026-11-14 #4): the exact planted
+// characters, so a wrong byte_offset/byte_length slice can't pass by deriving its expectation from itself.
+const { createHash } = await import('node:crypto');
+const PLANTED = KEY.replace(/\n/g, '\\n');
+const EXPECTED_FP = createHash('sha256').update(JSON.stringify(['push-fixture-v1', PATH, 'private-key', PLANTED])).digest('hex');
 const memoryDb = () => { const m = new Map(); return { getSetting: async k => m.has(k) ? structuredClone(m.get(k)) : null, setSetting: async (k, v) => { m.set(k, structuredClone(v)); }, m }; };
 
 describe('refused findings carry value fingerprints, never values', () => {
@@ -26,7 +31,8 @@ describe('refused findings carry value fingerprints, never values', () => {
   const f = findingFor(PATH, Buffer.from(text));
   expect(f.values.length).toBe(1);
   expect(f.values[0]).toMatchObject({ rule: 'private-key', line: 1 });
-  expect(f.values[0].valueFingerprint).toMatch(/^[a-f0-9]{64}$/);
+  expect(text).toContain(PLANTED);
+  expect(f.values[0].valueFingerprint).toBe(EXPECTED_FP);
   expect(JSON.stringify(f)).not.toContain('MIIB');
  });
 });
@@ -34,7 +40,7 @@ describe('refused findings carry value fingerprints, never values', () => {
 describe('receipts', () => {
  it('keeps only well-formed, value-free receipts, per repository, without duplicates', async () => {
   const db = memoryDb();
-  const fp = findingFor(PATH, Buffer.from(text)).values[0].valueFingerprint;
+  const fp = EXPECTED_FP;
   const good = { path: PATH, blobSha: BLOB, rule: 'private-key', line: 1, valueFingerprint: fp };
   expect(cleanReceipts([good, { ...good, path: '/abs' }, { ...good, blobSha: 'x' }, { ...good, value: KEY }]).length).toBe(2);
   expect(cleanReceipts([{ ...good, value: KEY }])[0]).not.toHaveProperty('value');
@@ -47,7 +53,7 @@ describe('receipts', () => {
   expect(await refusalsFor(db, 'org', 'repo', { path: PATH, blobSha: BLOB }, old)).toEqual([]);
  });
  it('applies exactly the push guard\'s exception rule', () => {
-  const fp = findingFor(PATH, Buffer.from(text)).values[0].valueFingerprint;
+  const fp = EXPECTED_FP;
   const r = { path: PATH, blobSha: BLOB, rule: 'private-key', valueFingerprint: fp };
   const allow = scannerSettings({ suppressions: [{ rule: 'private-key', path: PATH, blobSha: BLOB, reason: 'planted fake key in a test', pushException: true, valueFingerprint: fp }] });
   const other = scannerSettings({ suppressions: [{ rule: 'private-key', path: 'elsewhere.py', blobSha: BLOB, reason: 'planted fake key in a test', pushException: true, valueFingerprint: fp }] });
