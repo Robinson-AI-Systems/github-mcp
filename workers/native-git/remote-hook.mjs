@@ -86,10 +86,14 @@ async function main() {
   catch (error) { await report('refused', { reason: error?.reason ?? 'content scan did not finish' }); if (error?.lines) say(...error.lines); else say(error?.refusal ? error.message : 'Refused: the pushed content could not be checked, so nothing was pushed. Push fewer or smaller files.'); return 1; }
   if (findings.length) {
    const first = findings[0];
-   await report('refused', { reason: 'credential-shaped content' });
+   // PUSH-REFUSAL-RECEIPTS-1: value-free receipts (path, blob, rule, line, value fingerprint), so an
+   // exception can be granted for a file that has never reached GitHub.
+   const refusedFindings = findings.filter(f => f.blobSha && f.values).flatMap(f => f.values.map(v => ({ path: f.path, blobSha: f.blobSha, ...v }))).slice(0, 50);
+   await report('refused', { reason: 'credential-shaped content', refusedFindings });
    say(`Refused: content protection found credential-shaped content in ${findings.length} file(s) or commit message(s), first ${JSON.stringify(first.path.slice(0, 120))} (${first.lines.length ? first.lines.join(', ') : first.rules.join(', ')}).`,
     'Nothing was pushed to GitHub. Remove the value from your commits (git commit --amend or git rebase -i), keep real secrets in protected setup, then push again.',
-    'If it is a deliberate fake test value, the repository owner can allow exactly that value in that file: github_secret_scanner check lists each finding\'s value_fingerprint, then github_secret_scanner configure adds a suppression with pushException: true and that valueFingerprint (pinned to the current blob for verification). Edits elsewhere in the file keep the exception.');
+    'If it is a deliberate fake test value, the repository owner can allow exactly that value in that file: github_secret_scanner check (path + blobSha below; it works for this refused file even though it is not on GitHub) lists each finding\'s value_fingerprint, then github_secret_scanner configure adds a suppression with pushException: true and that valueFingerprint, verified through door "push". Edits elsewhere in the file keep the exception.',
+    ...refusedFindings.slice(0, 6).map(r => `  ${JSON.stringify(r.path.slice(0, 120))} blobSha ${r.blobSha} line ${r.line} rule ${r.rule} value_fingerprint ${r.valueFingerprint}`));
    return 1;
   }
  }
@@ -337,7 +341,7 @@ async function scan(heads, settings = null) {
  }
  const findings = [];
  const label = new Map(ids.map(o => [o.id, o.type === 'blob' ? names.get(o.id) || o.id : `${o.type} message ${o.id.slice(0, 12)}`]));
- if (ids.length) await catObjects(env.ROBINSON_REMOTE_ROOT, process.cwd(), ids.map(o => o.id), (id, _type, bytes) => { const found = findingFor(label.get(id) ?? id, bytes, settings); if (found) findings.push(found); }, { env, timeoutMs: 300000 });
+ if (ids.length) await catObjects(env.ROBINSON_REMOTE_ROOT, process.cwd(), ids.map(o => o.id), (id, type, bytes) => { const found = findingFor(label.get(id) ?? id, bytes, settings); if (found) findings.push(type === 'blob' ? { ...found, blobSha: id } : found); }, { env, timeoutMs: 300000 });
  return findings;
 }
 

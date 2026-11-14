@@ -13,7 +13,7 @@ import { join } from 'node:path';
 import { Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { createGunzip } from 'node:zlib';
-import { blockingPushFindings } from '../../src/github/file-protection.js';
+import { blockingPushFindings, valueFingerprint } from '../../src/github/file-protection.js';
 import { value } from '../../src/native-git/commands.js';
 import { UPLOAD_CHUNK_GRACE_MS, UPLOAD_CHUNK_MAX_BYTES, UPLOAD_MAX_BYTES, UPLOAD_TTL_MS, verifyUploadCapability } from '../../src/native-git/protocol.js';
 import { ARCHIVE_LIMITS, entryPath, openArchive } from './archive.js';
@@ -418,8 +418,13 @@ export function findingFor(label, bytes, settings = null) {
   const findings = blockingPushFindings(label, text, settings);
   if (!findings.length) return null;
   const rules = [...new Set(findings.map(f => f.rule))].slice(0, 3);
+  // PUSH-REFUSAL-RECEIPTS-1: each finding's value fingerprint (never the value), so the owner can
+  // allow a deliberate fake value even when the file has never reached GitHub.
+  const bytes2 = Buffer.from(text);
+  const values = findings.slice(0, 50).map(f => ({ rule: f.rule, line: f.line,
+   valueFingerprint: valueFingerprint(label, f.rule, bytes2.subarray(f.byte_offset, f.byte_offset + f.byte_length).toString()) }));
   // NATIVE-ERGO-1: say where (line and rule, never the value) so a false positive can be found and reported.
-  return { path: label, rules, lines: findings.slice(0, 3).map(f => `line ${f.line} (${f.rule})`) };
+  return { path: label, rules, lines: findings.slice(0, 3).map(f => `line ${f.line} (${f.rule})`), values };
 }
 const protectionRefusal = findings => refusal(`Content protection refused this upload: credential-shaped content in ${findings.length} file(s) or commit message(s), first ${JSON.stringify(findings[0].path.slice(0, 200))} (${findings[0].lines?.length ? findings[0].lines.join(', ') : findings[0].rules.join(', ') || 'credential'}). If it is a false positive, check it with github_git_workspace_read protection_check and the repository scanner settings; otherwise remove the values (put real secrets in protected setup) and upload again.`);
 
