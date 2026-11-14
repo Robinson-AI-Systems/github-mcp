@@ -113,7 +113,9 @@ export async function rerunFailedCi(a,ctx){
     return response({done:false,status:'refused',reason:'A completed failed run and complete failed-job inventory are required.'},true);
   if(ended(ctx,start))return response({done:false,status:'pending',next_action:'Budget expired before any retry.'});
   const r=await call(ctx,'github_actions_rerun',{...scope(a),runId:run.id,mode:'failed',
-    expectedHeadSha:a.expectedHeadSha,expectedWorkflowId:run.workflow_id,confirm:a.confirm===true,dryRun:a.dryRun===true});
+    expectedHeadSha:a.expectedHeadSha,expectedWorkflowId:run.workflow_id,
+    // ONE-CALL-PR-1: pass confirm/dryRun only when given (an explicit false means preview-only for the owner).
+    ...(a.confirm!==undefined?{confirm:a.confirm}:{}),...(a.dryRun!==undefined?{dryRun:a.dryRun}:{})});
   if(!r)return response({done:false,status:'not_applied',reason:'The guarded rerun failed or was refused; no retry is claimed.'});
   if(r.status==='replayed')return response({done:false,status:'retry_already_claimed',confirmed:r.confirmed===true,
     next_action:'This workflow/head already used its automatic retry, or its outcome is uncertain. Reproduce locally; do not automatically rerun it again.'});

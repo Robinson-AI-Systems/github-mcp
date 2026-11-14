@@ -23,7 +23,7 @@ const DATABASE_FIELD = /\b(?:host|server|data source|database|initial catalog|us
 const CLOUD_VARIABLE=/\b(?:AWS_SECRET_ACCESS_KEY|AZURE_STORAGE_ACCOUNT_KEY|AZURE_STORAGE_KEY)["']?[ \t]*[:=][ \t]*/g;
 // A version or version range (1.0.5, ^1.0.5, ~2.1, >=4, 1.x, 2.0.0-beta.1) or a structure opening ({ or [) assigned to a
 // password-looking key is a dependency entry, not a credential (owner feedback 2026-11-02: package-lock.json was refused).
-const NOT_A_PASSWORD=/^(?:[{[]|(?:[\^~]|[<>]=?|=)?v?\d+(?:\.(?:\d+|[xX*]))*(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?)$/;
+const NOT_A_PASSWORD=/^(?:[{[].*|(?:[\^~]|[<>]=?|=)?v?\d+(?:\.(?:\d+|[xX*]))*(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?)$/;
 const DATABASE_VARIABLE = /\b(?:db|database|postgres(?:ql)?|mysql|mariadb|mongo(?:db)?|redis|mssql|sqlserver|pg)_?(?:password|pass)\b["']?[ \t]*[:=](?![=>])[ \t]*/gi;
 
 // HIDDEN-GUARD-1: the whole value is one template interpolation: Python/JS/shell/printf/Jinja forms.
@@ -64,13 +64,18 @@ function* databaseMatches(text,options={}) {
   // HIDDEN-GUARD-1 applies here too: a value that is only a code interpolation (${url}, {pw}, $PW) is code.
   const literal=text.slice(value.index,value.index+value.length);
   if (isInterpolation(literal) || PASSWORD_LABEL.test(literal)) continue;
+  if (allowsFixtures(options) && isEvidentPlaceholder(literal)) continue;
   if (value.length) yield { ...value,rule:'database-connection-password',description:'Password or Pwd in a database connection string' };
  }
  for (const m of text.matchAll(DATABASE_VARIABLE)) {
   const value = assignedLiteral(text,m.index+m[0].length);
   // Package manifests and lockfiles name the npm package whose name is pg plus pass, followed by a version number such as
   // 1.0.5 or by an opening brace for its lockfile entry: a dependency version or an opening brace is not a password.
-  if (value.length && !NOT_A_PASSWORD.test(text.slice(value.index,value.index+value.length))) yield { ...value,rule:'database-password-assignment',description:'Explicit database password assignment' };
+  // FIXTURE-DB-1 (2026-11-14): under the push/write fixture opt-in, a documented fake (FAKE..., or an evident placeholder)
+  // assigned to a database password variable is test text, exactly as for connection strings (FIXTURE-URI-1).
+  const dbLiteral=text.slice(value.index,value.index+value.length);
+  if (allowsFixtures(options) && isEvidentPlaceholder(dbLiteral)) continue;
+  if (value.length && !NOT_A_PASSWORD.test(dbLiteral)) yield { ...value,rule:'database-password-assignment',description:'Explicit database password assignment' };
  }
 }
 // Generic key/value detection is adapted from the corpus's generic-api-key concept,

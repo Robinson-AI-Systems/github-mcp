@@ -3992,6 +3992,24 @@
       ],
       "readiness": "READY",
       "ownerInputs": []
+    },
+    {
+      "id": "ONE-CALL-PR-1",
+      "title": "Opening a PR takes one call (confirm/dryRun passed through only when given)",
+      "batch": "FIN",
+      "design": "docs/pr-cards/ONE-CALL-PR-1.md",
+      "dependencies": [
+        "PRIVATE-LIST-1"
+      ],
+      "card": "docs/pr-cards/ONE-CALL-PR-1.md",
+      "status": "MERGED",
+      "migration": "none",
+      "budget": 80,
+      "units": [
+        "ONE-CALL-PR-1"
+      ],
+      "readiness": "READY",
+      "ownerInputs": []
     }
   ],
   "gatewayBoundary": {
