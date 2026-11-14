@@ -84,7 +84,15 @@ async function freshAfterRetarget(p,ctx,s){
 function authorize(ctx){
   return ['everyday','full'].includes(ctx.connection?.profile);
 }
+// MERGE-BASE-1 (2026-11-14): agents only learned that a non-default-branch merge takes mergeIntoBranch from the first
+// refusal, so every such merge cost two calls. The argument is now described on the tool and also accepted as `base`.
+function withMergeInto(a){
+  if(a?.base===undefined)return a;
+  if(a.mergeIntoBranch!==undefined&&a.mergeIntoBranch!==a.base)throw new TypeError('base and mergeIntoBranch name the same branch; give one.');
+  const {base,...rest}=a;return {...rest,mergeIntoBranch:base};
+}
 async function mergeOne(a,ctx){
+  a=withMergeInto(a);
   if(!authorize(ctx))return refuse('Merge workflows require an everyday or full connection.');
   const start=now(ctx),s=scope(a);
   // Both observations are independently authorized. The guarded merge writer
@@ -263,10 +271,10 @@ async function mergeStack(a,ctx){
 }
 const whenTool={
   name:'github_workflow_merge_when_green',area:'workflow',audience:['B'],compact:true,
-  description:'Guarded exact-head, green-CI PR merge.',
+  description:'Guarded exact-head, green-CI PR merge. Into a non-default branch: pass mergeIntoBranch (the PR\'s base) in the same call.',
   usesRegistry:true,passthrough:true,profiles:['everyday','full'],delegatedWrites:['github_pr_merge'],
   inputSchema:{type:'object',properties:{...common,number:NUMBER,expectedHeadSha:SHA,
-    overrideRules:{type:'boolean'},overrideReason:{type:'string',minLength:10,maxLength:200},waitForChecks:{type:'boolean'},mergeIntoBranch:{type:'string',maxLength:255}},
+    overrideRules:{type:'boolean'},overrideReason:{type:'string',minLength:10,maxLength:200},waitForChecks:{type:'boolean'},mergeIntoBranch:{type:'string',maxLength:255,description:'For a PR into a branch other than the default: that branch (the PR\'s base), given up front so the merge goes in one call. Alias: base.'},base:{type:'string',maxLength:255,description:'Same as mergeIntoBranch.'}},
     required:['repo','number','expectedHeadSha'],additionalProperties:false},
   annotations:{readOnlyHint:false,destructiveHint:true,idempotentHint:false,openWorldHint:true}
 };
@@ -282,6 +290,7 @@ const stackTool={
 const ackToken=(p,soft)=>createHash('sha256').update(p.head_sha+'|'+soft.join('|')).digest('hex').slice(0,8);
 // The deliberate fallback (owner feedback 2026-11-11): merge without green, with a small bump so it is never an accident.
 async function mergeAnyway(a,ctx){
+  a=withMergeInto(a);
   if(!authorize(ctx))return refuse('Merge workflows require an everyday or full connection.');
   const s=scope(a);
   const [p,r]=await Promise.all([pr(ctx,s,a.number),repo(ctx,s)]);
@@ -301,7 +310,7 @@ const anywayTool={
   name:'github_workflow_merge_anyway',area:'workflow',audience:['B'],compact:true,
   description:'Fallback: merge at the exact head when CI or review is missing, after an acknowledgement and a written reason. Prefer github_workflow_merge_when_green.',
   usesRegistry:true,passthrough:true,profiles:['everyday','full'],delegatedWrites:['github_pr_merge'],
-  inputSchema:{type:'object',properties:{...common,number:NUMBER,expectedHeadSha:SHA,acknowledge:{type:'string',maxLength:16},mergeIntoBranch:{type:'string',maxLength:255},reason:{type:'string',maxLength:200}},
+  inputSchema:{type:'object',properties:{...common,number:NUMBER,expectedHeadSha:SHA,acknowledge:{type:'string',maxLength:16},mergeIntoBranch:{type:'string',maxLength:255,description:'For a PR into a branch other than the default: that branch (the PR\'s base), given up front so the merge goes in one call. Alias: base.'},base:{type:'string',maxLength:255,description:'Same as mergeIntoBranch.'},reason:{type:'string',maxLength:200}},
     required:['repo','number','expectedHeadSha'],additionalProperties:false},
   annotations:{readOnlyHint:false,destructiveHint:true,idempotentHint:false,openWorldHint:true}
 };

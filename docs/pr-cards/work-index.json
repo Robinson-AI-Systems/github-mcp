@@ -4010,6 +4010,24 @@
       ],
       "readiness": "READY",
       "ownerInputs": []
+    },
+    {
+      "id": "MERGE-BASE-1",
+      "title": "Merging into a non-default branch in one call (mergeIntoBranch described; base alias)",
+      "batch": "FIN",
+      "design": "docs/pr-cards/MERGE-BASE-1.md",
+      "dependencies": [
+        "ONE-CALL-PR-1"
+      ],
+      "card": "docs/pr-cards/MERGE-BASE-1.md",
+      "status": "MERGED",
+      "migration": "none",
+      "budget": 40,
+      "units": [
+        "MERGE-BASE-1"
+      ],
+      "readiness": "READY",
+      "ownerInputs": []
     }
   ],
   "gatewayBoundary": {

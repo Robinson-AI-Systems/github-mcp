@@ -1,7 +1,7 @@
 import {describe,it,expect} from 'vitest';
 import {registry} from '../../src/tools/index.js';
 import {handlers as prWorkflows} from '../../src/tools/workflows-pr.js';
-import {handlers as mergeWorkflows} from '../../src/tools/workflows-merge.js';
+import {handlers as mergeWorkflows,tools as mergeTools} from '../../src/tools/workflows-merge.js';
 import {tools as issueReadTools} from '../../src/tools/issues-read.js';
 
 // The real tool schema bounds the arguments a workflow may pass (a mocked call must not hide an out-of-range one).
@@ -208,6 +208,14 @@ describe('W-2 exact-head and one-step stack conveyor',()=>{
     const f=mk();
     const x=body(await mergeWorkflows.github_workflow_merge_when_green({...args,mergeIntoBranch:'feature-parent'},f.ctx));
     expect(x).toMatchObject({status:'merged',done:true,number:4});
+    // MERGE-BASE-1: one call with the branch named up front, also as `base`; the tool says so.
+    const g=mk();
+    const y=body(await mergeWorkflows.github_workflow_merge_when_green({...args,base:'feature-parent'},g.ctx));
+    expect(y).toMatchObject({status:'merged',done:true,number:4});
+    const tool=mergeTools.find(t=>t.name==='github_workflow_merge_when_green');
+    expect(tool.description).toMatch(/mergeIntoBranch/);
+    expect(tool.inputSchema.properties.mergeIntoBranch.description).toMatch(/up front/);
+    await expect(mergeWorkflows.github_workflow_merge_when_green({...args,base:'a',mergeIntoBranch:'b'},mk().ctx)).rejects.toThrow(/same branch/);
   });
   it('refuses stale SHA, draft, conflicts, missing CI, unreadable threads, and review rejection',async()=>{
     const cases=[
