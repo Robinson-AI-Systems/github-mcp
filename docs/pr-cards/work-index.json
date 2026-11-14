@@ -4030,6 +4030,24 @@
       "ownerInputs": []
     },
     {
+      "id": "MERGE-PENDING-1",
+      "title": "Merge waits out GitHub's mergeable: null instead of refusing a clean PR",
+      "batch": "FIN",
+      "design": "docs/pr-cards/MERGE-PENDING-1.md",
+      "dependencies": [
+        "MERGE-BASE-1"
+      ],
+      "card": "docs/pr-cards/MERGE-PENDING-1.md",
+      "status": "MERGED",
+      "migration": "none",
+      "budget": 60,
+      "units": [
+        "MERGE-PENDING-1"
+      ],
+      "readiness": "READY",
+      "ownerInputs": []
+    },
+    {
       "id": "ISSUE-630",
       "title": "Push refusals name values already on GitHub, say a fixing commit will not help (with the non-rewriting route) and print the exact owner exception call",
       "batch": "FIN",

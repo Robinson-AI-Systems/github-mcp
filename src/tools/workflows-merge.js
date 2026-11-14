@@ -34,6 +34,18 @@ async function reliable(ctx,name,args,usable){
 const pr=(ctx,s,number)=>reliable(ctx,'github_pr_get',{...s,number},x=>typeof x.head_sha==='string'&&typeof x.state==='string');
 const repo=(ctx,s)=>reliable(ctx,'github_repo_get',s,x=>typeof x.default_branch==='string');
 const CI_NOT_GREEN='Required CI checks are not proven green at this head.';
+const MERGE_UNKNOWN='GitHub did not confirm mergeability.';
+// MERGE-PENDING-1 (owner report 2026-11-14): right after a PR's branch moves, GitHub answers mergeable: null while it
+// works the answer out (a few seconds), and a clean, green PR was refused as "did not confirm mergeability". Null is
+// "not computed yet", not "no": read again a few times before judging. A real false (conflicts) is never waited on.
+async function settleMergeable(ctx,s,number,p){
+  for(let i=0;i<4&&p&&p.state==='open'&&!p.merged&&p.mergeable==null;i++){
+    await pause(ctx,2000);
+    p=(await pr(ctx,s,number))??p;
+  }
+  return p;
+}
+const pendingMerge=(p)=>p&&p.state==='open'&&!p.merged&&p.mergeable==null;
 const isSoft=(w)=>w===CI_NOT_GREEN||w==='Review decision blocks merge.'||/^Review threads could not be verified/.test(w)||/ unresolved review threads\.$/.test(w);
 const softAdvice=(w)=>w===CI_NOT_GREEN?'Add a CI workflow that runs on pull requests (or fix the failing check), or confirm yourself that the change is safe.'
   :w==='Review decision blocks merge.'?'Get the requested review or approval (a self review is fine where the owner allows it), or confirm yourself that the change is safe.'
@@ -46,7 +58,7 @@ function blockers(p,expected,defaultBranch,{override=false}={}){
   if(p.head_sha!==expected)missing.push('Expected head does not match the latest actual head.');
   // Owner feedback 2026-11-12: a PR into a release or parent branch is a normal merge. GitHub's own rules for that base branch and the
   // guarded merge writer still apply; only the default-branch-only restriction is gone.
-  if(p.mergeable!==true)missing.push('GitHub did not confirm mergeability.');
+  if(p.mergeable!==true)missing.push(MERGE_UNKNOWN);
   // Explicit override only skips local CI/review vetoes so the underlying
   // guarded merge can check the person, settings, reason, exact head, and
   // GitHub's actual decision. It never loosens the default merge path.
@@ -105,10 +117,13 @@ async function mergeOne(a,ctx){
     return reply({status:'needs_branch_confirmation',done:false,number:a.number,pr_base:p.base,default_branch:r.default_branch,
       ...(a.mergeIntoBranch?{you_said:a.mergeIntoBranch}:{}),
       next:'PR #'+a.number+' targets "'+p.base+'", not the default branch "'+r.default_branch+'". If merging into "'+p.base+'" is intentional (for example a release or parent branch), call again with the same arguments plus mergeIntoBranch: "'+p.base+'". If you meant to merge into "'+r.default_branch+'", retarget the PR first with github_pr_update.'});
+  p=await settleMergeable(ctx,s,a.number,p);
   let why=blockers(p,a.expectedHeadSha,r.default_branch,{override:a.overrideRules===true});
+  // While checks run GitHub may still be computing mergeability; that settles with the re-read after the wait.
+  const waitable=why.filter(w=>!(w===MERGE_UNKNOWN&&pendingMerge(p)));
   // CONN-FB-1: optionally wait (inside this call's time budget) when the ONLY thing missing is checks that are still
   // running. A red check, any other blocker, or a moved head is never waited on; the merge path below is unchanged.
-  if(a.waitForChecks===true&&why.length===1&&why[0]===CI_NOT_GREEN&&p?.checks?.green===false&&
+  if(a.waitForChecks===true&&waitable.length===1&&waitable[0]===CI_NOT_GREEN&&p?.checks?.green===false&&
     !(p.checks.items??[]).some(x=>x.state==='failure')){
     const budget=Math.floor((46000-(now(ctx)-start)-16000)/1000);
     if(budget>=5){
@@ -120,10 +135,14 @@ async function mergeOne(a,ctx){
         next:waited?.overall==='red'?'A required check failed; fix it, push, and call again with the new head.':
           waited?.status==='head_moved'?'The PR head moved; re-read it and call again with the new expectedHeadSha.':
           'Checks are still running. Call github_workflow_merge_when_green again with the same arguments (waitForChecks: true).'});
-      p=await pr(ctx,s,a.number);
+      p=await settleMergeable(ctx,s,a.number,await pr(ctx,s,a.number));
       why=blockers(p,a.expectedHeadSha,r.default_branch,{override:a.overrideRules===true});
     }
   }
+  // Still computing after the reads above: a wait-and-retry answer, not a fault to repair.
+  if(why.length&&why.every(w=>w===MERGE_UNKNOWN||(w===CI_NOT_GREEN&&p?.checks?.green===false&&!(p.checks.items??[]).some(x=>x.state==='failure')))&&pendingMerge(p))
+    return reply({status:'mergeability_pending',done:false,number:a.number,expected_head:a.expectedHeadSha,actual_head:p?.head_sha??null,blockers:why,
+      next:'GitHub is still working out whether this PR can merge (usual for a few seconds after its branch moves). Nothing needs repairing. Call github_workflow_merge_when_green again with the same arguments.'});
   // Owner feedback 2026-11-10: a change sent without git showed checks that took ~7 minutes to start, and the answer was a
   // bare "not_ready ... repair the listed conditions". Checks that have not started or are still running are not a fault to
   // repair: say they are waiting and how to wait. A red check or any other blocker keeps the plain not_ready answer.

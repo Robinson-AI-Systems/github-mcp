@@ -3,6 +3,8 @@
 > **Current authority and parity remediation (2026-10-28):** [requirements](OWNER-DECISION-2026-10-27.md), [delivery plan](designs/AUTHORITY-PARITY-2026-10-28.md). Full owner writes disclose/execute/journal/verify in one call; explicit delegated restrictions remain. Older dated statements about owner caps, production ceremony and mandatory merge gates are superseded. Source delivery and live acceptance remain separate.
 # Tool catalog
 
+**MERGE-PENDING-1 (2026-11-14):** `github_workflow_merge_when_green` reads a PR again (up to four times, two seconds apart) while GitHub answers `mergeable: null` after a branch update, instead of refusing it as "did not confirm mergeability"; pending mergeability no longer stops `waitForChecks` from waiting, and an answer still pending after the reads is `mergeability_pending` (call again; nothing to repair). A real conflict (`mergeable: false`) is refused as before.
+
 **Name alias (2026-11-09):** `github_api_request` is accepted as another name for `github_api_read` (read-only GET) in `github_call`, `github_describe_tool` and `github_batch`; no new tool, never reaches `github_api_write`.
 
 **Unknown tool names (2026-11-09):** `github_call` errors for an unknown or hidden tool add "Did you mean: …" with close visible names (a guessed `github_api_request` points at `github_api_read`, the general read-only GET tool).
