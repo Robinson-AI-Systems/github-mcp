@@ -19,10 +19,22 @@ export function stableScannerJson(value){
 }
 export const defaultScannerSettings=()=>({additionalRules:[],disabledRules:[],suppressions:[]});
 export const scannerSettingKey=(owner,repo)=>'scanner_'+createHash('sha256').update(JSON.stringify([owner.toLowerCase(),repo.toLowerCase()])).digest('hex').slice(0,32);
+/** The first string field (as a path like addSuppressions[0].reason) that holds credential-shaped text. */
+function credentialField(v,path=''){
+ if(typeof v==='string')return containsBuiltinCredential(v)?path||'a value':null;
+ if(Array.isArray(v)){for(let i=0;i<v.length;i++){const hit=credentialField(v[i],`${path}[${i}]`);if(hit)return hit;}return null;}
+ if(v&&typeof v==='object'){for(const [k,x] of Object.entries(v)){const hit=credentialField(x,path?`${path}.${k}`:k);if(hit)return hit;}}
+ return null;
+}
 const knownKeys=(o,keys)=>Object.keys(o).every(k=>keys.includes(k));
 export function scannerSettings(value,base=defaultScannerSettings()) {
  if(!value||typeof value!=='object'||Array.isArray(value)||!knownKeys(value,['additionalRules','disabledRules','suppressions','addSuppressions','removeSuppressions']))throw new TypeError('Use scanner setting fields from github_security_scanner_configure.');
- if(containsBuiltinCredential(JSON.stringify(value)))throw new TypeError('Scanner settings accept rule structure, never credential values.');
+ if(containsBuiltinCredential(JSON.stringify(value))){
+  // Name WHERE (field path), never what: a reason that merely shows a URL shape like
+  // scheme://user:secret@host trips the same detector a real credential does (2026-11-14).
+  const where=credentialField(value);
+  throw new TypeError(`Scanner settings accept rule structure, never credential values${where?`: ${where} looks like it contains one. Reword it without the credential-shaped text (for example "a postgres URL with a placeholder password")`:''}.`);
+ }
  const {addSuppressions,removeSuppressions,...plain}=value;
  const s={...base,...plain};
  if(addSuppressions!==undefined||removeSuppressions!==undefined){

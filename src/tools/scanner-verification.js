@@ -4,9 +4,15 @@ import {readerFor} from './github-read.js';
 import {detectCredentialPatterns} from './security-scan-files.js';
 import {filterScannerFindings,stableScannerJson} from '../github/scanner-policy.js';
 import {blockingPushFindings,evaluateFileProtection,valueFingerprint} from '../github/file-protection.js';
-export const VERIFICATION_SCHEMA={type:'object',additionalProperties:false,properties:{path:{type:'string',minLength:1,maxLength:1000},blobSha:{type:'string',pattern:'^[a-f0-9]{40}$'},rule:{type:'string',minLength:1,maxLength:80},fingerprint:{type:'string',pattern:'^[a-f0-9]{64}$'},door:{type:'string',enum:['scan','file_read','push']},expectedBefore:{type:'boolean'},expectedAfter:{type:'boolean'}},required:['path','blobSha','rule','door','expectedBefore','expectedAfter']};
+export const VERIFICATION_SCHEMA={type:'object',additionalProperties:false,properties:{path:{type:'string',minLength:1,maxLength:1000},blobSha:{type:'string',pattern:'^[a-f0-9]{40}$'},rule:{type:'string',minLength:1,maxLength:80},fingerprint:{type:'string',pattern:'^[a-f0-9]{64}$'},valueFingerprint:{type:'string',pattern:'^[a-f0-9]{64}$',description:'Same as fingerprint (the name a push exception uses); give either.'},door:{type:'string',enum:['scan','file_read','push']},expectedBefore:{type:'boolean'},expectedAfter:{type:'boolean'}},required:['path','blobSha','rule','door','expectedBefore','expectedAfter']};
 const matchRule=(finding,id)=>finding.rule===id||finding.detector_rules?.includes(id);
 export async function verifyScannerChange(ctx,target,before,after,input){
+ // A push exception is written with valueFingerprint; its verification case takes the same value as
+ // fingerprint. Accept either name (2026-11-14: the mismatch cost a round trip), never two different values.
+ if(input&&input.valueFingerprint!==undefined){
+  if(input.fingerprint!==undefined&&input.fingerprint!==input.valueFingerprint)throw new TypeError('fingerprint and valueFingerprint name the same thing; give one value.');
+  const {valueFingerprint,...rest}=input;input={...rest,fingerprint:valueFingerprint};
+ }
  if(!input||!input.path||input.path.startsWith('/')||input.path.split('/').some(p=>!p||p==='.'||p==='..')||/[\\\x00-\x1f?#%*]/.test(input.path)||!['scan','file_read','push'].includes(input.door)||typeof input.expectedBefore!=='boolean'||typeof input.expectedAfter!=='boolean')throw new TypeError('A pinned committed-file verification case is required for every tune.');
  const {octokit}=await readerFor({owner:target.owner,repo:target.repo},ctx);
  let data;
