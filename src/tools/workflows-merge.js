@@ -105,7 +105,8 @@ async function mergeOne(a,ctx){
     const budget=Math.floor((46000-(now(ctx)-start)-16000)/1000);
     if(budget>=5){
       const waited=await invoke(ctx,'github_check_wait',{...s,pr:a.number,expectedHeadSha:a.expectedHeadSha,timeoutSeconds:Math.min(budget,30)});
-      if(waited?.overall!=='green'&&waited?.overall!=='no_ci')return reply({status:waited?.status==='head_moved'?'not_ready':'checks_running',done:false,number:a.number,
+      // A red check is not "still running": fall through to the blocker answer, which names it.
+      if(waited?.overall!=='green'&&waited?.overall!=='no_ci'&&waited?.overall!=='red')return reply({status:waited?.status==='head_moved'?'not_ready':'checks_running',done:false,number:a.number,
         expected_head:a.expectedHeadSha,checks:waited?.overall??'unknown',waited_seconds:waited?.waited_seconds??null,
         ...(waited?.still_running?{still_running:waited.still_running}:{}),...(waited?.not_reported_yet?{not_reported_yet:waited.not_reported_yet}:{}),
         next:waited?.overall==='red'?'A required check failed; fix it, push, and call again with the new head.':
@@ -121,18 +122,24 @@ async function mergeOne(a,ctx){
   if(why.length===1&&why[0]===CI_NOT_GREEN&&p?.checks?.green===false&&!(p.checks.items??[]).some(x=>x.state==='failure'))
     return reply({status:'checks_running',done:false,number:a.number,expected_head:a.expectedHeadSha,actual_head:p?.head_sha??null,blockers:why,
       next:'Required checks have not finished at this head (not started yet, or still running; GitHub can take several minutes to start them). Nothing needs repairing. Call github_workflow_merge_when_green again with waitForChecks: true, or wait with github_check_wait.'});
+  // Owner feedback 2026-11-13: a red check came back as a bare "not proven green" with advice to add CI. Name the failing
+  // checks and point to the tool that says why; never suggest merging anyway over a red check.
+  const failedChecks=(p?.checks?.items??[]).filter(x=>x.state==='failure').map(x=>x.context);
+  const failed=why.includes(CI_NOT_GREEN)&&failedChecks.length?{failed_checks:failedChecks,
+    why_tool:{tool:'github_actions_get_run_logs_summary',arguments:{owner:s.owner,repo:s.repo,pr:a.number}}}:{};
+  const failedFirst=failed.failed_checks?`Failed at this head: ${failedChecks.join(', ')}; see why with github_actions_get_run_logs_summary (pr ${a.number}), then fix and push. `:'';
   if(why.length){
     // Owner feedback 2026-11-11: this tool stays strictly green-only. When the ONLY things missing are advisory (CI not green or not
     // set up, review, threads), name them as warnings and point to the deliberate fallback tool. Hard facts never get that pointer.
     const soft=why.filter(isSoft);
     if(soft.length===why.length){
       return reply({status:'not_ready',done:false,number:a.number,expected_head:a.expectedHeadSha,actual_head:p?.head_sha??null,
-        blockers:why,warnings:why.map(w=>({warning:w,suggestion:softAdvice(w)})),fallback_tool:'github_workflow_merge_anyway',
-        next:'This tool only merges when everything is green, and it is the recommended way to merge. Not green: '+why.join(' ')+' Best: set up what is missing (CI that runs on pull requests, a review) and call again. If you have double-checked the change yourself and merging anyway is intentional, use github_workflow_merge_anyway (it asks you to confirm and give a reason).'});
+        blockers:why,...failed,warnings:why.map(w=>({warning:w,suggestion:w===CI_NOT_GREEN&&failed.failed_checks?`Fix the failing check (${failedChecks.join(', ')}).`:softAdvice(w)})),fallback_tool:'github_workflow_merge_anyway',
+        next:failedFirst+'This tool only merges when everything is green, and it is the recommended way to merge. Not green: '+why.join(' ')+' Best: set up what is missing (CI that runs on pull requests, a review) and call again. If you have double-checked the change yourself and merging anyway is intentional, use github_workflow_merge_anyway (it asks you to confirm and give a reason).'});
     }
     return reply({status:'not_ready',done:false,number:a.number,
       expected_head:a.expectedHeadSha,actual_head:p?.head_sha??null,
-      blockers:why,next:'Repair the listed conditions, then re-read the exact PR.'});
+      blockers:why,...failed,next:failedFirst+'Repair the listed conditions, then re-read the exact PR.'});
   }
   if(stop(start,ctx))return reply({status:'pending',done:false,
     next:'Workflow budget ended without a merge attempt.'});

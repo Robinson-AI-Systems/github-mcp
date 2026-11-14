@@ -59,6 +59,14 @@ export function describeGithubError(error, { account = null } = {}) {
   const requestId = headerOf(error, 'x-github-request-id');
   const technical = `HTTP ${status ?? 'none'}${message ? ` — ${clip(message, 160)}` : ''}${requestId ? ` — request id ${requestId}` : ''}`;
   const out = (kind, what, cause, todo, extra = {}) => ({ kind, what, cause, todo, technical, ...extra });
+  // A request this server refused on its own checks (a TypeError/RangeError
+  // thrown by our validation) is not a network problem: say what was wrong,
+  // in full, and that it is not worth retrying unchanged. Real network
+  // failures (fetch failed, connection reset, timeouts) still read as network.
+  const networkish = /fetch failed|ECONN|ETIMEDOUT|EAI_AGAIN|ENOTFOUND|socket|network|timed? ?out|aborted/i.test(`${error?.message ?? ''} ${error?.cause?.code ?? ''} ${error?.cause?.message ?? ''}`);
+  if (status === null && (error instanceof TypeError || error instanceof RangeError) && !networkish) {
+    return { kind: 'invalid_request', what: clip(error.message, 900), cause: 'This server checked the request and refused it before sending anything to GitHub.', todo: 'Change the request as the message says and try again. Retrying it unchanged will fail the same way.', technical: 'validation', retryable: false };
+  }
   if (status === null) return out('network', 'GitHub could not be reached, so the change may not have been made.', 'A network problem or a timeout.', 'Check the current state, then try again.', { retryable: true });
 
   if (status === 401) {
