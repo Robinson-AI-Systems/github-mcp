@@ -9,7 +9,18 @@ const matchRule=(finding,id)=>finding.rule===id||finding.detector_rules?.include
 export async function verifyScannerChange(ctx,target,before,after,input){
  if(!input||!input.path||input.path.startsWith('/')||input.path.split('/').some(p=>!p||p==='.'||p==='..')||/[\\\x00-\x1f?#%*]/.test(input.path)||!['scan','file_read','push'].includes(input.door)||typeof input.expectedBefore!=='boolean'||typeof input.expectedAfter!=='boolean')throw new TypeError('A pinned committed-file verification case is required for every tune.');
  const {octokit}=await readerFor({owner:target.owner,repo:target.repo},ctx);
- const {data}=await octokit.request('GET /repos/{owner}/{repo}/git/blobs/{file_sha}',{owner:target.owner,repo:target.repo,file_sha:input.blobSha});
+ let data;
+ try{({data}=await octokit.request('GET /repos/{owner}/{repo}/git/blobs/{file_sha}',{owner:target.owner,repo:target.repo,file_sha:input.blobSha}));}
+ catch(error){
+  // PUSH-REFUSAL-RECEIPTS-1: a file the push guard refused has never reached GitHub. Its push
+  // exception is verified from the guard's own value-free receipt, by the guard's exception rule.
+  if(input.door!=='push'||error?.status!==404)throw error;
+  const {refusalsFor,receiptBlocked}=await import('../github/push-refusals.js');
+  const receipts=(await refusalsFor(ctx.db,target.owner,target.repo,{path:input.path,blobSha:input.blobSha})).filter(r=>r.rule===input.rule&&(!input.fingerprint||r.valueFingerprint===input.fingerprint));
+  if(!receipts.length)throw new TypeError('That blob is not on GitHub and no refused push recorded it with this rule and value fingerprint. Push once (it will be refused and recorded), then configure.');
+  const observe=settings=>receipts.some(r=>receiptBlocked(r,settings));
+  return {path:input.path,blobSha:input.blobSha,rule:input.rule,...(input.fingerprint?{fingerprint:input.fingerprint}:{}),door:input.door,source:'refused_push_receipt',before_detected:observe(before),after_detected:observe(after),expected_before:input.expectedBefore,expected_after:input.expectedAfter,checked_at:new Date((ctx.now??Date.now)()).toISOString(),matched_values_returned:false};
+ }
  if(data.encoding!=='base64'||typeof data.content!=='string'||data.size>(input.door==='scan'?100000:1000000))throw new TypeError('Verification requires one readable UTF-8 blob up to 100 KB for scans or 1 MB for file-read verification.');
  const bytes=Buffer.from(data.content,'base64');if(bytes.length!==data.size||!Buffer.from(bytes.toString()).equals(bytes)||createHash('sha1').update(Buffer.from(`blob ${bytes.length}\0`)).update(bytes).digest('hex')!==input.blobSha)throw new TypeError('GitHub did not return the exact readable verification blob.');
  const source=bytes.toString(),observe=settings=>{
