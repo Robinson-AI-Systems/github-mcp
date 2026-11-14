@@ -167,7 +167,8 @@ export function defineWrite(spec) {
     // again", hiding the real reason and inviting a pointless retry). This server's own refusal is the
     // request's fault, whatever the connection's mode: say what it was; retrying it unchanged won't help.
     // A dry run shows the same reason as its preview warning.
-    if (readFailed && args.dryRun !== true && isOwnRefusal(readError) && typeof readError.message === 'string'
+    // (A read error that already carries its own safe message and code keeps that path, below.)
+    if (readFailed && args.dryRun !== true && readError?.safeMessage !== true && isOwnRefusal(readError) && typeof readError.message === 'string'
       && readError.message.length > 0 && readError.message.length <= 500)
       return refuse('request', `No change was sent. ${readError.message}`);
 
