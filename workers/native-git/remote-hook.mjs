@@ -89,11 +89,13 @@ async function main() {
    // PUSH-REFUSAL-RECEIPTS-1: value-free receipts (path, blob, rule, line, value fingerprint), so an
    // exception can be granted for a file that has never reached GitHub.
    const refusedFindings = findings.filter(f => f.blobSha && f.values).flatMap(f => f.values.map(v => ({ path: f.path, blobSha: f.blobSha, ...v }))).slice(0, 50);
-   await report('refused', { reason: 'credential-shaped content', refusedFindings });
+   const reported = await report('refused', { reason: 'credential-shaped content', refusedFindings });
+   const receiptLost = refusedFindings.length > 0 && !(reported?.receipts?.saved > 0);
    say(`Refused: content protection found credential-shaped content in ${findings.length} file(s) or commit message(s), first ${JSON.stringify(first.path.slice(0, 120))} (${first.lines.length ? first.lines.join(', ') : first.rules.join(', ')}).`,
     'Nothing was pushed to GitHub. Remove the value from your commits (git commit --amend or git rebase -i), keep real secrets in protected setup, then push again.',
     'If it is a deliberate fake test value, the repository owner can allow exactly that value in that file: github_secret_scanner check (path + blobSha below; it works for this refused file even though it is not on GitHub) lists each finding\'s value_fingerprint, then github_secret_scanner configure adds a suppression with pushException: true and that valueFingerprint, verified through door "push". Edits elsewhere in the file keep the exception.',
-    ...refusedFindings.slice(0, 6).map(r => `  ${JSON.stringify(r.path.slice(0, 120))} blobSha ${r.blobSha} line ${r.line} rule ${r.rule} value_fingerprint ${r.valueFingerprint}`));
+    ...refusedFindings.slice(0, 6).map(r => `  ${JSON.stringify(r.path.slice(0, 120))} blobSha ${r.blobSha} line ${r.line} rule ${r.rule} value_fingerprint ${r.valueFingerprint}`),
+    ...(receiptLost ? ['Note: the record of this refusal could not be saved, so github_secret_scanner check will not find it yet. Push again to record it.'] : []));
    return 1;
   }
  }

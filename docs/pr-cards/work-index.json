@@ -3912,7 +3912,7 @@
         "FIXTURE-EXCEPTION-1"
       ],
       "card": "docs/pr-cards/PUSH-REFUSAL-RECEIPTS-1.md",
-      "status": "IN_PROGRESS",
+      "status": "MERGED",
       "migration": "none",
       "budget": 300,
       "units": [
@@ -3930,7 +3930,7 @@
         "PUSH-REFUSAL-RECEIPTS-1"
       ],
       "card": "docs/pr-cards/AGENT-FB-1113.md",
-      "status": "IN_PROGRESS",
+      "status": "MERGED",
       "migration": "none",
       "budget": 300,
       "units": [
