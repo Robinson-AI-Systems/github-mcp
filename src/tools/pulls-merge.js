@@ -62,7 +62,12 @@ export function blockers(plan, args, { override = false } = {}) {
   const asked = planOf(args);
   if (asked?.refuse) out.push(`Cannot skip the rules: ${asked.refuse}`);
   if ((args.expectedHeadSha !== undefined || !plan.ownerDirected) && pr.head_sha !== args.expectedHeadSha) out.push(`New commits arrived: the head is now ${short(pr.head_sha)}, not ${short(args.expectedHeadSha)}. The checks you saw are out of date; read the pull request again.`);
-  if (plan.ownerDirected) return out; // GitHub applies its own draft, checks and rules policy.
+  // GitHub applies its own draft, checks and rules policy to the owner's merges — except where the repository's plan has
+  // no rules at all (PLAN-RULES-1, 2026-11-14: a free organization's private repos), where "merge only when green" would
+  // be enforced by nothing. There the server enforces it itself; github_workflow_merge_anyway (or overrideRules) is the
+  // deliberate way to merge without green.
+  const unenforced = plan.ci?.rules_unavailable === true;
+  if (plan.ownerDirected && (override || !unenforced)) return out;
   if (pr.draft) out.push('It is a draft. Mark it ready for review first.');
   if (pr.mergeable === false) out.push(`GitHub says it cannot be merged (${pr.mergeable_state ?? 'conflicts'}). Update the branch or resolve conflicts first.`);
   if (override) return out; // the person is skipping the rules on purpose: the preview lists which, GitHub decides
@@ -71,8 +76,9 @@ export function blockers(plan, args, { override = false } = {}) {
       ? 'GitHub is still working out whether this can be merged; read the pull request again in a moment.'
       : `GitHub's rules for ${pr.base} are not met yet (for example a required review). Acting as you could skip them, so it is not merged.`);
   }
-  if (!ci || ci.green === null) out.push(`The checks could not be verified (${(ci?.errors ?? ['unknown']).join('; ')}), so it is not merged.`);
-  else if (!ci.green) out.push(`Required checks are not green at ${short(pr.head_sha)}: ${ci.problems.join('; ')}.`);
+  const viaPlan = plan.ownerDirected && unenforced ? ' This repository\'s GitHub plan has no branch rules, so GitHub Unleashed enforces merge-only-when-green itself; to merge anyway on purpose, use github_workflow_merge_anyway.' : '';
+  if (!ci || ci.green === null) out.push(`The checks could not be verified (${(ci?.errors ?? ['unknown']).join('; ')}), so it is not merged.${viaPlan}`);
+  else if (!ci.green) out.push(`Required checks are not green at ${short(pr.head_sha)}: ${ci.problems.join('; ')}.${viaPlan}`);
   return out;
 }
 

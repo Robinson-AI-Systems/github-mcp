@@ -3956,6 +3956,24 @@
       ],
       "readiness": "READY",
       "ownerInputs": []
+    },
+    {
+      "id": "BUILD-FB-1114",
+      "title": "Fixes from a project build: scanner false alarms, one-call allow + describe, repo search past unreadable accounts, text/query, merge-when-green without plan rules",
+      "batch": "FIN",
+      "design": "docs/pr-cards/BUILD-FB-1114.md",
+      "dependencies": [
+        "SCANNER-CFG-1114"
+      ],
+      "card": "docs/pr-cards/BUILD-FB-1114.md",
+      "status": "MERGED",
+      "migration": "none",
+      "budget": 400,
+      "units": [
+        "BUILD-FB-1114"
+      ],
+      "readiness": "READY",
+      "ownerInputs": []
     }
   ],
   "gatewayBoundary": {
