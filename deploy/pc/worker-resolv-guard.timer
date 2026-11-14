@@ -1,0 +1,15 @@
+[Unit]
+# WORKER-RESOLV-GUARD-1: probe shortly after boot (the boot race is the failure this
+# guard exists for), then every 2 minutes. The probe is one small exec into the worker
+# container; a heal waits for a job boundary, so a frequent light check is the point.
+Description=Run the Robinson native Git worker resolver guard every 2 minutes
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=2min
+RandomizedDelaySec=20
+Persistent=true
+Unit=worker-resolv-guard.service
+
+[Install]
+WantedBy=timers.target

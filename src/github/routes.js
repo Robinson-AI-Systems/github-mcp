@@ -1,13 +1,13 @@
 // GitHub MCP composition boundary for the setup page and the GitHub redirects (A-5b). One serverless function serves all of
 // them (Vercel's Hobby plan caps the number of functions), selected by the first path segment.
 import { createSetupHandlers } from './setup-page.js';
+import { storeFactory } from '../db-transport.js';
 import { createWebhookHandler } from './webhook.js';
 import { getSecretsRuntime } from '../runtime.js';
 import privateTenantCallback from '../../api/tenant/oauth/callback.js';
 import { publicCallback, publicInstallReturn } from '../tenancy/public-http.js';
 import { createPublicCleanup } from '../tenancy/public-cleanup.js';
 import { publicConnectEnabled } from '../tenancy/public-connect.js';
-import { neon } from '@neondatabase/serverless';
 import { marketplaceEnabled } from '../marketplace/lifecycle.js';
 import { marketplaceSetup } from '../marketplace/setup.js';
 
@@ -32,7 +32,7 @@ export async function handleGithub(action, req, res, { runtime, env = process.en
       return await publicInstallReturn(req,res,{env});
     const { db, credentials, oneTimeStore } = runtime ?? await getSecretsRuntime({ env, fetch });
     if (action==='setup' && !req.query?.state && req.query?.installation_id && marketplaceEnabled(env))
-      return await marketplaceSetup(req,res,{sql:neon(env.DATABASE_URL),credentials,env,fetchImpl:fetch});
+      return await marketplaceSetup(req,res,{sql:storeFactory(env.DATABASE_URL),credentials,env,fetchImpl:fetch});
     const handlers = createSetupHandlers({ db, credentials, oneTimeStore, env, fetch });
     res.setHeader('Cache-Control', 'no-store');
     return await handlers[name](req, res);
@@ -48,7 +48,7 @@ export async function handleWebhook(req, res, { runtime, env = process.env, fetc
     const { db, credentials } = runtime ?? await getSecretsRuntime({ env, fetch });
     // LAUNCH-1: public people's own stores are tidied too when the public sign-in is on.
     const cleanup = publicCleanup ?? (publicConnectEnabled(env) && env.DATABASE_URL
-      ? createPublicCleanup({ rootSql: neon(env.DATABASE_URL), connectionString: env.DATABASE_URL }) : null);
+      ? createPublicCleanup({ rootSql: storeFactory(env.DATABASE_URL), connectionString: env.DATABASE_URL }) : null);
     return await createWebhookHandler({ db, credentials, publicCleanup: cleanup })(req, res);
   } catch {
     res.setHeader('Cache-Control', 'no-store');

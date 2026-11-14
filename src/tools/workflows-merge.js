@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { guardedResultBody } from '../core/result-envelope.js';
 // W-2: no direct mutations; compose existing expected-head and production-guarded writers.
 // One mutating step per invocation. A stack advances after a fresh read on the next call.
@@ -18,16 +19,33 @@ async function invoke(ctx,name,args){
   if(typeof ctx.callTool!=='function')throw new Error('Guarded tool dispatch is unavailable.');
   return shape(await ctx.callTool(name,args));
 }
-async function pr(ctx,s,number){return invoke(ctx,'github_pr_get',{...s,number});}
-async function repo(ctx,s){return invoke(ctx,'github_repo_get',s);}
+// Owner glitch hunt 2026-11-12: one merge call got a read answer with no head or state in it (a transient provider read failure)
+// and reported five false blockers. A usable read has the fields the checks need; otherwise read once more after a short pause,
+// and if it is still unusable report the read as unavailable (null) instead of judging an empty answer.
+const pause=(ctx,ms)=>typeof ctx.sleep==='function'?ctx.sleep(ms):new Promise(r=>setTimeout(r,ms));
+async function reliable(ctx,name,args,usable){
+  for(let i=0;i<2;i++){
+    const x=await invoke(ctx,name,args);
+    if(x&&usable(x))return x;
+    if(i===0)await pause(ctx,1200);
+  }
+  return null;
+}
+const pr=(ctx,s,number)=>reliable(ctx,'github_pr_get',{...s,number},x=>typeof x.head_sha==='string'&&typeof x.state==='string');
+const repo=(ctx,s)=>reliable(ctx,'github_repo_get',s,x=>typeof x.default_branch==='string');
 const CI_NOT_GREEN='Required CI checks are not proven green at this head.';
+const isSoft=(w)=>w===CI_NOT_GREEN||w==='Review decision blocks merge.'||/^Review threads could not be verified/.test(w)||/ unresolved review threads\.$/.test(w);
+const softAdvice=(w)=>w===CI_NOT_GREEN?'Add a CI workflow that runs on pull requests (or fix the failing check), or confirm yourself that the change is safe.'
+  :w==='Review decision blocks merge.'?'Get the requested review or approval (a self review is fine where the owner allows it), or confirm yourself that the change is safe.'
+  :'Resolve the review threads, or confirm yourself that nothing in them matters.';
 function blockers(p,expected,defaultBranch,{override=false}={}){
   const missing=[];
   if(!p)return ['PR provider read is unavailable.'];
   if(p.state!=='open'||p.merged)missing.push('PR is not open and unmerged.');
   if(p.draft)missing.push('PR is still a draft.');
   if(p.head_sha!==expected)missing.push('Expected head does not match the latest actual head.');
-  if(p.base!==defaultBranch)missing.push('PR is not based on the actual default branch.');
+  // Owner feedback 2026-11-12: a PR into a release or parent branch is a normal merge. GitHub's own rules for that base branch and the
+  // guarded merge writer still apply; only the default-branch-only restriction is gone.
   if(p.mergeable!==true)missing.push('GitHub did not confirm mergeability.');
   // Explicit override only skips local CI/review vetoes so the underlying
   // guarded merge can check the person, settings, reason, exact head, and
@@ -66,13 +84,27 @@ async function freshAfterRetarget(p,ctx,s){
 function authorize(ctx){
   return ['everyday','full'].includes(ctx.connection?.profile);
 }
+// MERGE-BASE-1 (2026-11-14): agents only learned that a non-default-branch merge takes mergeIntoBranch from the first
+// refusal, so every such merge cost two calls. The argument is now described on the tool and also accepted as `base`.
+function withMergeInto(a){
+  if(a?.base===undefined)return a;
+  if(a.mergeIntoBranch!==undefined&&a.mergeIntoBranch!==a.base)throw new TypeError('base and mergeIntoBranch name the same branch; give one.');
+  const {base,...rest}=a;return {...rest,mergeIntoBranch:base};
+}
 async function mergeOne(a,ctx){
+  a=withMergeInto(a);
   if(!authorize(ctx))return refuse('Merge workflows require an everyday or full connection.');
   const start=now(ctx),s=scope(a);
   // Both observations are independently authorized. The guarded merge writer
   // still rechecks the exact head and branch state immediately before mutation.
   let [p,r]=await Promise.all([pr(ctx,s,a.number),repo(ctx,s)]);
   if(!r?.default_branch)return refuse('Default-branch provider evidence unavailable.');
+  // Owner feedback 2026-11-12: merging into anything but the default branch must be deliberate. The caller names the branch it
+  // means to merge into; a mismatch or a missing name stops here, before any CI wait or write.
+  if(p&&p.state==='open'&&p.base&&p.base!==r.default_branch&&a.mergeIntoBranch!==p.base)
+    return reply({status:'needs_branch_confirmation',done:false,number:a.number,pr_base:p.base,default_branch:r.default_branch,
+      ...(a.mergeIntoBranch?{you_said:a.mergeIntoBranch}:{}),
+      next:'PR #'+a.number+' targets "'+p.base+'", not the default branch "'+r.default_branch+'". If merging into "'+p.base+'" is intentional (for example a release or parent branch), call again with the same arguments plus mergeIntoBranch: "'+p.base+'". If you meant to merge into "'+r.default_branch+'", retarget the PR first with github_pr_update.'});
   let why=blockers(p,a.expectedHeadSha,r.default_branch,{override:a.overrideRules===true});
   // CONN-FB-1: optionally wait (inside this call's time budget) when the ONLY thing missing is checks that are still
   // running. A red check, any other blocker, or a moved head is never waited on; the merge path below is unchanged.
@@ -81,7 +113,8 @@ async function mergeOne(a,ctx){
     const budget=Math.floor((46000-(now(ctx)-start)-16000)/1000);
     if(budget>=5){
       const waited=await invoke(ctx,'github_check_wait',{...s,pr:a.number,expectedHeadSha:a.expectedHeadSha,timeoutSeconds:Math.min(budget,30)});
-      if(waited?.overall!=='green')return reply({status:waited?.status==='head_moved'?'not_ready':'checks_running',done:false,number:a.number,
+      // A red check is not "still running": fall through to the blocker answer, which names it.
+      if(waited?.overall!=='green'&&waited?.overall!=='no_ci'&&waited?.overall!=='red')return reply({status:waited?.status==='head_moved'?'not_ready':'checks_running',done:false,number:a.number,
         expected_head:a.expectedHeadSha,checks:waited?.overall??'unknown',waited_seconds:waited?.waited_seconds??null,
         ...(waited?.still_running?{still_running:waited.still_running}:{}),...(waited?.not_reported_yet?{not_reported_yet:waited.not_reported_yet}:{}),
         next:waited?.overall==='red'?'A required check failed; fix it, push, and call again with the new head.':
@@ -91,9 +124,31 @@ async function mergeOne(a,ctx){
       why=blockers(p,a.expectedHeadSha,r.default_branch,{override:a.overrideRules===true});
     }
   }
-  if(why.length)return reply({status:'not_ready',done:false,number:a.number,
-    expected_head:a.expectedHeadSha,actual_head:p?.head_sha??null,
-    blockers:why,next:'Repair the listed conditions, then re-read the exact PR.'});
+  // Owner feedback 2026-11-10: a change sent without git showed checks that took ~7 minutes to start, and the answer was a
+  // bare "not_ready ... repair the listed conditions". Checks that have not started or are still running are not a fault to
+  // repair: say they are waiting and how to wait. A red check or any other blocker keeps the plain not_ready answer.
+  if(why.length===1&&why[0]===CI_NOT_GREEN&&p?.checks?.green===false&&!(p.checks.items??[]).some(x=>x.state==='failure'))
+    return reply({status:'checks_running',done:false,number:a.number,expected_head:a.expectedHeadSha,actual_head:p?.head_sha??null,blockers:why,
+      next:'Required checks have not finished at this head (not started yet, or still running; GitHub can take several minutes to start them). Nothing needs repairing. Call github_workflow_merge_when_green again with waitForChecks: true, or wait with github_check_wait.'});
+  // Owner feedback 2026-11-13: a red check came back as a bare "not proven green" with advice to add CI. Name the failing
+  // checks and point to the tool that says why; never suggest merging anyway over a red check.
+  const failedChecks=(p?.checks?.items??[]).filter(x=>x.state==='failure').map(x=>x.context);
+  const failed=why.includes(CI_NOT_GREEN)&&failedChecks.length?{failed_checks:failedChecks,
+    why_tool:{tool:'github_actions_get_run_logs_summary',arguments:{owner:s.owner,repo:s.repo,pr:a.number}}}:{};
+  const failedFirst=failed.failed_checks?`Failed at this head: ${failedChecks.join(', ')}; see why with github_actions_get_run_logs_summary (pr ${a.number}), then fix and push. `:'';
+  if(why.length){
+    // Owner feedback 2026-11-11: this tool stays strictly green-only. When the ONLY things missing are advisory (CI not green or not
+    // set up, review, threads), name them as warnings and point to the deliberate fallback tool. Hard facts never get that pointer.
+    const soft=why.filter(isSoft);
+    if(soft.length===why.length){
+      return reply({status:'not_ready',done:false,number:a.number,expected_head:a.expectedHeadSha,actual_head:p?.head_sha??null,
+        blockers:why,...failed,warnings:why.map(w=>({warning:w,suggestion:w===CI_NOT_GREEN&&failed.failed_checks?`Fix the failing check (${failedChecks.join(', ')}).`:softAdvice(w)})),fallback_tool:'github_workflow_merge_anyway',
+        next:failedFirst+'This tool only merges when everything is green, and it is the recommended way to merge. Not green: '+why.join(' ')+' Best: set up what is missing (CI that runs on pull requests, a review) and call again. If you have double-checked the change yourself and merging anyway is intentional, use github_workflow_merge_anyway (it asks you to confirm and give a reason).'});
+    }
+    return reply({status:'not_ready',done:false,number:a.number,
+      expected_head:a.expectedHeadSha,actual_head:p?.head_sha??null,
+      blockers:why,...failed,next:failedFirst+'Repair the listed conditions, then re-read the exact PR.'});
+  }
   if(stop(start,ctx))return reply({status:'pending',done:false,
     next:'Workflow budget ended without a merge attempt.'});
   const result=await invoke(ctx,'github_pr_merge',{...s,number:a.number,
@@ -122,7 +177,9 @@ async function mergeOne(a,ctx){
   const pending=a.overrideRules===true&&['pending','enqueued'].includes(result.result?.status);
   return reply({status:after?.merged===true?'merged':pending?'pending':'unconfirmed',
     done:after?.merged===true,number:a.number,
-    merge_commit:result.merge_commit??null,
+    // Owner feedback 2026-11-12: return the verified merge SHA. The writer's answer first, then the fresh PR read (GitHub records the
+    // real merge commit there once merged), so callers need no extra branch lookup before checking CI on the merged commit.
+    merge_commit:result.merge_commit??result.result?.merge_commit??(after?.merged===true?after.test_merge_sha??after.merge_commit_sha:null)??null,
     next:after?.merged===true?'Merge confirmed from a fresh independent PR read.':pending
       ?'GitHub accepted the request for background processing; inspect its later result before claiming the PR merged.':
       'Provider merge response was applied but fresh readback did not confirm it; inspect before retrying.'});
@@ -214,10 +271,10 @@ async function mergeStack(a,ctx){
 }
 const whenTool={
   name:'github_workflow_merge_when_green',area:'workflow',audience:['B'],compact:true,
-  description:'Guarded exact-head, green-CI PR merge.',
+  description:'Guarded exact-head, green-CI PR merge. Into a non-default branch: pass mergeIntoBranch (the PR\'s base) in the same call.',
   usesRegistry:true,passthrough:true,profiles:['everyday','full'],delegatedWrites:['github_pr_merge'],
   inputSchema:{type:'object',properties:{...common,number:NUMBER,expectedHeadSha:SHA,
-    overrideRules:{type:'boolean'},overrideReason:{type:'string',minLength:10,maxLength:200},waitForChecks:{type:'boolean'}},
+    overrideRules:{type:'boolean'},overrideReason:{type:'string',minLength:10,maxLength:200},waitForChecks:{type:'boolean'},mergeIntoBranch:{type:'string',maxLength:255,description:'For a PR into a branch other than the default: that branch (the PR\'s base), given up front so the merge goes in one call. Alias: base.'},base:{type:'string',maxLength:255,description:'Same as mergeIntoBranch.'}},
     required:['repo','number','expectedHeadSha'],additionalProperties:false},
   annotations:{readOnlyHint:false,destructiveHint:true,idempotentHint:false,openWorldHint:true}
 };
@@ -230,5 +287,32 @@ const stackTool={
     required:['repo'],additionalProperties:false},
   annotations:{readOnlyHint:false,destructiveHint:true,idempotentHint:false,openWorldHint:true}
 };
-export const tools=[whenTool,stackTool];
-export const handlers={[whenTool.name]:mergeOne,[stackTool.name]:mergeStack};
+const ackToken=(p,soft)=>createHash('sha256').update(p.head_sha+'|'+soft.join('|')).digest('hex').slice(0,8);
+// The deliberate fallback (owner feedback 2026-11-11): merge without green, with a small bump so it is never an accident.
+async function mergeAnyway(a,ctx){
+  a=withMergeInto(a);
+  if(!authorize(ctx))return refuse('Merge workflows require an everyday or full connection.');
+  const s=scope(a);
+  const [p,r]=await Promise.all([pr(ctx,s,a.number),repo(ctx,s)]);
+  if(!r?.default_branch)return refuse('Default-branch provider evidence unavailable.');
+  const why=blockers(p,a.expectedHeadSha,r.default_branch);
+  const hard=why.filter(w=>!isSoft(w));
+  if(hard.length)return reply({status:'not_ready',done:false,number:a.number,blockers:hard,next:'Something hard stops this merge (not just missing CI or review). Fix it first; merging anyway cannot skip it.'});
+  if(!why.length)return reply({status:'use_merge_when_green',done:false,number:a.number,next:'Everything is green. Merge with github_workflow_merge_when_green, the normal tool.'});
+  const token=ackToken(p,why),reason=String(a.reason??'').trim();
+  const good=a.acknowledge===token&&reason.length>=20&&reason.split(/\s+/).length>=4&&!/^<.*>$/.test(reason);
+  if(!good)return reply({status:'needs_acknowledgement',done:false,number:a.number,expected_head:a.expectedHeadSha,
+    warnings:why.map(w=>({warning:w,suggestion:softAdvice(w)})),acknowledge:token,
+    next:'Merging without green is allowed but must be intentional. Preferably set up what is missing first. If you have double-checked the change yourself, call github_workflow_merge_anyway again with the same arguments plus acknowledge: "'+token+'" and reason: a real sentence (20+ characters) saying what you checked. The reason is recorded.'});
+  return mergeOne({...a,overrideRules:true,overrideReason:reason.slice(0,200)},ctx);
+}
+const anywayTool={
+  name:'github_workflow_merge_anyway',area:'workflow',audience:['B'],compact:true,
+  description:'Fallback: merge at the exact head when CI or review is missing, after an acknowledgement and a written reason. Prefer github_workflow_merge_when_green.',
+  usesRegistry:true,passthrough:true,profiles:['everyday','full'],delegatedWrites:['github_pr_merge'],
+  inputSchema:{type:'object',properties:{...common,number:NUMBER,expectedHeadSha:SHA,acknowledge:{type:'string',maxLength:16},mergeIntoBranch:{type:'string',maxLength:255,description:'For a PR into a branch other than the default: that branch (the PR\'s base), given up front so the merge goes in one call. Alias: base.'},base:{type:'string',maxLength:255,description:'Same as mergeIntoBranch.'},reason:{type:'string',maxLength:200}},
+    required:['repo','number','expectedHeadSha'],additionalProperties:false},
+  annotations:{readOnlyHint:false,destructiveHint:true,idempotentHint:false,openWorldHint:true}
+};
+export const tools=[whenTool,anywayTool,stackTool];
+export const handlers={[whenTool.name]:mergeOne,[anywayTool.name]:mergeAnyway,[stackTool.name]:mergeStack};

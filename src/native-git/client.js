@@ -8,6 +8,13 @@ import { signNativeWorkerBody } from './signing.js';
 import { redactExcerpt } from '../github/content-protection.js';
 import { explainGithubError } from '../tools/errors.js';
 import { isOwnerConnection } from '../core/authority.js';
+// PAUSE-ORIGIN-1: say who holds a worker pause; only the owner's pause means "the computer is in use".
+const PAUSED_BY={
+ updater:'Native Git worker is closed to new work by its own self-updater, not by its owner (an update is being applied, or a failed update is waiting for operator repair).',
+ resolver_guard:'Native Git worker is closed to new work by its name-lookup guard, not by its owner (repairing DNS, or waiting for operator repair).',
+};
+export const pausedMessage=heldBy=>`${PAUSED_BY[heldBy]??'Native Git worker is paused by its owner (the computer it runs on is in use).'} No operation was started. Retry later; GitHub API tools (github_repo_download, github_repo_change) keep working.`;
+
 export const nativeConnection = ctx => {
  if (!ctx.connection?.client_id && !ctx.connection?.pass_id) throw new TypeError('A service-issued connection is required for native Git.');
  return createHash('sha256').update(JSON.stringify([ctx.connection.client_id ?? null, ctx.connection.pass_id ?? null])).digest('hex');
@@ -119,7 +126,7 @@ export async function callNativeWorker(ctx, { binding, action, workspace_id, ope
   const reason = typeof data.reason === 'string'
    ? redactExcerpt(data.reason).replace(/(?:\/[A-Za-z0-9_.-]+){2,}/g, '[host path]').replace(/[\x00-\x1f\x7f]/g, ' ').slice(0, 220) : '';
   const error=failure(busy ? 'native_busy' : 'native_http', busy
-   ? resource&&data.reason==='owner_paused'?'Native Git worker is paused by its owner (the computer it runs on is in use). No operation was started. Retry later; GitHub API tools (github_repo_download, github_repo_change) keep working.'
+   ? resource&&data.reason==='owner_paused'?pausedMessage(data.held_by)
    : resource?`Native Git worker resource pressure: ${typeof data.reason==='string'?data.reason.replace(/[^a-z_]/g,'').slice(0,64):'unavailable'}. No operation was started. Retry after resources recover.`:'Native Git worker is busy. After the active operation finishes, inspect state and retry the same intent.'
    : `Native Git worker returned HTTP ${response.status}${reason ? ': ' + reason : '.'} Inspect state before a new intent.`, response.status);
   if(resource&&data.phase==='admission'&&data.no_operation_started===true)error.nativeNoOperationStarted=true;

@@ -13,7 +13,7 @@ RUN rm -f /etc/apt/sources.list.d/debian.sources \
  && chown node:node /data
 WORKDIR /app
 COPY package.json ./package.json
-COPY src/github/content-protection.js src/github/open-secret-rules.js src/github/secret-literals.js src/github/custom-secret-rules.js src/github/scanner-policy.js src/github/file-protection.js ./src/github/
+COPY src/github/content-protection.js src/github/open-secret-rules.js src/github/secret-literals.js src/github/custom-secret-rules.js src/github/scanner-policy.js src/github/file-protection.js src/github/placeholder-guard.js ./src/github/
 COPY vendor/gitleaks/ ./vendor/gitleaks/
 COPY src/native-git/commands.js src/native-git/protocol.js src/native-git/pool-config.js ./src/native-git/
 # GIT-DIRECT-1: the git remote's shared wire format (no database, no credentials).

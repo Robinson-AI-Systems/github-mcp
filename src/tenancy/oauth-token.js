@@ -1,10 +1,10 @@
 import { redact } from '../github/content-protection.js';
+import { storeFactory } from '../db-transport.js';
 // PUB-2 private OAuth token endpoint routing. An OAuth client ID embeds
 // server-signed tenant and verified subject IDs; these are only selectors.
 // The real tenant's stored OAuth client secret, single-use code/refresh hash,
 // and current owner-approved private pilot membership remain mandatory.
 // Never retry a private tenant client through legacy owner OAuth storage.
-import { neon } from '@neondatabase/serverless';
 import { createTenantDirectory, openAuthorizedTenantDb } from './directory.js';
 import { verifyTenantCredential, issueTenantCredential } from './routed-credential.js';
 import { createOAuthHandlers } from '../core/oauth-handlers.js';
@@ -16,7 +16,7 @@ import { isCimdClientId } from './cimd-client.js';
 import { marketplaceResource } from '../marketplace/resource.js';
 
 export async function privateTenantToken(req, res, {
-  env = process.env, rootSqlFactory = neon, tenantSqlFactory = neon
+  env = process.env, rootSqlFactory = storeFactory, tenantSqlFactory = storeFactory
 } = {}) {
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');

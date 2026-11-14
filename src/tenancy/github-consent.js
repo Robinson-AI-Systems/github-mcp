@@ -3,7 +3,7 @@
 // active GitHub App installation, verified numeric /user and single-use CSRF/PKCE
 // must ALL pass. The GitHub OAuth bearer is held only in this request's memory.
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
-import { neon } from '@neondatabase/serverless';
+import { storeFactory } from '../db-transport.js';
 import { createTenantDirectory, openAuthorizedTenantDb } from './directory.js';
 import { admitTenantOAuth, recordTenantMetric } from './runtime-limits.js';
 import { verifyTenantCredential } from './routed-credential.js';
@@ -25,7 +25,7 @@ const random = n => randomBytes(n).toString('base64url');
 const refused = () => new Error('Private GitHub authorization was not verified.');
 
 export function createPrivateGitHubConsent({ env = process.env, fetchImpl = fetch,
-  rootSqlFactory = neon, tenantSqlFactory = neon } = {}) {
+  rootSqlFactory = storeFactory, tenantSqlFactory = storeFactory } = {}) {
   const active = () => {
     if (env.GITHUB_PRIVATE_TENANT_PILOT !== 'enabled') throw refused();
     if (!env.DATABASE_URL ||

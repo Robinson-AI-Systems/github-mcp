@@ -11,7 +11,7 @@ import { randomBytes } from 'node:crypto';
 import { publicOrigin } from '../core/http.js';
 import { REMOTE_PURPOSE, REMOTE_PACK_TTL_MS, REMOTE_REFS_TTL_MS, REMOTE_DIRECT_PACK_TTL_MS } from '../native-git/protocol.js';
 import { signGitRemoteClaim } from '../native-git/signing.js';
-import { checkKey, liveConnection, mirrorId, openKeyScope } from './keys.js';
+import { checkKey, liveConnection, mirrorId, openKeyScope, RENEW_WINDOW_HOURS, RENEW_CAP_DAYS } from './keys.js';
 import { ownerIdentityDb } from '../native-git/pool-audience.js';
 
 const NEW_KEY = 'Ask your AI to call github_git_remote_setup for this repository and run the command it returns.';
@@ -48,6 +48,8 @@ export async function authorizeGitRequest({ parsed, wanted, env = process.env, n
   service: wanted.service, step: wanted.step, access: row.access, control, expiresAt: at + ttl, nonce: randomBytes(16).toString('hex') });
  let signed; try { signed = `${Buffer.from(claim).toString('base64url')}.${signGitRemoteClaim(claim, env)}`; } catch { return no(503, 'The git remote is not configured on this service yet.', { challenge: false }); }
  await log('allowed');
+ // Best effort and never a reason to refuse: a used key quietly renews so long work does not stop at the original expiry.
+ if (typeof db.renewGitRemoteKey === 'function') await db.renewGitRemoteKey(row.id, { windowHours: RENEW_WINDOW_HOURS, capDays: RENEW_CAP_DAYS }).catch(() => null);
  // WORKER-POOL-2: a key in the owner's own (root) database is the owner's; RELAY-OWNER-1: so is a tenant key whose
  // database belongs to the operator's own verified GitHub id. Anyone else's tenant key is not.
  const ownerKey = (scope.scope?.legacy === true && !scope.scope?.tenantId) || ownerIdentityDb(db, env);

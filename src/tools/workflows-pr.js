@@ -91,12 +91,29 @@ export async function inspectPr(args,ctx){
       ...base,pr:args.number,firstFailureOnly:true}));
     ciFailure=firstFailure(pr,diagnosis);
   }
+  // Optional: what each CI job and step actually did at this exact head, so a surprisingly quick pass can be checked.
+  let ciSteps;
+  if(args.steps===true&&pr.head_sha&&within(ctx,start)){
+    const listed=readBody(await call(ctx,'github_actions_list_runs',{...base,headSha:pr.head_sha,max:5}));
+    if(!listed||!Array.isArray(listed.items))ciSteps={status:'unavailable',reason:'The workflow runs at this head could not be read.'};
+    else{
+      const runs=[];
+      for(const run of listed.items.filter(x=>x.head_sha===pr.head_sha).slice(0,3)){
+        if(!within(ctx,start))break;
+        const detail=readBody(await call(ctx,'github_actions_get_run',{...base,runId:run.id,includeSteps:true}));
+        if(detail)runs.push({run_id:detail.id,workflow:bounded(detail.name,120),status:detail.status,conclusion:detail.conclusion,
+          attempt:detail.run_attempt??null,jobs:detail.jobs});
+      }
+      ciSteps=runs.length?{status:'observed',head_sha:pr.head_sha,runs,untrusted:true}
+        :{status:'none',reason:listed.items.length?'No run could be read in time.':'No GitHub Actions run exists at this exact head.'};
+    }
+  }
   return {done:true,status:'observed',number:pr.number,head_sha:pr.head_sha,
     head:pr.head,base:pr.base,draft:pr.draft,state:pr.state,merged:pr.merged,
     mergeable:pr.mergeable,mergeable_state:pr.mergeable_state,
     merge_diagnostics:pr.merge_diagnostics??null,checks,review_decision:pr.review_decision??null,
     unresolved_threads:pr.threads?.unresolved??null,stack:position,
-    ...(ciFailure?{ci_failure:ciFailure}:{}),next_action:next,can_request_merge:next.startsWith('All checks'),
+    ...(ciFailure?{ci_failure:ciFailure}:{}),...(ciSteps?{ci_steps:ciSteps}:{}),next_action:next,can_request_merge:next.startsWith('All checks'),
     html_url:pr.html_url,observed_at:new Date(clock(ctx)).toISOString(),
     ...(within(ctx,start)?{}:{incomplete:true,reason:'The 50-second workflow budget is nearly exhausted.'})};
 }
@@ -104,7 +121,8 @@ const statusTool={
   name:'github_workflow_pr_status',area:'workflow',audience:['B','Op'],compact:true,
   description:'PR head, CI failures, reviews, stack position and next action.',
   usesRegistry:true,
-  inputSchema:{type:'object',properties:{owner:OWNER,repo:REPO,number:NUMBER},required:['repo','number'],additionalProperties:false},
+  inputSchema:{type:'object',properties:{owner:OWNER,repo:REPO,number:NUMBER,
+    steps:{type:'boolean',description:'Also list each CI job and step at this head with results and seconds.'}},required:['repo','number'],additionalProperties:false},
   annotations:{readOnlyHint:true,destructiveHint:false,idempotentHint:true,openWorldHint:true}
 };
 // GitHub's native auto_merge field is the only source for whether GitHub itself is armed.
@@ -186,6 +204,11 @@ function notOpened(response){
   return receipt({done:false,status:'not_applied',guarded_tool:'github_pr_create',underlying_status:status,
     next:'The guarded writer did not confirm a PR. Read its result or current GitHub state; do not retry an uncertain write with a new request key.'});
 }
+// ONE-CALL-PR-1 (2026-11-14): the wrapper sent confirm:false whenever the caller left confirm out, and for the owner an
+// explicit confirm:false means "preview only" — so the first call answered that no confirmation was needed and opened
+// nothing, and every PR cost a second identical call. Pass confirm/dryRun through only when the caller gave them, so the
+// inner writer applies its own policy (one call for the owner; a preview only where confirmation is really needed).
+const passConfirm=a=>({...(a.confirm!==undefined?{confirm:a.confirm}:{}),...(a.dryRun!==undefined?{dryRun:a.dryRun}:{})});
 async function openPr(args,ctx){
   if(!['everyday','full'].includes(ctx.connection?.profile))
     return refused('Opening PRs requires the everyday or full connection profile.');
@@ -201,7 +224,7 @@ async function openPr(args,ctx){
     const response=anyBody(await call(ctx,'github_pr_create',{
       ...s,head:args.head,...(args.base?{base:args.base}:{}),
       title:args.title,body:args.body??'',draft:args.draft===true,
-      confirm:args.confirm===true,dryRun:args.dryRun===true,
+      ...passConfirm(args),
       ...(args.requestKey?{requestKey:args.requestKey+':create'}:{})
     }));
     const result=response?.result;
@@ -270,7 +293,7 @@ async function openPr(args,ctx){
     if(!within(ctx,start))return receipt({done:false,status:'pending',number:status.number,next:'Resume label application after the workflow budget refreshes.'});
     const mutation=await call(ctx,'github_issue_set_labels',{
       ...s,number:status.number,mode:'add',labels:missing,
-      confirm:args.confirm===true,dryRun:args.dryRun===true,
+      ...passConfirm(args),
       ...(args.requestKey?{requestKey:args.requestKey+':labels'}:{})});
     const body=readBody(mutation);
     return receipt({done:false,status:body?.status==='applied'?'labels_applied':'labels_not_applied',
@@ -280,7 +303,7 @@ async function openPr(args,ctx){
   if(!within(ctx,start))return receipt({done:false,status:'pending',next:'Resume creation after the workflow budget refreshes.'});
   const result=await call(ctx,'github_pr_create',{
     ...s,head:args.head,base,title:args.title,body:args.body??'',draft:args.draft===true,
-    confirm:args.confirm===true,dryRun:args.dryRun===true,
+    ...passConfirm(args),
     ...(args.requestKey?{requestKey:args.requestKey+':create'}:{})});
   const applied=anyBody(result);
   if(applied?.status!=='applied')return notOpened(applied);

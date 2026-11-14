@@ -208,6 +208,7 @@ function mergeWorld(gh, { state = 'clean', rules = RULES, ciRuns = [run] } = {})
   gh.when('GET /repos/{owner}/{repo}/branches/{branch}/protection').reply(404, { message: 'Not Found' });
   gh.when('GET /repos/{owner}/{repo}/branches/{branch}/protection/required_status_checks').reply(404, { message: 'Not Found' });
   gh.when('GET /repos/{owner}/{repo}/commits/{ref}/check-runs').reply(200, { total_count: ciRuns.length, check_runs: ciRuns });
+  gh.when('GET /repos/{owner}/{repo}/actions/runs').reply(200, { total_count: 0, workflow_runs: [] });
   gh.when('GET /repos/{owner}/{repo}/commits/{ref}/status').reply(200, { state: 'success', statuses: [], sha: A, total_count: 0 });
   gh.when('GET /repos/{owner}/{repo}/pulls/{pull_number}/reviews').reply(200, []);
   gh.when('GET /repos/{owner}/{repo}/pulls/{pull_number}').replySequence([{ status: 200, body: pr({ mergeable_state: state }) }, { status: 200, body: pr({ mergeable_state: state, merged: true, state: 'closed' }) }]);

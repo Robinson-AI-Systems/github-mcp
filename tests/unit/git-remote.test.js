@@ -181,7 +181,7 @@ describe('the git remote: setup, clone, pull and push with plain git', () => {
   t.w.advanceClock(8 * 3600000 + 1000);
   const expired = await t.git(join(t.work, 'hello'), 'fetch', 'origin');
   expect(expired.status).not.toBe(0);
-  expect(expired.stderr).toMatch(/remote: This git session key expired at 2026-10-11T02:00:\d\dZ \(UTC\)\. Keys last 8 hours by default, at most 24\./);
+  expect(expired.stderr).toMatch(/remote: This git session key expired at 2026-10-11T02:00:\d\dZ \(UTC\)\. A key in regular use renews itself quietly \(up to 7 days in all\); this one was idle\./);
   const uses = await t.w.db.listGitRemoteUses(ro.result.key_id, { limit: 50 });
   expect(uses.map(u => u.outcome)).toEqual(expect.arrayContaining(['refused:read_only_key', 'refused:expired']));
  }, 120000);

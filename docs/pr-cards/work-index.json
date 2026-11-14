@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated": "2026-11-04",
+  "updated": "2026-11-11",
   "order": [
     "A",
     "B",
@@ -2623,6 +2623,65 @@
       ]
     },
     {
+      "id": "PLAY-3",
+      "title": "The always-on host service form and the grandma-proof installer",
+      "batch": "FIN",
+      "design": "docs/pr-cards/PLAY-3.md",
+      "dependencies": [
+        "PLAY-2",
+        "FLEET-3"
+      ],
+      "card": "docs/pr-cards/PLAY-3.md",
+      "status": "IN_PROGRESS",
+      "migration": "none: installer and host service form only; the check-in agentUpdate advertisement is additive and optional on the existing response",
+      "budget": 800,
+      "units": [
+        "PLAY-3"
+      ],
+      "readiness": "READY",
+      "ownerInputs": [],
+      "pr": []
+    },
+    {
+      "id": "PLAY-3-FIXES",
+      "title": "Step-6 live findings folded back into the installer",
+      "batch": "FIN",
+      "design": "docs/pr-cards/PLAY-3-FIXES.md",
+      "dependencies": [
+        "PLAY-3"
+      ],
+      "card": "docs/pr-cards/PLAY-3-FIXES.md",
+      "status": "IN_PROGRESS",
+      "migration": "none: installer robustness fixes only; no protocol or record changes",
+      "budget": 800,
+      "units": [
+        "PLAY-3-FIXES"
+      ],
+      "readiness": "READY",
+      "ownerInputs": [],
+      "pr": []
+    },
+    {
+      "id": "HOST-DELEGATION-1",
+      "title": "Delegated Playground host approval under the owner's own connection",
+      "batch": "FIN",
+      "design": "docs/pr-cards/HOST-DELEGATION-1.md",
+      "dependencies": [
+        "PLAY-2",
+        "FLEET-3"
+      ],
+      "card": "docs/pr-cards/HOST-DELEGATION-1.md",
+      "status": "IN_PROGRESS",
+      "migration": "none: approval provenance is an additive field on the existing enrollment record",
+      "budget": 800,
+      "units": [
+        "HOST-DELEGATION-1"
+      ],
+      "readiness": "READY",
+      "ownerInputs": [],
+      "pr": []
+    },
+    {
       "id": "FLEET-1",
       "title": "Right-sized Playground runtimes and Git-only workspaces",
       "batch": "FIN",
@@ -3478,6 +3537,497 @@
       "readiness": "READY",
       "ownerInputs": [],
       "pr": []
+    },
+    {
+      "id": "RACK-1",
+      "title": "Rack staging: pg transport seam + rack entrypoint",
+      "batch": "FIN",
+      "design": "docs/pr-cards/RACK-1.md",
+      "dependencies": [],
+      "card": "docs/pr-cards/RACK-1.md",
+      "status": "IN_PROGRESS",
+      "migration": "none",
+      "budget": 800,
+      "units": [
+        "RACK-1"
+      ],
+      "readiness": "READY",
+      "ownerInputs": [],
+      "pr": []
+    },
+    {
+      "id": "DISC-1",
+      "title": "Muse discovery documents: muse-client.json + scoped protected-resource",
+      "batch": "FIN",
+      "design": "docs/pr-cards/DISC-1.md",
+      "dependencies": [],
+      "card": "docs/pr-cards/DISC-1.md",
+      "status": "IN_PROGRESS",
+      "migration": "none",
+      "budget": 300,
+      "units": [
+        "DISC-1"
+      ],
+      "readiness": "READY",
+      "ownerInputs": [],
+      "pr": []
+    },
+    {
+      "id": "DISC-2",
+      "title": "CIMD grants at the tenant MCP door: classification parity",
+      "batch": "FIN",
+      "design": "docs/pr-cards/DISC-2.md",
+      "dependencies": [
+        "DISC-1"
+      ],
+      "card": "docs/pr-cards/DISC-2.md",
+      "status": "IN_PROGRESS",
+      "migration": "none",
+      "budget": 300,
+      "units": [
+        "DISC-2"
+      ],
+      "readiness": "READY",
+      "ownerInputs": [],
+      "pr": []
+    },
+    {
+      "id": "WORKER-AUTOUPDATE-1",
+      "title": "PC native Git worker self-updates between jobs: 10-minute check against the live branch tip, admission drain at a job boundary (900 s cap, then defer, never kill), verified swap via pc-worker update, automatic rollback, receipts + one-read status",
+      "batch": "FIN",
+      "design": "docs/pr-cards/WORKER-AUTOUPDATE-1.md",
+      "dependencies": [
+        "PC-WORKER-1"
+      ],
+      "card": "docs/pr-cards/WORKER-AUTOUPDATE-1.md",
+      "status": "IN_PROGRESS",
+      "migration": "none (updater state in /srv/robinson-git/autoupdate/ on the PC)",
+      "budget": 900,
+      "units": [
+        "WORKER-AUTOUPDATE-1"
+      ],
+      "readiness": "READY",
+      "ownerInputs": []
+    },
+    {
+      "id": "SWEEP-REPIN-1",
+      "title": "Playground sweep manager re-pins its derived sweep key after a signing-key rotation: fingerprint recorded at provisioning, drift proven against the provider's stored compose (only the sweep-key slot may differ), re-pin via compose.update + redeploy, legacy records backfilled; KEY-ROTATION sec.5 covers both derived-key dependents",
+      "batch": "FIN",
+      "design": "docs/pr-cards/SWEEP-REPIN-1.md",
+      "dependencies": [],
+      "card": "docs/pr-cards/SWEEP-REPIN-1.md",
+      "status": "IN_PROGRESS",
+      "migration": "none (manager record gains a keyFingerprint hash; no stored credential changes)",
+      "budget": 600,
+      "units": [
+        "SWEEP-REPIN-1"
+      ],
+      "readiness": "READY",
+      "ownerInputs": []
+    },
+    {
+      "id": "SWEEP-REPIN-2",
+      "title": "Sweep manager drift classifier tolerates the one proven provider normalization: Dokploy read-back drops the manager no-op healthcheck {disable: true}, so a stored compose missing it (live shape, 2026-11-11 deliberate fire) classifies stale and takes the re-pin path instead of refusing; any other healthcheck shape or any second difference still refuses as other",
+      "batch": "FIN",
+      "design": "docs/pr-cards/SWEEP-REPIN-2.md",
+      "dependencies": [],
+      "card": "docs/pr-cards/SWEEP-REPIN-2.md",
+      "status": "IN_PROGRESS",
+      "migration": "none (classifier tolerance only; no record or credential changes)",
+      "budget": 600,
+      "units": [
+        "SWEEP-REPIN-2"
+      ],
+      "readiness": "READY",
+      "ownerInputs": []
+    },
+    {
+      "id": "PUSH-EXIT-PROBE-1",
+      "title": "Push-exit gauge: an unreachable probe corroborated by the primary worker's signed report reads degraded, not down (rack hairpin)",
+      "batch": "FIN",
+      "design": "docs/pr-cards/PUSH-EXIT-PROBE-1.md",
+      "dependencies": [
+        "PUSH-EXIT-1",
+        "SRV-STATUS-1"
+      ],
+      "card": "docs/pr-cards/PUSH-EXIT-PROBE-1.md",
+      "status": "IN_PROGRESS",
+      "migration": "none",
+      "budget": 900,
+      "units": [
+        "PUSH-EXIT-PROBE-1"
+      ],
+      "readiness": "READY",
+      "ownerInputs": []
+    },
+    {
+      "id": "SWEEP-ORPHAN-1",
+      "title": "Sweep retires cleanup-requested allocations whose provider app was never created: no composeId plus a fresh inventory read proving zero plan-name matches (the Nov-8 record job_b4dc31759005e8d8, orphaned across 16 healthy cycles) retires in place with the never-allocated terminal write plus orphan journaling; one-match adoption, multi-match/no-request/inventory-error deferral and the composeId path unchanged",
+      "batch": "FIN",
+      "design": "docs/pr-cards/SWEEP-ORPHAN-1.md",
+      "dependencies": [],
+      "card": "docs/pr-cards/SWEEP-ORPHAN-1.md",
+      "status": "IN_PROGRESS",
+      "migration": "none (sweep retires the orphaned record through its normal cycles; no hand edits, no schema or credential changes)",
+      "budget": 600,
+      "units": [
+        "SWEEP-ORPHAN-1"
+      ],
+      "readiness": "READY",
+      "ownerInputs": []
+    },
+    {
+      "id": "HIDDEN-GUARD-1",
+      "title": "Never commit the redaction placeholder in place of real text: every native push, put_file, push_files and edit_files refuses a change that turns an existing line into its [hidden] form; code interpolations ({pw}, ${PW}, %s) in a connection-string or password slot are no longer treated as credentials, so reads stop blanking them and their restore is accepted",
+      "batch": "FIN",
+      "design": "docs/pr-cards/HIDDEN-GUARD-1.md",
+      "dependencies": [
+        "PUSH-FIXTURE-1",
+        "GIT-UPLOAD-1"
+      ],
+      "card": "docs/pr-cards/HIDDEN-GUARD-1.md",
+      "status": "IN_PROGRESS",
+      "migration": "none",
+      "budget": 900,
+      "units": [
+        "HIDDEN-GUARD-1"
+      ],
+      "readiness": "READY",
+      "ownerInputs": []
+    },
+    {
+      "id": "WORKER-RESOLV-GUARD-1",
+      "title": "PC native Git worker never runs silently with a broken resolver: the worker's own timed egress verdict in signed capabilities and on /health, github_server_status down on that verdict, and a PC-kit guard that probes in-container every 2 min and heals a poisoned resolv.conf capture (restart, then recreate) at a job boundary on the auto-updater's drain rule",
+      "batch": "FIN",
+      "design": "docs/pr-cards/WORKER-RESOLV-GUARD-1.md",
+      "dependencies": [
+        "PC-WORKER-1",
+        "WORKER-AUTOUPDATE-1",
+        "SRV-STATUS-1"
+      ],
+      "card": "docs/pr-cards/WORKER-RESOLV-GUARD-1.md",
+      "status": "IN_PROGRESS",
+      "migration": "none (guard state in /srv/robinson-git/resolv-guard/ on the PC)",
+      "budget": 900,
+      "units": [
+        "WORKER-RESOLV-GUARD-1"
+      ],
+      "readiness": "READY",
+      "ownerInputs": []
+    },
+    {
+      "id": "PAUSE-ORIGIN-1",
+      "title": "A worker admission pause says who holds it: the owner, the self-updater or the name-lookup guard \u2014 a failed self-update no longer reads as \"paused by its owner (the computer is in use)\"",
+      "batch": "FIN",
+      "design": "docs/pr-cards/PAUSE-ORIGIN-1.md",
+      "dependencies": [
+        "PC-WORKER-1",
+        "WORKER-AUTOUPDATE-1",
+        "WORKER-RESOLV-GUARD-1"
+      ],
+      "card": "docs/pr-cards/PAUSE-ORIGIN-1.md",
+      "status": "IN_PROGRESS",
+      "migration": "none (reason code unchanged; one added field held_by)",
+      "budget": 300,
+      "units": [
+        "PAUSE-ORIGIN-1"
+      ],
+      "readiness": "READY",
+      "ownerInputs": []
+    },
+    {
+      "id": "AUTOUPDATE-GATE-1",
+      "title": "The PC worker self-updater swaps for real and judges the public path from where callers stand: install.sh starts the new image under the updater's own pause, verification checks the running container's build, the public check falls back to the worker container (no WSL hairpin), and a failed target is held instead of retried every cycle",
+      "batch": "FIN",
+      "design": "docs/pr-cards/AUTOUPDATE-GATE-1.md",
+      "dependencies": [
+        "WORKER-AUTOUPDATE-1",
+        "PAUSE-ORIGIN-1"
+      ],
+      "card": "docs/pr-cards/AUTOUPDATE-GATE-1.md",
+      "status": "IN_PROGRESS",
+      "migration": "none (deploy/pc scripts; takes effect at the next kit install)",
+      "budget": 300,
+      "units": [
+        "AUTOUPDATE-GATE-1"
+      ],
+      "readiness": "READY",
+      "ownerInputs": []
+    },
+    {
+      "id": "AUTOUPDATE-GATE-2",
+      "title": "The PC worker self-updater cannot lock itself out over the public path: the public check avoids the host hairpin (public DoH, canonical origin) and is advisory, the updater starts the built image itself, and a rollback keeps the running updater",
+      "batch": "FIN",
+      "design": "docs/pr-cards/AUTOUPDATE-GATE-2.md",
+      "dependencies": [
+        "AUTOUPDATE-GATE-1"
+      ],
+      "card": "docs/pr-cards/AUTOUPDATE-GATE-2.md",
+      "status": "IN_PROGRESS",
+      "migration": "none (deploy/pc scripts; takes effect at the next kit install)",
+      "budget": 300,
+      "units": [
+        "AUTOUPDATE-GATE-2"
+      ],
+      "readiness": "READY",
+      "ownerInputs": []
+    },
+    {
+      "id": "PLAY3-BOOT-RETRY-1",
+      "title": "Playground host agent boot-retry: the system unit wants (not requires) docker.service and carries no start limit, provisioning convergence restates the settings as a drop-in on older installs, and the container form's rule is restart policy always \u2014 the 2026-11-11 boot left the agent down on a dependency-failed start job while Docker recovered in seconds",
+      "batch": "FIN",
+      "design": "docs/pr-cards/PLAY3-BOOT-RETRY-1.md",
+      "dependencies": [],
+      "card": "docs/pr-cards/PLAY3-BOOT-RETRY-1.md",
+      "status": "IN_PROGRESS",
+      "migration": "none (service definitions + provisioning convergence only; live devices converged in place, no schema or credential changes)",
+      "budget": 600,
+      "units": [
+        "PLAY3-BOOT-RETRY-1"
+      ],
+      "readiness": "READY",
+      "ownerInputs": []
+    },
+    {
+      "id": "FIXTURE-URI-1",
+      "title": "A documented fake connection-string password (FAKE\u2026, evident placeholders) passes pushes under the fixture opt-in; reads still hide it; real passwords still refused",
+      "batch": "FIN",
+      "design": "docs/pr-cards/FIXTURE-URI-1.md",
+      "dependencies": [
+        "PUSH-FIXTURE-2",
+        "HIDDEN-GUARD-1"
+      ],
+      "card": "docs/pr-cards/FIXTURE-URI-1.md",
+      "status": "IN_PROGRESS",
+      "migration": "none",
+      "budget": 300,
+      "units": [
+        "FIXTURE-URI-1"
+      ],
+      "readiness": "READY",
+      "ownerInputs": []
+    },
+    {
+      "id": "MERGE-ANYWAY-1",
+      "title": "Merge when green never waits on missing CI; a deliberate merge-anyway fallback needs an acknowledgement and a written reason",
+      "batch": "FIN",
+      "design": "docs/pr-cards/MERGE-ANYWAY-1.md",
+      "dependencies": [],
+      "card": "docs/pr-cards/MERGE-ANYWAY-1.md",
+      "status": "IN_PROGRESS",
+      "migration": "none",
+      "budget": 300,
+      "units": [
+        "MERGE-ANYWAY-1"
+      ],
+      "readiness": "READY",
+      "ownerInputs": []
+    },
+    {
+      "id": "OTHER-BASE-PUSH-1",
+      "title": "Merge into any base branch; silence the push-negotiation warning",
+      "batch": "FIN",
+      "design": "docs/pr-cards/OTHER-BASE-PUSH-1.md",
+      "dependencies": [],
+      "card": "docs/pr-cards/OTHER-BASE-PUSH-1.md",
+      "status": "IN_PROGRESS",
+      "migration": "none",
+      "budget": 300,
+      "units": [
+        "OTHER-BASE-PUSH-1"
+      ],
+      "readiness": "READY",
+      "ownerInputs": []
+    },
+    {
+      "id": "MERGE-SHA-1",
+      "title": "Return the verified merge SHA after merge-when-green",
+      "batch": "FIN",
+      "design": "docs/pr-cards/MERGE-SHA-1.md",
+      "dependencies": [],
+      "card": "docs/pr-cards/MERGE-SHA-1.md",
+      "status": "IN_PROGRESS",
+      "migration": "none",
+      "budget": 300,
+      "units": [
+        "MERGE-SHA-1"
+      ],
+      "readiness": "READY",
+      "ownerInputs": []
+    },
+    {
+      "id": "SETUP-FWD-HOST-1",
+      "title": "Setup page: compare the forwarded host behind the rack gateway",
+      "batch": "FIN",
+      "design": "docs/pr-cards/SETUP-FWD-HOST-1.md",
+      "dependencies": [],
+      "card": "docs/pr-cards/SETUP-FWD-HOST-1.md",
+      "status": "MERGED",
+      "migration": "none",
+      "budget": 300,
+      "units": [
+        "SETUP-FWD-HOST-1"
+      ],
+      "readiness": "READY",
+      "ownerInputs": []
+    },
+    {
+      "id": "MERGE-WAIT-WF-1",
+      "title": "merge_when_green waits for workflow runs that have not reported their checks yet",
+      "batch": "FIN",
+      "design": "docs/pr-cards/MERGE-WAIT-WF-1.md",
+      "dependencies": [],
+      "card": "docs/pr-cards/MERGE-WAIT-WF-1.md",
+      "status": "MERGED",
+      "migration": "none",
+      "budget": 300,
+      "units": [
+        "MERGE-WAIT-WF-1"
+      ],
+      "readiness": "READY",
+      "ownerInputs": []
+    },
+    {
+      "id": "FIXTURE-EXCEPTION-1",
+      "title": "Owner push exceptions for one exact fake value in one file",
+      "batch": "FIN",
+      "design": "docs/pr-cards/FIXTURE-EXCEPTION-1.md",
+      "dependencies": [],
+      "card": "docs/pr-cards/FIXTURE-EXCEPTION-1.md",
+      "status": "IN_PROGRESS",
+      "migration": "none",
+      "budget": 300,
+      "units": [
+        "FIXTURE-EXCEPTION-1"
+      ],
+      "readiness": "READY",
+      "ownerInputs": []
+    },
+    {
+      "id": "PUSH-REFUSAL-RECEIPTS-1",
+      "title": "Push exceptions for a refused file that never reached GitHub",
+      "batch": "FIN",
+      "design": "docs/pr-cards/PUSH-REFUSAL-RECEIPTS-1.md",
+      "dependencies": [
+        "FIXTURE-EXCEPTION-1"
+      ],
+      "card": "docs/pr-cards/PUSH-REFUSAL-RECEIPTS-1.md",
+      "status": "MERGED",
+      "migration": "none",
+      "budget": 300,
+      "units": [
+        "PUSH-REFUSAL-RECEIPTS-1"
+      ],
+      "readiness": "READY",
+      "ownerInputs": []
+    },
+    {
+      "id": "AGENT-FB-1113",
+      "title": "Agent feedback: add/remove scanner exceptions, honest validation errors, job log search, named red checks",
+      "batch": "FIN",
+      "design": "docs/pr-cards/AGENT-FB-1113.md",
+      "dependencies": [
+        "PUSH-REFUSAL-RECEIPTS-1"
+      ],
+      "card": "docs/pr-cards/AGENT-FB-1113.md",
+      "status": "MERGED",
+      "migration": "none",
+      "budget": 300,
+      "units": [
+        "AGENT-FB-1113"
+      ],
+      "readiness": "READY",
+      "ownerInputs": []
+    },
+    {
+      "id": "SCANNER-CFG-1114",
+      "title": "Scanner configure says why it refused (not 'state could not be read'); names the field; valueFingerprint alias",
+      "batch": "FIN",
+      "design": "docs/pr-cards/SCANNER-CFG-1114.md",
+      "dependencies": [
+        "AGENT-FB-1113"
+      ],
+      "card": "docs/pr-cards/SCANNER-CFG-1114.md",
+      "status": "MERGED",
+      "migration": "none",
+      "budget": 150,
+      "units": [
+        "SCANNER-CFG-1114"
+      ],
+      "readiness": "READY",
+      "ownerInputs": []
+    },
+    {
+      "id": "BUILD-FB-1114",
+      "title": "Fixes from a project build: scanner false alarms, one-call allow + describe, repo search past unreadable accounts, text/query, merge-when-green without plan rules",
+      "batch": "FIN",
+      "design": "docs/pr-cards/BUILD-FB-1114.md",
+      "dependencies": [
+        "SCANNER-CFG-1114"
+      ],
+      "card": "docs/pr-cards/BUILD-FB-1114.md",
+      "status": "MERGED",
+      "migration": "none",
+      "budget": 400,
+      "units": [
+        "BUILD-FB-1114"
+      ],
+      "readiness": "READY",
+      "ownerInputs": []
+    },
+    {
+      "id": "PRIVATE-LIST-1",
+      "title": "Personal account repo list includes private repositories (installation route; public-only fallback marked)",
+      "batch": "FIN",
+      "design": "docs/pr-cards/PRIVATE-LIST-1.md",
+      "dependencies": [
+        "BUILD-FB-1114"
+      ],
+      "card": "docs/pr-cards/PRIVATE-LIST-1.md",
+      "status": "MERGED",
+      "migration": "none",
+      "budget": 120,
+      "units": [
+        "PRIVATE-LIST-1"
+      ],
+      "readiness": "READY",
+      "ownerInputs": []
+    },
+    {
+      "id": "ONE-CALL-PR-1",
+      "title": "Opening a PR takes one call (confirm/dryRun passed through only when given)",
+      "batch": "FIN",
+      "design": "docs/pr-cards/ONE-CALL-PR-1.md",
+      "dependencies": [
+        "PRIVATE-LIST-1"
+      ],
+      "card": "docs/pr-cards/ONE-CALL-PR-1.md",
+      "status": "MERGED",
+      "migration": "none",
+      "budget": 80,
+      "units": [
+        "ONE-CALL-PR-1"
+      ],
+      "readiness": "READY",
+      "ownerInputs": []
+    },
+    {
+      "id": "MERGE-BASE-1",
+      "title": "Merging into a non-default branch in one call (mergeIntoBranch described; base alias)",
+      "batch": "FIN",
+      "design": "docs/pr-cards/MERGE-BASE-1.md",
+      "dependencies": [
+        "ONE-CALL-PR-1"
+      ],
+      "card": "docs/pr-cards/MERGE-BASE-1.md",
+      "status": "MERGED",
+      "migration": "none",
+      "budget": 40,
+      "units": [
+        "MERGE-BASE-1"
+      ],
+      "readiness": "READY",
+      "ownerInputs": []
     }
   ],
   "gatewayBoundary": {
@@ -3521,7 +4071,7 @@
       "docs/pr-cards/RESULT-OWN-KEYS.md",
       "docs/pr-cards/RESULT-OFFSET-METADATA.md"
     ],
-    "sourceAndAutomated": "All five #151–#155 source implementations accepted by the complete seven exact-head CI/release gates; #155 merger/final-main CI must still be observed independently.",
+    "sourceAndAutomated": "All five #151\u2013#155 source implementations accepted by the complete seven exact-head CI/release gates; #155 merger/final-main CI must still be observed independently.",
     "deployedExactRevision": "UNVERIFIED for this batch; last independently observed production source #146",
     "authenticatedCustomMcp": "UNVERIFIED",
     "directOAuth": "UNVERIFIED",

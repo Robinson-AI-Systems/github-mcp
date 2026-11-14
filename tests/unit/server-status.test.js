@@ -109,6 +109,37 @@ describe('github_server_status', () => {
     }
   });
 
+  it('PUSH-EXIT-PROBE-1: an unanswered push-exit probe is degraded, not down, only when the primary worker\'s signed report names that origin', async () => {
+    // Healthy probe: unchanged, and no corroboration fields.
+    let out = await world().run({ fields: ['health'] });
+    expect(out.health.direct_git).toEqual({ status: 'ok', exit: expect.any(String), ms: expect.any(Number) });
+
+    // The rack-on-the-PC case: the public address cannot be reached from here, the primary worker reports it.
+    for (const over of [{ direct: 503 }, { hang: ['git.internal-host.example.test'] }]) {
+      _resetServerStatusCache();
+      out = await world(over).run({ fields: ['health'] }, { budgetMs: 200 });
+      expect(out.health.direct_git).toMatchObject({ status: 'degraded', corroborated_by: 'worker_report', reason: expect.stringContaining('was not checked directly') });
+      expect(out.health.direct_git.unanswered).toBeUndefined();
+      expect(JSON.stringify(out)).not.toContain('internal-host');
+    }
+
+    // No corroboration: worker down, worker not ready, or the worker reports a different origin or none.
+    const cap = world().s.cap;
+    for (const over of [
+      { direct: 503, workerDown: true },
+      { direct: 503, cap: { ...cap, ready: false } },
+      { direct: 503, cap: { ...cap, git_direct: { ...cap.git_direct, origin: 'https://other.example.test' } } },
+      { direct: 503, cap: { ...cap, git_direct: undefined } },
+      { direct: 503, env: { ...SECRET_ENV, NATIVE_GIT_WORKER_DRAINING: 'true' } }
+    ]) {
+      _resetServerStatusCache();
+      out = await world(over).run({ fields: ['health'] });
+      expect(out.health.direct_git).toMatchObject({ status: 'down' });
+      expect(out.health.direct_git.corroborated_by).toBeUndefined();
+      expect(out.health.direct_git.unanswered).toBeUndefined();
+    }
+  });
+
   it('marks each health state and the overall worst state', async () => {
     let out = await world({ dbSetting: async () => { throw new Error('boom'); }, workerDown: true, direct: 503 }).run({ fields: ['health'] });
     expect(out.health).toMatchObject({ overall: 'down', database: { status: 'down', reason: expect.any(String) }, worker: { status: 'down', reason: expect.stringContaining('could not be reached') }, direct_git: { status: 'down' } });
@@ -250,5 +281,31 @@ describe('native Git worker build commit (read only)', () => {
         } finally { await new Promise((resolve) => server.close(resolve)); }
       }
     } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+});
+
+describe('WORKER-RESOLV-GUARD-1: the worker leg believes the worker\'s own resolver verdict', () => {
+  const capWith = (egress) => ({ ready: true, protocol: WORKER_PROTOCOL, build_commit: CHAIN[3], native_options: NATIVE_OPTIONS_VERSION, capacity_mode: 'resource-aware',
+    admission: { allowed: true }, direct_upload: 'quarantine-v1', direct_download: 'one-time-v1', upload_chunks: 'chunks-v1', upload_apply: 'delete-v1', git_remote: 'v1',
+    git_direct: { version: 'v1', origin: 'https://git.internal-host.example.test', worker_key: 'ed25519:FAKEworkerpublickey' }, ...(egress ? { egress } : {}) });
+
+  it('marks the worker down when its timed probe cannot resolve, however healthy it looks otherwise', async () => {
+    const out = await world({ cap: capWith({ status: 'down', ms: 2501, names: { 'github.com': 'down', 'api.github.com': 'down' }, checked_at: '2026-11-03T03:00:00Z' }) }).run({ fields: ['health'] });
+    expect(out.health.worker).toMatchObject({ status: 'down', egress: { status: 'down', ms: 2501 }, reason: expect.stringContaining('resolver is not working') });
+    expect(out.health.overall).toBe('down');
+  });
+
+  it('stays ok on an ok verdict, an unknown verdict, and on an older worker that reports none', async () => {
+    for (const egress of [{ status: 'ok', ms: 42 }, { status: 'unknown', ms: null }, null]) {
+      _resetServerStatusCache();
+      const out = await world({ cap: capWith(egress) }).run({ fields: ['health'] });
+      expect(out.health.worker.status).toBe('ok');
+    }
+  });
+
+  it('surfaces the verdict in the full workers view, never a resolved address', async () => {
+    const out = await world({ cap: capWith({ status: 'ok', ms: 42, names: { 'github.com': 'ok', 'api.github.com': 'ok' } }) }).run({ detail: 'full' });
+    expect(out.workers.native_git.egress).toEqual({ status: 'ok', ms: 42 });
+    expect(JSON.stringify(out)).not.toMatch(/140\.82|104\.21|dns/i);
   });
 });

@@ -5,6 +5,7 @@ import { redact } from '../github/content-protection.js';
 import { validZone } from '../core/time-zone.js';
 import { randomUUID,createHash } from 'node:crypto';
 import { neon } from '@neondatabase/serverless';
+import { storeFactory, selectStoreTransport } from '../db-transport.js';
 import { createDb, SCHEMA_TABLES } from '../db.js';
 import { initTenantRuntimeSchema } from './runtime-limits.js';
 import { initMarketplaceSchema, createMarketplaceStore } from '../marketplace/store.js';
@@ -58,9 +59,16 @@ export function tenantConnectionString(connectionString, tenantId) {
 /** Production HTTP requests have no persistent session. Configure the path in
  * the SAME transaction as every query, without public fallback or pooled SET
  * leakage. Injected session adapters retain the connection-options contract. */
-export function createTenantSql(connectionString, tenantId, sqlFactory = neon) {
+export function createTenantSql(connectionString, tenantId, sqlFactory = storeFactory) {
   const scoped = tenantConnectionString(connectionString, tenantId);
-  if (sqlFactory !== neon) return sqlFactory(scoped);
+  if (sqlFactory !== storeFactory) return sqlFactory(scoped);
+  // The pg transport applies the tenant scope itself: its handle reads
+  // the search_path out of the scoped URL's options parameter and runs
+  // every query in a transaction opened with the same transaction-local
+  // set_config the Neon path below runs (see src/db-transport.js).
+  if (selectStoreTransport(process.env, connectionString) === 'pg') {
+    return storeFactory(scoped);
+  }
   const url = new URL(scoped);
   url.searchParams.delete('options');
   const raw = neon(url.toString());
@@ -1383,7 +1391,7 @@ const verifiedSubjectOf = row => /^[1-9][0-9]{0,18}$/.test(String(row?.provider_
  * Private tests may inject an isolated session SQL factory; production pins
  * every HTTP transaction. Both must pass exact namespace assertions. */
 export async function openAuthorizedTenantDb({ directory, tenantId, verifiedIdentityId,
-  connectionString = process.env.DATABASE_URL, sqlFactory = neon }) {
+  connectionString = process.env.DATABASE_URL, sqlFactory = storeFactory }) {
   if (!directory || typeof directory.authorized !== 'function')
     throw new TypeError('A private tenant directory is required.');
   const bound = await directory.authorized(tenantId, verifiedIdentityId);
@@ -1424,7 +1432,7 @@ export function forgetUpgradedTenantsForTests() { upgradedTenants.clear(); }
 /** For a newly provisioned, inactive tenant only. The caller is trusted internal
  * code; never expose this to an MCP tool, arbitrary OAuth client or public URL. */
 export async function initializeProvisionedTenant({ tenantId, connectionString = process.env.DATABASE_URL,
-  sqlFactory = neon }) {
+  sqlFactory = storeFactory }) {
   const sql = createTenantSql(connectionString, tenantId, sqlFactory);
   const namespace = await assertTenantSearchPath(sql, tenantId);
   const db = createDb(sql);

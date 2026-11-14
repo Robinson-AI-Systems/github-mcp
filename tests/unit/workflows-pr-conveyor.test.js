@@ -1,7 +1,7 @@
 import {describe,it,expect} from 'vitest';
 import {registry} from '../../src/tools/index.js';
 import {handlers as prWorkflows} from '../../src/tools/workflows-pr.js';
-import {handlers as mergeWorkflows} from '../../src/tools/workflows-merge.js';
+import {handlers as mergeWorkflows,tools as mergeTools} from '../../src/tools/workflows-merge.js';
 import {tools as issueReadTools} from '../../src/tools/issues-read.js';
 
 // The real tool schema bounds the arguments a workflow may pass (a mocked call must not hide an out-of-range one).
@@ -41,6 +41,31 @@ function fixture({prs={4:ready()},mode='preview',profile='full',time=Date.parse(
 const body=r=>r.structuredContent;
 const writes=x=>x.calls.filter(c=>['github_pr_create','github_pr_merge','github_pr_update',
   'github_issue_set_labels'].includes(c.name));
+
+describe('PR status step detail (owner feedback 2026-11-09)',()=>{
+  const runs={items:[{id:77,head_sha:A},{id:78,head_sha:B}],count:2};
+  const run={id:77,name:'ci',status:'completed',conclusion:'success',run_attempt:1,
+    jobs:[{name:'test',conclusion:'success',seconds:38,steps:[{number:1,name:'Run tests',conclusion:'success',seconds:31}]}]};
+  it('lists each job and step at the exact head only when asked',async()=>{
+    const f=fixture({extra:{github_actions_list_runs:runs,github_actions_get_run:run}});
+    const plain=(await prWorkflows.github_workflow_pr_status({repo:'app',number:4},f.ctx));
+    expect(plain.ci_steps).toBeUndefined();
+    expect(f.calls.some(c=>c.name==='github_actions_get_run')).toBe(false);
+    const f2=fixture({extra:{github_actions_list_runs:runs,github_actions_get_run:run}});
+    const full=(await prWorkflows.github_workflow_pr_status({repo:'app',number:4,steps:true},f2.ctx));
+    expect(full.ci_steps).toMatchObject({status:'observed',head_sha:A,untrusted:true});
+    expect(full.ci_steps.runs).toHaveLength(1); // the run for another head is ignored
+    expect(full.ci_steps.runs[0].jobs[0].steps[0]).toMatchObject({name:'Run tests',seconds:31});
+    expect(f2.calls.find(c=>c.name==='github_actions_get_run').args).toMatchObject({runId:77,includeSteps:true});
+    expect(f2.calls.find(c=>c.name==='github_actions_list_runs').args).toMatchObject({headSha:A});
+  });
+  it('says plainly when no run exists at the head or the read fails',async()=>{
+    const none=fixture({extra:{github_actions_list_runs:{items:[],count:0}}});
+    expect((await prWorkflows.github_workflow_pr_status({repo:'app',number:4,steps:true},none.ctx)).ci_steps.status).toBe('none');
+    const bad=fixture({extra:{github_actions_list_runs:null}});
+    expect((await prWorkflows.github_workflow_pr_status({repo:'app',number:4,steps:true},bad.ctx)).ci_steps.status).toBe('unavailable');
+  });
+});
 
 describe('W-1 full PR status and resumable guarded open',()=>{
   it('registers both approved workflows with correct read-versus-change marks',()=>{
@@ -169,11 +194,34 @@ describe('W-1 full PR status and resumable guarded open',()=>{
 
 describe('W-2 exact-head and one-step stack conveyor',()=>{
   const args={repo:'app',number:4,expectedHeadSha:A,confirm:true,requestKey:'w2-merge'};
+  it('merges into a non-default branch only when the caller names that branch (2026-11-12)',async()=>{
+    const mk=()=>fixture({prs:{4:ready(4,{base:'feature-parent'})},extra:{github_pr_merge:(a,prs)=>{
+      prs[4]={...prs[4],state:'closed',merged:true};
+      return {status:'applied',number:4,merged:true,merge_commit:C};
+    }}});
+    const f0=mk();
+    const none=body(await mergeWorkflows.github_workflow_merge_when_green(args,f0.ctx));
+    expect(none).toMatchObject({status:'needs_branch_confirmation',done:false,pr_base:'feature-parent'});
+    expect(writes(f0)).toHaveLength(0);
+    const wrong=body(await mergeWorkflows.github_workflow_merge_when_green({...args,mergeIntoBranch:'main'},mk().ctx));
+    expect(wrong.status).toBe('needs_branch_confirmation');
+    const f=mk();
+    const x=body(await mergeWorkflows.github_workflow_merge_when_green({...args,mergeIntoBranch:'feature-parent'},f.ctx));
+    expect(x).toMatchObject({status:'merged',done:true,number:4});
+    // MERGE-BASE-1: one call with the branch named up front, also as `base`; the tool says so.
+    const g=mk();
+    const y=body(await mergeWorkflows.github_workflow_merge_when_green({...args,base:'feature-parent'},g.ctx));
+    expect(y).toMatchObject({status:'merged',done:true,number:4});
+    const tool=mergeTools.find(t=>t.name==='github_workflow_merge_when_green');
+    expect(tool.description).toMatch(/mergeIntoBranch/);
+    expect(tool.inputSchema.properties.mergeIntoBranch.description).toMatch(/up front/);
+    await expect(mergeWorkflows.github_workflow_merge_when_green({...args,base:'a',mergeIntoBranch:'b'},mk().ctx)).rejects.toThrow(/same branch/);
+  });
   it('refuses stale SHA, draft, conflicts, missing CI, unreadable threads, and review rejection',async()=>{
     const cases=[
       {head_sha:B},{draft:true},{mergeable:false},{checks:{green:null}},
       {threads:{unknown:'provider denied'}},{threads:{unresolved:2}},
-      {review_decision:'CHANGES_REQUESTED'},{base:'feature-parent'}
+      {review_decision:'CHANGES_REQUESTED'}
     ];
     for(const changes of cases){
       const f=fixture({prs:{4:ready(4,changes)},extra:{github_pr_merge:{status:'applied'}}});
@@ -229,6 +277,30 @@ describe('W-2 exact-head and one-step stack conveyor',()=>{
     expect(refused).toMatchObject({status:'not_applied',done:false,refusedBy:'protected',
       error:'User protected list forbids overrides'});
     expect(writes(d)).toHaveLength(1);
+  });
+  it('returns the merge SHA from the fresh PR read when the writer does not include it (2026-11-12)',async()=>{
+    const f=fixture({extra:{github_pr_merge:(a,prs)=>{
+      prs[4]={...prs[4],state:'closed',merged:true,test_merge_sha:C};
+      return {status:'applied',number:4,merged:true};
+    }}});
+    const x=body(await mergeWorkflows.github_workflow_merge_when_green(args,f.ctx));
+    expect(x).toMatchObject({status:'merged',done:true,merge_commit:C});
+  });
+  it('re-reads once when the provider read comes back empty, and never judges an empty answer (2026-11-12)',async()=>{
+    const f=fixture({extra:{github_pr_merge:(a,prs)=>{prs[4]={...prs[4],state:'closed',merged:true};return {status:'applied',number:4,merged:true,merge_commit:C};}}});
+    const real=f.ctx.callTool;let flaked=0;
+    f.ctx.callTool=async(name,a)=>{
+      if(name==='github_pr_get'&&flaked<1){flaked++;return {structuredContent:{},content:[{type:'text',text:'{}'}]};}
+      return real(name,a);
+    };
+    const x=body(await mergeWorkflows.github_workflow_merge_when_green(args,f.ctx));
+    expect(flaked).toBe(1);
+    expect(x).toMatchObject({status:'merged',done:true});
+    const g=fixture();const r2=g.ctx.callTool;
+    g.ctx.callTool=async(name,a)=>name==='github_pr_get'?{structuredContent:{},content:[{type:'text',text:'{}'}]}:r2(name,a);
+    const y=body(await mergeWorkflows.github_workflow_merge_when_green(args,g.ctx));
+    expect(y.blockers).toEqual(['PR provider read is unavailable.']);
+    expect(writes(g)).toHaveLength(0);
   });
   it('delegates exact head, merge method and independent guarded confirm; verifies provider readback',async()=>{
     const f=fixture({extra:{github_pr_merge:(a,prs)=>{

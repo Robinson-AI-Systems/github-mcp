@@ -42,8 +42,9 @@ describe('home page', () => {
       const museRequest = await b.page.locator('#muse-connector-request').textContent();
       expect(museRequest).toContain(ORIGIN + '/api/mcp');
       expect(museRequest).toContain('OAuth authorization code with S256 PKCE');
-      expect(museRequest).toContain(MUSE_PUBLIC_CLIENT_ID);
-      expect(await b.page.locator('#muse-client-id').textContent()).toBe(MUSE_PUBLIC_CLIENT_ID);
+      expect(museRequest).toContain('use muse and leave Client Secret blank');
+      expect(await b.page.locator('#muse-client-id').textContent()).toBe('muse');
+      expect(await b.page.content()).toContain(MUSE_PUBLIC_CLIENT_ID);
       expect(await b.page.locator('#muse-address').textContent()).toBe(ORIGIN + '/api/mcp');
       expect(text).toContain('Client Secret: leave blank.');
       expect(museRequest).not.toMatch(/Bearer\s+|ghp_|github_pat_|client_secret/i);

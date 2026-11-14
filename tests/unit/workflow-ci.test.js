@@ -106,7 +106,8 @@ describe('W-4 durable failed-job retry composition',()=>{
   it('previews and delegates exact head/workflow only in failed mode',async()=>{
     const f=fixture();expect(body(await rerunFailedCi({...arg,dryRun:true},f.ctx)).status).toBe('preview');
     expect(body(await rerunFailedCi({...arg,confirm:true},f.ctx)).status).toBe('applied');
-    expect(f.calls.filter(c=>c.name==='github_actions_rerun')[1].args).toMatchObject({mode:'failed',expectedHeadSha:A,expectedWorkflowId:20,confirm:true,dryRun:false});
+    expect(f.calls.filter(c=>c.name==='github_actions_rerun')[1].args).toMatchObject({mode:'failed',expectedHeadSha:A,expectedWorkflowId:20,confirm:true});
+    expect(f.calls.filter(c=>c.name==='github_actions_rerun')[1].args.dryRun).toBeUndefined();
   });
   it('refuses a second automatic retry across attempts or new run IDs on the same workflow/head',async()=>{
     const f=fixture();await rerunFailedCi({...arg,confirm:true},f.ctx);

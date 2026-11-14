@@ -5,32 +5,53 @@ a desktop PC, a laptop, a VPS, a home server, a Dokploy or any other Docker host
 tailnet. Each machine only ever runs **your own** work, under your own connection. It only makes **outbound** HTTPS
 check-ins to the server, so it needs no tunnel, no public IP and no open port.
 
-**You need:** Docker with Compose v2 (Docker Desktop on Windows with WSL2, or Docker Engine on Linux/macOS), Node.js 22
-or newer, and enough room for the runtime (at least 1 CPU, 1.5 GB free memory and 10 GB free disk; more is better).
+## Windows: the installer (recommended)
 
-1. Get the agent: `curl -fsSLO https://raw.githubusercontent.com/Robinson-AI-Systems/github-mcp/main/tools/playground-device/agent.mjs`
-   and `curl -fsSLO https://raw.githubusercontent.com/Robinson-AI-Systems/github-mcp/main/tools/playground-device/pair.mjs`
-   into one folder (or clone the repository). Read them first — they are short.
-2. Open **My connection** (`https://github.robinsonaisystems.com/connection`), sign in with GitHub and press
-   **Add a computer or server for &lt;app&gt;**. It shows a command with a one-time code (valid ten minutes).
+On a Windows 11 PC you do not install Docker or Node yourself — setup provides both, inside its own private
+Linux workspace (`PlaygroundWorker`), and leaves anything already on the PC (Docker Desktop, your own Linux
+installs, your files) exactly as it is.
+
+1. Open **My connection** (`https://github.robinsonaisystems.com/connection`), sign in with GitHub and press
+   **Add a computer or server for &lt;app&gt;**. Download the setup program and the pairing file it offers.
+2. Run setup. It checks the PC, asks Windows **once** for administrator permission, and installs its workspace.
+   If the PC's virtual-machine features were off, Windows needs one restart; setup resumes by itself when you
+   sign back in. Your part: about five minutes of attention, two decisions in total.
+3. Setup asks for the pairing file you saved, joins this PC, and starts the host service. Back on My connection,
+   check the fingerprint matches the one setup shows and press **Approve**.
+4. A short readiness check runs by itself (Docker works, a private network really is private, containers run as
+   an unprivileged user) and the PC shows **Ready**. From then on, new workspaces you open are placed on your
+   ready machines first, and the service keeps itself up to date on its own — you never run an update by hand.
+
+The service runs from your sign-in (a small keeper task holds its workspace open). If the machine sleeps, work
+waits and resumes when it checks in again; a runtime that cannot reach the server stops new commands and, after
+five minutes, stops itself. **Pause or remove it any time:** run setup again and choose pause or remove — removal
+unregisters the workspace, restores your power settings, and (only if you ask) turns back off any Windows
+features setup turned on.
+
+## Expert path: Linux, macOS, servers, or a hand-run agent
+
+**You need:** Docker Engine with Compose v2 (on Linux/macOS; on Windows this path is the installer above —
+Docker Desktop is not used by the Playground host), Node.js 22 or newer, and enough room for the runtime
+(at least 1 CPU, 1.5 GB free memory and 10 GB free disk; more is better).
+
+1. Get the agent files (`agent.mjs`, `pair.mjs`, `update.mjs`, `run.mjs`, `version.json` from this folder, or
+   clone the repository). Read them first — they are short.
+2. Open **My connection**, sign in and press **Add a computer or server for &lt;app&gt;**. It shows a command
+   with a one-time code (valid ten minutes).
 3. Run that command on the machine: `node agent.mjs join --device DEVICE_ID --code CODE`. It prints a fingerprint.
 4. Reload My connection, check the fingerprint matches, press **Approve**.
-5. Start the agent: `node agent.mjs run`. Keep it running (see below). On its first check-in it runs a short readiness
-   check (Docker works, a private network really is private, containers run as an unprivileged user) and then shows
-   **Ready** on My connection. From then on, new workspaces you open are placed on your ready machines first.
+5. Run it as a service so it survives sign-out and updates itself: the ready-made definitions in
+   [`service/`](service/README.md) (systemd --user on Linux, launchd on macOS) start the launcher `run.mjs`,
+   which runs the current agent version, applies signed updates from the server by itself, and rolls back
+   automatically if a new version fails. A hand-run foreground agent (`node agent.mjs run`) never updates
+   itself — the person at the terminal stays in charge.
 
-**Keep it running:** on Linux use a user service (`systemd-run --user --unit ras-playground node $PWD/agent.mjs run`),
-on Windows/WSL2 or macOS leave a terminal open or use your usual "run at login" tool. If the machine sleeps, work waits
-and resumes when it checks in again; a runtime that cannot reach the server stops new commands and, after five minutes,
-stops itself.
-
-**On a server you administer** (a VPS, a home server, a Dokploy or Coolify host, any Linux box with Docker): install
-Node.js 22+ next to Docker, then do the same steps over SSH and keep it running with
-`systemd-run --user --unit ras-playground node $PWD/agent.mjs run` (run `loginctl enable-linger $USER` once so it survives
-logout). The agent uses the server's Docker directly; it does not need to be deployed as an app inside Dokploy, and it does
-not touch anything else on the server — only containers, volumes and networks it creates, all labelled
-`com.robinson.playground.*`. Several machines can be added; each shows on My connection with its last check-in and free
-capacity, and work goes to the ready one with the most free memory.
+**On a server you administer** (a VPS, a home server, a Dokploy or Coolify host, any Linux box with Docker):
+install Node.js 22+ next to Docker Engine, then do the same steps over SSH. The agent uses the server's Docker
+directly; it does not need to be deployed as an app inside Dokploy, and it does not touch anything else on the
+server — only containers, volumes and networks it creates, all labelled `com.robinson.playground.*`. Several
+machines can be added; each shows on My connection with its last check-in and free capacity, and work goes to
+the ready one with the most free memory.
 
 **Caches:** each machine keeps a package-download cache and a Git object cache shared by your runtimes there, so repeat
 installs and attachments are fast. They are removed when you revoke the machine or run `node agent.mjs leave`.
@@ -40,9 +61,10 @@ run `node agent.mjs leave` on it. `node agent.mjs status` shows what it is doing
 
 **What it will and will not do:** it only accepts orders signed by the server key it pinned when you joined: start or stop
 one Playground runtime from a signed plan (a private network, unprivileged containers, no Docker socket, the gateway on
-127.0.0.1 only), forward an already-signed request to that runtime, run the readiness check, or stop everything. It never
-receives your GitHub token. You, as the machine's owner, can always see and stop its containers; it is not a sandbox
-against you, and other people's work never runs on it.
+127.0.0.1 only), forward an already-signed request to that runtime, run the readiness check, or stop everything. Agent
+updates arrive the same way — signed by that same key, hash-checked, applied only when idle, and rolled back
+automatically if the new version crash-loops. It never receives your GitHub token. You, as the machine's owner, can
+always see and stop its containers; it is not a sandbox against you, and other people's work never runs on it.
 
 Interactive browser previews are not available on your own machine yet (text previews are). Your machine fetches the
 repository's history from GitHub itself, so big repositories are fine; only your uncommitted and unpushed changes are

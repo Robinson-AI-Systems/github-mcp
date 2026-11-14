@@ -21,6 +21,7 @@ import {optionalConsentChallenge,OptionalConsentRequired} from '../tenancy/optio
 import { actingAsFor, createActorLog } from '../github/act-as.js';
 import { createRateCollector } from '../github/rate.js';
 import { familyOf, featureRefusal, offeredTools } from '../github/feature-gates.js';
+import { githubFor } from '../github/client.js';
 
 const fail = (text) => ({ isError: true, content: [{ type: 'text', text: redactExcerpt(text) }] });
 const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -132,6 +133,37 @@ function actingRates(snapshot,input){
   return {...snapshot,items};
 }
 
+// Owner feedback 2026-11-11: a workflow's inputs given as the usual name-to-value object were refused; accept both shapes.
+function normalizeInputs(tool, args) {
+  if (!isObject(args) || tool?.inputSchema?.properties?.inputs?.type !== 'array' || !isObject(args.inputs)) return args;
+  const text = (v) => (typeof v === 'string' ? v : v !== null && typeof v === 'object' ? JSON.stringify(v) : String(v));
+  return { ...args, inputs: Object.entries(args.inputs).map(([name, value]) => ({ name, value: text(value) })) };
+}
+
+// Owner feedback 2026-11-11: with no owner named, a call looked in the default account only (the personal one) and said the PR or
+// repository "could not be read". When the connection has several accounts and the default does not hold that repository but exactly
+// one other account does, use that one. Only a found answer is remembered; any failed read leaves the call unchanged.
+const FOUND_OWNERS = new Map();
+async function resolveOwner(tool, args, ctx) {
+  const c = ctx.connection;
+  if (!isObject(args) || args.owner !== undefined || typeof args.repo !== 'string' || !tool?.inputSchema?.properties?.owner) return args;
+  const accounts = (c?.accounts ?? []).filter((a) => typeof a === 'string');
+  if (accounts.length < 2 || typeof c.default_account !== 'string') return args;
+  const key = `${c.client_id ?? c.pass_id ?? ''}\n${c.default_account}\n${args.repo}`.toLowerCase();
+  let owner = FOUND_OWNERS.get(key);
+  if (owner === undefined) {
+    const has = async (account) => { try { await (await githubFor(ctx, { owner: account })).request('GET /repos/{owner}/{repo}', { owner: account, repo: args.repo }); return true; } catch { return false; } };
+    if (await has(c.default_account)) owner = c.default_account;
+    else {
+      const others = [];
+      for (const a of accounts) if (a.toLowerCase() !== c.default_account.toLowerCase() && await has(a)) others.push(a);
+      owner = others.length === 1 ? others[0] : null;
+    }
+    if (owner) { if (FOUND_OWNERS.size >= 500) FOUND_OWNERS.clear(); FOUND_OWNERS.set(key, owner); }
+  }
+  return owner && owner.toLowerCase() !== c.default_account.toLowerCase() ? { ...args, owner } : args;
+}
+
 /** `usage` is optional: `{ beforeWrite(): Promise<null|{message, retryAfterSeconds}> (reserves a slot), afterWrite(): Promise<void> (confirms it), release?(): Promise<void> (hands it back) }`. Absent = no limits
  *  (every existing caller and the owner path behave exactly as before). It is asked before each real change and told after it. */
 /** `featureGates: true` (CAP-6, set by every production door) refuses a call to a runner, merge-queue or Copilot tool on an
@@ -167,7 +199,8 @@ export function createDispatch({ env = process.env, now = Date.now, fetch = glob
     }
   });
   async function run(input,box){
-    const {registry,name,args,connection,db}=input,tool=registry.tools.find(t=>t.name===name);
+    const {registry,name,connection,db}=input,tool=registry.tools.find(t=>t.name===name);
+    const args=normalizeInputs(tool,input.args);input={...input,args};
     if(['github_security_scanner_configure','github_security_scanner_get_settings'].includes(name))return withRepositoryProtection([],()=>runScoped(input,box),{isolateFiles:true});
     const owner=args?.owner??connection?.default_account,repo=args?.repo;
     if(tool&&isToolVisible(tool,connection?.profile,connection)&&!validateArgs(tool.inputSchema,args)&&!passRefusal({tool,args:args??{},connection})&&typeof repo==='string'&&/^[A-Za-z0-9_.-]{1,100}$/.test(repo)&&connection?.accounts?.some(a=>a.toLowerCase()===String(owner).toLowerCase())&&typeof db?.getSetting==='function'){
@@ -194,6 +227,7 @@ export function createDispatch({ env = process.env, now = Date.now, fetch = glob
     const outside = passRefusal({ tool, args: args ?? {}, connection });
     if (outside) return fail(outside);
     const gateCtx = { connection, db, env, now, fetch, credentials };
+    args = await resolveOwner(tool, args, gateCtx);
     if (featureGates && familyOf(name)) {
       let refused = null;
       try { refused = await featureRefusal(gateCtx, name, args ?? {}); } catch { refused = null; /* an unanswerable gate never blocks: GitHub decides */ }

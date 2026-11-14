@@ -1,0 +1,12 @@
+[Unit]
+# WORKER-AUTOUPDATE-1: one update check for the PC native Git worker (see worker-autoupdate.sh).
+Description=Robinson native Git worker auto-updater (between-jobs update check)
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/srv/robinson-git/worker-autoupdate.sh
+# A check is normally seconds; a real update includes an image build plus the drain cap (900 s).
+TimeoutStartSec=2400
+Nice=10

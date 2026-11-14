@@ -8,7 +8,9 @@ const STR={type:'string',minLength:1,maxLength:80};
 export const SCANNER_SETTINGS_SCHEMA={type:'object',additionalProperties:false,properties:{
  additionalRules:{type:'array',maxItems:8,items:{type:'object',additionalProperties:false,properties:{id:{type:'string',pattern:'^custom_[a-z][a-z0-9_]{1,39}$'},label:STR,type:{type:'string',enum:['prefix','assignment']},prefix:{type:'string',pattern:'^[A-Za-z][A-Za-z0-9_-]{2,31}$'},keys:{type:'array',minItems:1,maxItems:8,uniqueItems:true,items:{type:'string',pattern:'^[A-Za-z][A-Za-z0-9_.-]{1,63}$'}},alphabet:{type:'string',enum:['alnum','base64url','hex']},minLength:{type:'integer',minimum:1,maximum:128},maxLength:{type:'integer',minimum:1,maximum:4096}},required:['id','label','type','minLength']}},
  disabledRules:{type:'array',maxItems:8,uniqueItems:true,items:STR},
- suppressions:{type:'array',maxItems:20,items:{type:'object',additionalProperties:false,properties:{rule:STR,path:{type:'string',minLength:1,maxLength:1000},blobSha:{type:'string',pattern:'^[a-f0-9]{40}$'},reason:{type:'string',minLength:8,maxLength:200},fileReadException:{type:'boolean'},fingerprint:{type:'string',pattern:'^[a-f0-9]{64}$'}},required:['rule','path','blobSha','reason']}}
+ suppressions:{type:'array',maxItems:20,description:'The WHOLE new exception list: it replaces the current one. To add or remove single exceptions, use addSuppressions / removeSuppressions instead.',items:{type:'object',additionalProperties:false,properties:{rule:STR,path:{type:'string',minLength:1,maxLength:1000},blobSha:{type:'string',pattern:'^[a-f0-9]{40}$'},reason:{type:'string',minLength:8,maxLength:200},fileReadException:{type:'boolean'},fingerprint:{type:'string',pattern:'^[a-f0-9]{64}$'},pushException:{type:'boolean'},valueFingerprint:{type:'string',pattern:'^[a-f0-9]{64}$'}},required:['rule','path','blobSha','reason']}},
+ addSuppressions:{type:'array',maxItems:20,description:'Exceptions to ADD to the current list (the rest are kept). Use this to add one exception without resending the others.',items:{type:'object',additionalProperties:false,properties:{rule:STR,path:{type:'string',minLength:1,maxLength:1000},blobSha:{type:'string',pattern:'^[a-f0-9]{40}$'},reason:{type:'string',minLength:8,maxLength:200},fileReadException:{type:'boolean'},fingerprint:{type:'string',pattern:'^[a-f0-9]{64}$'},pushException:{type:'boolean'},valueFingerprint:{type:'string',pattern:'^[a-f0-9]{64}$'}},required:['rule','path','blobSha','reason']}},
+ removeSuppressions:{type:'array',maxItems:20,description:'Exceptions to REMOVE from the current list, matched by rule, path and blobSha (plus valueFingerprint or fingerprint when given).',items:{type:'object',additionalProperties:false,properties:{rule:STR,path:{type:'string',minLength:1,maxLength:1000},blobSha:{type:'string',pattern:'^[a-f0-9]{40}$'},fingerprint:{type:'string',pattern:'^[a-f0-9]{64}$'},valueFingerprint:{type:'string',pattern:'^[a-f0-9]{64}$'}},required:['rule','path','blobSha']}}
 }};
 // JSONB is free to reorder object keys. Equality must retain values/array order, not insertion order.
 export function stableScannerJson(value){
@@ -17,11 +19,33 @@ export function stableScannerJson(value){
 }
 export const defaultScannerSettings=()=>({additionalRules:[],disabledRules:[],suppressions:[]});
 export const scannerSettingKey=(owner,repo)=>'scanner_'+createHash('sha256').update(JSON.stringify([owner.toLowerCase(),repo.toLowerCase()])).digest('hex').slice(0,32);
+/** The first string field (as a path like addSuppressions[0].reason) that holds credential-shaped text. */
+function credentialField(v,path=''){
+ if(typeof v==='string')return containsBuiltinCredential(v)?path||'a value':null;
+ if(Array.isArray(v)){for(let i=0;i<v.length;i++){const hit=credentialField(v[i],`${path}[${i}]`);if(hit)return hit;}return null;}
+ if(v&&typeof v==='object'){for(const [k,x] of Object.entries(v)){const hit=credentialField(x,path?`${path}.${k}`:k);if(hit)return hit;}}
+ return null;
+}
 const knownKeys=(o,keys)=>Object.keys(o).every(k=>keys.includes(k));
 export function scannerSettings(value,base=defaultScannerSettings()) {
- if(!value||typeof value!=='object'||Array.isArray(value)||!knownKeys(value,['additionalRules','disabledRules','suppressions']))throw new TypeError('Use scanner setting fields from github_security_scanner_configure.');
- if(containsBuiltinCredential(JSON.stringify(value)))throw new TypeError('Scanner settings accept rule structure, never credential values.');
- const s={...base,...value};
+ if(!value||typeof value!=='object'||Array.isArray(value)||!knownKeys(value,['additionalRules','disabledRules','suppressions','addSuppressions','removeSuppressions']))throw new TypeError('Use scanner setting fields from github_security_scanner_configure.');
+ if(containsBuiltinCredential(JSON.stringify(value))){
+  // Name WHERE (field path), never what: a reason that merely shows a URL shape like
+  // scheme://user:secret@host trips the same detector a real credential does (2026-11-14).
+  const where=credentialField(value);
+  throw new TypeError(`Scanner settings accept rule structure, never credential values${where?`: ${where} looks like it contains one. Reword it without the credential-shaped text (for example "a postgres URL with a placeholder password")`:''}.`);
+ }
+ const {addSuppressions,removeSuppressions,...plain}=value;
+ const s={...base,...plain};
+ if(addSuppressions!==undefined||removeSuppressions!==undefined){
+  if(plain.suppressions!==undefined)throw new TypeError('Use either suppressions (the whole new list) or addSuppressions/removeSuppressions (changes to the current list), not both.');
+  if((addSuppressions!==undefined&&!Array.isArray(addSuppressions))||(removeSuppressions!==undefined&&!Array.isArray(removeSuppressions)))throw new TypeError('addSuppressions and removeSuppressions are lists.');
+  const same=(a,b)=>a.rule===b.rule&&a.path===b.path&&a.blobSha===b.blobSha&&(b.valueFingerprint===undefined||a.valueFingerprint===b.valueFingerprint)&&(b.fingerprint===undefined||a.fingerprint===b.fingerprint);
+  let list=[...(Array.isArray(base.suppressions)?base.suppressions:[])];
+  for(const r of removeSuppressions??[]){if(!list.some(x=>same(x,r)))throw new TypeError(`No current exception matches the one to remove (${r.rule} in ${r.path}).`);list=list.filter(x=>!same(x,r));}
+  for(const a of addSuppressions??[]){if(list.some(x=>same(x,a)&&x.valueFingerprint===a.valueFingerprint&&x.fingerprint===a.fingerprint))throw new TypeError(`That exception already exists (${a.rule} in ${a.path}).`);list.push(a);}
+  s.suppressions=list;
+ }
  if(!Array.isArray(s.additionalRules)||s.additionalRules.length>8||!Array.isArray(s.disabledRules)||s.disabledRules.length>8||!Array.isArray(s.suppressions)||s.suppressions.length>20)throw new TypeError('Scanner policy exceeds its bounded rule/suppression limits.');
  const ids=new Set(SCANNER_RULE_IDS);
  for(const r of s.additionalRules){
@@ -34,7 +58,7 @@ export function scannerSettings(value,base=defaultScannerSettings()) {
   }else throw new TypeError('Use a prefix or assignment rule.');
  }
  if(new Set(s.disabledRules).size!==s.disabledRules.length||s.disabledRules.some(id=>!s.additionalRules.some(r=>r.id===id)))throw new TypeError('Only custom rules may be disabled; built-in false positives require an exact-file suppression.');
- for(const x of s.suppressions)if(!x||!knownKeys(x,['rule','path','blobSha','reason','fileReadException','fingerprint'])||!ids.has(x.rule)||typeof x.path!=='string'||x.path.length>1000||x.path.startsWith('/')||x.path.includes('*')||x.path.split('/').some(p=>!p||p==='.'||p==='..')||/[\\\x00-\x1f?#%]/.test(x.path)||!/^[a-f0-9]{40}$/.test(x.blobSha)||typeof x.reason!=='string'||x.reason.length<8||x.reason.length>200||x.fileReadException!==undefined&&typeof x.fileReadException!=='boolean'||x.fingerprint!==undefined&&!/^[a-f0-9]{64}$/.test(x.fingerprint)||x.fileReadException===true&&!x.fingerprint)throw new TypeError('Suppressions require an exact relative path, blob SHA, known rule and a reason.');
+ for(const x of s.suppressions)if(!x||!knownKeys(x,['rule','path','blobSha','reason','fileReadException','fingerprint','pushException','valueFingerprint'])||!ids.has(x.rule)||typeof x.path!=='string'||x.path.length>1000||x.path.startsWith('/')||x.path.includes('*')||x.path.split('/').some(p=>!p||p==='.'||p==='..')||/[\\\x00-\x1f?#%]/.test(x.path)||!/^[a-f0-9]{40}$/.test(x.blobSha)||typeof x.reason!=='string'||x.reason.length<8||x.reason.length>200||x.fileReadException!==undefined&&typeof x.fileReadException!=='boolean'||x.fingerprint!==undefined&&!/^[a-f0-9]{64}$/.test(x.fingerprint)||x.fileReadException===true&&!x.fingerprint||x.pushException!==undefined&&typeof x.pushException!=='boolean'||x.valueFingerprint!==undefined&&!/^[a-f0-9]{64}$/.test(x.valueFingerprint)||x.pushException===true&&!x.valueFingerprint)throw new TypeError('Suppressions require an exact relative path, blob SHA, known rule and a reason; push exceptions also need the finding\'s value fingerprint.');
  return structuredClone(s);
 }
 export async function loadScannerPolicy(db,owner,repo){

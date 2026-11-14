@@ -108,9 +108,22 @@ export const contentProtectionCheck = defineRead({
   handler: (args, ctx) => plain(async () => {
     if (args.blobSha && args.ref) throw new TypeError('blobSha cannot be combined with ref.');
     const { owner, octokit } = await readerFor(args, ctx);
-    const { data } = args.blobSha
-      ? await octokit.request('GET /repos/{owner}/{repo}/git/blobs/{file_sha}', { owner, repo: args.repo, file_sha: args.blobSha })
-      : await octokit.request('GET /repos/{owner}/{repo}/contents/{path}', { owner, repo: args.repo, path: args.path, ...(args.ref ? { ref: args.ref } : {}) });
+    let data;
+    try {
+      ({ data } = args.blobSha
+        ? await octokit.request('GET /repos/{owner}/{repo}/git/blobs/{file_sha}', { owner, repo: args.repo, file_sha: args.blobSha })
+        : await octokit.request('GET /repos/{owner}/{repo}/contents/{path}', { owner, repo: args.repo, path: args.path, ...(args.ref ? { ref: args.ref } : {}) }));
+    } catch (error) {
+      // PUSH-REFUSAL-RECEIPTS-1: a refused push's file is not on GitHub; answer from the guard's receipts.
+      if (!args.blobSha || error?.status !== 404) throw error;
+      const { refusalsFor } = await import('../github/push-refusals.js');
+      const receipts = await refusalsFor(ctx.db, owner, args.repo, { path: args.path, blobSha: args.blobSha.toLowerCase() });
+      if (!receipts.length) throw error;
+      return { owner, repo: args.repo, path: args.path, sha: args.blobSha.toLowerCase(), inspected: true, source: 'refused_push_receipt',
+        findings: receipts.filter(r => !args.rule || r.rule === args.rule).map(r => ({ rule: r.rule, line: r.line, value_fingerprint: r.valueFingerprint, refused_at: r.at })),
+        next: 'This file was refused on push and is not on GitHub. If a finding is a deliberate fake test value, configure a suppression {rule, path, blobSha, reason, pushException: true, valueFingerprint} verified with door "push" (expectedBefore true, expectedAfter false), then push again: the push guard re-checks every byte.',
+        report_contains_secret_values: false };
+    }
     if (Array.isArray(data) || data.encoding !== 'base64' || typeof data.content !== 'string' || data.size > MAX_TEXT_BYTES)
       return { owner, repo: args.repo, path: args.path, inspected: false, note: 'Select one file up to 1 MB; use local Git for larger or unsupported content.' };
     const buffer = Buffer.from(data.content, 'base64');

@@ -11,7 +11,11 @@ import { KEEP_WHOLE } from '../core/result-envelope.js';
 
 const readOnly = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false };
 const visible = (ctx) => toolsForProfile(ctx.registry, ctx.connection.profile, ctx.connection);
-const find = (ctx, name) => visible(ctx).find((t) => t.name === name);
+// The common name for "a general GitHub request" is accepted for the read tool only; changes keep their own tool and guards
+// (owner decision 2026-11-09). The alias adds no tool, so there is nothing to keep in step with github_api_read.
+const TOOL_ALIASES = Object.freeze({ github_api_request: 'github_api_read' });
+const canon = (name) => (typeof name === 'string' && Object.hasOwn(TOOL_ALIASES, name) ? TOOL_ALIASES[name] : name);
+const find = (ctx, name) => visible(ctx).find((t) => t.name === canon(name));
 
 // CAP-6: on the production doors the dispatcher hands in `ctx.offered`, which keeps only the runner, merge-queue and
 // Copilot families an account really has and says, per family and account, why one was left out.
@@ -83,11 +87,22 @@ async function describeHandler(args, ctx) {
 
 const callable = (ctx, name) => { const t = find(ctx, name); return t && (!t.usesRegistry || t.name==='github_secret_scanner' || (t.area === 'workflow' && (Array.isArray(t.delegatedWrites) || t.annotations?.readOnlyHint === true))) ? t : null; };
 
+// Owner feedback 2026-11-09: an agent called a general read tool by a guessed name ("github_api_request") and got a bare
+// "Unknown or unavailable tool", though github_api_read exists. Offer close names so the right one is one step away.
+const SYNONYMS = { request: ['read', 'write'], get: ['read'], fetch: ['read'], rest: ['api'], http: ['api'], query: ['read', 'search'], list: ['read', 'search'] };
+export function closeNames(ctx, wanted, max = 3) {
+  const words = new Set(String(wanted).toLowerCase().split(/[^a-z0-9]+/).filter(Boolean).flatMap((w) => [w, ...(SYNONYMS[w] ?? [])]));
+  words.delete('github');
+  if (!words.size) return [];
+  return (ctx.registry?.tools ?? []).filter((t) => find(ctx, t.name))
+    .map((t) => ({ name: t.name, score: t.name.split('_').filter((w) => w !== 'github' && words.has(w)).length }))
+    .filter((x) => x.score >= 2).sort((a, b) => b.score - a.score || a.name.localeCompare(b.name)).slice(0, max).map((x) => x.name);
+}
 async function callHandler(args, ctx) {
   if (!callable(ctx, args.name)) {
-    return { isError: true, content: [{ type: 'text', text: `Unknown or unavailable tool: ${redact(String(args.name)).slice(0, 80)}. Search with github_search_tools.${find(ctx, args.name) ? ' The tool-finding tools are called directly, not through github_call.' : ''}` }] };
+    return { isError: true, content: [{ type: 'text', text: `Unknown or unavailable tool: ${redact(String(args.name)).slice(0, 80)}. Search with github_search_tools.${closeNames(ctx, args.name).length ? ' Did you mean: ' + closeNames(ctx, args.name).join(', ') + '?' : ''}${find(ctx, args.name) ? ' The tool-finding tools are called directly, not through github_call.' : ''}` }] };
   }
-  return ctx.callTool(args.name, args.args ?? {});
+  return ctx.callTool(canon(args.name), args.args ?? {});
 }
 
 async function batchHandler(args, ctx) {
@@ -100,7 +115,7 @@ async function batchHandler(args, ctx) {
   const results = [];
   for (let offset = 0; offset < calls.length; offset += 3) {
     const wave = await Promise.all(calls.slice(offset, offset + 3).map(async (call) => {
-      const r = await ctx.callTool(call.name, call.args ?? {});
+      const r = await ctx.callTool(canon(call.name), call.args ?? {});
       if (r._meta?.['mcp/www_authenticate']) throw new OptionalConsentRequired(r);
       if (r.isError) return { name: call.name, ok: false, error: r.content?.[0]?.text ?? 'The call failed.' };
       // A whole file or an explicit window (fullText, startLine, byte range) is the caller's choice to receive large text; a

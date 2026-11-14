@@ -1,5 +1,5 @@
 import { statfs } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { monitorEventLoopDelay } from 'node:perf_hooks';
 
@@ -12,12 +12,28 @@ const pressure=(reason)=>({allowed:false,reason,retryAfterSeconds:2});
 export const OWNER_PAUSE_FILE='.owner-pause';
 export const OWNER_PAUSED=Object.freeze({allowed:false,reason:'owner_paused',retryAfterSeconds:60});
 export const OWNER_PAUSED_TEXT='This worker is paused by its owner (the computer is in use); nothing was started. Try again later.';
-/** The plain sentence for a refused admission: the owner pause, or the given resource-pressure text. */
-export const refusalText=(check,pressureText)=>check?.reason==='owner_paused'?OWNER_PAUSED_TEXT:pressureText;
-export function createResourceMonitor({root,policy={},memory=()=>process.availableMemory(),filesystem=statfs,delay,pauseFile=null,paused=existsSync}={}) {
+// PAUSE-ORIGIN-1 (2026-11-11): the same file also closes admission for the worker's own maintenance —
+// deploy/pc/worker-autoupdate.sh and worker-resolv-guard.sh write it with their marker inside. A failed
+// self-update leaves it in place "for operator repair", and agents were told "paused by its owner (the
+// computer is in use)" while nobody was at the PC. The reason code stays `owner_paused` (placement,
+// retry and pool logic are unchanged); `held_by` says who holds the pause, and the text says it plainly.
+export const PAUSE_HOLDERS=Object.freeze({'worker-autoupdate':'updater','worker-resolv-guard':'resolver_guard'});
+export const PAUSED_TEXT=Object.freeze({
+ owner:OWNER_PAUSED_TEXT,
+ updater:'This worker is closed to new work by its own self-updater, not by its owner: an update is being applied, or a failed update is waiting for operator repair. Nothing was started. Try again later.',
+ resolver_guard:'This worker is closed to new work by its name-lookup guard, not by its owner: it is repairing DNS, or waiting for operator repair. Nothing was started. Try again later.',
+});
+/** Who holds a pause, from the pause file's text: 'updater', 'resolver_guard', or 'owner' (anything else). */
+export function pauseHolder(text){const t=String(text??'');for(const [marker,holder] of Object.entries(PAUSE_HOLDERS))if(t.includes(marker))return holder;return 'owner';}
+export const pausedText=holder=>PAUSED_TEXT[holder]??OWNER_PAUSED_TEXT;
+/** The plain sentence for a refused admission: the pause (by who holds it), or the given resource-pressure text. */
+export const refusalText=(check,pressureText)=>check?.reason==='owner_paused'?pausedText(check.held_by):pressureText;
+export function createResourceMonitor({root,policy={},memory=()=>process.availableMemory(),filesystem=statfs,delay,pauseFile=null,paused=existsSync,readPause=path=>readFileSync(path,'utf8')}={}) {
  const limits={...RESOURCE_DEFAULTS,...policy};
  for(const [key,value] of Object.entries(limits)) if(!Object.hasOwn(RESOURCE_DEFAULTS,key)||!Number.isSafeInteger(value)||value<=0)throw new TypeError('Invalid native resource policy.');
  const isPaused=()=>{if(!pauseFile)return false;try{return paused(pauseFile)===true;}catch{return true;}};
+ // An unreadable pause file is the owner's: never guess a maintenance pause.
+ const holder=()=>{if(!pauseFile)return 'owner';try{return pauseHolder(readPause(pauseFile).slice(0,400));}catch{return 'owner';}};
  const histogram=delay??monitorEventLoopDelay({resolution:20});histogram.enable?.();
  const reset=setInterval(()=>histogram.reset?.(),1000);reset.unref();
  const memoryCheck=(extra=0,floor=limits.minMemoryBytes)=>{
@@ -30,8 +46,10 @@ export function createResourceMonitor({root,policy={},memory=()=>process.availab
   body(bytes){return memoryCheck(bytes*3,Math.min(limits.minMemoryBytes,2*MiB));},
   /** True while the owner pause file exists (a check that cannot tell counts as paused: never defended). */
   paused:isPaused,
+  /** Who holds the current pause ('owner' | 'updater' | 'resolver_guard'). */
+  pauseHolder:holder,
   async check({needsDisk=true}={}){
-   if(isPaused())return OWNER_PAUSED;
+   if(isPaused())return {...OWNER_PAUSED,held_by:holder()};
    const mem=memoryCheck();if(!mem.allowed)return mem;
    const lag=histogram.percentile(99)/1e6;
    if(!Number.isFinite(lag)||lag<0)return pressure('responsiveness_observation_unavailable');

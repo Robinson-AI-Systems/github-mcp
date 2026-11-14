@@ -1,4 +1,5 @@
 import { isOwnerConnection } from './authority.js';
+import { isInternalBug, isOwnRefusal } from './error-origin.js';
 // Contract-generic write lifecycle (B-1). Imports nothing service-specific: the service supplies how to name the target,
 // read its current state, classify the change, send it, read it back and explain a failure.
 //
@@ -157,9 +158,19 @@ export function defineWrite(spec) {
       const text = `REFUSED (${by}): ${reason}`;
       try { await log({ summary: text, dryRun: true, confirmed: false, ...recordFields() }); } catch { /* the refusal still stands */ }
       return out({ done: false, status: 'refused_by_guard', refusedBy: by,
-        reason_code:by==='read'&&/^[a-z][a-z0-9_]{1,63}$/.test(readError?.safeCode??'')?readError.safeCode:'guard_'+String(by).toLowerCase().replace(/[^a-z0-9]+/g,'_').slice(0,50),
-        retryable:by==='read'&&readError?.safeRetryable===true,no_change_sent:true,error: reason, ...(classification.production ? { production: classification.production } : {}) }, true);
+        reason_code:by==='request'?'invalid_request':by==='read'&&/^[a-z][a-z0-9_]{1,63}$/.test(readError?.safeCode??'')?readError.safeCode:'guard_'+String(by).toLowerCase().replace(/[^a-z0-9]+/g,'_').slice(0,50),
+        retryable:by==='read'&&readError?.safeRetryable===true,no_change_sent:true,error: reason, ...(classification.production && by !== 'request' ? { production: classification.production } : {}) }, true);
     };
+
+    // The read step also checks the request (2026-11-14: a scanner configure whose reason held a URL
+    // shape was refused by the settings check, but answered "current state could not be read, try
+    // again", hiding the real reason and inviting a pointless retry). This server's own refusal is the
+    // request's fault, whatever the connection's mode: say what it was; retrying it unchanged won't help.
+    // A dry run shows the same reason as its preview warning.
+    // (A read error that already carries its own safe message and code keeps that path, below.)
+    if (readFailed && args.dryRun !== true && readError?.safeMessage !== true && isOwnRefusal(readError) && typeof readError.message === 'string'
+      && readError.message.length > 0 && readError.message.length <= 500)
+      return refuse('request', `No change was sent. ${readError.message}`);
 
     // A strict-spend tool asks everyone, the owner included, and never runs with a cost that could not be worked out.
     const asksFirst = !ownerDirected || decl.strictSpend;
@@ -191,7 +202,8 @@ export function defineWrite(spec) {
     const line = marks.length ? `${summary} ${marks.map((m) => `${m}.`).join(' ')}` : summary;
     const needsConfirm = asksFirst && (decl.confirm === 'always' || decl.spend || classification.spendUnknown || !!classification.production || !!classification.accessWidening
       || classification.notifies.length > 0 || classification.spendCents > 0 || forcedConfirm !== null);
-    const preflightWarning = readError?.safeMessage === true && typeof readError.message === 'string' && readError.message.length <= 300
+    const preflightWarning = (readError?.safeMessage === true && typeof readError.message === 'string' && readError.message.length <= 300)
+      || (isOwnRefusal(readError) && typeof readError?.message === 'string' && readError.message.length <= 500)
       ? readError.message : 'Required current-state preflight failed. This preview is incomplete; no operation was sent.';
     const preview = { done: false, ...(readFailed ? { preflight_failed: true,reason_code:'preflight_read_failed',no_change_sent:true,warning: preflightWarning } : {}),
       preview: line, needsConfirmation: !readFailed && needsConfirm && args.confirm !== true, ...(forcedConfirm ? { because: forcedConfirm } : {}) };
@@ -266,12 +278,16 @@ export function defineWrite(spec) {
 
     // 5. Send exactly once, read back, compare.
     let response; let sent = false; let failure = null;
+    const startedAt = new Date(typeof ctx.now === 'function' ? ctx.now() : Date.now()).toISOString();
     try { response = await apply({ args, ctx, target: tgt, before, requestKey: key, classification }); sent = true; } catch (error) { failure = error; }
     if (!sent) {
       // A failure that proves nothing started (the apply step refused before any
       // provider call) is reported as not applied, and the request key is released.
       const notStarted = failure?.noOperationStarted === true;
-      const rejected = notStarted || classifyError(failure) === 'rejected';
+      // Second Shift 2026-11-14: who failed matters. A fault in this server's own code is not a refusal (it may have
+      // stopped part-way, so it is uncertain); a refusal by this server's own checks is not GitHub's ("provider").
+      const internal = isInternalBug(failure);
+      const rejected = !internal && (notStarted || classifyError(failure) === 'rejected');
       let text;
       try { text = explain(failure, { args, ctx, target: tgt }); } catch { text = 'The change was not completed.'; }
       await ctx.db.finishChange(claim.id, { summary: `${rejected ? 'REJECTED' : 'UNCERTAIN'}: ${line}`, confirmed: false, releaseKey: rejected, actedAs: ctx.actor?.summary?.()?.as ?? null }).catch(() => {});
@@ -279,15 +295,25 @@ export function defineWrite(spec) {
       // A tool may attach small, plain facts to a definite refusal (e.g. the next value to send).
       const details = rejected && failure?.outcomeDetails && typeof failure.outcomeDetails === 'object' && !Array.isArray(failure.outcomeDetails)
         && Buffer.byteLength(JSON.stringify(failure.outcomeDetails)) <= 2048 ? { details: failure.outcomeDetails } : {};
-      return out({ done: false, status: rejected ? 'rejected' : 'uncertain',reason_code:rejected?'provider_rejected':'write_outcome_uncertain',retryable:rejected&&failure?.safeRetryable===true, requestKey: key, error: text, ...details,
+      return out({ done: false, status: rejected ? 'rejected' : 'uncertain',reason_code:internal?'internal_error':rejected?(isOwnRefusal(failure)?'invalid_request':'provider_rejected'):'write_outcome_uncertain',retryable:rejected&&failure?.safeRetryable===true, requestKey: key, error: text, ...details,
         ...(rejected ? {} : { warning: 'GitHub may or may not have applied this. Check the current state before trying again.' }) }, true);
     }
     let after = null; let confirmed = false; let note = null;
-    try {
-      after = await readAfter({ args, ctx, target: tgt, before, response });
-      confirmed = (await verify({ args, ctx, target: tgt, before, after, response })) === true;
-      if (!confirmed) note = 'GitHub accepted the request, but reading it back did not show the expected result.';
-    } catch { note = 'GitHub accepted the request, but the result could not be read back to confirm it.'; }
+    // Owner feedback 2026-11-11: several writes that had succeeded were reported as "reading it back did not show the expected result".
+    // GitHub can lag a moment behind its own write, so read back once more after a short pause before giving up. The change itself
+    // is never sent again.
+    const pause = ctx.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
+    for (let attempt = 0; attempt < 2 && !confirmed; attempt += 1) {
+      if (attempt > 0) await pause(1200);
+      note = null; let unreadable = false;
+      try {
+        after = await readAfter({ args, ctx, target: tgt, before, response, startedAt });
+        confirmed = (await verify({ args, ctx, target: tgt, before, after, response })) === true;
+        if (!confirmed) note = 'GitHub accepted the request, but reading it back did not show the expected result.';
+      } catch { unreadable = true; note = 'GitHub accepted the request, but the result could not be read back to confirm it.'; }
+      // Only a read-back that found nothing (or failed) looks like GitHub lagging; one that read a different state is a real mismatch.
+      if (!unreadable && after !== null && after !== undefined) break;
+    }
     let inv = null;
     try { inv = confirmed ? inverse({ args, ctx, target: tgt, before, after, response }) : null; } catch { inv = null; }
     const githubRequestId = response?.headers?.['x-github-request-id'] ?? null;

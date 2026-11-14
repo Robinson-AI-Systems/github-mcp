@@ -50,7 +50,23 @@ describe('repository read tools (D-1)', () => {
     w.gh.when('GET /users/{username}/repos').reply(200, [repoBody()]);
     const { body } = await run(w, 'github_repo_list', {});
     expect(body.count).toBe(1);
-    expect(w.gh.calls[0].route).toBe('GET /users/{username}/repos');
+    expect(w.gh.calls.at(-1).route).toBe('GET /users/{username}/repos');
+    expect(body.public_only).toBe(true);
+  });
+
+  it('github_repo_list shows a personal account\'s PRIVATE repositories through the installation (PRIVATE-LIST-1)', async () => {
+    const w = await makeWorld({ profile: 'read_only' });
+    await w.db.upsertAccount({ login: 'example-org', accountId: 1, accountType: 'User', label: 'x', credentialKind: 'fine_grained' });
+    const mine = (name, extra) => ({ ...repoBody({ full_name: `example-org/${name}`, ...extra }), name, owner: { login: 'example-org' } });
+    w.gh.when('GET /installation/repositories').reply(200, { total_count: 3, repositories: [
+      mine('open', { private: false, pushed_at: '2026-11-01T00:00:00Z' }), mine('secret', { private: true, pushed_at: '2026-11-10T00:00:00Z' }),
+      { ...repoBody({ full_name: 'other/x' }), owner: { login: 'other' } }] });
+    const { body } = await run(w, 'github_repo_list', {});
+    expect(body.items.map((r) => r.full_name)).toEqual(['example-org/secret', 'example-org/open']);
+    expect(body.public_only).toBeUndefined();
+    const priv = (await run(w, 'github_repo_list', { type: 'private' })).body;
+    expect(priv.items.map((r) => r.full_name)).toEqual(['example-org/secret']);
+    expect(w.gh.calls.some((c) => c.route === 'GET /users/{username}/repos')).toBe(false);
   });
 
   it('refuses an account outside the connection in plain words', async () => {

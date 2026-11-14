@@ -78,6 +78,17 @@ export function signFleetOrderBody(body,env=process.env){
  return 'ed25519:'+sign(null,Buffer.from(body),signingKey(env)).toString('base64url');
 }
 
+// PLAY-3: a signed agent-release advertisement (version + bundle hash + HTTPS
+// bundle address) carried on the check-in response. An update is the most
+// privileged order the control plane can give, so it rides the same signing
+// key the agent pinned at join — under its own purpose, validated as
+// strictly as an order: no credential, no argv, nothing executable inline.
+export function signAgentReleaseBody(body,env=process.env){
+ const rel=JSON.parse(body);
+ if(!rel||rel.purpose!=='robinson-playground-agent-release/v1'||typeof rel.version!=='string'||!/^[a-f0-9]{64}$/.test(rel.bundleSha256??'')||typeof rel.bundleUrl!=='string'||Object.hasOwn(rel,'credential')||Object.hasOwn(rel,'argv'))throw new TypeError('Invalid agent release.');
+ return 'ed25519:'+sign(null,Buffer.from(body),signingKey(env)).toString('base64url');
+}
+
 // GIT-REMOTE-1: the per-request git remote claim (Routing Middleware → worker → broker). It names one
 // session key, one repository mirror and one Git service; it never carries a credential or the key.
 export function signGitRemoteClaim(body, env = process.env) {

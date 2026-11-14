@@ -2,7 +2,7 @@
 // No anonymous HTTP route invokes this function. PUB-4 must give users a
 // supported client sign-in experience without showing a private backend token.
 import { randomBytes } from 'node:crypto';
-import { neon } from '@neondatabase/serverless';
+import { storeFactory } from '../db-transport.js';
 import { validRedirectUri } from '../core/oauth.js';
 import { createTenantDirectory, openAuthorizedTenantDb } from './directory.js';
 import { admitTenantOAuth } from './runtime-limits.js';
@@ -12,7 +12,7 @@ import { resolvePrivatePilotIdentity, verifyGithubUserInstallation } from './git
 export async function registerPrivatePilotClient({
   oauthBearer, trustedTenantId, accountLogin, redirectUris, clientName,
   env = process.env, fetchImpl = fetch,
-  rootSqlFactory = neon, tenantSqlFactory = neon
+  rootSqlFactory = storeFactory, tenantSqlFactory = storeFactory
 }) {
   if (env.GITHUB_PRIVATE_TENANT_PILOT !== 'enabled' || !env.DATABASE_URL ||
       !/^[1-9][0-9]{0,18}$/.test(String(env.GITHUB_PILOT_APP_ID || '')))

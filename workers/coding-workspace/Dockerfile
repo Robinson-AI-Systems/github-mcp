@@ -13,7 +13,7 @@ WORKDIR /app
 COPY workers/coding-workspace/package*.json ./
 RUN npm ci --ignore-scripts \
  && rm -rf /root/.npm
-COPY src/github/content-protection.js src/github/open-secret-rules.js src/github/secret-literals.js src/github/custom-secret-rules.js src/github/scanner-policy.js src/github/file-protection.js ./src/github/
+COPY src/github/content-protection.js src/github/open-secret-rules.js src/github/secret-literals.js src/github/custom-secret-rules.js src/github/scanner-policy.js src/github/file-protection.js src/github/placeholder-guard.js ./src/github/
 COPY vendor/gitleaks/ ./vendor/gitleaks/
 COPY workers/native-git/ ./workers/native-git/
 COPY src/native-git/commands.js src/native-git/protocol.js src/native-git/pool-config.js ./src/native-git/

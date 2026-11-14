@@ -173,7 +173,11 @@ main() {
       fail "Port $port is already in use inside WSL. Pick free ports with PC_WORKER_API_PORT / PC_WORKER_GIT_PORT in $ENV_FILE."
     fi
   done
-  if [[ -e "$data/.owner-pause" ]]; then
+  # AUTOUPDATE-GATE-1: the self-updater closes admission with its own marked pause and then calls this
+  # script; under THAT pause the new image must start (the new container reads the same pause file, so
+  # admission stays closed until the updater verifies and reopens it). Only someone else's pause, the
+  # owner's, means "do not start".
+  if [[ -e "$data/.owner-pause" ]] && ! grep -q "worker-autoupdate" "$data/.owner-pause" 2>/dev/null; then
     note "The worker is paused by its owner; the new image is built but not started. Start it with: $home/pc-worker resume"
   else
     compose up -d --no-build native-git >/dev/null || fail "The container did not start. See: $home/pc-worker logs"
@@ -196,6 +200,50 @@ main() {
   fi
   install -m 755 "$SRC/deploy/pc/pc-worker" "$home/pc-worker"
   ok "control script: $home/pc-worker (pause | resume | status | stop | logs)"
+  # WORKER-AUTOUPDATE-1: the between-jobs self-updater. Installed only when this source carries
+  # it (an older release simply leaves any installed updater untouched); the copy is atomic
+  # (temp + rename) because install.sh itself runs under the updater during a swap.
+  if [[ -f "$SRC/deploy/pc/worker-autoupdate.sh" ]]; then
+    local au_tmp="$home/.worker-autoupdate.sh.tmp"
+    install -m 755 "$SRC/deploy/pc/worker-autoupdate.sh" "$au_tmp" && mv "$au_tmp" "$home/worker-autoupdate.sh"
+    ok "auto-updater: $home/worker-autoupdate.sh (checks every 10 min, updates between jobs; pc-worker autoupdate status)"
+    if command -v systemctl >/dev/null 2>&1 && [[ -d /etc/systemd/system ]]; then
+      install -m 644 "$SRC/deploy/pc/worker-autoupdate.service" /etc/systemd/system/worker-autoupdate.service
+      install -m 644 "$SRC/deploy/pc/worker-autoupdate.timer" /etc/systemd/system/worker-autoupdate.timer
+      systemctl daemon-reload >/dev/null 2>&1 || true
+      if systemctl enable --now worker-autoupdate.timer >/dev/null 2>&1; then
+        ok "auto-updater timer enabled (worker-autoupdate.timer)"
+      else
+        note "could not enable worker-autoupdate.timer; enable it with: systemctl enable --now worker-autoupdate.timer"
+      fi
+    else
+      note "systemd not found; the auto-updater script is installed but its timer is not. Run it from any scheduler: $home/worker-autoupdate.sh"
+    fi
+  fi
+  # WORKER-RESOLV-GUARD-1: the resolver guard (timed in-container probe, drain-first heal).
+  # Same install discipline as the updater: only when this source carries it, atomic copy.
+  if [[ -f "$SRC/deploy/pc/worker-resolv-guard.sh" ]]; then
+    local guard_tmp="$home/.worker-resolv-guard.sh.tmp"
+    # SECOND-SHIFT-611: the ok line used to print unconditionally after this
+    # copy — a failed install reported a working guard that was not there.
+    if install -m 755 "$SRC/deploy/pc/worker-resolv-guard.sh" "$guard_tmp" && mv "$guard_tmp" "$home/worker-resolv-guard.sh"; then
+      ok "resolver guard: $home/worker-resolv-guard.sh (probes the worker's resolver every 2 min, heals at a job boundary; pc-worker resolv-guard status)"
+    else
+      note "could not install the resolver guard script to $home/worker-resolv-guard.sh; copy it manually from $SRC/deploy/pc/worker-resolv-guard.sh and re-run this installer"
+    fi
+    if command -v systemctl >/dev/null 2>&1 && [[ -d /etc/systemd/system ]]; then
+      install -m 644 "$SRC/deploy/pc/worker-resolv-guard.service" /etc/systemd/system/worker-resolv-guard.service
+      install -m 644 "$SRC/deploy/pc/worker-resolv-guard.timer" /etc/systemd/system/worker-resolv-guard.timer
+      systemctl daemon-reload >/dev/null 2>&1 || true
+      if systemctl enable --now worker-resolv-guard.timer >/dev/null 2>&1; then
+        ok "resolver guard timer enabled (worker-resolv-guard.timer)"
+      else
+        note "could not enable worker-resolv-guard.timer; enable it with: systemctl enable --now worker-resolv-guard.timer"
+      fi
+    else
+      note "systemd not found; the resolver guard script is installed but its timer is not. Run it from any scheduler: $home/worker-resolv-guard.sh"
+    fi
+  fi
 
   step "7/8 Tailscale Funnel"
   local origin; origin="$(env_value PC_WORKER_PUBLIC_ORIGIN)"

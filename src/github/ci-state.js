@@ -15,6 +15,34 @@ async function allCheckRuns(octokit, params) {
   return {items:runs,complete};
 }
 
+/** Every check run at the commit, briefly, with how long each took (owner feedback 2026-11-09: confirm a green result is real). */
+export function runBriefs(runs, max = 40) {
+  const secs = (a, b) => { const x = Date.parse(a ?? ''), y = Date.parse(b ?? ''); return Number.isFinite(x) && Number.isFinite(y) && y >= x ? Math.round((y - x) / 1000) : null; };
+  return (runs ?? []).slice(0, max).map((r) => ({ name: r.name, status: r.status, conclusion: r.conclusion ?? null, seconds: secs(r.started_at, r.completed_at), app: r.app?.slug ?? null }));
+}
+
+// Moved here from the check tools so merge decisions and waiting use one definition of "no CI will ever run".
+export const NO_CI_AFTER_MS = 120000;
+export const NONE_RAN_AFTER_MS = 10 * 60 * 1000;
+export async function runsNoCi(octokit, p, headSha, now, committedAt) {
+  try {
+    const [workflows, suites, commit] = await Promise.all([
+      octokit.request('GET /repos/{owner}/{repo}/actions/workflows', { ...p, per_page: 1 }),
+      octokit.request('GET /repos/{owner}/{repo}/commits/{ref}/check-suites', { ...p, ref: headSha, per_page: 50 }),
+      committedAt ? null : octokit.request('GET /repos/{owner}/{repo}/commits/{ref}', { ...p, ref: headSha })]);
+    const date = Date.parse(committedAt ?? commit?.data?.commit?.committer?.date ?? '');
+    // GitHub creates an empty, permanently queued suite for every installed app with checks access (this App, coding
+    // agents); only a suite that started or holds a check run means checks are coming.
+    const list = suites.data?.check_suites ?? [];
+    const live = list.filter((x) => x.status !== 'queued' || (x.latest_check_runs_count ?? 0) > 0).length;
+    if (live > 0 || (suites.data?.total_count ?? 0) > list.length || !Number.isFinite(date)) return null;
+    if (workflows.data?.total_count === 0 && now - date > NO_CI_AFTER_MS) return 'no_ci';
+    // Workflows exist but none ran for this commit long after it was made (e.g. manual-only workflows): none are coming.
+    if (now - date > NONE_RAN_AFTER_MS) return 'none_ran';
+    return null;
+  } catch { return null; }
+}
+
 const PASSING = new Set(['success', 'neutral', 'skipped']);
 const FAILING = new Set(['failure', 'timed_out', 'cancelled', 'action_required', 'startup_failure', 'stale']);
 
@@ -54,7 +82,10 @@ export async function requiredChecks(octokit, { owner, repo, branch }) {
     else for (const context of classic.data.contexts ?? []) add(context, null);
   } else if (classic.planLimited) notes.push(`branch protection is not available for this repository on its GitHub plan, so none can require checks on ${branch}`);
   else if (classic.status !== 404) errors.push(`classic protection for ${branch} could not be read${classic.status ? ` (HTTP ${classic.status})` : ''}`);
-  return { required: [...found.values()], errors, notes,strict_up_to_date:errors.length?null:strict,policy_sources:sources };
+  // PLAN-RULES-1 (2026-11-14): on a plan without rulesets or branch protection for this repository (a private repo of a
+  // free organization) GitHub itself can enforce nothing on the branch — callers that rely on GitHub's rules must check.
+  const rules_unavailable = rules.planLimited === true && classic.planLimited === true;
+  return { required: [...found.values()], errors, notes,strict_up_to_date:errors.length?null:strict,policy_sources:sources, rules_unavailable };
 }
 
 const latestRun = runs => {
@@ -78,7 +109,7 @@ const statusState = (s) => ({ success: 'success', failure: 'failure', error: 'fa
  * @returns {Promise<{ notes: string[], green: boolean|null, known: boolean, basis: 'required'|'all-checks', checks: Array<{ context: string, state: string, source: string }>, problems: string[], errors: string[] }>}
  *   `green` is true only when everything counted is `success`; null when it could not be worked out.
  */
-export async function ciState(octokit, { owner, repo, baseBranch, headSha }) {
+export async function ciState(octokit, { owner, repo, baseBranch, headSha, now = Date.now(), committedAt = null }) {
   const p = { owner, repo };
   // All four independent GitHub reads begin together. Required-check policy
   // and check-run pagination still retain their own ordering, and no failure
@@ -88,8 +119,8 @@ export async function ciState(octokit, { owner, repo, baseBranch, headSha }) {
     tryRead(() => allCheckRuns(octokit, { ...p, ref: headSha })),
     tryRead(async () => (await octokit.request('GET /repos/{owner}/{repo}/commits/{ref}/status', { ...p, ref: headSha })).data.statuses ?? [])
   ]);
-  const { required, errors, notes,strict_up_to_date,policy_sources } = policy;
-  if (!runsRead.ok) return { green: null, known: false, basis: 'required', checks: [], problems: [], notes, errors: [...errors, 'the check runs at this commit could not be read'] };
+  const { required, errors, notes,strict_up_to_date,policy_sources,rules_unavailable } = policy;
+  if (!runsRead.ok) return { green: null, known: false, basis: 'required', checks: [], problems: [], notes, rules_unavailable, errors: [...errors, 'the check runs at this commit could not be read'] };
   const runs = runsRead.data.items;
   if(!runsRead.data.complete)errors.push('check-run inventory exceeded its bound; required state is incomplete');
   const statuses = statusesRead.ok ? statusesRead.data : null;
@@ -119,7 +150,40 @@ export async function ciState(octokit, { owner, repo, baseBranch, headSha }) {
     checks = [...names.map((context) => evaluate({ context, appId: null })), ...(statuses ?? []).filter((s) => !names.includes(s.context)).map((s) => ({ context: s.context, state: statusState(s.state), source: 'status' }))];
   }
   const problems = checks.filter((c) => c.state !== 'success').map((c) => `${c.context}: ${c.state}`);
-  if (!checks.length) problems.push('no checks have reported on this commit yet; CI usually starts within a minute of a push (github_check_wait waits for it)');
+  // Owner feedback 2026-11-12 (PenPal #68/#69): with nothing marked required, "every check that exists" was judged before a
+  // just-pushed workflow had created its check runs, so a fast check that had already passed made the commit look green and
+  // the merge went through before the tests started. Workflow RUNS exist before their jobs' check runs do: when any workflow
+  // run at this exact commit is still queued or running, or ended badly, the commit is not green yet.
+  if (basis === 'all-checks' && checks.length) {
+    const wf = await tryRead(async () => (await octokit.request('GET /repos/{owner}/{repo}/actions/runs', { ...p, head_sha: headSha, per_page: 50 })).data.workflow_runs ?? []);
+    if (!wf.ok && wf.status === 404) {
+      // Actions is off for this repository (or the route is absent): no workflow run can be pending.
+    } else if (!wf.ok) {
+      if (wf.planLimited) notes.push('workflow runs are not readable on this plan; only the check runs that have reported were judged');
+      else errors.push(`the workflow runs at this commit could not be read${wf.status ? ` (HTTP ${wf.status})` : ''}`);
+    } else {
+      for (const w of wf.data) {
+        const name = w.name ?? w.path ?? `workflow run ${w.id}`;
+        if (w.status !== 'completed') problems.push(`workflow "${name}": ${w.status ?? 'pending'} (its checks have not all reported yet)`);
+        else if (FAILING.has(w.conclusion)) problems.push(`workflow "${name}": ${w.conclusion}`);
+      }
+    }
+  }
+  if (!checks.length) {
+    // A repository with nothing required, no commit statuses and no GitHub Actions workflow at all can never report a check, so
+    // "wait for CI" would last forever. GitHub's own merge box allows such a merge. Only a successful read that proves zero
+    // workflows counts; a failed read or any existing workflow keeps the careful "not reported yet" answer.
+    // Same proof the waiting tool uses: zero workflows, no live check suite, and a commit old enough that CI would have started.
+    const none = basis === 'all-checks' && !errors.length && (statuses ?? []).length === 0
+      ? await runsNoCi(octokit, p, headSha, now, committedAt) : null;
+    if (none === 'no_ci' || none === 'none_ran') {
+      notes.push(none === 'no_ci'
+        ? 'This repository has no required checks and no GitHub Actions workflows, so no check can ever report; there is nothing to wait for. Review, conflict and threads are still enforced.'
+        : 'This repository has no required checks, and none of its workflows ran for this commit in the ten minutes since it was made (for example they are manual-only or do not run on pull requests), so none is coming; there is nothing to wait for. Review, conflict and threads are still enforced.');
+      return { green: errors.length ? null : true, known: errors.length === 0, basis: 'no-checks-configured', no_ci_reason: none, checks, problems: [], notes, errors, strict_up_to_date, policy_sources, rules_unavailable, all_runs: [] };
+    }
+    problems.push('no checks have reported on this commit yet; CI usually starts within a minute of a push (github_check_wait waits for it)');
+  }
   // Any read that failed means the answer is unknown, never green.
-  return { green: errors.length ? null : problems.length === 0, known: errors.length === 0, basis, checks, problems, notes, errors,strict_up_to_date,policy_sources };
+  return { green: errors.length ? null : problems.length === 0, known: errors.length === 0, basis, checks, problems, notes, errors,strict_up_to_date,policy_sources, rules_unavailable, all_runs: runBriefs(runs) };
 }

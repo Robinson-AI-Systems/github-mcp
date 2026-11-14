@@ -178,6 +178,14 @@ describe('item 1: github_check_wait', () => {
     const out = parse(await call(w, 'github_check_wait', { repo: 'hello', pr: 6, timeoutSeconds: 5 }));
     expect(out.next).toMatch(/CI usually starts within a minute/);
   });
+  it('returns at once when a check run has already failed while the required roll-up has not reported', async () => {
+    const w = await makeWorld({ advanceClockOnSleep: true });
+    routes(w.gh, [[run('check', 'completed', 'failure'), run('unit', 'in_progress', null, 2)]]);
+    const out = parse(await call(w, 'github_check_wait', { repo: 'hello', pr: 6 }));
+    expect(out).toMatchObject({ status: 'still_running', overall: 'pending', polls: 1, failed_runs: ['check'] });
+    expect(out.next).toMatch(/already failed: check.*github_actions_get_run_logs_summary/);
+    expect(w.gh.invalid).toEqual([]);
+  });
   it('needs exactly one of pr or ref', async () => {
     const w = await makeWorld();
     expect((await call(w, 'github_check_wait', { repo: 'hello' })).content[0].text).toMatch(/exactly one of pr/);
@@ -252,6 +260,20 @@ describe('merge_when_green: waitForChecks and the stack sibling message', () => 
     expect(w.gh.calls.filter((c) => c.method === 'PUT')).toHaveLength(0);
     expect(w.gh.invalid).toEqual([]);
   });
+  it('without waitForChecks, checks that are still running are "checks_running", not a fault to repair', async () => {
+    const w = await makeWorld({ advanceClockOnSleep: true, profile: 'full' });
+    w.gh.when('GET /repos/{owner}/{repo}').reply(200, { default_branch: 'main', name: 'hello' });
+    w.gh.when('GET /repos/{owner}/{repo}/pulls/{pull_number}').reply(200, { number: 6, state: 'open', draft: false, merged: false, mergeable: true, head: { ref: 'work', sha: A }, base: { ref: 'main', sha: B } });
+    w.gh.when('POST /graphql').reply(200, { data: { repository: { pullRequest: { reviewDecision: null, reviewThreads: { totalCount: 0, pageInfo: { hasNextPage: false }, nodes: [] } } } } });
+    w.gh.when('GET /repos/{owner}/{repo}/rules/branches/{branch}').reply(200, []);
+    w.gh.when('GET /repos/{owner}/{repo}/branches/{branch}/protection/required_status_checks').reply(404, { message: 'Not Found' });
+    w.gh.when('GET /repos/{owner}/{repo}/commits/{ref}/check-runs').reply(200, { total_count: 1, check_runs: [{ id: 1, name: 'ci', status: 'in_progress', conclusion: null, started_at: '2026-11-02T10:00:00Z' }] });
+    w.gh.when('GET /repos/{owner}/{repo}/commits/{ref}/status').reply(200, { state: 'pending', statuses: [] });
+    const out = parse(await call(w, 'github_workflow_merge_when_green', { repo: 'hello', number: 6, expectedHeadSha: A, confirm: true }));
+    expect(out).toMatchObject({ status: 'checks_running', done: false });
+    expect(out.next).toMatch(/Nothing needs repairing/);
+    expect(w.gh.calls.filter((c) => c.method === 'PUT')).toHaveLength(0);
+  });
   it('explains a sibling PR in a stack list instead of only "chain is broken"', async () => {
     const w = await makeWorld({ profile: 'full' });
     w.gh.when('GET /repos/{owner}/{repo}').reply(200, { default_branch: 'main', name: 'hello' });
@@ -322,15 +344,25 @@ describe('items 7, 12 and 14: missing branches and wrong-shape arguments', () =>
 });
 
 describe('items 6, 15, 17-20: results with the essentials', () => {
-  it('github_workflow_open_pr without confirm is a plain preview, not an uncertain write', async () => {
-    const w = await makeWorld({ profile: 'full' });
-    w.gh.when('GET /repos/{owner}/{repo}').reply(200, { default_branch: 'main', name: 'hello' });
-    w.gh.when('GET /repos/{owner}/{repo}/pulls').reply(200, []);
-    w.gh.when('GET /repos/{owner}/{repo}/git/ref/{ref}').reply(200, { ref: 'refs/heads/work', object: { sha: A } });
+  it('github_workflow_open_pr opens in ONE call for the owner; an explicit confirm:false is a plain preview (ONE-CALL-PR-1)', async () => {
+    const arrange = (w) => {
+      const pr = { number: 12, title: 'Add things', state: 'open', draft: false, merged: false, head: { ref: 'work', sha: A, repo: { full_name: 'example-org/hello' } }, base: { ref: 'main', sha: B }, mergeable: null, mergeable_state: 'unknown', html_url: 'https://github.com/example-org/hello/pull/12' };
+      w.gh.when('GET /repos/{owner}/{repo}').reply(200, { default_branch: 'main', name: 'hello' });
+      w.gh.when('GET /repos/{owner}/{repo}/pulls').reply(200, []);
+      w.gh.when('GET /repos/{owner}/{repo}/git/ref/{ref}').reply(200, { ref: 'refs/heads/work', object: { sha: A } });
+      w.gh.when('POST /repos/{owner}/{repo}/pulls').reply(201, pr);
+      w.gh.when('GET /repos/{owner}/{repo}/pulls/{pull_number}').reply(200, pr);
+    };
+    const w = await makeWorld({ profile: 'full' });arrange(w);
     const out = parse(await call(w, 'github_workflow_open_pr', { repo: 'hello', head: 'work', title: 'Add things' }));
-    expect(out.status).toBe('preview');
-    expect(out.next).toMatch(/Nothing was sent.*confirm: true/);
-    expect(JSON.stringify(out)).not.toMatch(/uncertain/);
+    expect(out).toMatchObject({ done: true, status: 'pr_opened', number: 12 });
+    expect(w.gh.calls.filter((c) => c.route === 'POST /repos/{owner}/{repo}/pulls')).toHaveLength(1);
+    const p = await makeWorld({ profile: 'full' });arrange(p);
+    const preview = parse(await call(p, 'github_workflow_open_pr', { repo: 'hello', head: 'work', title: 'Add things', confirm: false }));
+    expect(preview.status).toBe('preview');
+    expect(preview.next).toMatch(/Nothing was sent.*confirm: true/);
+    expect(JSON.stringify(preview)).not.toMatch(/uncertain/);
+    expect(p.gh.calls.filter((c) => c.route === 'POST /repos/{owner}/{repo}/pulls')).toHaveLength(0);
   });
   it('an opened PR reports number, URL, head/base, head SHA, state, draft and mergeability', async () => {
     const w = await makeWorld({ profile: 'full' });
@@ -384,6 +416,19 @@ describe('items 6, 15, 17-20: results with the essentials', () => {
     expect(out).toMatchObject({ run_id: 55, head_sha: A });
     expect(out.failed_jobs[0].lines_before_failure.join('\n')).toMatch(/docs drift: TOOL-CATALOG.md lacks github_x/);
     expect((await call(w, 'github_actions_get_run_logs_summary', { repo: 'hello', runId: 55, ref: 'work' })).content[0].text).toMatch(/exactly one of runId/);
+    expect(w.gh.invalid).toEqual([]);
+  });
+  it('the run log summary explains a failed job in a run that is still in progress', async () => {
+    const w = await makeWorld();
+    w.gh.when('GET /repos/{owner}/{repo}/pulls/{pull_number}').reply(200, { number: 6, head: { ref: 'work', sha: A }, base: { ref: 'main' } });
+    w.gh.when('GET /repos/{owner}/{repo}/actions/runs').reply(200, { total_count: 1, workflow_runs: [{ id: 55, name: 'ci', status: 'in_progress', conclusion: null, head_sha: A }] });
+    w.gh.when('GET /repos/{owner}/{repo}/actions/runs/{run_id}/jobs').reply(200, { total_count: 2, jobs: [{ id: 9, name: 'check', status: 'completed', conclusion: 'failure', steps: [{ number: 5, name: 'Run check', conclusion: 'failure' }] }, { id: 10, name: 'unit', status: 'in_progress', conclusion: null, steps: [] }] });
+    w.gh.when('GET /repos/{owner}/{repo}/actions/runs/{run_id}/logs').reply(404, { message: 'Not Found' });
+    w.gh.when('GET /repos/{owner}/{repo}/actions/jobs/{job_id}/logs').reply(200, '2026-11-10T10:00:00.000Z Docs check failed: no PR card\n2026-11-10T10:00:01.000Z ##[error]Process completed with exit code 1.\n');
+    const out = parse(await call(w, 'github_actions_get_run_logs_summary', { repo: 'hello', pr: 6 }));
+    expect(out).toMatchObject({ run_id: 55, head_sha: A });
+    expect(out.failed_jobs.map((j) => j.name)).toEqual(['check']);
+    expect(JSON.stringify(out.failed_jobs[0])).toMatch(/Docs check failed: no PR card/);
     expect(w.gh.invalid).toEqual([]);
   });
   it('a job log window takes its own response field names back and hands over the next call', async () => {

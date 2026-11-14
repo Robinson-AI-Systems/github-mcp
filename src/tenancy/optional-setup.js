@@ -2,7 +2,7 @@
 // browser states can lead to a token-entry POST. Signed tcl client IDs select a
 // tenant; active membership and GitHub numeric user proof authorize the action.
 import {createHash,randomBytes} from 'node:crypto';
-import {neon} from '@neondatabase/serverless';
+import { storeFactory } from '../db-transport.js';
 import {createTenantDirectory,openAuthorizedTenantDb} from './directory.js';
 import {verifyTenantCredential} from './routed-credential.js';
 import {verifyGithubBearerIdentity} from './github-identity.js';
@@ -32,10 +32,10 @@ const isAccount=(row,login,env)=>row?.login?.toLowerCase()===login &&
 
 export function createPrivateOptionalEnrollment({
   env=process.env,fetchImpl=fetch,admitOAuth=admitTenantOAuth,
-  directoryFactory=()=>createTenantDirectory(neon(env.DATABASE_URL)),
+  directoryFactory=()=>createTenantDirectory(storeFactory(env.DATABASE_URL)),
   tenantAccess=(directory,claim)=>openAuthorizedTenantDb({
     directory,tenantId:claim.tenantId,verifiedIdentityId:claim.identityId,
-    connectionString:env.DATABASE_URL,sqlFactory:neon})
+    connectionString:env.DATABASE_URL,sqlFactory:storeFactory})
 }={}){
   function origin(){
     if(env.GITHUB_PRIVATE_TENANT_PILOT!=='enabled' ||

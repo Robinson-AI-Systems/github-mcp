@@ -10,6 +10,7 @@ import { READ_OPERATIONS, gitCommand, normalizeNativeOptions, ref, value } from 
 export { READ_OPERATIONS, WRITE_OPERATIONS, gitCommand } from '../../src/native-git/commands.js';
 import { nativeWorkspaceId } from '../../src/native-git/protocol.js';
 import { containsCredential, redact, activeProtectionReport, withProtectionContext, withRepositoryProtection } from '../../src/github/content-protection.js';
+import { blankedInDiff, blankingRefusalText } from '../../src/github/placeholder-guard.js';
 
 const ID = /^git_[a-f0-9]{32}$/;
 export const hash = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
@@ -183,6 +184,17 @@ export class NativeGitWorker {
     for (const part of parts) { parent = join(parent, part); try { if ((await lstat(parent)).isSymbolicLink()) throw new TypeError('Symlink file access is refused.'); } catch (e) { if (e.code !== 'ENOENT') throw e; } }
     return join(repo, path);
   }
+  // HIDDEN-GUARD-1: every native route (archive or git upload, write_file, Playground commits) reaches GitHub through
+  // this push, so this is where a commit that swaps real text for the redaction placeholder is stopped. Only the commits
+  // the push would add are read: those not already on a remote-tracking ref and not reachable from the remote's head.
+  async refuseBlanking(w, local, remoteHead) {
+    let base = [];
+    if (remoteHead && (await this.git(w.repo, ['cat-file', '-e', `${remoteHead}^{commit}`], { allowedCodes: [0, 1, 128] })).code === 0) base = [remoteHead];
+    const out = await this.git(w.repo, ['log', '-p', '-U0', '--no-color', '--no-ext-diff', '--no-renames', '--format=', local, '--not', '--remotes', ...base],
+      { allowedCodes: [0], maxOutputBytes: 64 * 1024 * 1024, timeoutMs: 120000 });
+    const findings = blankedInDiff(out.stdout);
+    if (findings.length) throw new TypeError(blankingRefusalText(findings));
+  }
   async remoteRefs(w, token, selected) {
     const actual = (await this.git(w.repo, ['remote', 'get-url', 'origin'])).stdout.trim();
     if (actual !== w.meta.remote) throw new TypeError('Remote identity changed.');
@@ -265,7 +277,7 @@ export class NativeGitWorker {
           let expectedRemote, destination;
           if (network) {
             const actual = (await this.git(w.repo, ['remote', 'get-url', 'origin'])).stdout.trim(); if (actual !== current.remote) throw new TypeError('Remote identity changed.');
-            if (operation === 'push') { destination = `refs/${args.tag ? 'tags' : 'heads'}/${ref(args.branch)}`; const refs = await this.remoteRefs(w, token, destination); if (args.expectedHead !== undefined && (refs[destination] ?? '') !== args.expectedHead) throw new TypeError('Expected remote head changed; nothing pushed.'); expectedRemote = args.delete ? null : (await this.git(w.repo, ['rev-parse', '--verify', `${ref(args.ref ?? 'HEAD')}^{object}`])).stdout.trim();
+            if (operation === 'push') { destination = `refs/${args.tag ? 'tags' : 'heads'}/${ref(args.branch)}`; const refs = await this.remoteRefs(w, token, destination); if (args.expectedHead !== undefined && (refs[destination] ?? '') !== args.expectedHead) throw new TypeError('Expected remote head changed; nothing pushed.'); expectedRemote = args.delete ? null : (await this.git(w.repo, ['rev-parse', '--verify', `${ref(args.ref ?? 'HEAD')}^{object}`])).stdout.trim(); if (expectedRemote) await this.refuseBlanking(w, expectedRemote, refs[destination]);
             if (args.expectedHead && !args.force && !args.delete) {
               if (args.tag && expectedRemote !== args.expectedHead) throw new TypeError('Updating an existing tag requires explicit force and its expected-head lease.');
               if (!args.tag && (await this.git(w.repo, ['merge-base', '--is-ancestor', args.expectedHead, expectedRemote], { allowedCodes: [0,1,128] })).code !== 0) throw new TypeError('Non-fast-forward push refused: fetch the expected remote commit or select explicit force with a lease.');

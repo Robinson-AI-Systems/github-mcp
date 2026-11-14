@@ -154,8 +154,31 @@ What it does: scrambles every saved GitHub credential and the App secrets in the
    Replacing an App secret (sections 1 to 3) re-seals that secret with the new key too.
 4. Keep the old key in `TOKEN_ENCRYPTION_KEY_PREVIOUS`: there is no bulk re-save yet (`docs/ROADMAP.md`), so removing it
    would make older saved credentials unreadable (those people would have to add them again).
+5. Check the two derived-key dependents below recovered: the PC git worker re-pinned, and the Playground sweep
+   cursor advancing again. Both follow from this key, and neither warns you on its own when it is left behind.
 
 Downtime: none. Rehearsed in `tests/browser/sign-in.test.js` ("a key change does not sign people out").
+
+### Derived keys that follow the encryption key
+
+The server's signing key is derived from `TOKEN_ENCRYPTION_KEY`, so replacing the encryption key changes it too.
+Two things outside the database hold material derived from that signing key. Stored credentials (sections 1 to 5)
+are covered by the dual-key handling above; these two are not — each has its own way back, and a rotation is not
+finished until both have been checked.
+
+- **The PC native Git worker** pins the server's public verifier key. After a rotation the worker refuses signed
+  requests (it looks down while the server is healthy) until it is re-pinned: run one worker update
+  (`pc-worker update`), which re-fetches the current public key from the server and re-pins it — the same path the
+  between-jobs auto-updater (`WORKER-AUTOUPDATE-1`) takes on every update, so an automatic update also heals it.
+- **The Playground maintenance sweep manager** (the small Dokploy service that asks the server to clean up dead
+  allocations) carries a cleanup-only bearer that is a hash of a signature made with the signing key, baked into
+  its compose file when it was provisioned. The server re-pins it itself: every manager check compares the
+  fingerprint recorded at provisioning with the key derived from the current signing key, and when they differ it
+  proves the provider's stored compose differs only in that key, replaces the file through the provider, and
+  redeploys (`SWEEP-REPIN-1`). No manual step is needed once a release carrying that check is live. Until then, a
+  rotation silently stops Playground cleanup — after any rotation, confirm the sweep cursor
+  (`playground_sweep_cursor`) is advancing; a cursor frozen at an old date means queued cleanups (including
+  disposal requests on dead allocations) are stuck behind the manager's stale key.
 
 ## What the server does not do
 

@@ -1,0 +1,15 @@
+[Unit]
+# WORKER-AUTOUPDATE-1: run the update check shortly after boot, then every 10 minutes.
+# Updates land between jobs (the check drains at a job boundary), so a frequent light
+# check is the point — it never waits for a long idle stretch.
+Description=Run the Robinson native Git worker auto-updater every 10 minutes
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=10min
+RandomizedDelaySec=60
+Persistent=true
+Unit=worker-autoupdate.service
+
+[Install]
+WantedBy=timers.target

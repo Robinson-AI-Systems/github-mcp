@@ -33,7 +33,7 @@ export const PR_ONLY_TOOLS = Object.freeze(new Set([
 ]));
 
 /** The only tools that may merge into a `pr-only` repository's default branch, and only with the exact head the caller read. */
-export const MERGE_TOOLS = Object.freeze(new Set(['github_pr_merge', 'github_pr_merge_async', 'github_workflow_merge_when_green']));
+export const MERGE_TOOLS = Object.freeze(new Set(['github_pr_merge', 'github_pr_merge_async', 'github_workflow_merge_when_green', 'github_workflow_merge_anyway']));
 const SHA = /^[0-9a-f]{40}$/i;
 
 /** What a profile's `agentMay` entries mean, by tool. Nothing else is ever allowed on an owned ref without `outsideProject`. */

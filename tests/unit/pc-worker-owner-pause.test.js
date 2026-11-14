@@ -67,7 +67,7 @@ describe('owner pause switch (worker side)', () => {
   expect(await monitor.check()).toEqual({ allowed: true });
   writeFileSync(pauseFile, '');
   expect(monitor.paused()).toBe(true);
-  expect(await monitor.check()).toEqual({ allowed: false, reason: 'owner_paused', retryAfterSeconds: 60 });
+  expect(await monitor.check()).toEqual({ allowed: false, reason: 'owner_paused', retryAfterSeconds: 60, held_by: 'owner' });
   expect(await monitor.check({ needsDisk: false })).toMatchObject({ reason: 'owner_paused' });
   // Request bodies are still read (a status call is not new work); admission decides.
   expect(monitor.body(100).allowed).toBe(true);

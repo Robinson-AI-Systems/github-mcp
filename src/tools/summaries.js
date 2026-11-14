@@ -23,7 +23,7 @@ const shape = (spec) => (o) => {
 const always = (fn) => (o) => ({ ...fn(o), untrusted: true });
 
 export const SUMMARIES = Object.freeze({
-  repository: shape({ full_name: 'full_name', description: 'description', private: 'private', visibility: 'visibility', fork: 'fork', archived: 'archived', default_branch: 'default_branch',
+  repository: shape({ name: 'name', full_name: 'full_name', description: 'description', private: 'private', visibility: 'visibility', fork: 'fork', archived: 'archived', default_branch: 'default_branch',
     language: 'language', stars: 'stargazers_count', forks: 'forks_count', open_issues: 'open_issues_count', pushed_at: 'pushed_at', html_url: 'html_url' }),
   branch: shape({ name: 'name', protected: 'protected', sha: 'commit.sha' }),
   commit: always(shape({ sha: 'sha', message: 'commit.message', author: first('author.login', 'commit.author.name'), date: 'commit.author.date', verified: 'commit.verification.verified', parents: count('parents'), html_url: 'html_url' })),

@@ -18,6 +18,9 @@ export { CODE_PREFIX, KEY_PREFIX, parseSecret, sha256 };
 export const CODE_TTL_MS = 600000;
 export const DEFAULT_HOURS = 8;
 export const MAX_HOURS = 24;
+/** Quiet renewal: a key in real use stays valid for this long after each use, but never beyond RENEW_CAP_DAYS from its creation. */
+export const RENEW_WINDOW_HOURS = 8;
+export const RENEW_CAP_DAYS = 7;
 export const LIFETIME_SETTING = 'git_remote.lifetime';
 /** The username git sends with the key (any value works; this one makes logs readable). */
 export const GIT_USERNAME = 'x-robinson-git';
@@ -76,7 +79,7 @@ export function checkKey(row, presentedHash, { service, owner, repo, now = Date.
  const no = (status, reason, message) => ({ ok: false, status, reason, message });
  if (!row || !row.key_hash || !sameHash(row.key_hash, presentedHash)) return no(401, 'invalid', `This git session key is not valid. ${NEW_KEY}`);
  if (row.revoked_at) return no(401, 'revoked', `This git session key was cancelled (My connection page). ${NEW_KEY}`);
- if (new Date(row.expires_at).getTime() <= now) return no(401, 'expired', `This git session key expired at ${fmt(row.expires_at)} (UTC). Keys last 8 hours by default, at most 24. ${NEW_KEY}`);
+ if (new Date(row.expires_at).getTime() <= now) return no(401, 'expired', `This git session key expired at ${fmt(row.expires_at)} (UTC). A key in regular use renews itself quietly (up to 7 days in all); this one was idle. ${NEW_KEY}`);
  if (String(row.owner).toLowerCase() !== String(owner).toLowerCase() || String(row.repo).toLowerCase() !== String(repo).toLowerCase())
   return no(403, 'wrong_repository', `This git session key is for ${row.owner}/${row.repo} only, not this repository. ${NEW_KEY}`);
  if (service === 'git-receive-pack' && row.access !== 'write')

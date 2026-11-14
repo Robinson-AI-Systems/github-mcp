@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- PLAY-3 §1.3 — macOS hand-rolled path: launchd runs the launcher shim,
+     which supervises the versioned agent payload (update rollback lives in
+     the shim, exactly as on Linux). Install:
+       cp com.robinsonaisystems.playground-agent.plist ~/Library/LaunchAgents/
+       launchctl load ~/Library/LaunchAgents/com.robinsonaisystems.playground-agent.plist
+     NODE_PATH_HERE is replaced by the setup instructions with the folder
+     holding node (launchd does not inherit a shell PATH). -->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.robinsonaisystems.playground-agent</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>NODE_PATH_HERE/node</string>
+    <string>/Users/Shared/ras-playground/run.mjs</string>
+    <string>run</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>RAS_PLAYGROUND_SUPERVISED</key>
+    <string>1</string>
+    <key>RAS_PLAYGROUND_DIR</key>
+    <string>/Users/Shared/ras-playground</string>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>ThrottleInterval</key>
+  <integer>5</integer>
+  <key>StandardOutPath</key>
+  <string>/Users/Shared/ras-playground/agent.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/Shared/ras-playground/agent.log</string>
+</dict>
+</plist>

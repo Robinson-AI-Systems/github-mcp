@@ -127,6 +127,20 @@ describe('placement on open', () => {
   const failed = await w.db.listNativeGitWorkspaces(nativeConnection(w.ctx), { limit: 20 }); // active ones only: the refused record is closed
   expect(failed).toHaveLength(2);
  });
+ it('no host answered at all: says so plainly and names the routes that need no worker; a mix with a busy host keeps the busy wording', async () => {
+  const w = await world({ pool: [{ name: 'workshop', offline: true }] });
+  await w.db.setSetting(POOL_SETTING, { kind: 'native-git-worker-pool', hosts: { pc: { enabled: false } } });
+  const r = await open(w, 'none-answered');
+  expect(r).toMatchObject({ status: 'refused_by_guard', reason_code: 'native_hosts_busy', retryable: true, no_change_sent: true });
+  expect(r.error).toMatch(/No workspace host answered/);
+  expect(r.error).toMatch(/No operation was started/);
+  expect(r.error).toMatch(/github_content_push_files/);
+  expect(r.error.length).toBeLessThanOrEqual(300); // longer refusals are replaced by a generic one before the agent sees them
+  const v = await world({ pool: [{ name: 'workshop', offline: true }] });
+  await v.pool.pc.pause();
+  const mixed = await open(v, 'one-paused');
+  expect(mixed.error).toMatch(/All workspace hosts are busy or paused/);
+ });
  it('all hosts busy or paused: plain retryable refusal, no_operation_started, nothing cloned, through every door', async () => {
   for (const door of doorsFor(def('github_git_workspace_open'))) {
    const w = await world();

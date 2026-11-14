@@ -62,6 +62,24 @@ export function runGitRemoteStoreContract(label, getDb, { now = () => Date.now()
    const row = await db.getGitRemoteKey(key.id);
    expect(row.uses).toBe(1); expect(row.last_used_at).not.toBeNull();
   });
+  it('quietly renews a used key: later, never earlier, capped from creation, not when revoked or expired, at most every 30 minutes', async () => {
+   const db = await getDb();
+   const { key } = await make(db, { expiresAt: new Date(now() + 3600000) });
+   const renewed = await db.renewGitRemoteKey(key.id, { windowHours: 8, capDays: 7 });
+   expect(new Date(renewed).getTime()).toBeGreaterThan(now() + 7 * 3600000);
+   expect(new Date(renewed).getTime()).toBeLessThanOrEqual(now() + 8 * 3600000 + 5000);
+   expect(await db.renewGitRemoteKey(key.id, { windowHours: 8, capDays: 7 })).toBeNull(); // just renewed: nothing to do
+   const capped = await make(db, { expiresAt: new Date(now() + 3600000) });
+   const got = await db.renewGitRemoteKey(capped.key.id, { windowHours: 24, capDays: 1 });
+   expect(new Date(got).getTime()).toBeLessThanOrEqual(now() + 86400000 + 5000); // never past creation + cap
+   const gone = await make(db);
+   await db.revokeGitRemoteKey(gone.key.id);
+   expect(await db.renewGitRemoteKey(gone.key.id, { windowHours: 8, capDays: 7 })).toBeNull();
+   const old = await make(db, { expiresAt: new Date(now() - 1000) });
+   expect(await db.renewGitRemoteKey(old.key.id, { windowHours: 8, capDays: 7 })).toBeNull();
+   expect(await db.renewGitRemoteKey('../etc', { windowHours: 8, capDays: 7 })).toBeNull();
+   expect(await db.renewGitRemoteKey(key.id, { windowHours: 99, capDays: 7 })).toBeNull();
+  });
   it('refuses malformed input', async () => {
    const db = await getDb();
    await expect(db.createGitRemoteKey({ id: 'nope', connection: 'c', owner: 'o', repo: 'r', access: 'write', codeHash: h('x'), codeExpiresAt: new Date(), expiresAt: new Date() })).rejects.toThrow();

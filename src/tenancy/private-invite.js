@@ -2,7 +2,7 @@
 // Owner explicitly permits a stable GitHub user to connect to ONE scratch
 // tenant and gets one private MCP client configuration via sealed reveal.
 import { randomBytes } from 'node:crypto';
-import { neon } from '@neondatabase/serverless';
+import { storeFactory } from '../db-transport.js';
 import { validRedirectUri } from '../core/oauth.js';
 import { createTenantDirectory, openAuthorizedTenantDb } from './directory.js';
 import { bootstrapPrivateOwnerPilot } from './owner-bootstrap.js';
@@ -13,7 +13,7 @@ const USER = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/;
 const refused = () => new Error('Private pilot member invitation could not be verified.');
 export async function invitePrivatePilotMember({
   accountLogin,targetLogin,redirectUri,rootDb,ownerCredentials,
-  env=process.env,fetchImpl=fetch,rootSqlFactory=neon,tenantSqlFactory=neon,
+  env=process.env,fetchImpl=fetch,rootSqlFactory=storeFactory,tenantSqlFactory=storeFactory,
   bootstrap=bootstrapPrivateOwnerPilot
 }) {
   if (env.VERCEL_ENV!=='production' ||

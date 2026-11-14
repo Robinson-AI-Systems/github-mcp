@@ -1,4 +1,4 @@
-# STATUS — current state (2026-10-30)
+# STATUS — current state (2026-11-08)
 
 Short, current-state page. Per-PR notes live in `docs/status/` (one file each); never add long dated entries here. History through
 2026-10-30 is in [archive/STATUS-2026-10-30-history.md](archive/STATUS-2026-10-30-history.md). The acceptance queue at the bottom is
@@ -6,8 +6,14 @@ read by `scripts/session-status.mjs`, `scripts/completion-evidence.mjs` and `npm
 
 ## Live and merged
 
-- `main` is at `6d0ce98` (merge of PR #487, Playground broker ingress path note/fix). Last independently verified READY live source:
-  `58bee97f` (PR #486, per [domain-path note](status/2026-10-30-playground-domain-path.md)). Whether #487 itself is deployed was not re-verified here.
+- `main` is at `d23ae2a7` (merge of PR #587, the rack staging change). Production was promoted at that head through the checked
+  owner route and verified live before the hosting move below.
+- **Hosting (2026-11-08): production now serves from the Robinson AI Systems Development Rack** at the same live address,
+  running image `rack/github:d23ae2a710ff` with its database on the rack (the store was moved intact; no re-registration
+  needed). Rack backups run nightly with a proven restore drill and a verified off-PC copy. The former Vercel project and
+  Neon database are fenced (their database password was reset at the move) and are retired once the move's final checks
+  close. Two settings could not be carried over because the old host keeps them write-only — the previous git-worker
+  address pair and the Marketplace webhook secret; both are owner follow-ups, neither blocks the service.
 - Core product (GitHub MCP, public free sign-in, owner/God mode, native Git, authority/parity, C-series speed work, coding-agent feedback
   issues #427-#436) is merged and live. Work index: 115 cards MERGED, 1 COMPLETE, 1 IN_PROGRESS (`docs/pr-cards/work-index.json`).
 - Playground (PLAY-1) source merged through PR #486: automatic project-scoped allocation, sealed repository transfer, isolated command

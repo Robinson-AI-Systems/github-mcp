@@ -4,6 +4,9 @@
 // stack trace. Unknown errors fall back to the plain status line unchanged.
 import { GithubClientError, formatDenver } from '../github/errors.js';
 import { redactExcerpt as redact } from './util.js';
+import { isInternalBug, isOwnRefusal } from '../core/error-origin.js';
+
+export { isInternalBug, isOwnRefusal };
 
 const clip = (text, n = 300) => redact(String(text ?? '').replace(/\s+/g, ' ').trim()).slice(0, n);
 const headerOf = (error, name) => error?.response?.headers?.[name] ?? error?.headers?.[name];
@@ -59,6 +62,22 @@ export function describeGithubError(error, { account = null } = {}) {
   const requestId = headerOf(error, 'x-github-request-id');
   const technical = `HTTP ${status ?? 'none'}${message ? ` — ${clip(message, 160)}` : ''}${requestId ? ` — request id ${requestId}` : ''}`;
   const out = (kind, what, cause, todo, extra = {}) => ({ kind, what, cause, todo, technical, ...extra });
+  // A request this server refused on its own checks (a TypeError/RangeError
+  // thrown by our validation) is not a network problem: say what was wrong,
+  // in full, and that it is not worth retrying unchanged. Real network
+  // failures (fetch failed, connection reset, timeouts) still read as network.
+  const networkish = /fetch failed|ECONN|ETIMEDOUT|EAI_AGAIN|ENOTFOUND|socket|network|timed? ?out|aborted/i.test(`${error?.message ?? ''} ${error?.cause?.code ?? ''} ${error?.cause?.message ?? ''}`);
+  // A bug in this server's own code also throws TypeError/RangeError ("Cannot read properties of undefined",
+  // "x is not a function", "Maximum call stack size exceeded"). That is not the request's fault, so it must not
+  // read as "refused" (Second Shift 2026-11-14): it reads as an internal error, and is reported as one.
+  const internalBug = isInternalBug(error);
+  if (status === null && (error instanceof TypeError || error instanceof RangeError) && internalBug) {
+    return { kind: 'internal_error', what: 'This server hit an internal error while handling the request.', cause: clip(error.message, 300),
+      todo: 'This is a fault in the server, not in the request. Check the current state before retrying; report it if it repeats.', technical: 'internal', retryable: false };
+  }
+  if (status === null && (error instanceof TypeError || error instanceof RangeError) && !networkish) {
+    return { kind: 'invalid_request', what: clip(error.message, 900), cause: 'This server checked the request and refused it before sending anything to GitHub.', todo: 'Change the request as the message says and try again. Retrying it unchanged will fail the same way.', technical: 'validation', retryable: false };
+  }
   if (status === null) return out('network', 'GitHub could not be reached, so the change may not have been made.', 'A network problem or a timeout.', 'Check the current state, then try again.', { retryable: true });
 
   if (status === 401) {

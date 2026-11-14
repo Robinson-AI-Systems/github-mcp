@@ -2,7 +2,7 @@
 
 GitHub Unleashed is a Robinson AI Systems product. It is not affiliated with, endorsed by, or sponsored by GitHub.
 
-A hosted MCP server that lets Chris Robinson's AI agents work in GitHub for every project: repositories, files, pull requests, CI, releases, issues, rules, security, members, apps and billing, plus Git workspaces (clone, edit, commit, push). It runs on Vercel with its own Neon database. It works fully on its own; Robinson's Toolkit (the hub) can optionally offer it too.
+A hosted MCP server that lets Chris Robinson's AI agents work in GitHub for every project: repositories, files, pull requests, CI, releases, issues, rules, security, members, apps and billing, plus Git workspaces (clone, edit, commit, push). Since 2026-11-08 it runs on the Robinson AI Systems Development Rack (Chris's own PC) with its database on the same rack; before that it ran on Vercel with its own Neon database. It works fully on its own; Robinson's Toolkit (the hub) can optionally offer it too.
 
 **Live address:** `https://github.robinsonaisystems.com`. Connect address for an AI app: `https://github.robinsonaisystems.com/api/mcp`.
 

@@ -23,14 +23,35 @@ const DATABASE_FIELD = /\b(?:host|server|data source|database|initial catalog|us
 const CLOUD_VARIABLE=/\b(?:AWS_SECRET_ACCESS_KEY|AZURE_STORAGE_ACCOUNT_KEY|AZURE_STORAGE_KEY)["']?[ \t]*[:=][ \t]*/g;
 // A version or version range (1.0.5, ^1.0.5, ~2.1, >=4, 1.x, 2.0.0-beta.1) or a structure opening ({ or [) assigned to a
 // password-looking key is a dependency entry, not a credential (owner feedback 2026-11-02: package-lock.json was refused).
-const NOT_A_PASSWORD=/^(?:[{[]|(?:[\^~]|[<>]=?|=)?v?\d+(?:\.(?:\d+|[xX*]))*(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?)$/;
+const NOT_A_PASSWORD=/^(?:[{[].*|(?:[\^~]|[<>]=?|=)?v?\d+(?:\.(?:\d+|[xX*]))*(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?)$/;
 const DATABASE_VARIABLE = /\b(?:db|database|postgres(?:ql)?|mysql|mariadb|mongo(?:db)?|redis|mssql|sqlserver|pg)_?(?:password|pass)\b["']?[ \t]*[:=](?![=>])[ \t]*/gi;
 
+// HIDDEN-GUARD-1: the whole value is one template interpolation: Python/JS/shell/printf/Jinja forms.
+export const INTERPOLATION=/^(?:\{[A-Za-z_][\w.]*(?:![rsa])?(?::[^{}]*)?\}|\$\{[A-Za-z_][\w.]*\}|\$[A-Za-z_]\w*|%(?:\([A-Za-z_]\w*\))?s|\{\{\s*[A-Za-z_][\w.]*\s*\}\})$/;
+export const isInterpolation=value=>INTERPOLATION.test(value);
+// PROSE-PASSWORD-1 (2026-11-14): a starter app's reset email line (the words "Reset your" + the password key + a colon +
+// a ${url} interpolation) was refused as a database connection field because the file also configured a database.
+// A password key read as an English phrase (right after "your", "the", "new", "reset", "forgot"... on the same line) is
+// wording, not a connection-string field; those are written after a semicolon or comma, or start the value.
+const PROSE_BEFORE=/(?:^|[^\w-])(?:your|the|a|an|new|reset|forgot|forgotten|change|changed|enter|confirm|current|my|our|their|his|her|old|temporary|wrong|invalid|incorrect|strong|weak)[ \t]+$/i;
+const proseKey=(text,index)=>PROSE_BEFORE.test(text.slice(Math.max(0,text.lastIndexOf('\n',index-1)+1),index));
+// FORM-LABEL-1 (2026-11-14): a sign-in form's autoComplete ternary choosing between the new-password and
+// current-password tokens was refused as an assigned password (the ternary's colon read as an assignment). A literal
+// that is only lowercase words
+// joined by hyphens or underscores with password as one of the words (an HTML autocomplete token, a field or label
+// name) names a password, it is never one.
+const PASSWORD_LABEL=/^(?:[a-z]+[-_])*(?:password|passwd|pwd)(?:[-_][a-z]+)*$/;
 /** Return a literal's range, excluding quote delimiters. Never evaluate code or expand variables. */
-function* databaseMatches(text) {
+function* databaseMatches(text,options={}) {
  for (const m of text.matchAll(DATABASE_URI)) {
   const first = m[0].indexOf('://')+3, at = m[0].lastIndexOf('@'), colon = m[0].indexOf(':',first);
-  if (at > colon && colon >= first && at > colon+1 && m[0].slice(colon+1,at)!==HIDDEN) yield { index:m.index+colon+1,length:at-colon-1,rule:'database-uri-password',description:'Password in a database connection URI' };
+  // HIDDEN-GUARD-1: a password slot holding only a code interpolation ({pw}, ${PW}, $PW, %s, {{ pw }}) is
+  // source code, not a credential; treating it as one blanked real code in reads and refused its restore.
+  const slot=at > colon ? m[0].slice(colon+1,at) : '';
+  // FIXTURE-URI-1: under the push/write opt-in (PUSH-FIXTURE-1/2), a documented fake password (FAKE…, or an evident
+  // placeholder such as example-password) in a connection string is test or doc text; reads still hide it.
+  if (allowsFixtures(options) && isEvidentPlaceholder(slot)) continue;
+  if (at > colon && colon >= first && at > colon+1 && slot!==HIDDEN && !isInterpolation(slot)) yield { index:m.index+colon+1,length:at-colon-1,rule:'database-uri-password',description:'Password in a database connection URI' };
  }
  for (const m of text.matchAll(PASSWORD_FIELD)) {
   const start = Math.max(0,m.index-1024), end = Math.min(text.length,m.index+1024);
@@ -38,14 +59,23 @@ function* databaseMatches(text) {
   for(const blank of window.matchAll(/\r?\n[ \t]*\r?\n/g)){if(blank.index+blank[0].length<=relative)low=blank.index+blank[0].length;else if(blank.index>=relative){high=blank.index;break;}}
   const context=window.slice(low,high);
   if (!/[;,]/.test(context) || !DATABASE_FIELD.test(context)) continue;
+  if (proseKey(text,m.index)) continue;
   const value = assignedLiteral(text,m.index+m[0].length,{allowExpressions:true});
+  // HIDDEN-GUARD-1 applies here too: a value that is only a code interpolation (${url}, {pw}, $PW) is code.
+  const literal=text.slice(value.index,value.index+value.length);
+  if (isInterpolation(literal) || PASSWORD_LABEL.test(literal)) continue;
+  if (allowsFixtures(options) && isEvidentPlaceholder(literal)) continue;
   if (value.length) yield { ...value,rule:'database-connection-password',description:'Password or Pwd in a database connection string' };
  }
  for (const m of text.matchAll(DATABASE_VARIABLE)) {
   const value = assignedLiteral(text,m.index+m[0].length);
   // Package manifests and lockfiles name the npm package whose name is pg plus pass, followed by a version number such as
   // 1.0.5 or by an opening brace for its lockfile entry: a dependency version or an opening brace is not a password.
-  if (value.length && !NOT_A_PASSWORD.test(text.slice(value.index,value.index+value.length))) yield { ...value,rule:'database-password-assignment',description:'Explicit database password assignment' };
+  // FIXTURE-DB-1 (2026-11-14): under the push/write fixture opt-in, a documented fake (FAKE..., or an evident placeholder)
+  // assigned to a database password variable is test text, exactly as for connection strings (FIXTURE-URI-1).
+  const dbLiteral=text.slice(value.index,value.index+value.length);
+  if (allowsFixtures(options) && isEvidentPlaceholder(dbLiteral)) continue;
+  if (value.length && !NOT_A_PASSWORD.test(dbLiteral)) yield { ...value,rule:'database-password-assignment',description:'Explicit database password assignment' };
  }
 }
 // Generic key/value detection is adapted from the corpus's generic-api-key concept,
@@ -84,8 +114,8 @@ function* credentialMatches(text,options={}) {
   if(fixtures&&isDocumentedFixture(m[0],RULE_INFO[index][0])){seen?.add(`${m.index}:${m[0].length}`);continue;}
   yield* remember([{index:m.index,length:m[0].length,rule:RULE_INFO[index][0],description:RULE_INFO[index][1]}]);
  }
- yield* remember(databaseMatches(text));yield* remember(openSecretMatches(text));
- for(const m of text.matchAll(GENERIC_ASSIGNMENT)){const value=assignedLiteral(text,m.index+m[0].length),literal=text.slice(value.index,value.index+value.length);if(value.length>=10&&!seen?.has(`${value.index}:${value.length}`)&&entropy(literal)>=3.5&&!(fixtures&&isEvidentPlaceholder(literal)))yield {...value,rule:'generic-credential-assignment',description:'High-entropy literal assigned to an explicit credential key'};}
+ yield* remember(databaseMatches(text,options));yield* remember(openSecretMatches(text));
+ for(const m of text.matchAll(GENERIC_ASSIGNMENT)){const value=assignedLiteral(text,m.index+m[0].length),literal=text.slice(value.index,value.index+value.length);if(value.length>=10&&!seen?.has(`${value.index}:${value.length}`)&&entropy(literal)>=3.5&&!PASSWORD_LABEL.test(literal)&&!proseKey(text,m.index)&&!(fixtures&&isEvidentPlaceholder(literal)))yield {...value,rule:'generic-credential-assignment',description:'High-entropy literal assigned to an explicit credential key'};}
 }
 function reportMatches(text,matches,{maxFindings=30}={}) {
  const findings=[];let total=0;
