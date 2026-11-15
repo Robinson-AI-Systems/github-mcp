@@ -134,7 +134,7 @@ export class HostAgent {
   // One check-in: report capacity, receive and start signed orders.
   async checkInOnce() {
     const {report: updateReport, clear: clearUpdateReport} = await this.takeUpdateReport();
-    const res = await this.post('/api/fleet/checkin', await this.signed('robinson-fleet-checkin/v1', {capacity: await this.capacity(), ...(updateReport ? {agentUpdateReport: updateReport} : {})}));
+    const res = await this.post('/api/fleet/checkin', await this.signed('robinson-fleet-checkin/v1', {capacity: await this.capacity(), agentVersion: await this.payloadVersion(), ...(updateReport ? {agentUpdateReport: updateReport} : {})}));
     if (res.status === 410) { this.log('This machine was removed from your connection. Stopping its runtimes.'); await this.terminate(); return {revoked: true}; }
     if (res.status !== 200) return {retryAfterMs: 15000, status: res.status};
     if (updateReport) await clearUpdateReport();
@@ -146,7 +146,15 @@ export class HostAgent {
       if (order.kind !== 'relay') this.work.set(lane, job);
       this.inflight.add(job); job.finally(() => this.inflight.delete(job));
     }
-    if (res.body.agentUpdate) { await this.settle(); await this.maybeUpdate(res.body.agentUpdate); }
+    // AGENT-UPDATE-QUIET-1: an offer this agent already declined for good (not newer, bad signature,
+    // not supervised) is not retried — no waiting for running jobs, no log line — until it changes.
+    // "busy" and "awaiting_drain" are retried at the next check-in as before.
+    const ad = res.body.agentUpdate;
+    if (ad && ad.body !== this.declinedAd) {
+      await this.settle();
+      const r = await this.maybeUpdate(ad);
+      if (r && !r.applied && !['busy', 'awaiting_drain'].includes(r.reason)) this.declinedAd = ad.body;
+    }
     return {status: res.body.status, pollAfterMs: res.body.pollAfterMs ?? 0, orders: (res.body.orders ?? []).length};
   }
   async report(order, result) {

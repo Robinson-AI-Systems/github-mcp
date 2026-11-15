@@ -185,6 +185,26 @@ describe('FLEET-3 dial-out hosts', () => {
     expect(() => t.agent.localCompose({binding: 'b'.repeat(64), composeFile: JSON.stringify({services: {coding: {privileged: true}}}), planHash: 'x'})).toThrow();
   });
 
+  it('offers an agent release only to an older agent, and an agent stops retrying an offer it declined (AGENT-UPDATE-QUIET-1)', async () => {
+    const t = await setup(); await joinAndApprove(t); await t.drain();
+    const call = async agentVersion => { const s = await t.agent.signed('robinson-fleet-checkin/v1', {capacity: {}, ...(agentVersion ? {agentVersion} : {})}); return checkIn(t.scope, {body: s.request, signature: s.signature, env: t.w.ctx.env, now: t.w.ctx.now, waitMs: 0}); };
+    const current = JSON.parse((await import('node:fs')).readFileSync('tools/playground-device/version.json', 'utf8')).version;
+    expect((await call(current)).agentUpdate).toBeUndefined();
+    expect((await call('fleet-agent/99')).agentUpdate).toBeUndefined();
+    expect((await call('fleet-agent/1')).agentUpdate).toBeTruthy();
+    expect((await call()).agentUpdate).toBeTruthy(); // an older agent that does not say its version is still offered
+    // The real agent reports its version, so a current agent is not offered anything at all.
+    const lines = []; t.agent.log = m => lines.push(m);
+    await t.agent.checkInOnce();
+    expect(lines.filter(l => /update/i.test(l))).toEqual([]);
+    // An older agent that cannot apply (not supervised) logs the offer once, not on every check-in.
+    t.agent.payloadVersion = async () => 'fleet-agent/1';
+    let settles = 0; const settle = t.agent.settle.bind(t.agent); t.agent.settle = async () => { settles++; return settle(); };
+    for (let i = 0; i < 3; i++) await t.agent.checkInOnce();
+    expect(lines.filter(l => /update/i.test(l))).toHaveLength(1);
+    expect(settles).toBe(1);
+  });
+
   it('serves the check-in endpoint with clear status codes', async () => {
     const t = await setup(); await joinAndApprove(t);
     const handler = createFleetHandler('checkin', {env: t.w.ctx.env, scopeFactory: async () => t.scope, options: {now: t.w.ctx.now, waitMs: 0}});

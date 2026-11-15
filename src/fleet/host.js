@@ -4,7 +4,7 @@ import {randomBytes} from 'node:crypto';
 import {CHECKIN,REPORT,ORDER,peekDevice,verifyDeviceRequest,cleanCapacity,readinessPassed} from './protocol.js';
 import {enqueue,take,complete,read} from './mailbox.js';
 import {signFleetOrderBody,signAgentReleaseBody} from '../native-git/signing.js';
-import {releaseInputs} from './agent-release.js';
+import {releaseInputs,newerThan,agentVersionNumber} from './agent-release.js';
 const hostKey=id=>'pg_host.'+id;
 // PLAY-3 §5.1: the newest signed agent release, advertised on the check-in
 // response only when the operator has configured a release (all three env
@@ -68,7 +68,7 @@ export async function checkIn(scope,{body,signature,env,now=Date.now,waitMs=2000
  // A grant that was revoked or downgraded since pairing stops all new work.
  if(scope.grantActive===false)throw deny('grant_inactive');
  let {host,request,agentGeneration}=await verifiedHost(scope,body,signature,CHECKIN,now);
- const patch={lastLeaseAt:now(),capacity:cleanCapacity(request.capacity)};
+ const patch={lastLeaseAt:now(),capacity:cleanCapacity(request.capacity),...(agentVersionNumber(request.agentVersion)!==null?{agentVersion:request.agentVersion}:{})};
  const updateReport=cleanUpdateReport(request.agentUpdateReport);
  if(updateReport)patch.agentUpdateReport={...updateReport,receivedAt:now()};
  if(host.status==='pending_canary'&&!host.readinessOrder&&!(host.readinessRetryAt>now())){
@@ -82,7 +82,10 @@ export async function checkIn(scope,{body,signature,env,now=Date.now,waitMs=2000
  host=await saveHost(scope.db,host.deviceId,current=>({...patch,...(current.readinessOrder&&patch.readinessOrder?{readinessOrder:current.readinessOrder}:{}),...(current.terminateOrder&&patch.terminateOrder?{terminateOrder:current.terminateOrder}:{})}));
  const until=now()+Math.max(0,Math.min(waitMs,25000));let orders=[];
  for(;;){orders=await take(scope.db,host.deviceId,{now});if(orders.length||now()>=until)break;await sleep(pollMs);}
- const agentUpdate=agentUpdateAdvertisement(env);
+ // AGENT-UPDATE-QUIET-1: an agent that says it already runs this version (or newer) is not offered it;
+ // it used to refuse the offer on every check-in, logging and waiting for its own jobs each time.
+ const offered=agentUpdateAdvertisement(env);
+ const agentUpdate=offered&&newerThan(JSON.parse(offered.body).version,request.agentVersion)?offered:null;
  return {status:host.status,orders:orders.map(m=>signOrder(m,env)),serverTime:now(),pollAfterMs:orders.length?0:1000,...(agentUpdate?{agentUpdate}:{})};
 }
 export async function report(scope,{body,signature,now=Date.now}){
