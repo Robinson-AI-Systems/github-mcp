@@ -5,6 +5,7 @@ import {isOwnerConnection} from '../core/authority.js';
 import {defineRead} from './define-read.js';
 import {defineGithubWrite} from './define-github-write.js';
 import {ownerOf} from './github-write.js';
+import {githubFor} from '../github/client.js';
 import {SCANNER_RULE_IDS,SCANNER_SETTINGS_SCHEMA,stableScannerJson,defaultScannerSettings,scannerSettings,scannerSettingKey,loadScannerPolicy} from '../github/scanner-policy.js';
 const OWNER={type:'string',minLength:1,maxLength:39};
 const REPO={type:'string',minLength:1,maxLength:100,pattern:'^[A-Za-z0-9_.-]+$'};
@@ -86,6 +87,21 @@ async function allowFalsePositive(a,c){
  const verification=add.map(s=>({path:s.path,blobSha:s.blobSha,rule:s.rule,valueFingerprint:s.valueFingerprint,door:'push',expectedBefore:true,expectedAfter:false}));
  return c.callTool(configure.tool.name,{owner:t.owner,repo:t.repo,expectedRevision:policy.revision,changes:{addSuppressions:add},reason:args.reason,verification});
 }
+// Owner feedback 2026-11-15: "allow" without owner used the connection's default account (a personal account) for a repo
+// that lives in the organization, and failed with a bare 404 although the call was otherwise right. When owner is left
+// out and the connection has more than one account, use the account that actually has the repo: the default first,
+// then the others. Nothing changes when owner is given or only one account matches nothing.
+async function withOwner(args,c){
+ if(!args||typeof args!=='object'||args.owner!==undefined||typeof args.repo!=='string'||!args.repo)return args;
+ const accounts=c.connection?.accounts??[],first=c.connection?.default_account;
+ if(accounts.length<2)return args;
+ const order=[first,...accounts.filter(x=>x!==first)].filter(Boolean);
+ for(const owner of order){
+  // One plain GET per account (github_repo_get would also read rules and properties).
+  try{const o=await githubFor(c,{owner});const r=await o.request('GET /repos/{owner}/{repo}',{owner,repo:args.repo});if(r?.status===200)return {...args,owner};}catch{continue;}
+ }
+ return args;
+}
 const gateway={name:'github_secret_scanner',area:'security',audience:['B','O','Op'],compact:true,usesRegistry:true,passthrough:true,
  description:'Secret scanner: allow a refused push\'s false positive in one call; settings, scan, check, configure, rollback. action describe lists all arguments.',
  guidance:'action "describe" returns every action with its full arguments and an example. A push refused for a false positive or a fake test value: action "allow" with {repo, path, blobSha (from the refusal), reason} — one call, nothing to look up. Otherwise: github_security_scanner_get_settings for settings/offer; github_security_scan_files for scan/preview; github_content_protection_check for check; github_security_scanner_configure for configure/rollback (every change needs a reason and pinned verification cases). Never put secret values in any argument.',
@@ -109,6 +125,7 @@ export const handlers={
    for(const [name,info] of Object.entries(ACTIONS)){const schema=schemaOf(info);actions[name]={what:info.what,...(schema?{required:schema.required??[]}:{}),example:info.example};}
    return {content:[{type:'text',text:JSON.stringify({how:'Call github_secret_scanner with {action, args}. For one action\'s full arguments: {action:"describe", args:{action:"<name>"}}.',actions,never:'No secret value in any argument; exceptions are tied to an exact path, blob and value.'})}]};
   }
+  a={...a,args:await withOwner(a.args,c)};
   if(a.action==='allow')return allowFalsePositive(a,c);
   const tool={settings:get.tool.name,offer:get.tool.name,scan:'github_security_scan_files',preview:'github_security_scan_files',check:'github_content_protection_check',configure:configure.tool.name,rollback:configure.tool.name}[a.action];
   if(!tool)throw new TypeError('Choose describe, allow, settings, scan, preview, check, configure, rollback or offer.');

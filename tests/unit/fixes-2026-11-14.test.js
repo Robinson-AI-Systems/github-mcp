@@ -79,6 +79,17 @@ describe('github_secret_scanner allow and describe (SCANNER-ALLOW-1)',()=>{
   const again=parse(await call(w,'github_secret_scanner',{action:'allow',args:{repo:'fixture',path:'docs/sample.md',reason:'Documented sample connection string; not a real server.'}}));
   expect(again.already_allowed).toBe(true);
  });
+ it('allow without owner finds the account that has the repo (owner feedback 2026-11-15: the default account 404ed)',async()=>{
+  const w=await makeWorld({profile:'full',accounts:['person-x','org-y']});
+  const payload=file('docs/sample.md',`Server=example.invalid;Database=sample;${PWC}=NotARealValue77;`);
+  w.gh.when('GET /repos/{owner}/{repo}').replyWith((req)=>(req.params?.owner??req.path??req.url??'').toString().includes('org-y')?{status:200,body:{name:'fixture',full_name:'org-y/fixture',owner:{login:'org-y'},default_branch:'main'}}:{status:404,body:{message:'Not Found'}});
+  w.gh.when('GET /repos/{owner}/{repo}/contents/{path}').reply(200,payload);
+  w.gh.when('GET /repos/{owner}/{repo}/git/blobs/{file_sha}').reply(200,payload);
+  const out=parse(await call(w,'github_secret_scanner',{action:'allow',args:{repo:'fixture',path:'docs/sample.md',reason:'Documented sample connection string; not a real server.'}}));
+  expect(out).toMatchObject({status:'applied',result:{revision:1}});
+  expect(w.gh.calls.some(c=>c.method==='GET'&&String(c.path??c.url).includes('/repos/org-y/fixture/contents/'))).toBe(true);
+  expect(w.gh.calls.some(c=>String(c.path??c.url).includes('/repos/person-x/fixture/contents/'))).toBe(false);
+ });
  it('allow is owner-only like configure',async()=>{
   const w=await makeWorld({profile:'full',delegated:true});
   const payload=file('docs/sample.md',`Server=example.invalid;Database=sample;${PWC}=NotARealValue77;`);
