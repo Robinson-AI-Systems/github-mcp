@@ -21,21 +21,40 @@ export function missingDocs(changed, prBody = '') {
   return missing;
 }
 
+const git = (...args) => execFileSync('git', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+
+/** CHECK-PARITY-1 (2026-11-14): a local run used to skip this rule (no BASE_SHA) or, with BASE_SHA set, compare only
+ * committed work, so `npm run check` passed changes CI then failed (twice that day). Locally the base defaults to
+ * where this branch left origin/main, and the comparison includes uncommitted and new files; CI (a clean checkout,
+ * GITHUB_ACTIONS set) is unchanged. */
+export function localBase() {
+  for (const ref of ['origin/main', 'main']) {
+    try { const sha = git('merge-base', 'HEAD', ref).trim(); if (/^[a-f0-9]{40}$/.test(sha)) return sha; } catch { /* next */ }
+  }
+  return null;
+}
+
+export function changedSince(base, { includeWorkingTree }) {
+  const lines = (text) => text.split('\n').filter(Boolean);
+  if (!includeWorkingTree) return lines(git('diff', '--name-only', base, 'HEAD', '--'));
+  return [...new Set([...lines(git('diff', '--name-only', base, '--')), ...lines(git('ls-files', '--others', '--exclude-standard'))])];
+}
+
 function main() {
-  const base = process.env.BASE_SHA;
+  const inCi = process.env.GITHUB_ACTIONS === 'true';
+  const base = process.env.BASE_SHA || (inCi ? null : localBase());
   if (!base) {
     console.log('Docs check: no PR base (not a pull_request run); diff rule skipped.');
     return;
   }
   if (!/^[a-f0-9]{40}$/.test(base)) throw new Error('Invalid BASE_SHA');
-  const changed = execFileSync('git', ['diff', '--name-only', base, 'HEAD', '--'], { encoding: 'utf8' })
-    .split('\n').filter(Boolean);
+  const changed = changedSince(base, { includeWorkingTree: !inCi });
   const eventPath = process.env.GITHUB_EVENT_PATH;
   const event = eventPath && fs.existsSync(eventPath) ? JSON.parse(fs.readFileSync(eventPath, 'utf8')) : null;
   const missing = missingDocs(changed, event?.pull_request?.body || '');
   if (missing.length) {
     console.error(`Docs check failed: this PR changes code but not ${missing.join(', ')} (DRIFT-PROTOCOL checklist B).`);
     process.exitCode = 1;
-  } else console.log(`Docs reconciliation check passed (${changed.length} changed files)`);
+  } else console.log(`Docs reconciliation check passed (${changed.length} changed files${inCi ? '' : ', compared with ' + base.slice(0, 12) + ' including uncommitted work'})`);
 }
 if (process.argv[1] && import.meta.url === new URL(`file://${path.resolve(process.argv[1])}`).href) main();

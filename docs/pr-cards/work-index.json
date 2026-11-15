@@ -4084,6 +4084,24 @@
       ],
       "readiness": "READY",
       "ownerInputs": []
+    },
+    {
+      "id": "CHECK-PARITY-1",
+      "title": "Local npm run check applies the docs rule like CI (branch base, uncommitted work); a deliberately refused preview says so with its own reason code",
+      "batch": "FIN",
+      "design": "docs/pr-cards/CHECK-PARITY-1.md",
+      "dependencies": [
+        "CONTENT-SCAN-1"
+      ],
+      "card": "docs/pr-cards/CHECK-PARITY-1.md",
+      "status": "MERGED",
+      "migration": "none",
+      "budget": 150,
+      "units": [
+        "CHECK-PARITY-1"
+      ],
+      "readiness": "READY",
+      "ownerInputs": []
     }
   ],
   "gatewayBoundary": {

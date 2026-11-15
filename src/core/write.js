@@ -196,7 +196,12 @@ export function defineWrite(spec) {
     // 3. The preview.
     let summary;
     try { summary = readFailed ? null : summarize({ args, ctx, target: tgt, before, classification }); } catch { summary = null; }
-    if (!summary) summary = `${name} on ${slug}${readFailed ? ' (its current state could not be read)' : ''}`;
+    // PREVIEW-REASON-1 (2026-11-14): a read step that refused on purpose (its own safe message, e.g. content
+    // protection) is a refusal, not a failed read; the preview line says so instead of "could not be read".
+    const deliberate = readFailed && ((readError?.safeMessage === true && typeof readError.message === 'string' && readError.message.length <= 300)
+      || (isOwnRefusal(readError) && typeof readError?.message === 'string' && readError.message.length <= 500));
+    const ownCode = /^[a-z][a-z0-9_]{1,63}$/.test(readError?.safeCode ?? '') ? readError.safeCode : null;
+    if (!summary) summary = `${name} on ${slug}${deliberate ? ' was refused before anything was sent (see warning)' : readFailed ? ' (its current state could not be read)' : ''}`;
     if (typeof summary !== 'string' || summary.length > 1024) return refuseOutright('A safe preview could not be produced, so this change was refused.');
     const marks = marksOf(classification);
     const line = marks.length ? `${summary} ${marks.map((m) => `${m}.`).join(' ')}` : summary;
@@ -205,7 +210,7 @@ export function defineWrite(spec) {
     const preflightWarning = (readError?.safeMessage === true && typeof readError.message === 'string' && readError.message.length <= 300)
       || (isOwnRefusal(readError) && typeof readError?.message === 'string' && readError.message.length <= 500)
       ? readError.message : 'Required current-state preflight failed. This preview is incomplete; no operation was sent.';
-    const preview = { done: false, ...(readFailed ? { preflight_failed: true,reason_code:'preflight_read_failed',no_change_sent:true,warning: preflightWarning } : {}),
+    const preview = { done: false, ...(readFailed ? { preflight_failed: true,reason_code:(deliberate && ownCode) || 'preflight_read_failed',no_change_sent:true,warning: preflightWarning } : {}),
       preview: line, needsConfirmation: !readFailed && needsConfirm && args.confirm !== true, ...(forcedConfirm ? { because: forcedConfirm } : {}) };
 
     if (args.dryRun === true || (ownerDirected && args.confirm === false)) {

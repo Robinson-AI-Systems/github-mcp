@@ -102,6 +102,9 @@ describe('CONTENT-SCAN-1 through the write core', () => {
     arrange(w.gh);
     const out = await call('github_content_put_file', w, { ...args, dryRun: true });
     expect(out.warning).toMatch(/Content protection: "app\.env" line 1/);
+    expect(out.reason_code).toBe('content_protection'); // PREVIEW-REASON-1
+    expect(out.preview).toMatch(/was refused before anything was sent/);
+    expect(out.preview).not.toMatch(/could not be read/);
   });
   it('code that refers to a password is accepted', async () => {
     const w = await makeWorld({ mode: 'production' });
