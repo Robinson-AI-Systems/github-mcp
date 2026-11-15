@@ -1,6 +1,6 @@
 // V-4/V-1 shared forwarder primitives: the key, the encryption context, a safe view, and registration with a one-time secret.
 import { randomBytes } from 'node:crypto';
-import { createOneTimeStore } from '../core/one-time-secrets.js';
+import { ownerOneTimeStore } from '../tools/one-time-root.js';
 import { decryptSecret, encryptSecret, readEncryptionKey } from '../core/crypto.js';
 import { forwarderUrl } from './forward-sender.js';
 import { MAX_FORWARDERS } from './ledger.js';
@@ -10,7 +10,7 @@ export const forwarderKey = (ctx) => {
   try { return readEncryptionKey(ctx.env ?? process.env); } catch { throw refusal('The server encryption key is not configured, so signing secrets cannot be kept.', 500); }
 };
 export const secretAad = ({ id, account, connection }) => `github-forwarder/${id}/${account}/${connection}`;
-export const oneTimeStore = (ctx) => createOneTimeStore({ db: ctx.db, service: 'github', setupPath: '/api/github/setup', encryptionKey: forwarderKey(ctx) });
+export const oneTimeStore = (ctx) => ownerOneTimeStore(ctx, { encryptionKey: forwarderKey(ctx) }); // ONE-TIME-ROOT-1
 /** Safe view of a stored forwarder: never the URL path/query, never the ciphertext. */
 export const forwarderView = (row) => ({ id: row.id, host: forwarderUrl(row.url).hostname, events: [...(row.events ?? [])], run_id: row.run_id ?? null, repo: row.repo ?? null });
 export const forwarderSecret = (ctx, row) => decryptSecret(row.secret_enc, { aad: secretAad({ id: row.id, account: row.account, connection: row.connection }), key: forwarderKey(ctx) });

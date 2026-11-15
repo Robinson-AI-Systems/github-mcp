@@ -2,6 +2,13 @@
 
 # ROADMAP — ideas not being built now
 
+## 2026-11-15 — Machine-bound secrets reach the machine, not the owner (found while fixing ONE-TIME-ROOT-1)
+
+- A runner registration token for the owner's own benches (development-rack RUNNER-1) today still goes through the owner's
+  setup page and a passphrase paste. Design a sealed handoff: `github_runner_register` (or a sibling) delivers the token
+  straight to Rack Control, which drops it on the named machines; one approval in chat, no owner paste. The owner asked for
+  this on 2026-11-15 ("the whole point of everything I have built is to have agents do things for me").
+
 ## 2026-11-02 — Direct git host follow-ups (found while building GIT-DIRECT-1)
 
 Owner-decision scope, not built: **Git LFS through the git remote** (serve `/info/lfs` and relay LFS objects to GitHub;

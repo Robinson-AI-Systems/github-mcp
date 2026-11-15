@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated": "2026-11-11",
+  "updated": "2026-11-15",
   "order": [
     "A",
     "B",
@@ -4099,6 +4099,22 @@
       "budget": 150,
       "units": [
         "CHECK-PARITY-1"
+      ],
+      "readiness": "READY",
+      "ownerInputs": []
+    },
+    {
+      "id": "ONE-TIME-ROOT-1",
+      "title": "One-time secrets are issued in the root store the setup page reveals from, so a tenant-routed owner connection's runner/webhook/forwarder reveal links work",
+      "batch": "FIN",
+      "design": "docs/pr-cards/ONE-TIME-ROOT-1.md",
+      "dependencies": [],
+      "card": "docs/pr-cards/ONE-TIME-ROOT-1.md",
+      "status": "IN_PROGRESS",
+      "migration": "none",
+      "budget": 200,
+      "units": [
+        "ONE-TIME-ROOT-1"
       ],
       "readiness": "READY",
       "ownerInputs": []

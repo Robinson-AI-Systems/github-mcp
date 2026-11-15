@@ -6,8 +6,7 @@
 //  - a runner that is online and busy is never removed.
 import { defineGithubWrite } from './define-github-write.js';
 import { missing, octo, ownerOf, refusal } from './github-write.js';
-import { createOneTimeStore } from '../core/one-time-secrets.js';
-import { readEncryptionKey } from '../core/crypto.js';
+import { ownerOneTimeStore } from './one-time-root.js';
 import { LOGIN, REPO_NAME } from './public-read.js';
 import { actionsBase, shapeRunner, shapeGroup } from './runners-read.js';
 
@@ -184,7 +183,7 @@ const groupAccess = defineGithubWrite({
 });
 
 // ---- registration / removal / just-in-time tokens (secrets, one-time page only) -------------------------------------------
-const secretStore = (ctx) => createOneTimeStore({ db: ctx.db, service: 'github', setupPath: '/api/github/setup', encryptionKey: readEncryptionKey(ctx.env ?? process.env) });
+const secretStore = (ctx) => ownerOneTimeStore(ctx); // ONE-TIME-ROOT-1: the root store, where the setup page reveals
 const KINDS = { registration: 'registration-token', remove: 'remove-token', jit: 'generate-jitconfig' };
 const register = defineGithubWrite({
   name: 'github_runner_register', area: 'actions', audience: ['O'],

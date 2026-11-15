@@ -2,8 +2,7 @@
 // The service alone generates each 32-byte signing key. Raw provider objects,
 // callback URLs and generated values must never enter the change journal.
 import {randomBytes} from 'node:crypto';
-import {createOneTimeStore} from '../core/one-time-secrets.js';
-import {readEncryptionKey} from '../core/crypto.js';
+import {ownerOneTimeStore} from './one-time-root.js';
 import {publicHttpsUrl} from '../github/public-url.js';
 import {defineGithubWrite} from './define-github-write.js';
 import {octo,ownerOf,missing,refusal,slug} from './github-write.js';
@@ -27,8 +26,7 @@ const destination=url=>{
   try{return publicHttpsUrl(url).hostname;}
   catch{throw refusal('Webhook target must be public HTTPS without credentials, IP literals or private hostnames.');}
 };
-const secretStore=ctx=>createOneTimeStore({db:ctx.db,service:'github',
-  setupPath:'/api/github/setup',encryptionKey:readEncryptionKey(ctx.env??process.env)});
+const secretStore=ctx=>ownerOneTimeStore(ctx); // ONE-TIME-ROOT-1: the root store, where the setup page reveals
 const safeHook=(raw,expectedId=null,desired={})=>{
   if(!raw||!Number.isSafeInteger(raw.id)||raw.id<1||
     expectedId!==null&&raw.id!==expectedId)
