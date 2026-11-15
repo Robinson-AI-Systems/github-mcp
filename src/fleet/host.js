@@ -4,14 +4,16 @@ import {randomBytes} from 'node:crypto';
 import {CHECKIN,REPORT,ORDER,peekDevice,verifyDeviceRequest,cleanCapacity,readinessPassed} from './protocol.js';
 import {enqueue,take,complete,read} from './mailbox.js';
 import {signFleetOrderBody,signAgentReleaseBody} from '../native-git/signing.js';
+import {releaseInputs} from './agent-release.js';
 const hostKey=id=>'pg_host.'+id;
 // PLAY-3 §5.1: the newest signed agent release, advertised on the check-in
 // response only when the operator has configured a release (all three env
 // values). The advertisement is signed with the same fleet key that signs
 // orders; the agent verifies it against the key pinned at join, checks the
 // bundle hash after download, and refuses downgrades itself.
-export function agentUpdateAdvertisement(env){
- const version=env?.PLAYGROUND_AGENT_LATEST_VERSION,bundleSha256=env?.PLAYGROUND_AGENT_BUNDLE_SHA256,bundleUrl=env?.PLAYGROUND_AGENT_BUNDLE_URL;
+// AGENT-AUTO-RELEASE-1: with no operator values, the server's own built-in release.
+export function agentUpdateAdvertisement(env,releaseOptions){
+ const {version,bundleSha256,bundleUrl}=releaseInputs(env,releaseOptions);
  if(typeof version!=='string'||!/^[A-Za-z0-9][A-Za-z0-9./-]{0,60}$/.test(version)||!/^[a-f0-9]{64}$/.test(bundleSha256??'')||typeof bundleUrl!=='string')return null;
  let url;try{url=new URL(bundleUrl);}catch{return null;}
  if(url.protocol!=='https:'||url.username||url.password)return null;

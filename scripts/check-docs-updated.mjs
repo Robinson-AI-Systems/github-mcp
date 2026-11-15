@@ -21,6 +21,15 @@ export function missingDocs(changed, prBody = '') {
   return missing;
 }
 
+/** AGENT-AUTO-RELEASE-1: the control plane advertises tools/playground-device/version.json, so a change to the agent's
+ * payload that leaves the version alone would never reach a machine. Exempt with "Agent-release: not needed — <reason>". */
+export const AGENT_EXCEPTION = /Agent-release: not needed — .{8,}/;
+const AGENT_PAYLOAD = /^tools\/playground-device\/(agent|pair|update|run)\.mjs$/;
+export function missingAgentBump(changed, prBody = '') {
+  if (!changed.some((p) => AGENT_PAYLOAD.test(p)) || AGENT_EXCEPTION.test(prBody || '')) return [];
+  return changed.includes('tools/playground-device/version.json') ? [] : ['a tools/playground-device/version.json bump (machines only take a newer version)'];
+}
+
 const git = (...args) => execFileSync('git', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
 
 /** CHECK-PARITY-1 (2026-11-14): a local run used to skip this rule (no BASE_SHA) or, with BASE_SHA set, compare only
@@ -51,7 +60,7 @@ function main() {
   const changed = changedSince(base, { includeWorkingTree: !inCi });
   const eventPath = process.env.GITHUB_EVENT_PATH;
   const event = eventPath && fs.existsSync(eventPath) ? JSON.parse(fs.readFileSync(eventPath, 'utf8')) : null;
-  const missing = missingDocs(changed, event?.pull_request?.body || '');
+  const missing = [...missingDocs(changed, event?.pull_request?.body || ''), ...missingAgentBump(changed, event?.pull_request?.body || '')];
   if (missing.length) {
     console.error(`Docs check failed: this PR changes code but not ${missing.join(', ')} (DRIFT-PROTOCOL checklist B).`);
     process.exitCode = 1;

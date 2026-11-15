@@ -87,6 +87,7 @@ import path from 'node:path';
 
 import contract from './api/contract.js';
 import developerConnect from './api/developer/connect.js';
+import fleetAgentBundle from './api/fleet/agent-bundle.js';
 import fleetCheckin from './api/fleet/checkin.js';
 import fleetReport from './api/fleet/report.js';
 import gitRemote from './api/git-remote.js';
@@ -154,6 +155,7 @@ const route = (handler, config) => Object.freeze({ handler, config });
 export const FILE_ROUTES = new Map([
   ['/api/contract', route(contract)],
   ['/api/developer/connect', route(developerConnect)],
+  ['/api/fleet/agent-bundle', route(fleetAgentBundle)],
   ['/api/fleet/checkin', route(fleetCheckin)],
   ['/api/fleet/report', route(fleetReport)],
   ['/api/git-remote', route(gitRemote)],
