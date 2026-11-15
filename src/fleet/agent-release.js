@@ -85,3 +85,14 @@ export function releaseInputs(env, options) {
   if (!rel) return {};
   return {version: rel.version, bundleSha256: rel.sha256, bundleUrl: `${base}/api/fleet/agent-bundle?sha=${rel.sha256}`};
 }
+
+/** "fleet-agent/N" -> N, else null. */
+export function agentVersionNumber(v) {
+  const m = /^fleet-agent\/(\d+)$/.exec(String(v ?? ''));
+  return m ? Number(m[1]) : null;
+}
+/** AGENT-UPDATE-QUIET-1: offer a release only to an agent that is older (or did not say). */
+export function newerThan(offered, running) {
+  const a = agentVersionNumber(offered), b = agentVersionNumber(running);
+  return a === null || b === null ? true : a > b;
+}
