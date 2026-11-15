@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { checksPass, checksFailed, decide, denverDay, run } from './promote-live.mjs';
+import { checksPass, checksFailed, decide, denverDay, run, refusalReason, authorizedReleaseInvocation } from './promote-live.mjs';
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -95,7 +95,7 @@ test('real atomic git promotion, read-back and second same-day update refusal', 
     await run({ repository: 'example/repo', requiredChecks: ['ci'] });
     assert.equal(git('ls-remote', 'origin', 'refs/heads/live').split(/\s+/)[0], checked);
     process.env.GITHUB_EVENT_NAME = 'workflow_dispatch';
-    await assert.rejects(run({ repository: 'example/repo', requiredChecks: ['ci'] }), /Scheduled/);
+    await assert.rejects(run({ repository: 'example/repo', requiredChecks: ['ci'] }), /Release refused: /);
     const third = git('rev-parse', 'HEAD');
     Object.assign(process.env, { GITHUB_ACTOR: 'christcr2012', GITHUB_TRIGGERING_ACTOR: 'christcr2012',
       MANUAL_RELEASE: 'true', EXPECTED_MAIN_SHA: checked });
@@ -203,4 +203,18 @@ test('either input name starts a manual release (rack-mcp calls it owner_release
   assert.match(workflow, /owner_release:/);
   assert.match(workflow, /inputs\.manual_release == true \|\| inputs\.owner_release == true/);
   assert.match(workflow, /MANUAL_RELEASE: \$\{\{ inputs\.manual_release \|\| inputs\.owner_release \}\}/);
+});
+
+test('a refused release says what was missing (RELEASE-WORDS-1)', () => {
+  const repo = 'Robinson-AI-Systems/github-mcp';
+  const owner = { GITHUB_REPOSITORY: repo, GITHUB_REF: 'refs/heads/main', GH_TOKEN: 't', GITHUB_EVENT_NAME: 'workflow_dispatch',
+    GITHUB_ACTOR: 'christcr2012', GITHUB_TRIGGERING_ACTOR: 'christcr2012' };
+  const noSha = { ...owner, MANUAL_RELEASE: 'true', EXPECTED_MAIN_SHA: '' };
+  assert.equal(authorizedReleaseInvocation(noSha, repo), false);
+  assert.match(refusalReason(noSha, repo, main), /needs expected_main_sha/);
+  assert.match(refusalReason(noSha, repo, main), new RegExp(`main is ${main}`));
+  assert.equal(authorizedReleaseInvocation({ ...noSha, EXPECTED_MAIN_SHA: main }, repo), true);
+  assert.match(refusalReason({ ...owner, GITHUB_ACTOR: 'someone' }, repo), /Only the owner/);
+  assert.match(refusalReason({ ...owner, GITHUB_REF: 'refs/heads/x' }, repo), /on main/);
+  assert.match(refusalReason(owner, repo), /Nothing asked for a release/);
 });

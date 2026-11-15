@@ -24,17 +24,17 @@ on:
         required: true
         default: false
       manual_release:
-        description: 'Owner-authorized additional checked release'
+        description: 'Owner-authorized additional checked release (needs expected_main_sha)'
         type: boolean
         required: false
         default: false
       owner_release:
-        description: 'Same as manual_release (the name rack-mcp uses); either one works'
+        description: 'Same as manual_release (the name rack-mcp uses); either one works; needs expected_main_sha'
         type: boolean
         required: false
         default: false
       expected_main_sha:
-        description: 'Exact reviewed main SHA for an additional release'
+        description: 'Exact reviewed main SHA for an additional release (required with owner_release or manual_release)'
         type: string
         required: false
   pull_request:
