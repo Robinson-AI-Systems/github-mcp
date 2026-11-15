@@ -266,8 +266,45 @@ export class HostAgent {
     const a = this.state.allocations?.[binding], file = a?.file ?? join(this.dir, 'allocations', project, 'compose.json');
     try { await this.exec('docker', ['compose', '-p', project, '-f', file, 'down', '-v', '--remove-orphans', '--timeout', '30'], {timeoutMs: 300000}); } catch { /* verify below */ }
     const evidence = await this.absent(binding);
-    if (evidence.containersAbsent && evidence.volumesAbsent && evidence.networksAbsent) { delete this.state.allocations[binding]; await this.save(); await rm(join(this.dir, 'allocations', project), {recursive: true, force: true}); }
+    if (evidence.containersAbsent && evidence.volumesAbsent && evidence.networksAbsent) { delete this.state.allocations[binding]; await this.save(); await rm(join(this.dir, 'allocations', project), {recursive: true, force: true}); await this.removeProjectImages(project); }
     return evidence;
+  }
+  // PLAY-IMAGES-1 (Chris, 2026-11-15): `compose up --build` builds an image per runtime (about 2.6 GB,
+  // labelled with its compose project), and `down -v` removes containers, volumes and networks but never
+  // images, so every finished runtime left one behind (four sat on the Workshop). Now down() removes the
+  // images its runtime built, and sweepImages() (at startup and hourly) removes any ras-pg-* image whose
+  // runtime is no longer recorded. An image a container still uses is refused by Docker and kept. Image
+  // cleanup is best effort: it never fails a down or a reconcile.
+  async imagesByProject() {
+    const ids = [...new Set((await this.exec('docker', ['image', 'ls', '-q', '--filter', 'label=com.docker.compose.project'], {timeoutMs: 30000})).split('\n').filter(Boolean))];
+    if (!ids.length) return [];
+    const rows = JSON.parse(await this.exec('docker', ['image', 'inspect', ...ids], {timeoutMs: 60000}));
+    return rows.map(r => ({id: r.Id, tags: r.RepoTags ?? [], project: r.Config?.Labels?.['com.docker.compose.project'] ?? ''}))
+      .filter(r => /^ras-pg-[a-f0-9]{32}$/.test(r.project));
+  }
+  async removeImage(img) {
+    let ok = false;
+    for (const ref of img.tags.length ? img.tags : [img.id]) {
+      try { await this.exec('docker', ['image', 'rm', ref], {timeoutMs: 120000}); ok = true; } catch { /* in use, or already gone */ }
+    }
+    return ok;
+  }
+  async removeProjectImages(project) {
+    try {
+      let n = 0;
+      for (const img of (await this.imagesByProject()).filter(i => i.project === project)) if (await this.removeImage(img)) n++;
+      return n;
+    } catch { return 0; }
+  }
+  async sweepImages() {
+    try {
+      const live = new Set(Object.values(this.state?.allocations ?? {}).map(a => a.project));
+      let removed = 0;
+      for (const img of await this.imagesByProject()) if (!live.has(img.project) && await this.removeImage(img)) removed++;
+      if (removed) this.log('Removed ' + removed + ' image(s) left by finished Playground runtimes.');
+      this.lastImageSweep = Date.now();
+      return {removed};
+    } catch { return {removed: 0}; }
   }
   async terminate() {
     let all = true;
@@ -300,6 +337,7 @@ export class HostAgent {
       }
       if (!live) { const e = await this.down({binding, project: a.project}); if (!this.state.allocations?.[binding]) { retired++; this.log('Reconciled allocation ' + a.project + ': no live containers; retired with absence evidence ' + JSON.stringify(e) + '.'); } }
     }
+    await this.sweepImages();
     return {retired};
   }
 
@@ -309,7 +347,11 @@ export class HostAgent {
     this.log('Robinson Playground host agent running for device ' + this.state.deviceId + '. Press Ctrl+C to stop.');
     let backoff = 1000;
     do {
-      try { const r = await this.checkInOnce(); if (r.revoked) return r; backoff = 1000; await this.sleep(r.retryAfterMs ?? r.pollAfterMs ?? 0); }
+      try {
+        const r = await this.checkInOnce(); if (r.revoked) return r; backoff = 1000;
+        if (Date.now() - (this.lastImageSweep ?? 0) >= 3600000 && !this.inflight.size) await this.sweepImages();
+        await this.sleep(r.retryAfterMs ?? r.pollAfterMs ?? 0);
+      }
       catch (e) { this.log('Check-in failed (' + e.message + '); retrying.'); await this.sleep(backoff); backoff = Math.min(backoff * 2, 60000); }
     } while (forever);
     return {stopped: true};
