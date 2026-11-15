@@ -65,7 +65,7 @@ describe('issue #630: values already on GitHub', () => {
   const call = /remote:\s+github_secret_scanner (\{.*\})\s*$/m.exec(touched.stderr);
   expect(call, touched.stderr).toBeTruthy();
   const parsed = JSON.parse(call[1]);
-  expect(parsed).toMatchObject({ action: 'configure', args: { repo: 'hello', expectedRevision: expect.any(Number),
+  expect(parsed).toMatchObject({ action: 'configure', args: { owner: expect.any(String), repo: 'hello', expectedRevision: expect.any(Number),
    verification: [expect.objectContaining({ door: 'push', path: '.env.example', expectedBefore: true, expectedAfter: false })],
    changes: { addSuppressions: [expect.objectContaining({ path: '.env.example', pushException: true })] } } });
   expect(parsed.args.verification[0].valueFingerprint).toBe(parsed.args.changes.addSuppressions[0].valueFingerprint);
