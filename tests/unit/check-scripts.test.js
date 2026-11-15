@@ -3,7 +3,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { missingDocs } from '../../scripts/check-docs-updated.mjs';
+import { missingDocs, missingAgentBump } from '../../scripts/check-docs-updated.mjs';
 import { checkWrites, parseCatalog, parseSafety } from '../../scripts/check-writes.mjs';
 import { checkBudgets, listingTokens } from '../../scripts/check-budgets.mjs';
 
@@ -19,6 +19,12 @@ describe('docs check (DRIFT-PROTOCOL B)', () => {
   it('accepts a docs/status note in place of STATUS.md, but not the README', () => {
     expect(missingDocs(['src/github/client.js', 'docs/status/2026-10-22-x.md', 'docs/pr-cards/B-1.md'])).toEqual([]);
     expect(missingDocs(['src/github/client.js', 'docs/status/README.md', 'docs/pr-cards/B-1.md'])).toEqual(['docs/STATUS.md or a docs/status/ note']);
+  });
+  it('requires a version bump when the Playground agent payload changes (AGENT-AUTO-RELEASE-1)', () => {
+    expect(missingAgentBump(['tools/playground-device/agent.mjs'])).toEqual(['a tools/playground-device/version.json bump (machines only take a newer version)']);
+    expect(missingAgentBump(['tools/playground-device/agent.mjs', 'tools/playground-device/version.json'])).toEqual([]);
+    expect(missingAgentBump(['tools/playground-device/README.md', 'tools/playground-device/install.mjs'])).toEqual([]);
+    expect(missingAgentBump(['tools/playground-device/run.mjs'], 'Agent-release: not needed — comment-only change')).toEqual([]);
   });
   it('requires TOOL-CATALOG when src/tools changes', () => {
     expect(missingDocs(['src/tools/repo.js', 'docs/STATUS.md', 'docs/pr-cards/B-1.md'])).toEqual(['docs/TOOL-CATALOG.md']);
