@@ -1,4 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 import { missingDocs } from '../../scripts/check-docs-updated.mjs';
 import { checkWrites, parseCatalog, parseSafety } from '../../scripts/check-writes.mjs';
 import { checkBudgets, listingTokens } from '../../scripts/check-budgets.mjs';
@@ -22,6 +26,42 @@ describe('docs check (DRIFT-PROTOCOL B)', () => {
   it('honours the written exception only with a reason', () => {
     expect(missingDocs(['src/x.js'], 'Docs-update: not needed — comment-only change')).toEqual([]);
     expect(missingDocs(['src/x.js'], 'Docs-update: not needed — ')).not.toEqual([]);
+  });
+});
+
+// CHECK-PARITY-1: a local run compares with where the branch left main, uncommitted and new files included.
+describe('docs check runs locally the way CI does (CHECK-PARITY-1)', () => {
+  const script = resolve('scripts/check-docs-updated.mjs');
+  const repo = () => {
+    const dir = mkdtempSync(join(tmpdir(), 'docs-check-'));
+    const g = (...a) => execFileSync('git', a, { cwd: dir, stdio: 'ignore' });
+    g('init', '-q', '-b', 'main'); g('config', 'user.email', 't@example.com'); g('config', 'user.name', 't');
+    mkdirSync(join(dir, 'src'), { recursive: true }); writeFileSync(join(dir, 'src', 'a.js'), '1\n');
+    g('add', '-A'); g('commit', '-qm', 'base'); g('checkout', '-qb', 'feature');
+    return dir;
+  };
+  const run = (dir, env) => spawnSync(process.execPath, [script], { cwd: dir, encoding: 'utf8',
+    env: { PATH: process.env.PATH, HOME: process.env.HOME, ...env } });
+  it('catches an uncommitted code change with no docs, without BASE_SHA', () => {
+    const dir = repo();
+    try {
+      writeFileSync(join(dir, 'src', 'a.js'), '2\n');
+      const r = run(dir, {});
+      expect(r.status).toBe(1);
+      expect(r.stderr).toMatch(/Docs check failed/);
+      mkdirSync(join(dir, 'docs', 'status'), { recursive: true }); mkdirSync(join(dir, 'docs', 'pr-cards'), { recursive: true });
+      writeFileSync(join(dir, 'docs', 'status', 'n.md'), 'note\n'); writeFileSync(join(dir, 'docs', 'pr-cards', 'X-1.md'), 'card\n');
+      expect(run(dir, {}).status).toBe(0); // new, untracked doc files count
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+  it('in CI it still compares committed work only', () => {
+    const dir = repo();
+    try {
+      const base = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: dir, encoding: 'utf8' }).trim();
+      writeFileSync(join(dir, 'src', 'a.js'), '2\n'); // uncommitted: invisible to a clean CI checkout's rule
+      expect(run(dir, { GITHUB_ACTIONS: 'true', BASE_SHA: base }).status).toBe(0);
+      expect(run(dir, { GITHUB_ACTIONS: 'true' }).stdout).toMatch(/diff rule skipped/);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
   });
 });
 
