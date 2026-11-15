@@ -27,6 +27,23 @@ export function authorizedReleaseInvocation(env, repository, now = new Date()) {
       (env.RECOVER_MISSED_DAILY === 'true' && denverMinute(now) >= 1));
 }
 
+/** RELEASE-WORDS-1 (2026-11-15): say exactly why a release run was refused and what to send instead.
+ * The rule itself (authorizedReleaseInvocation) is unchanged. */
+export function refusalReason(env, repository, mainHead = '') {
+  if (env.GITHUB_REPOSITORY !== repository) return `This release script only runs in ${repository}.`;
+  if (env.GITHUB_REF !== 'refs/heads/main') return 'Run the release on main (ref: main).';
+  if (!env.GH_TOKEN) return 'The release step has no GH_TOKEN.';
+  if (env.GITHUB_EVENT_NAME !== 'workflow_dispatch') return `A ${env.GITHUB_EVENT_NAME} event cannot release; only the schedule or an owner dispatch can.`;
+  if (env.GITHUB_ACTOR !== 'christcr2012' || env.GITHUB_TRIGGERING_ACTOR !== 'christcr2012')
+    return 'Only the owner (christcr2012) may dispatch a release.';
+  if (env.MANUAL_RELEASE === 'true' && !/^[a-f0-9]{40}$/.test(env.EXPECTED_MAIN_SHA ?? ''))
+    return 'A manual release (owner_release or manual_release) also needs expected_main_sha: the full 40-character ' +
+      'main commit to release, so a release can never ship something nobody checked' +
+      (/^[a-f0-9]{40}$/.test(mainHead) ? `. main is ${mainHead} right now.` : '.');
+  if (env.RECOVER_MISSED_DAILY === 'true') return 'recover_missed_daily runs only after 00:01 Denver time.';
+  return 'Nothing asked for a release: set owner_release (or manual_release) with expected_main_sha, or recover_missed_daily.';
+}
+
 export function checksPass(runs, required, sha) {
   return required.every(name => {
     const run = runs.filter(r => r.name === name && r.app?.slug === 'github-actions' &&
@@ -58,8 +75,11 @@ function git(args) {
 export async function run(policy = JSON.parse(readFileSync(new URL('./policy.json', import.meta.url), 'utf8')),
   { attempts = 20, pause = () => new Promise(resolve => setTimeout(resolve, 30000)) } = {}) {
   const repo = process.env.GITHUB_REPOSITORY;
-  if (!authorizedReleaseInvocation(process.env, policy.repository))
-    throw Error('Scheduled or explicitly owner-authorized checked main only');
+  if (!authorizedReleaseInvocation(process.env, policy.repository)) {
+    let head = '';
+    try { head = git(['ls-remote', 'origin', 'refs/heads/main']).split(/\s+/)[0]; } catch { /* the reason still stands */ }
+    throw Error('Release refused: ' + refusalReason(process.env, policy.repository, head));
+  }
   const deadline = Date.now() + 10 * 60 * 1000;
   const manual = process.env.GITHUB_EVENT_NAME === 'workflow_dispatch' && process.env.MANUAL_RELEASE === 'true';
   const marker = manual ? 'manual-live-promotion/' + process.env.EXPECTED_MAIN_SHA : 'live-promotion/' + denverDay();
