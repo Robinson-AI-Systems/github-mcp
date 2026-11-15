@@ -28,6 +28,11 @@ on:
         type: boolean
         required: false
         default: false
+      owner_release:
+        description: 'Same as manual_release (the name rack-mcp uses); either one works'
+        type: boolean
+        required: false
+        default: false
       expected_main_sha:
         description: 'Exact reviewed main SHA for an additional release'
         type: string
@@ -65,7 +70,7 @@ jobs:
     if: >-
       github.ref == 'refs/heads/main' &&
       (github.event_name == 'schedule' ||
-       (github.event_name == 'workflow_dispatch' && (inputs.recover_missed_daily == true || inputs.manual_release == true) && github.actor == 'christcr2012' && github.triggering_actor == 'christcr2012'))
+       (github.event_name == 'workflow_dispatch' && (inputs.recover_missed_daily == true || inputs.manual_release == true || inputs.owner_release == true) && github.actor == 'christcr2012' && github.triggering_actor == 'christcr2012'))
     needs: policy
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -81,6 +86,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           RECOVER_MISSED_DAILY: ${{ inputs.recover_missed_daily }}
-          MANUAL_RELEASE: ${{ inputs.manual_release }}
+          MANUAL_RELEASE: ${{ inputs.manual_release || inputs.owner_release }}
           EXPECTED_MAIN_SHA: ${{ inputs.expected_main_sha }}
         run: node .github/release/promote-live.mjs
