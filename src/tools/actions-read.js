@@ -92,7 +92,16 @@ export const actionsGetJobLog = defineRead({
     const { owner, octokit } = await readerFor(args, ctx);
     const p = { owner, repo: args.repo, job_id: args.jobId };
     const job = (await octokit.request('GET /repos/{owner}/{repo}/actions/jobs/{job_id}', p)).data;
-    const res = await octokit.request('GET /repos/{owner}/{repo}/actions/jobs/{job_id}/logs', p);
+    let res;
+    try { res = await octokit.request('GET /repos/{owner}/{repo}/actions/jobs/{job_id}/logs', p); }
+    catch (error) {
+      if (error?.status !== 404 && error?.status !== 410) throw error;
+      const annotations = await jobAnnotations(octokit, owner, args.repo, job);
+      const never = neverStarted(job);
+      return { job_id: job.id, name: job.name, status: job.status, conclusion: job.conclusion, never_started: never, logs_readable: false, annotations,
+        note: never ? 'GitHub never started this job, so it has no log. Its reason is in annotations.'
+          : 'GitHub has no log for this job (expired or not uploaded). Annotations are what GitHub kept.' };
+    }
     const text=textOfBody(res.data);
     if(args.search!==undefined){
       if(args.fullText===true||args.tailLines!==undefined||args.textOffset!==undefined||args.maxChars!==undefined)throw new TypeError('search cannot be combined with fullText, tailLines, textOffset or maxChars.');
@@ -141,6 +150,17 @@ export const actionsGetJobLog = defineRead({
 });
 
 // Generic runner lines say only that a step failed; the lines just before them say why (owner feedback 2026-11-02).
+// JOB-NOT-STARTED-1: a job GitHub refused to start (billing, no matching runner, a
+// disabled workflow) has no log at all; its reason lives only in the job's check-run
+// annotations. A job's id is also its check-run id.
+async function jobAnnotations(octokit, owner, repo, job) {
+  try {
+    const items = (await octokit.request('GET /repos/{owner}/{repo}/check-runs/{check_run_id}/annotations', { owner, repo, check_run_id: job.id, per_page: 20 })).data ?? [];
+    return items.map((a) => ({ level: a.annotation_level, message: String(a.message ?? '').slice(0, 500) }));
+  } catch { return []; }
+}
+const neverStarted = (job) => !job.runner_name && !(job.steps ?? []).length;
+
 const GENERIC_ERROR = /Process completed with exit code \d+|^##\[error\]\s*$|Error: The operation was canceled/i;
 const ANSI_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z\s?/;
 function linesBeforeFailure(text, count = 25) {
@@ -215,10 +235,19 @@ export const actionsGetRunLogsSummary = defineRead({
           if(!errors.length){const summary=summarizeLog(direct,{tailLines:20});errors=summary.errors.length?summary.errors:summary.tail;source='job_log';}}
         catch{/* Never attribute another job's output or invent an empty successful diagnostic. */}
       }
+      let annotations=null;
+      if(!errors.length){
+        annotations=await jobAnnotations(octokit,owner,args.repo,job);
+        const told=annotations.filter((a)=>a.level==='failure').map((a)=>a.message);
+        if(told.length){errors=told;source='annotations';}
+      }
+      const never=neverStarted(job);
       // Only "Process completed with exit code 1"? Show the lines that ran just before it, from this job's own log.
       const before = errors.length && errors.every((l) => GENERIC_ERROR.test(l)) ? [...texts, ...(direct ? [direct] : [])].map((t) => linesBeforeFailure(t)).find((l) => l.length) ?? [] : [];
-      return { ...jobBrief(job), error_lines: errors, ...(before.length ? { lines_before_failure: before } : {}), logs_source:source,logs_readable:source!=='unavailable',
-        full_log:{tool:'github_actions_get_job_log',args:{owner,repo:args.repo,jobId:job.id,fullText:true}},
+      return { ...jobBrief(job), error_lines: errors, ...(before.length ? { lines_before_failure: before } : {}), logs_source:source,logs_readable:source!=='unavailable'&&source!=='annotations',
+        ...(never?{never_started:true,note:'GitHub never started this job (no runner, no steps), so there is no log; error_lines are GitHub\'s own reason from the job\'s annotations.'}
+          :{full_log:{tool:'github_actions_get_job_log',args:{owner,repo:args.repo,jobId:job.id,fullText:true}}}),
+        ...(annotations?.length&&source!=='annotations'?{annotations}:{}),
         ...(!errors.length?{note:'No diagnostic lines were readable. Read this exact job log; absence is not a successful run.'}:{}) };
     })) };
   })

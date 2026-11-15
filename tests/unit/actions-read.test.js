@@ -154,3 +154,29 @@ it('never advances past multibyte or JSON-escaped log characters removed by a re
  }
  expect(joined).toBe(text);
 });
+// JOB-NOT-STARTED-1: GitHub refused to start the job (billing on 2026-11-15); its only reason is an annotation.
+const NOT_STARTED = { id: 7, name: 'tests', status: 'completed', conclusion: 'failure', started_at: 'a', completed_at: 'a', runner_name: '', html_url: 'u', steps: [] };
+const BILLING = [{ annotation_level: 'failure', message: 'The job was not started because recent account payments have failed or your spending limit needs to be increased.' },
+ { annotation_level: 'notice', message: 'The ubuntu-latest label will migrate.' }];
+it('a job GitHub never started: the summary gives GitHub\'s own reason and no dead log pointer', async () => {
+ const w = await makeWorld({ profile: 'read_only' });
+ w.gh.when(JOBS).reply(200, { total_count: 1, jobs: [NOT_STARTED] });
+ w.gh.when('GET /repos/{owner}/{repo}/actions/runs/{run_id}/logs').reply(404, { message: 'Not Found' });
+ w.gh.when('GET /repos/{owner}/{repo}/actions/jobs/{job_id}/logs').reply(404, { message: 'Not Found' });
+ w.gh.when('GET /repos/{owner}/{repo}/check-runs/{check_run_id}/annotations').reply(200, BILLING);
+ const { body } = await run(w, 'github_actions_get_run_logs_summary', { ...R, runId: 9 });
+ const job = body.failed_jobs[0];
+ expect(job.error_lines).toEqual([BILLING[0].message]);
+ expect(job).toMatchObject({ never_started: true, logs_source: 'annotations', logs_readable: false });
+ expect(job.full_log).toBeUndefined();
+});
+it('a job GitHub never started: the job log answers with the reason instead of "not found"', async () => {
+ const w = await makeWorld({ profile: 'read_only' });
+ w.gh.when('GET /repos/{owner}/{repo}/actions/jobs/{job_id}').reply(200, NOT_STARTED);
+ w.gh.when('GET /repos/{owner}/{repo}/actions/jobs/{job_id}/logs').reply(404, { message: 'Not Found' });
+ w.gh.when('GET /repos/{owner}/{repo}/check-runs/{check_run_id}/annotations').reply(200, BILLING);
+ const { result, body } = await run(w, 'github_actions_get_job_log', { ...R, jobId: 7 });
+ expect(result.isError, JSON.stringify(result)).toBeFalsy();
+ expect(body).toMatchObject({ never_started: true, logs_readable: false });
+ expect(body.annotations[0].message).toContain('spending limit');
+});
