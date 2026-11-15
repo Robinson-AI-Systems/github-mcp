@@ -50,11 +50,16 @@ export async function refuseNewSecrets(ctx, target, entries) {
     for (const f of found) if (!already.has(`${f.rule}\u0000${f.value}`)) blocked.push({ path: e.path, line: f.line, rule: f.rule, valueFingerprint: valueFingerprint(e.path, f.rule, f.value) });
   }
   if (!blocked.length) return;
+  // The write core shows a read-step refusal of up to 300 characters (longer ones become a generic "could not be
+  // read" line), so this stays short: where, which rule, and the one value fingerprint an exception needs.
   const first = blocked[0];
-  const err = refusal(`Content protection refused this commit: ${blocked.length} credential-shaped value(s), first ${JSON.stringify(first.path.slice(0, 200))} line ${first.line} (${first.rule}). `
-    + 'Nothing was changed. Remove the value (real secrets belong in protected setup, not the repository). If it is a deliberate fake test value, '
-    + `allow exactly that value in that file with github_secret_scanner configure: addSuppressions [{ rule: "${first.rule}", path: "${first.path.slice(0, 200)}", pushException: true, valueFingerprint: "${first.valueFingerprint}", blobSha: <the file's blob sha>, reason: <why> }], then try again.`, 422);
+  const more = blocked.length > 1 ? ` (${blocked.length} values in all)` : '';
+  const tail = ` looks like a credential (${first.rule})${more}. Remove it; for a deliberate fake, add a push exception (github_secret_scanner configure) with valueFingerprint ${first.valueFingerprint}.`;
+  const room = Math.max(12, 300 - tail.length - 40);
+  const where = first.path.length > room ? '…' + first.path.slice(-(room - 1)) : first.path;
+  const err = refusal(`Content protection: "${where}" line ${first.line}${tail}`.slice(0, 300), 422);
   err.code = 'content_protection';
+  err.safeCode = 'content_protection';
   err.findings = blocked.slice(0, 20);
   throw err;
 }
