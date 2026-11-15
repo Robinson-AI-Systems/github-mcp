@@ -156,6 +156,24 @@ it('larger changes: upload returns a one-time command first, then one more call 
  expect(JSON.stringify(replay)).not.toContain('/v1/transfer/');
 }, 60000);
 
+it('an upload already applied with github_git_workspace_upload still commits through repo_change (REPO-CHANGE-APPLIED-1)', async () => {
+ const begun = parse(await call('github_repo_change', { repo: 'hello', branch: 'pre-applied', upload: 'archive', requestKey: 'pre-1' }));
+ expect(begun.result.stage, JSON.stringify(begun)).toBe('awaiting_upload');
+ const src = join(dir, 'pre'); await mkdir(src, { recursive: true }); await writeFile(join(src, 'file.txt'), 'pre-applied\n');
+ const archive = execFileSync('tar', ['-czf', '-', '-C', src, '.']);
+ const url = begun.result.command.match(/^U="(https:[^"]+)"/)[1];
+ const sent = await fetch(relay.local(url).replace('https://worker.example.test', origin), { method: 'PUT', body: archive });
+ expect(sent.status, await sent.clone().text()).toBe(200);
+ const status = parse(await call('github_git_workspace_read', { workspace_id: begun.result.workspace_id, operation: 'status' }));
+ const generation = status.result?.generation ?? status.generation;
+ const applied = parse(await call('github_git_workspace_upload', { workspace_id: begun.result.workspace_id, operation: 'apply', upload_id: begun.result.upload_id, expectedGeneration: generation, requestKey: 'pre-apply' }));
+ expect(JSON.stringify(applied)).toContain('"applied"');
+ const done = parse(await call('github_repo_change', { repo: 'hello', branch: 'pre-applied', workspace_id: begun.result.workspace_id, upload_id: begun.result.upload_id, message: 'Pre-applied change', requestKey: 'pre-2' }));
+ expect(done, JSON.stringify(done)).toMatchObject({ status: 'applied', result: { stage: 'pushed' } });
+ expect(JSON.stringify(done.result.progress)).toContain('already applied in this workspace');
+ expect(git(bare, 'show', headOf(bare, 'pre-applied') + ':file.txt')).toBe('pre-applied');
+}, 60000);
+
 it('refuses unusable input plainly before anything is sent', async () => {
  for (const [args, pattern] of [
   [{ repo: 'hello', branch: 'x', files: [{ path: '../up.txt', content: 'x' }], message: 'm' }, /not a usable file path/],

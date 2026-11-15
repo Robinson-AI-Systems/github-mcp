@@ -191,11 +191,22 @@ function machine(c, t, a, key, before) {
     if (a.upload_id) {
       const options = { uploadId: a.upload_id.slice(4), ...(a.path !== undefined ? { path: a.path } : {}) };
       let r;
+      // REPO-CHANGE-APPLIED-1: an upload already applied to THIS workspace (for example with
+      // github_git_workspace_upload apply) has its files in the worktree already; carry on and
+      // commit them instead of refusing the whole change.
+      const alreadyApplied = async text => /already applied/i.test(String(text ?? ''))
+        && (await call({ action: 'upload_status', options: { uploadId: options.uploadId } }).catch(() => null))?.state === 'applied';
       try { r = await call({ action: 'upload_apply', options, requestKey: stepKey(key, id, 'upload_apply'), expectedGeneration: st.generation, allowWrite: true }); }
-      catch (error) { if (![400, 404].includes(error.status)) throw error; throw Object.assign(definiteFailure('upload apply', { status: 'refused', error: String(error.message).slice(0, 300) }), { outcomeDetails: { outcome: 'refused', workspace_id: id, progress } }); }
+      catch (error) {
+        if (![400, 404].includes(error.status)) throw error;
+        if (await alreadyApplied(error.message)) r = { status: 'already_applied' };
+        else throw Object.assign(definiteFailure('upload apply', { status: 'refused', error: String(error.message).slice(0, 300) }), { outcomeDetails: { outcome: 'refused', workspace_id: id, progress } });
+      }
+      if (r.status === 'refused' && await alreadyApplied(r.reason)) r = { status: 'already_applied' };
       if (r.status === 'refused') throw Object.assign(definiteFailure('upload apply', { status: 'refused', error: r.reason }), { outcomeDetails: { outcome: 'refused', workspace_id: id, progress } });
-      if (r.status !== 'applied') return stopped('The upload could not be applied with confirmed state.');
-      await inspect(); note(`upload applied (${(r.files_added ?? 0) + (r.files_changed ?? 0)} files)`);
+      if (r.status === 'already_applied') { await inspect(); note('upload was already applied in this workspace; its files are committed'); }
+      else if (r.status !== 'applied') return stopped('The upload could not be applied with confirmed state.');
+      else { await inspect(); note(`upload applied (${(r.files_added ?? 0) + (r.files_changed ?? 0)} files)`); }
     }
     let written = 0, removed = 0, absent = 0;
     for (const file of a.files ?? []) {
