@@ -196,3 +196,11 @@ test('additional manual release requires owner identity and an exact target', as
     { GITHUB_REF: 'refs/heads/live' }, { GITHUB_REPOSITORY: 'other/repo' }, { GH_TOKEN: '' }])
     assert.equal(authorizedReleaseInvocation({ ...env, ...change }, 'example/repo'), false);
 });
+
+test('either input name starts a manual release (rack-mcp calls it owner_release; Chris, 2026-11-15)', () => {
+  const workflow = readFileSync(new URL('../workflows/daily-live.yml', import.meta.url), 'utf8');
+  assert.match(workflow, /manual_release:/);
+  assert.match(workflow, /owner_release:/);
+  assert.match(workflow, /inputs\.manual_release == true \|\| inputs\.owner_release == true/);
+  assert.match(workflow, /MANUAL_RELEASE: \$\{\{ inputs\.manual_release \|\| inputs\.owner_release \}\}/);
+});
