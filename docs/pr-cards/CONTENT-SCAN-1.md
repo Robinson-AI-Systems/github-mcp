@@ -26,6 +26,13 @@ content scan as every other write route, and have CI scan this repository's own 
 
 Accepted by `tests/unit/content-scan-1.test.js` (7 tests). The scanner suites (474 tests) are unchanged and pass.
 
+## Follow-up (same evening)
+
+I checked this live after release 57. A blocked preview said "its current state could not be read" because the refusal was longer than
+the 300 characters the write core shows for a read-step refusal. The refusal is now short, carries
+`reason_code: content_protection` and includes the value fingerprint. Three end-to-end write-core tests in
+`tests/unit/content-scan-1.test.js` pin this.
+
 ## Drift check
 
 Changes: `src/tools/code-write.js`, `src/github/content-protection.js`, `scripts/self-scan.mjs`, `package.json`,
