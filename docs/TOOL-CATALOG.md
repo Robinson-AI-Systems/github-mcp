@@ -801,7 +801,7 @@ Card(s): Y-6. Runner registration, removal and just-in-time tokens are sealed in
 | `github_runner_group_save` | Create or edit an organization runner group; public repositories or all repositories ask first | C·A | N | I | O | F | Y-6 |
 | `github_runner_group_delete` | Delete a runner group (name typed; no undo) | C·Prod | N | I | O | F | Y-6 |
 | `github_runner_group_set_access` | Set which repositories and runners belong to a group | C·A | N | I | O | F | Y-6 |
-| `github_runner_register` | Registration, removal or JIT token, revealed once on the private setup page | C·A·Prod | N | I | O | F | Y-6 |
+| `github_runner_register` | Registration, removal or JIT token, revealed once on the private setup page (issued in the root store so a tenant-routed owner connection's link works, ONE-TIME-ROOT-1) | C·A·Prod | N | I | O | F | Y-6 |
 | `github_actions_set_limits` | Set cache retention, cache size, artifact/log retention or the OIDC subject template (raising storage is spend) | C·$ | N | I | O | F | Y-6 |
 | `github_env_protection_rule_save` | Add or disable a custom deployment protection rule (only listed apps) | C·Prod* | N | I | O | F | Y-6 |
 | `github_deploy_review_custom_rule` | Approve or reject a deployment waiting on a custom rule (only the owning App) | C·Prod | N | I | O | F | Y-6 |
