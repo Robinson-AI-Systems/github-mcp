@@ -71,11 +71,33 @@ describe('failing tests with their reasons (LOG-FAILURES-1)', () => {
       '  Failed Door.Unit.Tests.Other.Two [3 ms]',
       '  Error Message:',
       '   Assert.Equal() Failure',
+      '  Stack Trace:',
+      '     at Door.Unit.Tests.Other.Two() in Other.cs:line 9',
+      'Results File: C:\\actions-runner\\_work\\TestResults\\unit.trx',
+      'Failed!  - Failed:     2, Passed:   548, Skipped:     0, Total:   550, Duration: 2 s - Door.Unit.Tests.dll (net10.0)',
+      '##[error]Process completed with exit code 1.',
+      'with:',
     ].join('\n');
     const f = testFailures(log);
     expect(f.map((x) => x.test)).toEqual(['Door.Unit.Tests.SessionAbilityTests.Files_ListSearchAndRoots', 'Door.Unit.Tests.Other.Two']);
     expect(f[0].reason).toContain('relative path is required');
     expect(f[1].reason).toContain('Assert.Equal() Failure');
+    // LOG-FAILURES-3: the run's own summary and the step's end are not part of the last test's reason.
+    expect(f[1].reason.at(-1)).toBe('at Door.Unit.Tests.Other.Two() in Other.cs:line 9');
+    expect(f[1].reason.join(' ')).not.toMatch(/Results File|Failed!|##\[error\]|^with:/);
+  });
+  it('LOG-FAILURES-3: vitest, node:test, pytest and go run summaries end the last reason', () => {
+    const cases = [
+      ['FAIL src/a.test.js > adds', 'AssertionError: expected 1 to be 2', ' Test Files  1 failed (1)'],
+      ['not ok 3 - parses', '  error: bad input', '# tests 3'],
+      ['FAILED tests/test_a.py::test_x - assert 1 == 2', 'E   assert 1 == 2', '==== 1 failed, 4 passed in 0.12s ===='],
+      ['--- FAIL: TestX (0.00s)', '    x_test.go:9: want 2', 'FAIL\tgithub.com/a/b\t0.012s'],
+    ];
+    for (const [m, why, end] of cases) {
+      const f = testFailures([m, why, end, 'after the summary'].join('\n'));
+      expect(f).toHaveLength(1);
+      expect(f[0].reason).toEqual([why.trim()]);
+    }
   });
   it('node:test, go and pytest markers', () => {
     expect(testFailures('not ok 3 - restart refuses while gaming\n  error: expected refused').map((x) => [x.runner, x.test]))

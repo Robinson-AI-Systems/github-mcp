@@ -129,6 +129,14 @@ async function mergeOne(a,ctx){
     if(budget>=5){
       const waited=await invoke(ctx,'github_check_wait',{...s,pr:a.number,expectedHeadSha:a.expectedHeadSha,timeoutSeconds:Math.min(budget,30)});
       // A red check is not "still running": fall through to the blocker answer, which names it.
+      // MERGE-WAIT-2 (owner report 2026-11-17): the wait stops at once when a job has already failed while the roll-up
+      // check has not reported; that is not "still running" (it read as giving up after 1 s). Say a job failed, name it,
+      // and hand over the log-summary call, so the agent reads why instead of calling again.
+      if(waited?.failed_runs?.length&&waited?.overall!=='green')return reply({status:'checks_failed',done:false,number:a.number,
+        expected_head:a.expectedHeadSha,checks:'failing',failed_runs:waited.failed_runs,waited_seconds:waited?.waited_seconds??null,
+        ...(waited?.not_reported_yet?{not_reported_yet:waited.not_reported_yet}:{}),
+        why_tool:{tool:'github_actions_get_run_logs_summary',arguments:{...(s.owner?{owner:s.owner}:{}),repo:s.repo,pr:a.number}},
+        next:'A job already failed ('+waited.failed_runs.slice(0,5).join(', ')+'), so the required check will fail too; waiting longer will not help. Read why with why_tool, fix it, push, and call again with the new head.'});
       if(waited?.overall!=='green'&&waited?.overall!=='no_ci'&&waited?.overall!=='red')return reply({status:waited?.status==='head_moved'?'not_ready':'checks_running',done:false,number:a.number,
         expected_head:a.expectedHeadSha,checks:waited?.overall??'unknown',waited_seconds:waited?.waited_seconds??null,
         ...(waited?.still_running?{still_running:waited.still_running}:{}),...(waited?.not_reported_yet?{not_reported_yet:waited.not_reported_yet}:{}),
