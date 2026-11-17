@@ -77,7 +77,7 @@ export const actionsGetRun = defineRead({
 
 export const actionsGetJobLog = defineRead({
   name: 'github_actions_get_job_log', boundedWindow:true, area: 'actions', audience: ['B', 'Op'],
-  description: 'Read a job log: tail summary (with each failing test and its reason lines), full redacted text in hash-pinned windows, or search (text) for matches with context and a textOffset. For a long log, search first rather than paging.',
+  description: 'Read a job log: summary with failing tests and reasons, hash-pinned full-text windows, or search with context. Search long logs before paging.',
   // Argument names match the response fields too (text_offset, next_text_offset), so a continuation can be copied as-is.
   aliases: {jobId:['job_id'],textOffset:['text_offset'],maxChars:['max_chars'],expectedLogHash:['log_hash'],tailLines:['tail_lines'],contextLines:['context_lines'],maxMatches:['max_matches'],search:['grep','find']},
   properties: { owner: OWNER, repo: REPO, jobId: { type: 'integer', minimum: 1 }, tailLines: { type: 'integer', minimum: 10, maximum: 2000, description: 'Last lines to keep (default 400)' },
@@ -182,7 +182,7 @@ async function failedRunAt(octokit, owner, repo, args) {
 
 export const actionsGetRunLogsSummary = defineRead({
   name: 'github_actions_get_run_logs_summary', area: 'actions', audience: ['B', 'Op'],
-  description: 'Why a run failed: for each failed job, the failing steps, each failing test with its reason lines (xUnit, dotnet test, node:test, vitest/jest, pytest, go), the error lines, and a ready search_log call into the job log.',
+  description: 'Why a run failed: failing steps, each failing test with its reason lines, error lines, and a ready search_log call into the job log.',
   aliases:{runId:['run_id']},
   properties: { owner: OWNER, repo: REPO, runId: { ...RUN, description: 'Workflow run id (or give pr or ref to explain the latest failed run at that head)' },
     pr: { type: 'integer', minimum: 1, description: 'Pull request number: explain the latest failed run at its head' },
