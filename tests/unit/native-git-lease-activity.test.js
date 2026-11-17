@@ -5,8 +5,8 @@ import {makeWorld, parse} from '../../test/helpers/write-contract.js';
 import {prepareNativeWorld} from '../../test/helpers/native-git-world.js';
 import {preparePlaygroundWorld} from '../../test/helpers/playground-world.js';
 import {nativeConnection} from '../../src/native-git/client.js';
-import {playgroundRecord} from '../../src/playground/client.js';
-import {ensureAllocation, allocationRecord} from '../../src/playground/allocations.js';
+import {playgroundRecord, playgroundBinding} from '../../src/playground/client.js';
+import {allocationRecord, allocationKey} from '../../src/playground/allocations.js';
 import * as native from '../../src/tools/native-git.js';
 import * as playground from '../../src/tools/playground.js';
 
@@ -74,51 +74,20 @@ describe('closing a workspace', () => {
     expect(w.nativeRequests.filter(a => a === 'close')).toHaveLength(closes);
   });
 
-  // A workspace with a Playground runtime on a fake Dokploy whose containers stop only after `stopsAfter` checks.
-  async function attachedWorld({stopsAfter = 0} = {}) {
+  // DOKPLOY-RETIRE-1 (2026-11-17): a workspace whose runtime was on the retired shared pool. Its row is closed in
+  // place (the pool's resources were removed on that server by its owner), so the close finishes in one call.
+  it('a workspace whose runtime was on the retired pool closes in one call', async () => {
     const w = await makeWorld({profile: 'full', mode: 'production', gates: []});
     w.gh.nativeOutcome = 'ok'; w.gh.when('GET /repos/{owner}/{repo}').reply(200, {full_name: 'example-org/hello'});
     cleanups.push(await prepareNativeWorld(w, {existing: true})); await w.nativeReady();
-    const config = {origin: 'https://dokploy.example.test', key: 'FAKE_PROVIDER_KEY', project: 'fixture', environment: 'fixture-env', image: 'ghcr.io/example/runtime@sha256:' + 'a'.repeat(64), ingress: '107.90.116.157'};
-    const rows = new Map(); let n = 0, checks = 0; const prior = w.ctx.fetch;
-    const fetch = async (url, init) => {
-      if (new URL(url).origin !== config.origin) return prior(url, init);
-      const u = new URL(url), op = u.pathname.split('/').pop(), input = init.method === 'GET' ? Object.fromEntries(u.searchParams) : JSON.parse(init.body), row = rows.get(input.composeId);
-      if (op === 'project.one') return Response.json({projectId: config.project, environments: [{environmentId: config.environment, compose: [...rows.values()]}]});
-      if (op === 'compose.create') { const created = {...input, composeId: 'compose-' + ++n, environment: {projectId: config.project}, domains: [], composeStatus: 'idle'}; rows.set(created.composeId, created); return Response.json(created); }
-      if (op === 'compose.one') return Response.json(row ?? null, {status: row ? 200 : 404});
-      if (op === 'domain.create') { row.domains.push(input); return Response.json(input); }
-      if (op === 'compose.deploy') { row.composeStatus = 'done'; return Response.json({}); }
-      if (op === 'compose.stop') { row.stopped = true; return Response.json({}); }
-      if (op === 'docker.getContainersByAppNameMatch') { const live = [...rows.values()].filter(r => r.appName === input.appName); return Response.json(live.map(r => ({State: r.stopped && ++checks > stopsAfter ? 'exited' : 'running'}))); }
-      if (op === 'compose.delete') { rows.delete(input.composeId); return Response.json({}); }
-      if (op === 'dockerVolume.getVolumeConfig') return Response.json(null, {status: 404});
-      throw Error('Unexpected provider operation ' + op);
-    };
-    w.gh.fetch = fetch;
-    w.ctx = {...w.ctx, fetch, sleep: async () => {}, env: {...w.ctx.env, PLAYGROUND_DOKPLOY_ORIGIN: config.origin, PLAYGROUND_DOKPLOY_API_KEY: config.key, PLAYGROUND_DOKPLOY_PROJECT_ID: config.project, PLAYGROUND_DOKPLOY_ENVIRONMENT_ID: config.environment, PLAYGROUND_IMAGE: config.image, PLAYGROUND_INGRESS_IPV4: config.ingress, PLAYGROUND_ADMISSION: JSON.stringify({project: config.project, observedAt: w.ctx.now(), availableMemoryBytes: 8 * 1024 ** 3, availableDiskBytes: 10 * 1024 ** 3, pressure: 0})}};
     const record = await playgroundRecord(w.ctx, {owner: 'example-org', repo: 'hello', workspace_id: ID}, {allowUnattached: true});
-    expect((await ensureAllocation(w.ctx, record, {manager: async () => {}})).phase).toBe('allocated');
-    return {w, record};
-  }
-  it('the first call waits for the runtime to be deleted, then closes the workspace (applied in one call)', async () => {
-    const {w, record} = await attachedWorld({stopsAfter: 2});
-    const out = parse(await call(w, 'github_git_workspace_close', {workspace_id: ID, requestKey: 'close-attached'}));
+    const binding = playgroundBinding(record);
+    expect(await w.ctx.db.compareAndSetSetting(allocationKey(binding), 0, {revision: 1, kind: 'playground-allocation', pool: 'default',
+      providerOrigin: 'https://old-pool.example.test', binding, connection: nativeConnection(w.ctx), workspace: ID, owner: 'example-org', repo: 'hello',
+      phase: 'allocated', composeId: 'compose-1', plan: {name: 'ras-pg-x'}})).toBeTruthy();
+    const out = parse(await call(w, 'github_git_workspace_close', {workspace_id: ID, requestKey: 'close-retired-pool'}));
     expect(out).toMatchObject({status: 'applied', done: true, result: {disposed: true}});
-    expect((await allocationRecord(w.ctx, record)).phase).toBe('disposed');
+    expect(await allocationRecord(w.ctx, record)).toMatchObject({phase: 'disposed', retiredPool: true});
     expect((await w.db.getJob(ID, nativeConnection(w.ctx))).detail).toBe('Native workspace disposed.');
-  });
-  it('a runtime still deleting past the budget answers "call again with the same arguments", and that same call finishes it', async () => {
-    const {w, record} = await attachedWorld({stopsAfter: 1000});
-    const out = parse(await call(w, 'github_git_workspace_close', {workspace_id: ID, requestKey: 'close-slow'}, {runtimeDisposeBudgetMs: 1}));
-    expect(out).toMatchObject({done: false, status: 'rejected', retryable: true});
-    expect(out.error).toMatch(/still being deleted.*call github_git_workspace_close again with the same arguments/i);
-    expect((await w.db.getJob(ID, nativeConnection(w.ctx))).state).toBe('pending');
-    // The containers stop; the identical call (same requestKey) completes the close.
-    w.ctx.fetch = (orig => async (url, init) => { const res = await orig(url, init); if (String(url).includes('getContainersByAppNameMatch')) return Response.json((await res.json()).map(() => ({State: 'exited'}))); return res; })(w.ctx.fetch);
-    w.gh.fetch = w.ctx.fetch;
-    const again = parse(await call(w, 'github_git_workspace_close', {workspace_id: ID, requestKey: 'close-slow'}));
-    expect(again).toMatchObject({status: 'applied', done: true, result: {disposed: true}});
-    expect((await allocationRecord(w.ctx, record)).phase).toBe('disposed');
   });
 });
