@@ -2,7 +2,7 @@ import zlib from 'node:zlib';
 import { describe, expect, it } from 'vitest';
 import { createDispatch } from '../../src/tools/dispatch.js';
 import { registry } from '../../src/tools/index.js';
-import { readZip, summarizeLog } from '../../src/github/log-summary.js';
+import { readZip, summarizeLog, testFailures } from '../../src/github/log-summary.js';
 import { makeWorld, parse } from '../../test/helpers/write-contract.js';
 
 const R = { repo: 'hello' };
@@ -40,6 +40,32 @@ describe('log summaries (pure)', () => {
     expect(readZip(zip([['a.txt', 'one'], ['dir/b.txt', 'two', false]]))).toEqual([{ name: 'a.txt', text: 'one' }, { name: 'dir/b.txt', text: 'two' }]);
     expect(() => readZip(Buffer.from('not a zip at all, definitely not'))).toThrow(/not a zip/);
   });
+});
+
+describe('failing tests with their reasons (LOG-FAILURES-1)', () => {
+  it('xUnit: every failing test keeps its own reason lines', () => {
+    const log = [
+      '2026-11-17T16:24:30.1Z [xUnit.net 00:00:08.90]     Door.Unit.Tests.Stager.WrongBytes [FAIL]',
+      '2026-11-17T16:24:30.1Z   Assert.Throws() Failure: Exception type was not an exact match',
+      '2026-11-17T16:24:30.1Z   Expected: typeof(RackWorkException)',
+      '2026-11-17T16:24:30.2Z [xUnit.net 00:00:09.92]     Door.Unit.Tests.Abilities.Files_ListSearchAndRoots [FAIL]',
+      '2026-11-17T16:24:30.2Z   Assert.True() Failure',
+      '2026-11-17T16:24:30.2Z   Door.Adapters.Windows.DoorFileException : relative path is required',
+      '2026-11-17T16:24:30.3Z ##[error]Process completed with exit code 1.',
+    ].join('\n');
+    const f = testFailures(log);
+    expect(f.map((x) => x.test)).toEqual(['Door.Unit.Tests.Stager.WrongBytes', 'Door.Unit.Tests.Abilities.Files_ListSearchAndRoots']);
+    expect(f[1].runner).toBe('xunit');
+    expect(f[1].reason.join(' ')).toContain('relative path is required');
+    expect(f[0].reason.join(' ')).not.toContain('relative path');
+  });
+  it('node:test, go and pytest markers', () => {
+    expect(testFailures('not ok 3 - restart refuses while gaming\n  error: expected refused').map((x) => [x.runner, x.test]))
+      .toEqual([['node:test', 'restart refuses while gaming']]);
+    expect(testFailures('--- FAIL: TestRoute (0.01s)\n    route_test.go:12: want 200 got 502')[0].reason).toEqual(['route_test.go:12: want 200 got 502']);
+    expect(testFailures('FAILED tests/test_a.py::test_b - AssertionError: 1 != 2')[0].test).toBe('tests/test_a.py::test_b');
+  });
+  it('a clean log has none', () => { expect(testFailures('all good\nok 1 - fine')).toEqual([]); });
 });
 
 describe('Actions read tools (G-1)', () => {

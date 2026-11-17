@@ -20,6 +20,42 @@ export function summarizeLog(text, { tailLines = 400, maxErrors = 40 } = {}) {
   return { lines: lines.length, tail: lines.slice(-tailLines), ...(lines.length > tailLines ? { tail_cut: true } : {}), errors: errors.slice(0, maxErrors), errors_cut: errors.length > maxErrors };
 }
 
+// LOG-FAILURES-1 (2026-11-17, owner report: a run summary named five failing tests but
+// not why the sixth failed, and finding it meant paging a 150,000-character log). Test
+// runners print a failure marker, then the reason on the lines that follow. These are
+// the markers of the runners in use; each failure keeps its own reason lines.
+const FAIL_MARKERS = [
+  { runner: 'xunit', at: /^\s*(?:\[xUnit\.net [^\]]*\]\s*)?(\S.*?)\s+\[FAIL\]\s*$/ },
+  { runner: 'dotnet', at: /^\s*Failed\s+(\S.+?)\s+\[[^\]]*\]\s*$/ },
+  { runner: 'node:test', at: /^\s*not ok \d+ - (.+)$/ },
+  { runner: 'vitest/jest', at: /^\s*(?:FAIL\s+\S+\s+>\s+|●\s+)(.+)$/ },
+  { runner: 'pytest', at: /^(?:FAILED|ERROR)\s+(\S+::\S+)(?:\s+-\s+.*)?$/ },
+  { runner: 'go', at: /^\s*--- FAIL: (\S+)/ },
+];
+const NOISE = /^##\[(?:group|endgroup)\]|^\s*$/;
+
+/**
+ * The failing tests in a log, each with the lines that say why (assertion, exception, first stack frames).
+ * @returns {Array<{ test: string, runner: string, line: number, reason: string[] }>}
+ */
+export function testFailures(text, { max = 12, reasonLines = 10 } = {}) {
+  const lines = redactExcerpt(String(text ?? '')).split('\n').map(clean);
+  const marker = (l) => { for (const m of FAIL_MARKERS) { const hit = m.at.exec(l); if (hit) return { runner: m.runner, test: hit[1].trim().slice(0, 200) }; } return null; };
+  const out = []; const seen = new Set();
+  for (let i = 0; i < lines.length && out.length < max; i++) {
+    const hit = marker(lines[i]);
+    if (!hit || seen.has(hit.test)) continue;
+    seen.add(hit.test);
+    const reason = [];
+    for (let j = i + 1; j < lines.length && reason.length < reasonLines; j++) {
+      if (marker(lines[j])) break;
+      if (!NOISE.test(lines[j])) reason.push(lines[j].trim().slice(0, 300));
+    }
+    out.push({ test: hit.test, runner: hit.runner, line: i + 1, reason });
+  }
+  return out;
+}
+
 /** Decodes what Octokit returns for a text download (a string, or bytes). */
 export function textOfBody(data) {
   if (typeof data === 'string') return data;
