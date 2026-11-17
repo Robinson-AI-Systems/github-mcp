@@ -154,17 +154,13 @@ describe('github_server_status', () => {
     expect(out.health).toMatchObject({ overall: 'degraded', database: { status: 'degraded', reason: expect.stringContaining('slowly') } });
   });
 
-  it('reports the Playground pool from the recorded manager state, without a provider call', async () => {
-    const pools = JSON.stringify([{ id: 'east', origin: 'https://dokploy.internal-host.example.test', keyEnv: 'PLAYGROUND_DOKPLOY_API_KEY_EAST', project: 'p', environment: 'e', ingress: '203.0.113.10' }]);
-    const env = { ...SECRET_ENV, PLAYGROUND_POOLS: pools, PLAYGROUND_DOKPLOY_API_KEY_EAST: 'FAKE-dokploy-key-0123456789' };
-    const w = world({ env, managerState: { phase: 'running', source: { image: `ras-playground:${CHAIN[5]}` } } });
+  it('no longer reports a Playground pool or manager: the shared pool is retired (DOKPLOY-RETIRE-1)', async () => {
+    const pools = JSON.stringify([{ id: 'east', origin: 'https://old-pool.internal-host.example.test', keyEnv: 'PLAYGROUND_OLD_KEY', project: 'p', environment: 'e', ingress: '203.0.113.10' }]);
+    const w = world({ env: { ...SECRET_ENV, PLAYGROUND_POOLS: pools }, managerState: { phase: 'running' } });
     const out = await w.run({ fields: ['health', 'workers'] });
-    expect(out.health.playground_pool).toEqual({ status: 'ok', pools: 1 });
-    expect(out.workers.playground.manager).toEqual({ phase: 'running', built_from: CHAIN[5].slice(0, 12) });
-    expect(w.calls.some((c) => c.includes('dokploy'))).toBe(false);
-    expect(JSON.stringify(out)).not.toMatch(/FAKE-dokploy|203\.0\.113|internal-host/);
-    const idle = await world({ env, managerState: null }).run({ fields: ['health'] });
-    expect(idle.health.playground_pool).toMatchObject({ status: 'degraded', reason: expect.stringContaining('not created') });
+    expect(out.health.playground_pool).toBeUndefined();
+    expect(out.workers.playground.manager).toBeUndefined();
+    expect(JSON.stringify(out)).not.toMatch(/203\.0\.113|internal-host/);
   });
 
   it('answers within its time bound when every dependency hangs', async () => {

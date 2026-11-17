@@ -170,7 +170,7 @@ finished until both have been checked.
   requests (it looks down while the server is healthy) until it is re-pinned: run one worker update
   (`pc-worker update`), which re-fetches the current public key from the server and re-pins it — the same path the
   between-jobs auto-updater (`WORKER-AUTOUPDATE-1`) takes on every update, so an automatic update also heals it.
-- **The Playground maintenance sweep manager** (the small Dokploy service that asks the server to clean up dead
+- **The Playground maintenance sweep manager** — retired with the Dokploy pool on 2026-11-17 (DOKPLOY-RETIRE-1); the rack's project timer now calls the sweep with `CRON_SECRET`, which rotates with the deployment's own settings. Historical note: it was the small Dokploy service that asks the server to clean up dead
   allocations) carries a cleanup-only bearer that is a hash of a signature made with the signing key, baked into
   its compose file when it was provisioned. The server re-pins it itself: every manager check compares the
   fingerprint recorded at provisioning with the key derived from the current signing key, and when they differ it

@@ -1,7 +1,5 @@
-import {refreshAdmission} from './admission.js';
 import {indexKey,orphanAllocationContext} from './index.js';
 import {enforcementObservation} from './availability.js';
-import {managedResourceBaseline,managedNetworkVerified} from './resource-policy.js';
 import {deviceBaseline} from '../fleet/device-allocations.js';
 import {createPublicKey,verify} from 'node:crypto';
 import {createDb,productionSql} from '../db.js';
@@ -30,7 +28,6 @@ export async function allocationScope(query,{env=process.env}={}){
 }
 
 export async function allocationAuthority(ctx){
- ctx=await refreshAdmission(ctx,{project:ctx.env?.PLAYGROUND_DOKPLOY_PROJECT_ID});
  const {stored:s,db}=ctx;
  if(ctx.namespaceMissing)return {allowed:false,cleanup:true,reason:'namespace_removed'};
  if(ctx.membershipValid===false)return {allowed:false,cleanup:true,reason:'membership_revoked'};
@@ -45,8 +42,10 @@ export async function allocationAuthority(ctx){
   // A device that stops checking in pauses work; a revoked device is handled by its own terminate order.
   if(!await deviceBaseline(ctx,s,{workspace:s.workspace,binding:s.binding,requireLive:false}))return {allowed:false,cleanup:false,reason:'device_unavailable'};
  }else if(s.phase==='attached'&&!enforcementObservation(ctx,{row:{id:s.workspace},allocation:{binding:s.binding}})){
-  if(!managedResourceBaseline(ctx.env,s,{workspace:s.workspace,binding:s.binding}))return {allowed:false,cleanup:false,reason:'enforcement_unverified'};
-  if(!await managedNetworkVerified(ctx,s))return {allowed:false,cleanup:false,reason:'network_isolation_unverified'};
+  // DOKPLOY-RETIRE-1: a runtime of the retired shared pool (it recorded its provider) is cleaned up;
+  // any other runtime without a current operator observation waits for one.
+  if(s.providerOrigin)return {allowed:false,cleanup:true,reason:'shared_pool_retired'};
+  return {allowed:false,cleanup:false,reason:'enforcement_unverified'};
  }
  try{await authorizeNativeRepo({...ctx,connection},s.owner,s.repo);}catch{return {allowed:false,cleanup:false,reason:'repository_authority_unavailable'};}
  if(s.phase!=='attached')return {allowed:false,bootstrap:!s.runtimePublicKey&&['requested','waiting_resources','creating','created','exposing','exposed','allocated','attaching','deploying'].includes(s.phase),cleanup:['cleanup_requested','stopped','deleting','disposed'].includes(s.phase),reason:'allocation_not_active',connection,job};

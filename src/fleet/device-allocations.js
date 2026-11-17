@@ -4,7 +4,7 @@
 import {createHash} from 'node:crypto';
 import {enqueue, read, awaitResult} from './mailbox.js';
 import {deviceOrigin, hostIsLive} from './relay.js';
-import {allocationPlan} from '../playground/dokploy.js';
+import {allocationPlan} from '../playground/compose-plan.js';
 import {SIZE_CLASSES} from '../playground/sizing.js';
 import {nativeWorkerPublicKey} from '../native-git/signing.js';
 
