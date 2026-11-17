@@ -4136,6 +4136,24 @@
       ],
       "readiness": "READY",
       "ownerInputs": []
+    },
+    {
+      "id": "LOG-FAILURES-2",
+      "title": "dotnet test failures keep their reason lines when the test name is printed twice",
+      "batch": "FIN",
+      "design": "docs/pr-cards/LOG-FAILURES-2.md",
+      "dependencies": [
+        "LOG-FAILURES-1"
+      ],
+      "card": "docs/pr-cards/LOG-FAILURES-2.md",
+      "status": "MERGED",
+      "migration": "none",
+      "budget": 100,
+      "units": [
+        "LOG-FAILURES-2"
+      ],
+      "readiness": "READY",
+      "ownerInputs": []
     }
   ],
   "gatewayBoundary": {

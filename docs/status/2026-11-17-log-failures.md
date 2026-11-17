@@ -10,3 +10,12 @@ A windows-door run failed with six tests. `github_actions_get_run_logs_summary` 
 
 ## Tests
 `tests/unit/actions-read.test.js`, "failing tests with their reasons": the xUnit case from the real run, plus node:test, go and pytest, and a clean log.
+
+## Follow-up: LOG-FAILURES-2 (PR #661)
+
+The live check on windows-door run 44125265769 listed all 6 failing tests, but
+every `reason` was empty. `dotnet test` prints xUnit's `[FAIL]` line and then
+its own `Failed <test> [time]` block (Error Message, Stack Trace) for the same
+test; the second line was skipped as a duplicate. A repeated marker for the same
+test now continues that test's entry, so the reason (for example "relative path
+is required") comes through. A unit test uses the exact PC-runner format.

@@ -41,17 +41,25 @@ const NOISE = /^##\[(?:group|endgroup)\]|^\s*$/;
 export function testFailures(text, { max = 12, reasonLines = 10 } = {}) {
   const lines = redactExcerpt(String(text ?? '')).split('\n').map(clean);
   const marker = (l) => { for (const m of FAIL_MARKERS) { const hit = m.at.exec(l); if (hit) return { runner: m.runner, test: hit[1].trim().slice(0, 200) }; } return null; };
-  const out = []; const seen = new Set();
-  for (let i = 0; i < lines.length && out.length < max; i++) {
+  const out = []; const byTest = new Map();
+  for (let i = 0; i < lines.length; i++) {
     const hit = marker(lines[i]);
-    if (!hit || seen.has(hit.test)) continue;
-    seen.add(hit.test);
+    if (!hit) continue;
+    const known = byTest.get(hit.test);
+    if (known && known.reason.length) continue;
+    if (!known && out.length >= max) continue;
     const reason = [];
     for (let j = i + 1; j < lines.length && reason.length < reasonLines; j++) {
-      if (marker(lines[j])) break;
+      const next = marker(lines[j]);
+      // dotnet test prints xUnit's "[FAIL]" line and then its own "Failed <test> [time]" for the
+      // same test, with the reason after it: the same test's second marker continues the entry.
+      if (next && next.test === hit.test) continue;
+      if (next) break;
       if (!NOISE.test(lines[j])) reason.push(lines[j].trim().slice(0, 300));
     }
-    out.push({ test: hit.test, runner: hit.runner, line: i + 1, reason });
+    if (known) { known.reason = reason; continue; }
+    const entry = { test: hit.test, runner: hit.runner, line: i + 1, reason };
+    byTest.set(hit.test, entry); out.push(entry);
   }
   return out;
 }
