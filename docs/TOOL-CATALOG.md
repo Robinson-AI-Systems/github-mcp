@@ -1084,6 +1084,14 @@ Own machines first (2026-11-01, FLEET-3): `github_git_workspace_open` reports `p
 
 Dokploy retired (2026-11-17, DOKPLOY-RETIRE-1): the shared operator pool is gone — `github_playground_workspace` provision places a runtime only on a computer paired with `github_playground_host_pairing` and otherwise answers how to pair one (the workspace stays Git-only); a runtime left from the pool reads as retired and is closed; `github_playground_read` availability no longer carries `warm_runtimes`; `github_server_status` no longer reports a Playground pool or manager. The FLEET-4/FLEET-7 shared-pool notes below are history.
 
+Agent feedback fixes (2026-11-17, AGENT-FB-1117):
+- A write to an archived repository answers `archived_repository` (ARCHIVED-ERR-1).
+- A repeat inside the replay window is sent anew only after the same tool changed the same target in between and the state moved (REPLAY-STALE-1).
+- `github_repo_download` clones fresh when an old reused workspace is no longer ready (DOWNLOAD-REUSE-1).
+- An empty code search scoped to one repository returns `exact_search` (SEARCH-EXACT-1).
+- A refused push names every refused file (SCAN-ALL-FILES-1).
+- A non-owner with no shared Git machine gets `native_no_shared_host` (NO-SHARED-HOST-1).
+
 Shared pools (2026-11-01, FLEET-4): `github_playground_workspace` provision no longer requires a shared pool when the person has a ready machine of their own; shared-pool allocations are spread across `PLAYGROUND_POOLS` and keep their pool for life. See [Playground operations](PLAYGROUND-OPERATIONS.md).
 Caches on own machines (2026-11-01, FLEET-5): runtimes on a person's own computer or server share a package cache and a Git object cache on that machine; tool arguments and results are unchanged. See [Playground operations](PLAYGROUND-OPERATIONS.md).
 

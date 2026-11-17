@@ -110,6 +110,9 @@ async function main() {
       changes: { addSuppressions: [{ rule: firstFinding.rule, path: firstFinding.path, blobSha: firstFinding.blobSha, pushException: true, valueFingerprint: firstFinding.valueFingerprint, reason: '<why this is not a real credential>' }] } } })}`,
       '  (one verification case and one suppression per finding; write the reasons in plain words, without the value or anything shaped like a credential)'] : []),
     ...refusedFindings.slice(0, 6).map(r => `  ${JSON.stringify(r.path.slice(0, 120))} blobSha ${r.blobSha} line ${r.line} rule ${r.rule} value_fingerprint ${r.valueFingerprint}${mark(r)}`),
+    // SCAN-ALL-FILES-1: name every refused file up front, so one round of fixes clears them all (the details above stop at six).
+    ...(findings.length > 1 ? [`All ${findings.length} file(s) or commit message(s) with findings: ${findings.slice(0, 20).map(f => JSON.stringify(String(f.path).slice(0, 120))).join(', ')}${findings.length > 20 ? `, and ${findings.length - 20} more` : ''}.`] : []),
+    ...(refusedFindings.length > 6 ? [`(${refusedFindings.length - 6} more finding(s) not shown; github_secret_scanner check lists them all.)`] : []),
     ...(receiptLost ? ['Note: the record of this refusal could not be saved, so github_secret_scanner check will not find it yet. Push again to record it.'] : []));
    return 1;
   }

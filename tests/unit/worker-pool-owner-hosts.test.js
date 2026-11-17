@@ -105,6 +105,11 @@ describe('host audience comes from protected configuration only', () => {
   expect(routeJobFor(person, pinned)).toBe(pinned);
   const ownerOnly = { env: { NATIVE_GIT_WORKER_URL: PC + '/', NATIVE_GIT_PREVIOUS_WORKER_URL: 'https://old.example.test/', NATIVE_GIT_WORKER_POOL: JSON.stringify([{ name: 'old', origin: 'https://old.example.test', enabled: false }]) }, connection: person.connection, db: {} };
   expect(() => routeJobFor(ownerOnly, undefined)).toThrow(expect.objectContaining({ safeCode: 'native_hosts_busy', noOperationStarted: true }));
+  // NO-SHARED-HOST-1: when every host is owner-only, a person is told so plainly (not "busy, try again").
+  const allOwner = { env: { NATIVE_GIT_WORKER_URL: PC + '/', NATIVE_GIT_WORKER_POOL: JSON.stringify([{ name: 'pc', origin: PC, audience: 'owner' }, { name: 'ws', origin: 'https://ws.example.test', audience: 'owner' }]) }, connection: person.connection, db: {} };
+  expect(() => routeJobFor(allOwner, undefined)).toThrow(expect.objectContaining({ safeCode: 'native_no_shared_host', safeRetryable: false, noOperationStarted: true }));
+  expect(() => routeJobFor(allOwner, undefined)).toThrow(/no shared Git machine for your account.*github_content_push_files/);
+  expect(routeJobFor({ ...allOwner, connection: { ...person.connection, operator: true } }, undefined)).toBeUndefined();
  });
 });
 

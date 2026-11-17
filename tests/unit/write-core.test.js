@@ -243,6 +243,47 @@ describe('failures and retries', () => {
     expect(writes(w.gh)).toHaveLength(1);
   });
 
+  it('the same call after a different change to the same target is a new change, not a stale replay (REPLAY-STALE-1)', async () => {
+    const w = await makeWorld();
+    const L = (...n) => ({ status: 200, body: n.map((name) => ({ name })) });
+    // bug added; docs added; bug removed elsewhere by the same tool family; bug asked for again.
+    w.gh.when(LABELS).replySequence([L(), L('bug'), L('bug'), L('bug', 'docs'), L('docs'), L('docs', 'bug'), L('docs', 'bug'), L('docs', 'bug')]);
+    w.gh.when(POST).reply(200, [{ name: 'bug' }, { name: 'docs' }]);
+    const first = parse(await sampleLabel.handler({ ...R }, w.ctx));
+    const other = parse(await sampleLabel.handler({ ...R, label: 'docs' }, w.ctx));
+    expect(other.status).not.toBe('replayed');
+    const again = parse(await sampleLabel.handler({ ...R }, w.ctx));
+    expect(again.replayed).not.toBe(true);
+    expect(again.requestKey).not.toBe(first.requestKey);
+    expect(writes(w.gh)).toHaveLength(3);
+    // With nothing else in between, an immediate repeat still replays.
+    const repeat = parse(await sampleLabel.handler({ ...R }, w.ctx));
+    expect(repeat).toMatchObject({ status: 'replayed', requestKey: again.requestKey });
+    expect(writes(w.gh)).toHaveLength(3);
+  });
+
+  it('an unchanged state after another change is still a replay (no needless or duplicate send)', async () => {
+    const w = await makeWorld();
+    w.gh.when(LABELS).reply(200, [{ name: 'bug' }, { name: 'docs' }]);
+    w.gh.when(POST).reply(200, [{ name: 'bug' }, { name: 'docs' }]);
+    await sampleLabel.handler({ ...R }, w.ctx);
+    await sampleLabel.handler({ ...R, label: 'docs' }, w.ctx);
+    const again = parse(await sampleLabel.handler({ ...R }, w.ctx));
+    expect(again.replayed).toBe(true);
+    expect(writes(w.gh)).toHaveLength(2);
+  });
+
+  it('a caller request key keeps the plain replay even after another change', async () => {
+    const w = await makeWorld();
+    w.gh.when(LABELS).reply(200, [{ name: 'bug' }, { name: 'docs' }]);
+    w.gh.when(POST).reply(200, [{ name: 'bug' }, { name: 'docs' }]);
+    await sampleLabel.handler({ ...R, requestKey: 'mine-1' }, w.ctx);
+    await sampleLabel.handler({ ...R, label: 'docs' }, w.ctx);
+    const again = parse(await sampleLabel.handler({ ...R, requestKey: 'mine-1' }, w.ctx));
+    expect(again.replayed).toBe(true);
+    expect(writes(w.gh)).toHaveLength(2);
+  });
+
   it('two identical requests sent together result in one write', async () => {
     const w = await makeWorld();
     ok(w.gh);

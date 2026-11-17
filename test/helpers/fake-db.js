@@ -760,6 +760,12 @@ export function createFakeDb({ clock = Date.now } = {}) {
       changes.push(row);
       return { claimed: true, id: row.id };
     },
+    async newerChangeOnTarget({ target, afterId }) {
+      if (!target || !Number.isSafeInteger(afterId)) return null;
+      const newer = changes.filter((r) => r.target === target && r.dryRun === false && r.id > afterId);
+      const last = newer[newer.length - 1];
+      return last ? { id: last.id, requestKey: last.requestKey ?? null, tool: last.tool ?? null } : null;
+    },
     async finishChange(id, { summary, before, after, confirmed, githubRequestId = null, inverse = null, releaseKey = false, actedAs = null }) {
       const row = changes.find((r) => r.id === id);
       if (!row) return false;

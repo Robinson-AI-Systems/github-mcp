@@ -31,6 +31,10 @@ export const ownerCaller = ctx => {
  return isOwnerConnection(ctx?.connection) && ctx.connection.pass !== true && ownerIdentityDb(ctx?.db, ctx?.env ?? process.env);
 };
 /** Whether this caller may be placed on (or sent to, unpinned) this host. */
+// NO-SHARED-HOST-1 (2026-11-17, Dokploy retired): when every Git machine is owner-only, a non-owner has none at all.
+// That is not "busy, try again": retrying never helps, so say plainly what is missing and what still works.
+export const NO_SHARED_HOST = 'This service has no shared Git machine for your account right now: its Git machines are reserved for the owner. No operation was started. The GitHub API tools need no Git machine and still work: github_content_push_files (commit files), github_branch_create, github_pr_create and github_workflow_merge_when_green.';
+export const noSharedHost = () => Object.assign(new TypeError(NO_SHARED_HOST), { safeMessage: true, safeCode: 'native_no_shared_host', safeRetryable: false, status: 503, noOperationStarted: true, nativeNoOperationStarted: true });
 export const hostAllowed = (ctx, host) => !!host && (host.audience !== 'owner' || ownerCaller(ctx));
 /** The host a worker origin belongs to, or null. */
 export const hostByOrigin = (env, origin) => configuredHosts(env).find(h => h.origin === origin) ?? null;
@@ -54,6 +58,7 @@ export function routeJobFor(ctx, job) {
  const hosts = configuredHosts(ctx?.env), primary = hosts.find(h => h.role === 'primary');
  if (!primary || hostAllowed(ctx, primary)) return job;
  const other = hosts.find(h => h.enabled && hostAllowed(ctx, h));
+ if (!other && !hosts.some(h => hostAllowed(ctx, h))) throw noSharedHost();
  if (!other) throw Object.assign(new TypeError('All workspace hosts are busy or paused; try again in a minute. No operation was started (nothing was sent to a worker).'), { safeMessage: true, safeCode: 'native_hosts_busy', safeRetryable: true, status: 503, noOperationStarted: true, nativeNoOperationStarted: true });
  return { ...(job ?? {}), host: other.id };
 }

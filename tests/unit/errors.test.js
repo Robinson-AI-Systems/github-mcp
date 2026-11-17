@@ -27,6 +27,14 @@ describe('every explanation has what, why, next and a technical line with the re
 });
 
 describe('specific rules', () => {
+  it('403 on an archived repository says archived, not missing access (ARCHIVED-ERR-1)', () => {
+    const x = d(403, { message: 'Repository was archived so is read-only.' });
+    expect(x.kind).toBe('archived_repository');
+    expect(x.what).toContain('archived');
+    expect(x.cause).toContain('credential and its access are fine');
+    expect(x.todo).toContain('archived:false');
+    expect(`${x.what} ${x.cause}`).not.toMatch(/SAML|lacks access/);
+  });
   it('401 sends the owner to the setup page', () => expect(d(401, { message: 'Bad credentials' }).todo).toContain('setup page'));
   it('403 with genuine accepted permissions provides conditional grant comparison', () => {
     const x = d(403, { message: 'Resource not accessible by integration' }, { 'x-accepted-github-permissions': 'pull_requests=write; issues=read' });

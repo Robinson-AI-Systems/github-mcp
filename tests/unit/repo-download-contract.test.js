@@ -93,3 +93,29 @@ it('a large repository still cloning: the call says so plainly, and the next cal
  expect(second).toMatchObject({ result: { state: 'opening', workspace_id: first.result.workspace_id } });
  expect(opens).toBe(1);
 });
+
+it('a reused workspace that is no longer ready (expired, stopped) is skipped: a fresh copy is cloned and the address returned (DOWNLOAD-REUSE-1)', async () => {
+ const w = await world(true);
+ const real = w.ctx.fetch; let inspects = 0;
+ w.ctx = { ...w.ctx, fetch: async (url, init) => {
+  if (String(url).startsWith('https://native-worker.example.test/')) { const p = JSON.parse(init.body);
+   if (p.action === 'inspect' && p.workspace_id && inspects++ === 0) return new Response(JSON.stringify({ state: 'expired' })); }
+  return real(url, init); } };
+ const out = parse(await definition.handler({ repo: 'hello', mode: 'git', requestKey: 'stale-reuse' }, w.ctx));
+ expect(out, JSON.stringify(out)).toMatchObject({ status: 'applied', confirmed: true, result: { reused: false, state: 'awaiting', mode: 'git' } });
+ expect(typeof out.result.url).toBe('string');
+ expect(out.result.workspace_id).not.toBe('job_0123456789abcdef');
+}, 60000);
+
+it('a clone the worker cannot prepare is a plain refusal that says why, never a silent "unconfirmed"', async () => {
+ const w = await world(false);
+ const real = w.ctx.fetch;
+ w.ctx = { ...w.ctx, fetch: async (url, init) => {
+  if (String(url).startsWith('https://native-worker.example.test/')) { const p = JSON.parse(init.body);
+   if (p.action === 'open') return new Response(JSON.stringify({ state: 'failed', workspace_id: p.workspace_id, idle_timeout_ms: p.idleTimeoutMs, last_activity_at: w.ctx.now(), expires_at: w.ctx.now() + p.idleTimeoutMs })); }
+  return real(url, init); } };
+ const out = parse(await definition.handler({ repo: 'hello', requestKey: 'cannot' }, w.ctx));
+ expect(out.status).not.toBe('unconfirmed');
+ expect(out.done).toBe(false);
+ expect(JSON.stringify(out)).toMatch(/could not prepare .*hello.*fresh: true/);
+}, 60000);
