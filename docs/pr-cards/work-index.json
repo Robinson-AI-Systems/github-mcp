@@ -4118,6 +4118,24 @@
       ],
       "readiness": "READY",
       "ownerInputs": []
+    },
+    {
+      "id": "LOG-FAILURES-1",
+      "title": "Run and job log summaries name each failing test with its own reason lines and offer a ready log search",
+      "batch": "FIN",
+      "design": "docs/pr-cards/LOG-FAILURES-1.md",
+      "dependencies": [
+        "ONE-TIME-ROOT-1"
+      ],
+      "card": "docs/pr-cards/LOG-FAILURES-1.md",
+      "status": "MERGED",
+      "migration": "none",
+      "budget": 150,
+      "units": [
+        "LOG-FAILURES-1"
+      ],
+      "readiness": "READY",
+      "ownerInputs": []
     }
   ],
   "gatewayBoundary": {
