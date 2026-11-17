@@ -550,6 +550,8 @@ export function createDb(sql = productionSql()) {
         uses INTEGER NOT NULL DEFAULT 0
       )`;
       await sql`CREATE INDEX IF NOT EXISTS git_remote_keys_connection ON git_remote_keys (connection, expires_at)`;
+      // GIT-KEY-IDLE-1: how long the key may sit unused before it lapses (its requested lifetime, at least 8 hours).
+      await sql`ALTER TABLE git_remote_keys ADD COLUMN IF NOT EXISTS idle_hours INTEGER`;
       // Every use of a key (each Git request, each broker step); `nonce` makes a broker step single-use.
       await sql`CREATE TABLE IF NOT EXISTS git_remote_uses (
         id BIGSERIAL PRIMARY KEY,
@@ -565,19 +567,20 @@ export function createDb(sql = productionSql()) {
 
     // ---- GIT-REMOTE-1: git remote session keys (hashes only) and their use log. ----
     /** A new key row awaiting its one-time exchange. */
-    async createGitRemoteKey({ id, connection, owner, repo, access, codeHash, codeExpiresAt, expiresAt }) {
+    async createGitRemoteKey({ id, connection, owner, repo, access, codeHash, codeExpiresAt, expiresAt, idleHours = null }) {
+      if (idleHours !== null && (!Number.isSafeInteger(idleHours) || idleHours < 1 || idleHours > 24)) throw new TypeError('Invalid git remote key idle window.');
       if (!GIT_REMOTE_ID.test(id ?? '') || !GIT_REMOTE_HASH.test(codeHash ?? '') || typeof connection !== 'string' || !connection || typeof owner !== 'string' || !owner ||
         typeof repo !== 'string' || !repo || !['read', 'write'].includes(access) || !(codeExpiresAt instanceof Date) || !(expiresAt instanceof Date)) throw new TypeError('Invalid git remote key.');
       await sql`DELETE FROM git_remote_keys WHERE id IN (SELECT id FROM git_remote_keys WHERE expires_at < now() - interval '30 days' LIMIT 100)`;
-      const rows = await sql`INSERT INTO git_remote_keys (id, connection, owner, repo, access, code_hash, code_expires_at, expires_at)
-        VALUES (${id}, ${connection}, ${owner}, ${repo}, ${access}, ${codeHash}, ${codeExpiresAt.toISOString()}, ${expiresAt.toISOString()})
-        RETURNING id, connection, owner, repo, access, code_expires_at, exchanged_at, created_at, expires_at, revoked_at, last_used_at, uses`;
+      const rows = await sql`INSERT INTO git_remote_keys (id, connection, owner, repo, access, code_hash, code_expires_at, expires_at, idle_hours)
+        VALUES (${id}, ${connection}, ${owner}, ${repo}, ${access}, ${codeHash}, ${codeExpiresAt.toISOString()}, ${expiresAt.toISOString()}, ${idleHours})
+        RETURNING id, connection, owner, repo, access, code_expires_at, exchanged_at, created_at, expires_at, revoked_at, last_used_at, uses, idle_hours`;
       return rows[0];
     },
     /** The row including the key hash (for verification only; never returned by a tool or page). */
     async getGitRemoteKey(id) {
       if (!GIT_REMOTE_ID.test(id ?? '')) return null;
-      const rows = await sql`SELECT id, connection, owner, repo, access, key_hash, code_expires_at, exchanged_at, created_at, expires_at, revoked_at, last_used_at, uses
+      const rows = await sql`SELECT id, connection, owner, repo, access, key_hash, code_expires_at, exchanged_at, created_at, expires_at, revoked_at, last_used_at, uses, idle_hours
         FROM git_remote_keys WHERE id = ${id}`;
       return rows[0] ?? null;
     },

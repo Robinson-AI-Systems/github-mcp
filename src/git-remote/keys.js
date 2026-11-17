@@ -20,6 +20,16 @@ export const DEFAULT_HOURS = 8;
 export const MAX_HOURS = 24;
 /** Quiet renewal: a key in real use stays valid for this long after each use, but never beyond RENEW_CAP_DAYS from its creation. */
 export const RENEW_WINDOW_HOURS = 8;
+/** GIT-KEY-IDLE-1: a key may sit idle as long as the lifetime it was asked for (at least 8, at most 24 hours). */
+export function idleWindowHours(row) {
+ const h = Number(row?.idle_hours);
+ return Number.isSafeInteger(h) && h >= 1 ? Math.min(MAX_HOURS, Math.max(RENEW_WINDOW_HOURS, h)) : RENEW_WINDOW_HOURS;
+}
+/** GIT-KEY-IDLE-1: the exact call that renews a lapsed key, so the git refusal can be acted on as-is. */
+export function renewalCall(row) {
+ const args = { owner: String(row?.owner ?? ''), repo: String(row?.repo ?? ''), access: row?.access === 'write' ? 'write' : 'read', hours: MAX_HOURS };
+ return `github_git_remote_setup ${JSON.stringify(args)}`;
+}
 export const RENEW_CAP_DAYS = 7;
 export const LIFETIME_SETTING = 'git_remote.lifetime';
 /** The username git sends with the key (any value works; this one makes logs readable). */
@@ -79,7 +89,7 @@ export function checkKey(row, presentedHash, { service, owner, repo, now = Date.
  const no = (status, reason, message) => ({ ok: false, status, reason, message });
  if (!row || !row.key_hash || !sameHash(row.key_hash, presentedHash)) return no(401, 'invalid', `This git session key is not valid. ${NEW_KEY}`);
  if (row.revoked_at) return no(401, 'revoked', `This git session key was cancelled (My connection page). ${NEW_KEY}`);
- if (new Date(row.expires_at).getTime() <= now) return no(401, 'expired', `This git session key expired at ${fmt(row.expires_at)} (UTC). A key in regular use renews itself quietly (up to 7 days in all); this one was idle. ${NEW_KEY}`);
+ if (new Date(row.expires_at).getTime() <= now) return no(401, 'expired', `This git session key expired at ${fmt(row.expires_at)} (UTC): it sat unused longer than ${idleWindowHours(row)} hours (a key in use renews itself, up to 7 days in all). Renew it: ask your AI to call ${renewalCall(row)} and run the command it returns; your clone and remote stay as they are. hours ${MAX_HOURS} lets the new key sit idle for a day.`);
  if (String(row.owner).toLowerCase() !== String(owner).toLowerCase() || String(row.repo).toLowerCase() !== String(repo).toLowerCase())
   return no(403, 'wrong_repository', `This git session key is for ${row.owner}/${row.repo} only, not this repository. ${NEW_KEY}`);
  if (service === 'git-receive-pack' && row.access !== 'write')
