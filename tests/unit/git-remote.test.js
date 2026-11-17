@@ -181,9 +181,29 @@ describe('the git remote: setup, clone, pull and push with plain git', () => {
   t.w.advanceClock(8 * 3600000 + 1000);
   const expired = await t.git(join(t.work, 'hello'), 'fetch', 'origin');
   expect(expired.status).not.toBe(0);
-  expect(expired.stderr).toMatch(/remote: This git session key expired at 2026-10-11T02:00:\d\dZ \(UTC\)\. A key in regular use renews itself quietly \(up to 7 days in all\); this one was idle\./);
+  expect(expired.stderr).toMatch(/remote: This git session key expired at 2026-10-11T02:00:\d\dZ \(UTC\): it sat unused longer than 8 hours/);
+  // GIT-KEY-IDLE-1: the refusal names the exact renewal call, ready to make as-is.
+  expect(expired.stderr).toMatch(/call github_git_remote_setup \{"owner":"example-org","repo":"hello","access":"read","hours":24\}/);
   const uses = await t.w.db.listGitRemoteUses(ro.result.key_id, { limit: 50 });
   expect(uses.map(u => u.outcome)).toEqual(expect.arrayContaining(['refused:read_only_key', 'refused:expired']));
+ }, 120000);
+
+ it('a key asked for with hours 24 survives a day unused after each use, not just 8 hours (GIT-KEY-IDLE-1)', async () => {
+  const t = await world();
+  const out = await setup(t, { repo: 'hello', access: 'read', hours: 24 });
+  expect((await t.sh(out.result.command)).status).toBe(0);
+  expect((await t.git(t.work, 'clone', '-q', out.result.remote_url, 'idle')).status).toBe(0);
+  t.w.advanceClock(20 * 3600000); // used late in its first day...
+  expect((await t.git(join(t.work, 'idle'), 'fetch', 'origin')).status).toBe(0);
+  t.w.advanceClock(23 * 3600000); // ...then left overnight: still within a day of that use
+  const later = await t.git(join(t.work, 'idle'), 'fetch', 'origin');
+  expect(later.stderr).not.toMatch(/expired/);
+  expect(later.status).toBe(0);
+  t.w.advanceClock(25 * 3600000); // a full day and more unused: it lapses, and says how to renew
+  const lapsed = await t.git(join(t.work, 'idle'), 'fetch', 'origin');
+  expect(lapsed.status).not.toBe(0);
+  expect(lapsed.stderr).toMatch(/unused longer than 24 hours/);
+  expect(lapsed.stderr).toMatch(/github_git_remote_setup \{"owner":"example-org","repo":"hello","access":"read","hours":24\}/);
  }, 120000);
 
  it('pushes keep the guarded path: GitHub branch protection, content protection, guard gates; nothing partial reaches GitHub', async () => {

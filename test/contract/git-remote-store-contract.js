@@ -80,6 +80,15 @@ export function runGitRemoteStoreContract(label, getDb, { now = () => Date.now()
    expect(await db.renewGitRemoteKey('../etc', { windowHours: 8, capDays: 7 })).toBeNull();
    expect(await db.renewGitRemoteKey(key.id, { windowHours: 99, capDays: 7 })).toBeNull();
   });
+  it('keeps the idle window a key was made with, and refuses an impossible one (GIT-KEY-IDLE-1)', async () => {
+   const db = await getDb();
+   const { key } = await make(db, { idleHours: 24 });
+   expect((await db.getGitRemoteKey(key.id)).idle_hours).toBe(24);
+   const { key: plain } = await make(db);
+   expect((await db.getGitRemoteKey(plain.id)).idle_hours ?? null).toBeNull();
+   await expect(make(db, { idleHours: 25 })).rejects.toThrow();
+   await expect(make(db, { idleHours: 0 })).rejects.toThrow();
+  });
   it('refuses malformed input', async () => {
    const db = await getDb();
    await expect(db.createGitRemoteKey({ id: 'nope', connection: 'c', owner: 'o', repo: 'r', access: 'write', codeHash: h('x'), codeExpiresAt: new Date(), expiresAt: new Date() })).rejects.toThrow();

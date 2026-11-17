@@ -140,3 +140,25 @@ it('the setup command makes git declare push sizes for this address only (hostin
   expect(cmd).not.toMatch(/--global http\.postBuffer/);
   expect(gitRemotePushNote).toMatch(/about 25 MB/);
 });
+
+// GIT-KEY-IDLE-1: a key may sit idle as long as it was asked to live; a lapsed key's refusal names the exact renewal call.
+import { checkKey as checkKeyIdle, idleWindowHours, renewalCall } from '../../src/git-remote/keys.js';
+describe('git key idle window (GIT-KEY-IDLE-1)', () => {
+ it('follows the requested lifetime, at least 8 and at most 24 hours', () => {
+  expect(idleWindowHours({})).toBe(8);
+  expect(idleWindowHours({ idle_hours: 2 })).toBe(8);
+  expect(idleWindowHours({ idle_hours: 12 })).toBe(12);
+  expect(idleWindowHours({ idle_hours: 24 })).toBe(24);
+  expect(idleWindowHours({ idle_hours: 99 })).toBe(24);
+ });
+ it('names the exact renewal call, built only from the key\'s own row', () => {
+  expect(renewalCall({ owner: 'o', repo: 'r', access: 'write' })).toBe('github_git_remote_setup {"owner":"o","repo":"r","access":"write","hours":24}');
+  expect(renewalCall({ owner: 'o', repo: 'r', access: 'admin' })).toContain('"access":"read"');
+  const hash = 'a'.repeat(64);
+  const out = checkKeyIdle({ key_hash: hash, owner: 'o', repo: 'r', access: 'write', idle_hours: 24, expires_at: '2026-11-17T01:00:00Z' }, hash,
+   { service: 'git-upload-pack', owner: 'o', repo: 'r', now: Date.parse('2026-11-17T02:00:00Z') });
+  expect(out).toMatchObject({ ok: false, status: 401, reason: 'expired' });
+  expect(out.message).toContain('unused longer than 24 hours');
+  expect(out.message).toContain('github_git_remote_setup {"owner":"o","repo":"r","access":"write","hours":24}');
+ });
+});

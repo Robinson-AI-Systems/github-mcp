@@ -102,10 +102,11 @@ export function createFakeDb({ clock = Date.now } = {}) {
       return { handle: row.handle, summary: row.summary, body: structuredClone(row.body), created_at: row.created_at, expires_at: row.expires_at };
     },
     // GIT-REMOTE-1: same contract as src/db.js (hashes only, single-use exchange, single-use nonces).
-    async createGitRemoteKey({ id, connection, owner, repo, access, codeHash, codeExpiresAt, expiresAt }) {
+    async createGitRemoteKey({ id, connection, owner, repo, access, codeHash, codeExpiresAt, expiresAt, idleHours = null }) {
+      if (idleHours !== null && (!Number.isSafeInteger(idleHours) || idleHours < 1 || idleHours > 24)) throw new TypeError('Invalid git remote key idle window.');
       if (!GIT_REMOTE_ID.test(id ?? '') || !/^[a-f0-9]{64}$/.test(codeHash ?? '') || !connection || !owner || !repo || !['read', 'write'].includes(access) || !(codeExpiresAt instanceof Date) || !(expiresAt instanceof Date)) throw new TypeError('Invalid git remote key.');
       if (gitKeys.has(id)) throw new Error('duplicate key value violates unique constraint "git_remote_keys_pkey"');
-      const row = { id, connection, owner, repo, access, code_hash: codeHash, code_expires_at: codeExpiresAt, key_hash: null, exchanged_at: null, created_at: new Date(clock()), expires_at: expiresAt, revoked_at: null, last_used_at: null, uses: 0 };
+      const row = { id, connection, owner, repo, access, code_hash: codeHash, code_expires_at: codeExpiresAt, key_hash: null, exchanged_at: null, created_at: new Date(clock()), expires_at: expiresAt, revoked_at: null, last_used_at: null, uses: 0, idle_hours: idleHours };
       gitKeys.set(id, row);
       const { code_hash: _c, key_hash: _k, ...view } = row; return { ...view };
     },
