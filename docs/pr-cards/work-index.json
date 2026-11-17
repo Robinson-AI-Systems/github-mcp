@@ -4154,6 +4154,25 @@
       ],
       "readiness": "READY",
       "ownerInputs": []
+    },
+    {
+      "id": "LOG-FAILURES-3",
+      "title": "A failing test's reason stops at the run summary; merge_when_green names a job that already failed instead of saying checks are still running",
+      "batch": "FIN",
+      "design": "docs/pr-cards/LOG-FAILURES-3.md",
+      "dependencies": [
+        "LOG-FAILURES-2"
+      ],
+      "card": "docs/pr-cards/LOG-FAILURES-3.md",
+      "status": "MERGED",
+      "migration": "none",
+      "budget": 120,
+      "units": [
+        "LOG-FAILURES-3",
+        "MERGE-WAIT-2"
+      ],
+      "readiness": "READY",
+      "ownerInputs": []
     }
   ],
   "gatewayBoundary": {

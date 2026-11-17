@@ -33,6 +33,9 @@ const FAIL_MARKERS = [
   { runner: 'go', at: /^\s*--- FAIL: (\S+)/ },
 ];
 const NOISE = /^##\[(?:group|endgroup)\]|^\s*$/;
+// LOG-FAILURES-3: where a test run's own summary (or the CI step's end) begins, a reason ends: the last failing test
+// must not pick up "Results File:", "Failed! - Failed: 6, Passed: 548", "##[error]Process completed…" and the like.
+const RUN_END = /^##\[(?:error|warning)\]|^\s*Results File:|^\s*(?:Failed|Passed)!\s+-\s+Failed:|^\s*Total tests:|^\s*Test (?:Files|Suites):?\s+\d|^\s*Tests:?\s+\d|^# (?:tests|suites|pass|fail|cancelled|skipped|todo|duration_ms) \d|^=+ (?:short test summary|\d+ (?:failed|passed))|^(?:FAIL|ok)\s+\S+\s+[\d.]+s$|^FAIL$/;
 
 /**
  * The failing tests in a log, each with the lines that say why (assertion, exception, first stack frames).
@@ -54,7 +57,7 @@ export function testFailures(text, { max = 12, reasonLines = 10 } = {}) {
       // dotnet test prints xUnit's "[FAIL]" line and then its own "Failed <test> [time]" for the
       // same test, with the reason after it: the same test's second marker continues the entry.
       if (next && next.test === hit.test) continue;
-      if (next) break;
+      if (next || RUN_END.test(lines[j])) break;
       if (!NOISE.test(lines[j])) reason.push(lines[j].trim().slice(0, 300));
     }
     if (known) { known.reason = reason; continue; }
