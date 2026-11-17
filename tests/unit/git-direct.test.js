@@ -170,7 +170,8 @@ describe('the direct git host', () => {
   await ready(t, { repo: 'hello', access: 'write', hours: 1 });
   t.w.advanceClock(3600000 + 1000);
   const expired = await t.git(repo, 'fetch', 'origin');
-  expect(expired.stderr).toMatch(/remote: This git session key expired at .* \(UTC\)\./);
+  expect(expired.stderr).toMatch(/remote: This git session key expired at .* \(UTC\): it sat unused longer than \d+ hours/);
+  expect(expired.stderr).toMatch(/call github_git_remote_setup \{"owner":/);
   expect(t.r.github.log('for-each-ref', '--format=%(refname)', 'refs/heads/ro')).toBe('');
  }, 120000);
 
