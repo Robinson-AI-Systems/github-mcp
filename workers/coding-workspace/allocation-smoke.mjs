@@ -7,7 +7,7 @@ import {join} from 'node:path';
 import {randomBytes,generateKeyPairSync,createHash,sign} from 'node:crypto';
 import {NativeGitWorker} from '../native-git/engine.js';
 import {exportWorkspace} from '../native-git/snapshot.js';
-import {allocationPlan} from '../../src/playground/dokploy.js';
+import {allocationPlan} from '../../src/playground/compose-plan.js';
 const dir=await mkdtemp(join(tmpdir(),'allocation-image-')),seed=join(dir,'seed'),binding={authority:'fixture',connection:'fixture',owner:'example-org',repo:'hello'};
 const run=(args,options={})=>execFileSync('docker',args,{encoding:'utf8',stdio:['pipe','pipe','pipe'],timeout:60000,maxBuffer:2*1024*1024,...options}).trim();
 const {privateKey,publicKey}=generateKeyPairSync('ed25519'),verificationKey='ed25519:'+publicKey.export({format:'der',type:'spki'}).toString('base64');

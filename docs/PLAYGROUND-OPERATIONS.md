@@ -4,6 +4,13 @@ How the Playground runtime is hosted, configured, provisioned and cleaned up. Ag
 [CODING-WORKSPACES](CODING-WORKSPACES.md); future multi-host design in [RUNTIME-FLEET](designs/RUNTIME-FLEET-2026-11-01.md).
 Values below were checked against code on 2026-11-01.
 
+> **2026-11-17 — the shared Dokploy pool is retired (DOKPLOY-RETIRE-1).** Every Dokploy-specific section below is history:
+> the provider, `PLAYGROUND_DOKPLOY_*`/`PLAYGROUND_POOLS`, warm runtimes, telemetry admission and the project manager
+> service are gone from the code. Runtimes run on computers paired with `github_playground_host_pairing`
+> (`src/fleet/device-allocations.js`). The maintenance sweep `POST /api/playground/sweep` takes `Authorization: Bearer
+> <CRON_SECRET>` (or the old derived sweep key) and is called every minute by the rack's project timer
+> `playground-sweep` on the `github` project (Rack Control `rack_schedule_set`).
+
 Split of responsibilities: **Vercel** runs the MCP (the only caller of the Dokploy API), **Neon** holds all allocation
 state, **Dokploy** runs the containers. The control plane never accepts a runtime URL or provider credential from a
 caller. Executors never get a Docker socket, host PID/filesystem mount or orchestration credential. Containers are not

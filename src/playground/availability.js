@@ -1,5 +1,3 @@
-import {refreshAdmission} from './admission.js';
-import {managedResourceBaseline,managedNetworkVerified} from './resource-policy.js';
 import {deviceBaseline} from '../fleet/device-allocations.js';
 // Protected operator observations are prerequisites, never a capacity reservation
 // or a replacement for independent host acceptance. No caller may submit these.
@@ -18,14 +16,15 @@ export function enforcementObservation(ctx,record){
  return o;
 }
 export async function playgroundAvailability(ctx,record,probe){
- ctx=await refreshAdmission(ctx,{project:ctx.env?.PLAYGROUND_DOKPLOY_PROJECT_ID});
  if(!record.allocation)return playgroundFallback('runtime_unattached');
  if(record.allocation.repositoryAttached===false)return playgroundFallback('repository_unattached');
  const evidence=enforcementObservation(ctx,record);
  let baseline=null;
  if(!evidence){const stored=await ctx.db.getSetting('playground.'+record.allocation.binding.slice(0,40));
   if(stored?.placement==='device'){baseline=await deviceBaseline(ctx,stored,{workspace:record.row.id,binding:record.allocation.binding});if(stored.connection!==record.binding.connection||new URL(record.allocation.url).origin!==new URL(stored.origin).origin)baseline=null;if(!baseline)return playgroundFallback('device_unavailable',{retryable:true,mode:'recovery'});}
-  else{baseline=managedResourceBaseline(ctx.env,stored,{workspace:record.row.id,binding:record.allocation.binding});if(stored?.connection!==record.binding.connection||new URL(record.allocation.url).origin!==stored?.origin)baseline=null;if(baseline&&!await managedNetworkVerified(ctx,stored))return playgroundFallback('network_isolation_unverified');}}
+  // DOKPLOY-RETIRE-1: a runtime of the retired shared pool has no baseline; only device runtimes and
+  // operator observations (PLAYGROUND_ENFORCEMENT) give execution authority.
+  else if(stored?.providerOrigin)return playgroundFallback('shared_pool_retired');}
  if(!evidence&&!baseline)return playgroundFallback('enforcement_unverified');
  // A runtime that was just attached takes a few seconds to receive its first signed
  // authority lease; wait briefly (bounded) instead of reporting recovery mode at once.

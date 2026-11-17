@@ -4,10 +4,6 @@
 import {afterEach, describe, expect, it} from 'vitest';
 import {signalsFromFiles, slimDecision, autoSizeFor, chooseRuntimeImage, repositorySignals, SIGNAL_FILES} from '../../src/playground/runtime-variant.js';
 import {resolvePrebuiltImage, _resetPrebuiltImageCache} from '../../src/playground/prebuilt-image.js';
-import {runWriteContract, makeWorld, parse} from '../../test/helpers/write-contract.js';
-import {prepareNativeWorld} from '../../test/helpers/native-git-world.js';
-import * as playground from '../../src/tools/playground.js';
-import {nativeRecord} from '../../src/native-git/client.js';
 
 const SHA = 'c'.repeat(40), SLIM = 'sha256:' + 'e'.repeat(64), FULL = 'sha256:' + 'd'.repeat(64), REPO = 'ghcr.io/example-org/runtime';
 const env = {PLAYGROUND_IMAGE_REPOSITORY: REPO, PLAYGROUND_BUILD_SOURCE_SHA: SHA};
@@ -108,43 +104,5 @@ describe('image choice and fallbacks', () => {
   });
 });
 
-// The decision as stored on a real allocation and shown to agents. Same Dokploy fake as the sizing
-// contract; no operator pin, so the published slim image is chosen for a small job of this fixture
-// repository (it has no package.json or other signal files).
-const name = 'github_playground_workspace';
-const arrange = (gh, outcome) => { gh.nativeOutcome = outcome; gh.when('GET /repos/{owner}/{repo}').reply(200, {full_name: 'example-org/hello'}); };
-const cleanups = []; afterEach(async () => { for (const close of cleanups.splice(0)) await close(); });
-async function dokployWorld(w) {
-  cleanups.push(await prepareNativeWorld(w, {existing: true})); const rows = new Map(); let sequence = 0; const reg = registry(), prior = w.ctx.fetch;
-  w.composes = rows;
-  const fetch = async (url, init) => {
-    if (String(url).startsWith('https://ghcr.io/')) return reg.fetch(url, init);
-    if (new URL(url).origin !== 'https://dokploy.example.test') return prior(url, init);
-    const u = new URL(url), op = u.pathname.split('/').pop(), input = init.method === 'GET' ? Object.fromEntries(u.searchParams) : JSON.parse(init.body), row = rows.get(input.composeId);
-    if (op === 'project.one') return Response.json({projectId: 'fixture', environments: [{environmentId: 'fixture-env', compose: [...rows.values()]}]});
-    if (op === 'compose.create') { const created = {...input, composeId: 'compose-' + ++sequence, environment: {projectId: 'fixture'}, domains: [], composeStatus: 'idle', afterDeploy: 0}; rows.set(created.composeId, created); return Response.json(created); }
-    if (op === 'compose.one') { if (row?.composeStatus === 'done' && !row.appName.includes('manager') && ++row.afterDeploy > 1 && w.gh.nativeOutcome === 'mismatch') return Response.json(null, {status: 404}); return Response.json(row ?? null, {status: row ? 200 : 404}); }
-    if (op === 'domain.create') { rows.get(input.composeId).domains.push(input); return Response.json(input); }
-    if (op === 'compose.deploy') { row.composeStatus = 'done'; return Response.json({}); }
-    throw Error('Unexpected provider operation ' + op);
-  };
-  w.gh.fetch = fetch; w.ctx = {...w.ctx, fetch, env: {...w.ctx.env, ...env, PUBLIC_BASE_URL: 'https://mcp.example.test', PLAYGROUND_DOKPLOY_ORIGIN: 'https://dokploy.example.test', PLAYGROUND_DOKPLOY_API_KEY: 'FAKE_PROJECT_KEY', PLAYGROUND_DOKPLOY_PROJECT_ID: 'fixture', PLAYGROUND_DOKPLOY_ENVIRONMENT_ID: 'fixture-env', PLAYGROUND_INGRESS_IPV4: '107.90.116.157', PLAYGROUND_ADMISSION: JSON.stringify({project: 'fixture', observedAt: w.ctx.now(), availableMemoryBytes: 8 * 1024 ** 3, availableDiskBytes: 10 * 1024 ** 3, pressure: 0})}};
-  await w.nativeReady();
-}
-runWriteContract({label: name + ' small on the slim image', definition: {tool: playground.tools.find(t => t.name === name), handler: playground.handlers[name]}, args: {owner: 'example-org', repo: 'hello', workspace_id: 'job_0123456789abcdef', operation: 'provision', size: 'small', requestKey: 'provision-slim'}, needsConfirm: true, profile: 'full', expectedWrites: 0, arrange, prepare: dokployWorld});
-
-it('a small provision records the slim decision in its plan and github_playground_read allocation shows it; medium stays full', async () => {
-  for (const [size, variant, digest] of [['small', 'slim', SLIM], ['medium', 'full', FULL]]) {
-    _resetPrebuiltImageCache();
-    const w = await makeWorld({profile: 'full', mode: 'production', gates: []}); arrange(w.gh, 'ok'); await dokployWorld(w);
-    const out = parse(await playground.handlers[name]({owner: 'example-org', repo: 'hello', workspace_id: 'job_0123456789abcdef', operation: 'provision', size, requestKey: 'p-' + size}, w.ctx));
-    expect(out.status).toBe('applied');
-    const read = await playground.handlers.github_playground_read({owner: 'example-org', repo: 'hello', workspace_id: 'job_0123456789abcdef', operation: 'allocation'}, w.ctx), shown = read.structuredContent ?? read;
-    expect(shown.runtime_image).toMatchObject({variant, reason: expect.any(String)});
-    const workspace = [...w.composes.values()].find(c => !c.appName?.includes('manager') && !c.name?.includes('manager'));
-    expect(workspace.composeFile).toContain(`${REPO}@${digest}`);
-    if (variant === 'slim') expect(shown.runtime_image.signals).toEqual([]);
-    const record = await nativeRecord(w.ctx, 'job_0123456789abcdef');
-    expect(record.row.id).toBe('job_0123456789abcdef');
-  }
-});
+// DOKPLOY-RETIRE-1 (2026-11-17): the provisioning contract that drove a fake Dokploy server is gone with the
+// retired pool; the image choice above is what devicePlan receives (tests/unit/fleet-dial-out.test.js runs it end to end).

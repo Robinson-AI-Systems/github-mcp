@@ -4173,6 +4173,24 @@
       ],
       "readiness": "READY",
       "ownerInputs": []
+    },
+    {
+      "id": "DOKPLOY-RETIRE-1",
+      "title": "Dokploy retired: the shared Playground pool, its provider, warm runtimes and manager are removed; runtimes run on paired computers; the sweep is called by the rack timer",
+      "batch": "FIN",
+      "design": "docs/pr-cards/DOKPLOY-RETIRE-1.md",
+      "dependencies": [
+        "LOG-FAILURES-3"
+      ],
+      "card": "docs/pr-cards/DOKPLOY-RETIRE-1.md",
+      "status": "MERGED",
+      "migration": "none",
+      "budget": 400,
+      "units": [
+        "DOKPLOY-RETIRE-1"
+      ],
+      "readiness": "READY",
+      "ownerInputs": []
     }
   ],
   "gatewayBoundary": {

@@ -131,3 +131,19 @@ placed on his PC; they go to the Dokploy worker, and his PC serves only his own 
 `audience` (`owner`/`shared`) per `NATIVE_GIT_WORKER_POOL` entry, protected configuration only; default primary = owner
 whenever another host is shared. "Own connections" = the operator's direct connector (PUB-8 mark) without a tenant scope;
 passes, RTC/HTTPS doors and every tenant/public/Marketplace connection count as others. Card: docs/pr-cards/WORKER-POOL-2.md.
+
+## 2026-11-17 — Dokploy retired (DOKPLOY-RETIRE-1)
+
+Chris: "we need to button up dokploy and remove it from all of our stuff. It will no longer be available for our use."
+David is reclaiming the server. Chris chose to retire Dokploy support fully.
+- Native Git: the `dokploy` worker host was removed from `NATIVE_GIT_WORKER_POOL` (pc, workshop and potato remain).
+- Playground: the shared operator pool (the Dokploy provider, pools, warm runtimes, its project manager service and its
+  resource/network checks) is removed from the code. Runtimes run only on paired computers; with none, the workspace is
+  Git-only. Rows left from the pool are closed in place (`retiredPool: true`); their resources were removed on the server
+  by its owner. Operator-supplied runtimes with signed observations (`PLAYGROUND_ALLOCATIONS`/`PLAYGROUND_ENFORCEMENT`)
+  are unchanged.
+- The maintenance sweep is no longer called by the Dokploy manager: it accepts the deployment's `CRON_SECRET`, and the
+  rack's project timer `playground-sweep` (SCHEDULES-1) calls it every minute.
+- Consequence for other people's work: Chris's earlier rule sent other users' workloads to Dokploy, never to his PC. With
+  Dokploy gone they have no shared host; they use their own paired computers.
+

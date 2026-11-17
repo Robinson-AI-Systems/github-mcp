@@ -3,7 +3,11 @@
 A **workspace** is an agent's whole working environment for one repository: a native Git clone (see
 [native Git](NATIVE-GIT-OPERATIONS.md)) plus, when commands are needed, an isolated **Playground runtime** where the agent
 installs dependencies, builds, runs tests, starts a dev server and previews it. Operator setup, settings and the
-provisioning lifecycle are in [PLAYGROUND-OPERATIONS](PLAYGROUND-OPERATIONS.md). Where hosts are going next (your PC,
+provisioning lifecycle are in [PLAYGROUND-OPERATIONS](PLAYGROUND-OPERATIONS.md).
+
+**2026-11-17 (DOKPLOY-RETIRE-1):** the shared Dokploy pool is retired. A runtime runs only on a computer or server
+paired with `github_playground_host_pairing` (Docker required); with none, the workspace stays Git-only and provisioning
+says so. Rows left from the pool are closed in place. Where hosts are going next (your PC,
 tailnet devices, several Dokploy servers, warm small runtimes) is designed in
 [RUNTIME-FLEET](designs/RUNTIME-FLEET-2026-11-01.md) and is **not built** beyond size classes.
 
@@ -32,8 +36,8 @@ Production runs in `best_effort` resource mode: CPU/memory ceilings are configur
    keeps its size for its whole life; there is no in-place resize yet. A Git-only workspace can get a runtime later with
    `github_playground_workspace` operation `provision` and `size`.
 2. **Wait for attachment.** The response's `playground.phase` starts at `requested` and `playground.placement` says
-   where it runs: `device` (one of your own ready computers or servers — always tried first) or `operator_pool` (the
-   shared Dokploy pool). With neither, the workspace is Git-only (`reason: no_runtime_host`). The runtime is provisioned and attaches the workspace. Attachment is **lean**: the runtime fetches the
+   where it runs: `device` (one of your own ready computers or servers). The shared Dokploy pool (`operator_pool`) was retired on
+   2026-11-17. Without a ready computer, the workspace is Git-only (`reason: no_runtime_host`). The runtime is provisioned and attaches the workspace. Attachment is **lean**: the runtime fetches the
    repository's history from GitHub itself and only your local changes are copied (unpushed commits, stash, staged,
    modified and untracked files — those count toward 100 MiB, no symlinks). Shallow clones, linked worktrees and
    half-finished merges/rebases use the older full copy (whole workspace ≤ 100 MiB). Follow progress with `github_playground_read` operation `allocation`, or

@@ -6,7 +6,7 @@ Only things that need you (your sign-in, phone or desktop, money, or a decision)
 
 - The connector is live at `https://github.robinsonaisystems.com` with owner operations, PR/CI/review tools and Git workspaces (clone, edit, commit, fetch, merge, push). Public sign-in was approved and `GITHUB_PUBLIC_CONNECT=enabled` is set in Vercel production (checked 2026-10-30). Do not re-approve it or reinstall the connector as a test.
 - Git workspaces close after 4 idle hours (activity renews the time). There is no daily job limit and no fixed workspace count; only real server load limits work. Source: `docs/OWNER-DECISION-2026-10-27.md`.
-- New workspaces run on Dokploy. Older ones may still sit on Render until they close; do not cancel Render yet. Evidence: [rollout note](status/2026-10-29-native-resource-admission.md).
+- ~~New workspaces run on Dokploy.~~ Dokploy is retired (2026-11-17): native Git runs on the PC, the Workshop and potato; Playground runtimes on paired computers. Evidence: [rollout note](status/2026-10-29-native-resource-admission.md).
 
 ## Do when you have time
 

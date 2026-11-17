@@ -14,8 +14,6 @@ import { poolStatus } from '../native-git/pool.js';
 import { WORKER_PROTOCOL } from '../native-git/protocol.js';
 import { NATIVE_OPTIONS_VERSION } from '../native-git/commands.js';
 import { resolvePrebuiltImage } from '../playground/prebuilt-image.js';
-import { dokployPools } from '../playground/dokploy.js';
-import { rootAllocationDb } from '../playground/index.js';
 
 export const RELEASE_REPO = Object.freeze({ owner: 'Robinson-AI-Systems', repo: 'github-mcp', branch: 'live' });
 /** The whole call answers within this (checks run in parallel); a check still running is reported as not answering. */
@@ -225,25 +223,6 @@ export function corroborateDirect(direct, worker, env) {
     reason: 'The push exit\'s public address did not answer from this server (it may be on the same machine, where its own public address cannot be reached), but the worker\'s signed report says its direct git host is set up on that address. Its listener was not checked directly; a real push is the proof.' };
 }
 
-const managerCommit = (source) => {
-  const text = `${source?.image ?? ''} ${source?.build?.context ?? ''}`;
-  return short(/(?:[:#])([0-9a-f]{40})\b/.exec(text)?.[1]);
-};
-/** Cheap Playground facts: configured pools and the manager's recorded state (one database read, no provider call). */
-async function playgroundPool(ctx, env, budget) {
-  let pools;
-  try { pools = dokployPools(env); } catch { return { check: { status: 'degraded', reason: 'The Playground pool setting is not valid.' }, manager: null }; }
-  if (!pools.length) return null;
-  const r = await bounded(rootAllocationDb(ctx).getSetting('playground_manager'), budget);
-  const state = r.value ?? null;
-  const manager = state ? { phase: typeof state.phase === 'string' ? state.phase : 'unknown', built_from: managerCommit(state.source) } : { phase: 'not created' };
-  const check = r.timeout || r.error
-    ? { status: 'degraded', pools: pools.length, reason: 'The Playground manager state could not be read just now.' }
-    : manager.phase === 'running' ? { status: 'ok', pools: pools.length }
-      : { status: 'degraded', pools: pools.length, reason: `The Playground manager is ${manager.phase}; new runs may wait while it starts.` };
-  return { check, manager };
-}
-
 async function runtimeImage(ctx, env, budget) {
   if (env.PLAYGROUND_IMAGE) {
     const digest = /@(sha256:[0-9a-f]{64})$/.exec(String(env.PLAYGROUND_IMAGE))?.[1] ?? null;
@@ -308,12 +287,11 @@ export async function serverStatus(args, ctx, { budgetMs = STATUS_BUDGET_MS, slo
   const deployTask = want.has('deployed_at') && release.commit
     ? bounded(cached(`deploy:${release.commit}:${environment}`, now, async () => deploymentTime(await gh, release.commit, environment)), budgetMs) : null;
   const health = want.has('health') || want.has('workers');
-  const [history, deployed, database, worker, direct, pool, image, workerPool] = await Promise.all([
+  const [history, deployed, database, worker, direct, image, workerPool] = await Promise.all([
     historyTask, deployTask,
     want.has('health') ? checkDatabase(ctx, budgetMs, slowMs) : null,
     health ? checkWorker(ctx, env, budgetMs, slowMs) : null,
     want.has('health') ? checkDirect(ctx, env, budgetMs, slowMs) : null,
-    health ? playgroundPool(ctx, env, budgetMs) : null,
     want.has('workers') ? runtimeImage(ctx, env, budgetMs) : null,
     want.has('health') ? checkPool(ctx, env, budgetMs) : null
   ]);
@@ -340,10 +318,10 @@ export async function serverStatus(args, ctx, { budgetMs = STATUS_BUDGET_MS, slo
     const runtime = image.source === 'release_tag'
       ? { tag: image.tag, digest: image.digest && !full ? `${image.digest.slice(0, 19)}…` : image.digest, published: image.published, ...(image.lookup ? { lookup: image.lookup } : {}) }
       : { source: image.source, ...(image.digest ? { digest: full ? image.digest : `${image.digest.slice(0, 19)}…` } : {}) };
-    out.workers = { native_git: nativeGit, playground: { runtime_image: runtime, ...(pool?.manager ? { manager: pool.manager } : {}) } };
+    out.workers = { native_git: nativeGit, playground: { runtime_image: runtime } };
   }
   if (want.has('health')) {
-    const checks = { database, worker: worker.check, ...(workerPool ? { worker_pool: workerPool } : {}), ...(direct ? { direct_git: corroborateDirect(direct, worker, env) } : {}), ...(pool?.check ? { playground_pool: pool.check } : {}) };
+    const checks = { database, worker: worker.check, ...(workerPool ? { worker_pool: workerPool } : {}), ...(direct ? { direct_git: corroborateDirect(direct, worker, env) } : {}) };
     out.health = { overall: worst(Object.values(checks)), ...checks };
   }
   if (want.has('warnings')) out.warnings = warningsFor({ release, worker: workerFacts, image, history: historyValue });
