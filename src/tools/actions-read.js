@@ -2,7 +2,7 @@ import {createHash} from 'node:crypto';
 import {redactExcerpt} from '../github/content-protection.js';
 // GitHub Actions, read side (G-1 part 1): workflows, runs, one run with its jobs, job and run log summaries, runs waiting for approval.
 // Logs are summarised, never dumped (BATCH-G G1): failed steps first, error lines, the last lines; the rest stays on GitHub.
-import { readZip, summarizeLog, textOfBody } from '../github/log-summary.js';
+import { readZip, summarizeLog, testFailures, textOfBody } from '../github/log-summary.js';
 import { defineRead } from './define-read.js';
 import { plain, readerFor } from './github-read.js';
 
@@ -77,7 +77,7 @@ export const actionsGetRun = defineRead({
 
 export const actionsGetJobLog = defineRead({
   name: 'github_actions_get_job_log', boundedWindow:true, area: 'actions', audience: ['B', 'Op'],
-  description: 'Read a job log: tail summary, full redacted text in hash-pinned windows, or search (text) for matches with context and a textOffset.',
+  description: 'Read a job log: summary with failing tests and reasons, hash-pinned full-text windows, or search with context. Search long logs before paging.',
   // Argument names match the response fields too (text_offset, next_text_offset), so a continuation can be copied as-is.
   aliases: {jobId:['job_id'],textOffset:['text_offset'],maxChars:['max_chars'],expectedLogHash:['log_hash'],tailLines:['tail_lines'],contextLines:['context_lines'],maxMatches:['max_matches'],search:['grep','find']},
   properties: { owner: OWNER, repo: REPO, jobId: { type: 'integer', minimum: 1 }, tailLines: { type: 'integer', minimum: 10, maximum: 2000, description: 'Last lines to keep (default 400)' },
@@ -145,7 +145,8 @@ export const actionsGetJobLog = defineRead({
     if(args.textOffset!==undefined||args.maxChars!==undefined||args.expectedLogHash!==undefined)
       throw new TypeError('Log continuation requires fullText:true.');
     const summary = summarizeLog(text, { tailLines: args.tailLines ?? 400 });
-    return { job: jobBrief(job), failed_steps_first: jobBrief(job).failed_steps, ...summary };
+    const failing = testFailures(text);
+    return { job: jobBrief(job), failed_steps_first: jobBrief(job).failed_steps, ...(failing.length ? { test_failures: failing } : {}), ...summary };
   })
 });
 
@@ -181,7 +182,7 @@ async function failedRunAt(octokit, owner, repo, args) {
 
 export const actionsGetRunLogsSummary = defineRead({
   name: 'github_actions_get_run_logs_summary', area: 'actions', audience: ['B', 'Op'],
-  description: 'Why a run failed: for each failed job, the failing steps and their error lines, read from the run\'s log archive.',
+  description: 'Why a run failed: failing steps, each failing test with its reason lines, error lines, and a ready search_log call into the job log.',
   aliases:{runId:['run_id']},
   properties: { owner: OWNER, repo: REPO, runId: { ...RUN, description: 'Workflow run id (or give pr or ref to explain the latest failed run at that head)' },
     pr: { type: 'integer', minimum: 1, description: 'Pull request number: explain the latest failed run at its head' },
@@ -244,7 +245,11 @@ export const actionsGetRunLogsSummary = defineRead({
       const never=neverStarted(job);
       // Only "Process completed with exit code 1"? Show the lines that ran just before it, from this job's own log.
       const before = errors.length && errors.every((l) => GENERIC_ERROR.test(l)) ? [...texts, ...(direct ? [direct] : [])].map((t) => linesBeforeFailure(t)).find((l) => l.length) ?? [] : [];
-      return { ...jobBrief(job), error_lines: errors, ...(before.length ? { lines_before_failure: before } : {}), logs_source:source,logs_readable:source!=='unavailable'&&source!=='annotations',
+      // LOG-FAILURES-1: each failing test with its own reason lines, and a ready search call.
+      const failing=[...texts,...(direct?[direct]:[])].map((t)=>testFailures(t)).find((f)=>f.length)??[];
+      const searchFor=failing.length?(failing[0].runner==='xunit'?'[FAIL]':failing[0].runner==='node:test'?'not ok':failing[0].runner==='go'?'--- FAIL':failing[0].test):(errors.find((l)=>!GENERIC_ERROR.test(l))??'error').slice(0,120);
+      return { ...jobBrief(job), ...(failing.length?{test_failures:failing}:{}), error_lines: errors, ...(before.length ? { lines_before_failure: before } : {}), logs_source:source,logs_readable:source!=='unavailable'&&source!=='annotations',
+        ...(!never?{search_log:{tool:'github_actions_get_job_log',args:{owner,repo:args.repo,jobId:job.id,search:searchFor,contextLines:12},note:'Every match with the lines around it, without paging the whole log.'}}:{}),
         ...(never?{never_started:true,note:'GitHub never started this job (no runner, no steps), so there is no log; error_lines are GitHub\'s own reason from the job\'s annotations.'}
           :{full_log:{tool:'github_actions_get_job_log',args:{owner,repo:args.repo,jobId:job.id,fullText:true}}}),
         ...(annotations?.length&&source!=='annotations'?{annotations}:{}),

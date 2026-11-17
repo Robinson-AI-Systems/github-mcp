@@ -310,8 +310,8 @@ Card(s): G-1.
 | `github_actions_dispatch` | Start a workflow (`workflow_dispatch`) on a ref with inputs; returns the run (API 2026-03-10); accepts `workflow_id` as the spelling of `workflow` | P·Prod* | F | I | B,Op | E | G-1 built #41 |
 | `github_actions_list_runs` | Runs by workflow, branch, event, status, actor, head SHA | — | C | I | B,Op | R | G-1 built #39 |
 | `github_actions_get_run` | One run: status, conclusion, jobs and steps, attempt, billable timing | — | C | I | B,Op | R | G-1 built #39 |
-| `github_actions_get_job_log` | Job summary or full redacted character windows pinned to log hash; job_id alias | — | F | I | B,Op | R | G-1 built #39 |
-| `github_actions_get_run_logs_summary` | Download a run's log archive server-side and return failing steps, error lines and annotations | — | F | I | B,Op | R | G-1 built #39 |
+| `github_actions_get_job_log` | Job summary (with each failing test and its reason lines), full redacted character windows pinned to log hash, or search with context; job_id alias | — | F | I | B,Op | R | G-1 built #39 |
+| `github_actions_get_run_logs_summary` | Download a run's log archive server-side and return failing steps, each failing test with its reason lines, error lines, annotations and a ready `search_log` call | — | F | I | B,Op | R | G-1 built #39 |
 | `github_actions_rerun` | Re-run a whole run, only its failed jobs, or one job | P·Prod* | C | I | B,Op | E | G-1 built #41 |
 | `github_actions_approve_fork_run` | Approve one reviewed public fork PR CI run, including GitHub's synthetic PR merge SHA; never bypass checks | C·Prod* | N | U | B,Op | F | FORK-CI-1 |
 | `github_actions_cancel_run` | Cancel a run (force-cancel needs confirm) | P | C | I | B,Op | E | G-1 built #41 |
@@ -1162,5 +1162,7 @@ Dependency entries and documented fakes (2026-11-14, FIXTURE-DB-1): a `pgpass` p
 Merging into another branch in one call (2026-11-14, MERGE-BASE-1): `github_workflow_merge_when_green` and `github_workflow_merge_anyway` describe `mergeIntoBranch` (the PR's base, for a PR into a non-default branch) on the tool itself and accept it as `base`, so the merge goes in one call; the deliberate-branch check is unchanged.
 
 Connector fixes (2026-11-15, CONNECTOR-FIXES-1115): `github_repo_change` with an `upload_id` already applied to that workspace (by `github_git_workspace_upload` apply) commits the files already there instead of refusing. `github_actions_get_run_logs_summary` and `github_actions_get_job_log` read a job's check-run annotations when it has no log; a job GitHub never started (no runner, no steps, e.g. billing) is marked `never_started`, its failure annotation becomes `error_lines`, and the summary drops the dead `full_log` pointer.
+
+Log failures (2026-11-17, LOG-FAILURES-1, owner report): a run summary listed failing test names but not why one of them failed, and the only way to the reason was paging a 150,000-character log. `github_actions_get_run_logs_summary` now returns `test_failures` (each failing test with its own reason lines; xUnit, dotnet test, node:test, vitest/jest, pytest, go) and a ready `search_log` call (`github_actions_get_job_log` with `search`); the job-log summary returns `test_failures` too, and its description says to search before paging.
 
 Git key idle window (2026-11-17, GIT-KEY-IDLE-1): `github_git_remote_setup`'s `hours` (8–24) is now also how long a key may sit unused before it lapses (a key in use still renews itself, up to 7 days). A lapsed key's git refusal names the exact renewal call.
