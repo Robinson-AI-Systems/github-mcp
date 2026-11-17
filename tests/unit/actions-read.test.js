@@ -59,6 +59,24 @@ describe('failing tests with their reasons (LOG-FAILURES-1)', () => {
     expect(f[1].reason.join(' ')).toContain('relative path is required');
     expect(f[0].reason.join(' ')).not.toContain('relative path');
   });
+  it('dotnet test: the xUnit [FAIL] line, then "Failed <test> [time]" with the reason (as on the PC runner)', () => {
+    const log = [
+      '[xUnit.net 00:00:09.92]     Door.Unit.Tests.SessionAbilityTests.Files_ListSearchAndRoots [FAIL]',
+      '  Failed Door.Unit.Tests.SessionAbilityTests.Files_ListSearchAndRoots [158 ms]',
+      '  Error Message:',
+      '   relative path is required',
+      '  Stack Trace:',
+      '     at Door.Unit.Tests.SessionAbilityTests.Files_ListSearchAndRoots() in SessionAbilityTests.cs:line 226',
+      '[xUnit.net 00:00:10.01]     Door.Unit.Tests.Other.Two [FAIL]',
+      '  Failed Door.Unit.Tests.Other.Two [3 ms]',
+      '  Error Message:',
+      '   Assert.Equal() Failure',
+    ].join('\n');
+    const f = testFailures(log);
+    expect(f.map((x) => x.test)).toEqual(['Door.Unit.Tests.SessionAbilityTests.Files_ListSearchAndRoots', 'Door.Unit.Tests.Other.Two']);
+    expect(f[0].reason).toContain('relative path is required');
+    expect(f[1].reason).toContain('Assert.Equal() Failure');
+  });
   it('node:test, go and pytest markers', () => {
     expect(testFailures('not ok 3 - restart refuses while gaming\n  error: expected refused').map((x) => [x.runner, x.test]))
       .toEqual([['node:test', 'restart refuses while gaming']]);
