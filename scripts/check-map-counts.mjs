@@ -17,7 +17,7 @@ import { join, relative } from 'node:path';
 import { execSync } from 'node:child_process';
 
 const MAP = 'docs/relational-map';
-const WORDS = 'tools?|modules?|tables?|operations?|routes?|sections?|families|endpoints?|scopes?|services?|workers?|repos?|projects?|tests?|files?';
+const WORDS = 'tools?|ops|modules?|tables?|operations?|routes?|sections?|families|endpoints?|scopes?|services?|workers?|repos?|projects?|tests?|files?';
 const COUNT_RE = new RegExp(`(?<![\\w.\\-/#:])~?(\\d{2,})\\s+(?:(?:registered|hand-built|catalog(?:ue)?|visible|MCP|vendored|schema)\\s+)?(?:${WORDS})\\b`, 'gi');
 
 function walk(dir) {
