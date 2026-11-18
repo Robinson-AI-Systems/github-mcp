@@ -121,8 +121,32 @@ export function fitToBudget(value, maxBytes = RULES.maxBytes) {
     let hi = list.length;
     const build = (n) => (key === '' ? list.slice(0, n) : { ...value, [key]: list.slice(0, n) });
     while (lo < hi) { const mid = Math.ceil((lo + hi) / 2); if (sizeOf(build(mid)) <= room) lo = mid; else hi = mid - 1; }
+    // FULL-ROWS-1 (2026-11-18): when not even one whole row fits (detail: 'full' PR objects), shorten the
+    // rows' long texts and try again, so a list reply never comes back empty while rows exist.
+    let rows = list;
+    for (const limit of [1000, 300, 100]) {
+      if (lo > 0 || !list.length) break;
+      rows = shrinkStrings(list, limit);
+      const shrunk = (n) => (key === '' ? rows.slice(0, n) : { ...value, [key]: rows.slice(0, n) });
+      let l2 = 0, h2 = rows.length;
+      while (l2 < h2) { const mid = Math.ceil((l2 + h2) / 2); if (sizeOf(shrunk(mid)) <= room) l2 = mid; else h2 = mid - 1; }
+      if (l2 > 0) { lo = l2; current = shrunk(l2); }
+    }
+    if (lo === 0 && list.length && isObject(rows[0])) {
+      // Still too big: keep the first row's smallest fields and name the rest, rather than an empty list.
+      const fixed = { ...(key === '' ? {} : value), [key === '' ? '_' : key]: [] };
+      const budget = room - sizeOf(key === '' ? [] : fixed) - 120;
+      const row = {}; const left = []; let used = 2;
+      for (const [k, v] of Object.entries(rows[0]).sort((a, b) => sizeOf(a[1]) - sizeOf(b[1]))) {
+        const size = sizeOf(v) + k.length + 4;
+        if (used + size <= budget) { row[k] = v; used += size; } else left.push(k);
+      }
+      row._left_out = { count: left.length, first: left.slice(0, 10) };
+      lo = 1; current = key === '' ? [row] : { ...value, [key]: [row] };
+      rows = null;
+    }
     shown = lo;
-    current = build(lo);
+    if (rows === list || (rows !== null && lo === 0)) current = build(lo);
   }
   for (const limit of [1000, 300, 100]) {
     if (sizeOf(current) <= room) break;

@@ -67,6 +67,36 @@ describe('long text and big results are kept behind a handle', () => {
     expect(more.body).toBe('b'.repeat(3000));
     expect(more.text_cut).toBeUndefined();
   });
+  it('never answers an empty list when one row alone is too big (FULL-ROWS-1)', async () => {
+    const { run } = await setup();
+    const wide = (n) => ({ number: n, ...Object.fromEntries(Array.from({ length: 200 }, (_, i) => [`f${i}`, 'u'.repeat(90)])) });
+    current = () => Array.from({ length: 5 }, (_, i) => wide(i + 1));
+    const r = out(await run('github_t_plain', {}));
+    expect(sizeOf(r)).toBeLessThanOrEqual(8192);
+    expect(r.items.length).toBeGreaterThan(0);
+    expect(r.items[0].number).toBe(1);
+    expect(r.items[0]._left_out.count).toBeGreaterThan(0);
+    expect(r.returned_count).toBe(r.items.length);
+  });
+  it('keeps the rows that fit when the whole list is bigger than the connection keeps (KEEP-PART-1)', async () => {
+    const { db, run } = await setup();
+    const { TenantCapacityError } = await import('../../src/tenancy/runtime-limits.js');
+    const put = db.putResult.bind(db);
+    db.putResult = async (input) => { if (Buffer.byteLength(JSON.stringify(input.body)) > 262144) throw new TenantCapacityError('result', 0, 'too_large'); return put(input); };
+    current = () => Array.from({ length: 200 }, (_, i) => ({ ...pr(i + 1), body: 'y'.repeat(3000) }));
+    const r = out(await run('github_t_plain', {}));
+    expect(r.kept_result.handle).toMatch(/^res_/);
+    expect(r.kept_result.of_rows).toBe(200);
+    expect(r.kept_result.kept_rows).toBeGreaterThan(r.items.length);
+    expect(r.kept_result.kept_rows).toBeLessThan(200);
+    expect(r.kept_result.partial_note).toContain(`first ${r.kept_result.kept_rows} of 200 rows`);
+    expect(r.kept_result.continue.remaining).toBe(r.kept_result.kept_rows - r.items.length);
+    expect(r.returned_note).toContain(`Rows up to ${r.kept_result.kept_rows} are kept`);
+    db.putResult = async () => { throw new TenantCapacityError('result', 0, 'too_large'); };
+    const single = out(await run('github_t_plain', {}));
+    expect(single.kept_result.reason).toBe('too_large');
+    expect(single.kept_result.note).toContain('larger than this connection keeps');
+  });
   it('says how many rows a whole list reply carries (RETURNED-COUNT-1)', async () => {
     const { run } = await setup();
     current = () => Array.from({ length: 3 }, (_, i) => pr(i + 1));

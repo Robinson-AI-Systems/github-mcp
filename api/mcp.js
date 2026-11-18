@@ -104,8 +104,8 @@ export async function handleMcp(req, res, { marketplaceAccountId = null } = {}) 
       res.setHeader('Cache-Control','no-store');
       res.setHeader('Retry-After', String(error.retryAfterSeconds));
       return res.status(429).json({ error:'rate_limited',
-        error_description:'This private connection is temporarily busy. Retry later.',
-        retry_after_seconds:error.retryAfterSeconds });
+        error_description:`This private connection is temporarily busy. Retry in ${error.retryAfterSeconds} seconds.`,
+        retry_after_seconds:error.retryAfterSeconds, retryable:true });
     }
     if (!res.headersSent) {
       return res.status(503).json({ error: 'temporarily_unavailable', error_description: 'GitHub Unleashed is not configured or its database is unavailable' });

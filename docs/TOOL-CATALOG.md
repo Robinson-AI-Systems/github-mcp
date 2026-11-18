@@ -11,6 +11,8 @@
 
 **Name alias (2026-11-09):** `github_api_request` is accepted as another name for `github_api_read` (read-only GET) in `github_call`, `github_describe_tool` and `github_batch`; no new tool, never reaches `github_api_write`.
 
+**Argument name (CALL-ARGS-1, 2026-11-18):** `github_call` and each `github_batch` call accept the tool's arguments as `args` or `arguments` (the name Rack Control's `rack_call` uses); both with different values is refused.
+
 **Unknown tool names (2026-11-09):** `github_call` errors for an unknown or hidden tool add "Did you mean: …" with close visible names (a guessed `github_api_request` points at `github_api_read`, the general read-only GET tool).
 
 **Owner feedback 2026-11-11:** a write whose first read-back finds nothing (or fails) is read back once more after a short pause before it is called `unconfirmed` (the change is never sent twice); `github_actions_dispatch` is confirmed by GitHub's 204 and reports the run it started when it can find it, and `inputs` accepts a name-to-value object as well as a list of `{name, value}`. A call with no `owner` on a connection with several accounts uses the single account that holds the repository when the default account does not.

@@ -28,10 +28,19 @@ describe('PUB-3 scoped runtime fail-closed validation',()=>{
     expect(sql).toHaveBeenCalledOnce();
     const error=await claimTenantBudget(sql,{operation:'oauth',clientId:'client',
       tenantMax:10,clientMax:2}).catch(x=>x);
-    expect(error.retryAfterSeconds).toBe(60);
+    // BUSY-RETRY-1: the wait is until the minute window reopens, and the words say it.
+    expect(error.retryAfterSeconds).toBeGreaterThanOrEqual(1);
+    expect(error.retryAfterSeconds).toBeLessThanOrEqual(60);
+    expect(error.message).toContain(`Retry in ${error.retryAfterSeconds} seconds`);
     expect(error.message).not.toContain('client');
   });
 
+  it('counts the wait to when the window reopens (BUSY-RETRY-1)',async()=>{
+    const {secondsUntilWindowEnds}=await import('../../src/tenancy/runtime-limits.js');
+    expect(secondsUntilWindowEnds(60,Date.UTC(2026,10,18,19,0,45))).toBe(15);
+    expect(secondsUntilWindowEnds(60,Date.UTC(2026,10,18,19,0,0))).toBe(60);
+    expect(secondsUntilWindowEnds(86400,Date.UTC(2026,10,18,23,59,30))).toBe(30);
+  });
   it('validates retained size and TTL before any database mutation',async()=>{
     const db={createJob:vi.fn(),putResult:vi.fn()};
     const sql=vi.fn();
@@ -39,9 +48,10 @@ describe('PUB-3 scoped runtime fail-closed validation',()=>{
     await expect(store.createJob({ttlMinutes:1441})).rejects.toBeInstanceOf(TenantCapacityError);
     await expect(store.putResult({ttlSeconds:86401,body:{a:1}}))
       .rejects.toBeInstanceOf(TenantCapacityError);
-    await expect(store.putResult({body:{big:'X'.repeat(
-      TENANT_RUNTIME_LIMITS.resultMaxBytes+1)}}))
-      .rejects.toBeInstanceOf(TenantCapacityError);
+    const tooBig=await store.putResult({body:{big:'X'.repeat(
+      TENANT_RUNTIME_LIMITS.resultMaxBytes+1)}}).catch(x=>x);
+    expect(tooBig).toBeInstanceOf(TenantCapacityError);
+    expect(tooBig.reason).toBe('too_large');
     await expect(store.putResult({body:undefined})).rejects.toThrow(/valid JSON/);
     expect(db.putResult).not.toHaveBeenCalled();
     expect(db.createJob).not.toHaveBeenCalled();
