@@ -136,10 +136,12 @@ const BATCH_ITEM_CHARS = 3500;
 // CALL-ARGS-1 (owner feedback 2026-11-18): Rack Control's rack_call names them `arguments`, so an agent
 // moving between the two connectors sent the wrong name. Both names work here; giving both is refused.
 const CALL_ITEM = { type: 'object', properties: { name: { type: 'string', maxLength: 80 }, args: { type: 'object', additionalProperties: true }, arguments: { type: 'object', additionalProperties: true, description: 'Same as args' } }, required: ['name'], additionalProperties: false };
+const asObject = (v) => { if (typeof v !== 'string') return v; try { const o = JSON.parse(v); return o && typeof o === 'object' && !Array.isArray(o) ? o : v; } catch { return v; } };
 export function callArgs(a) {
-  if (a.args !== undefined && a.arguments !== undefined && JSON.stringify(a.args) !== JSON.stringify(a.arguments))
+  const args = asObject(a.args), named = asObject(a.arguments);
+  if (args !== undefined && named !== undefined && JSON.stringify(args) !== JSON.stringify(named))
     throw new TypeError('Give the tool\'s arguments once: as args or as arguments, not both.');
-  return a.args ?? a.arguments ?? {};
+  return args ?? named ?? {};
 }
 
 export const tools = [

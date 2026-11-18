@@ -210,6 +210,11 @@ describe('github_call', () => {
     expect(JSON.stringify(both)).toContain('not both');
     const batch = data(await w.run('github_batch', { calls: [{ name: 'github_whoami', arguments: {} }] }));
     expect(batch.results[0].ok).toBe(true);
+    // CALL-ARGS-2: a client with an old tool list sends the object as JSON text.
+    expect(data(await w.run('github_call', { name: 'github_whoami', arguments: '{}' }))).toEqual(direct);
+    expect(data(await w.run('github_call', { name: 'github_whoami', args: '{}' }))).toEqual(direct);
+    const notJson = await w.run('github_call', { name: 'github_whoami', arguments: 'not json' });
+    expect(notJson.isError).toBe(true);
   });
   it('runs a change through the write layer: preview, then the same refusals', async () => {
     const w = await world();

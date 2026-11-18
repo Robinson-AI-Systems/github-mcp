@@ -166,7 +166,21 @@ function actingRates(snapshot,input){
 }
 
 // Owner feedback 2026-11-11: a workflow's inputs given as the usual name-to-value object were refused; accept both shapes.
-function normalizeInputs(tool, args) {
+// CALL-ARGS-2 (2026-11-18, found live): a client whose cached tool list predates a new object argument
+// sends that argument as JSON text, and "arguments must be an object" came back. A top-level argument
+// the schema says is an object, given as text that parses to an object, is read as that object.
+function parseObjectArgs(tool, args) {
+  if (!isObject(args)) return args;
+  const props = tool?.inputSchema?.properties ?? {};
+  let out = args;
+  for (const [key, spec] of Object.entries(props)) {
+    if (spec?.type !== 'object' || typeof args[key] !== 'string' || args[key].length > 1_000_000) continue;
+    try { const v = JSON.parse(args[key]); if (isObject(v)) out = { ...out, [key]: v }; } catch { /* left as given; validation names it */ }
+  }
+  return out;
+}
+function normalizeInputs(tool, rawArgs) {
+  const args = parseObjectArgs(tool, rawArgs);
   if (!isObject(args) || tool?.inputSchema?.properties?.inputs?.type !== 'array' || !isObject(args.inputs)) return args;
   const text = (v) => (typeof v === 'string' ? v : v !== null && typeof v === 'object' ? JSON.stringify(v) : String(v));
   return { ...args, inputs: Object.entries(args.inputs).map(([name, value]) => ({ name, value: text(value) })) };

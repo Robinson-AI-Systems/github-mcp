@@ -86,7 +86,8 @@ flowchart TD
   (`fitToBudget`, FULL-ROWS-1); a list too big to keep whole is kept up
   to the rows that fit (`kept_rows`/`of_rows`, KEEP-PART-1).
   `github_call` and `github_batch` take a tool's arguments as `args`
-  or `arguments` (CALL-ARGS-1).
+  or `arguments` (CALL-ARGS-1); any top-level object argument that
+  arrives as JSON text is parsed first (`normalizeInputs`, CALL-ARGS-2).
 - **Errors.** `src/tools/errors.js` renders GitHub failures as what
   happened / likely cause / what to do / one technical line with the
   GitHub request id.
