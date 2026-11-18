@@ -7,9 +7,10 @@ disagree, the code wins and the map is fixed in the same change (see
 `docs/RULES.md`).
 
 Last surveyed: 2026-11-18, from `main` (clone of the public repo).
-Catalogue count at survey: `scripts/count-catalog.py` reports 517 tools
+Catalogue count (checked in CI against the code by `scripts/check-map-counts.mjs`,
+see `counts.json`): `scripts/count-catalog.py` reports 517 tools
 (511 hand-built + 6 universal) in 45 sections; the home page / README
-profile counts are Read-only 210, Everyday 299, Full 504 visible tools —
+profile counts are Read-only 214, Everyday 305, Full 516 visible tools —
 visibility is narrower than the catalogue because profiles hide tools.
 
 ## The system in one picture
@@ -20,7 +21,7 @@ flowchart LR
   Browser["Person in a browser<br/>(setup, consent, trust pages)"]
   GH["GitHub<br/>api.github.com REST + GraphQL"]
   Rack["Development Rack — Chris's PC<br/>rack-server.mjs, https://github.robinsonaisystems.com"]
-  DB[("PostgreSQL on the rack<br/>src/db.js — ~29 tables + per-tenant schemas")]
+  DB[("PostgreSQL on the rack<br/>src/db.js — 32 tables + per-tenant schemas")]
   Workers["Worker hosts<br/>native-git + coding-workspace workers<br/>(PC / Workshop / fleet machines)"]
   Actions["GitHub Actions<br/>ci.yml + daily-live.yml"]
 

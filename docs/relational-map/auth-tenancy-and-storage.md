@@ -10,7 +10,7 @@ flowchart TD
   GHApp["GitHub Apps (one per account)<br/>manifest: src/github/app-manifest.js"]
   Creds["src/github/credentials.js<br/>installation tokens, fine-grained tokens,<br/>user (U) grants, optional classic tokens"]
   Crypto["src/core/crypto.js<br/>AES-256-GCM, AAD-bound, TOKEN_ENCRYPTION_KEY<br/>(+ up to 2 previous keys, read-only)"]
-  DB[("PostgreSQL — src/db.js<br/>gh_apps, gh_accounts, oauth_clients/codes/tokens,<br/>change_log, server_settings, … (~29 tables)")]
+  DB[("PostgreSQL — src/db.js<br/>gh_apps, gh_accounts, oauth_clients/codes/tokens,<br/>change_log, server_settings, … (32 tables)")]
   Tenant["Tenancy — src/tenancy/*<br/>directory, per-tenant schema gh_t_&lt;hex&gt;,<br/>public connect (pcl_), private pilot (tcl_/tac_/trf_),<br/>CIMD clients, usage + capacity limits"]
   OneTime["One-time secrets<br/>src/core/one-time-secrets.js"]
 
@@ -59,7 +59,7 @@ flowchart TD
   stored as SHA-256 hashes (`hashToken` in `src/core/oauth.js`). Login
   lockout: 5 failed passphrase attempts per client IP per 15 minutes
   (`login_attempts`).
-- **Storage.** `src/db.js` creates ~29 tables additively
+- **Storage.** `src/db.js` creates 32 tables additively
   (`CREATE TABLE IF NOT EXISTS`): `gh_apps`, `gh_app_previous_secrets`,
   `gh_accounts`, `gh_installation_tokens`, `setup_states`,
   `oauth_clients`, `oauth_codes`, `oauth_tokens`, `login_attempts`,

@@ -10,7 +10,7 @@ flowchart TD
   Gates["src/tools/gates.js + guards<br/>production / spend / protect / people guards"]
   Meta["Meta-tools (src/tools/meta.js)<br/>github_search_tools, github_describe_tool,<br/>github_call, github_batch, github_tool_manifest"]
   Workflow["Workflow tools (src/tools/workflows-*.js)<br/>compact, passthrough, composed of other tools"]
-  Areas["~173 modules in src/tools/*.js<br/>repo / pr / issue / actions / security / org / …"]
+  Areas["173 modules in src/tools/*.js<br/>repo / pr / issue / actions / security / org / …"]
   Results["Result store<br/>github_get_result — 24 h handles, this connection only"]
   Backend["src/github/client.js → GitHub API"]
 
@@ -40,7 +40,7 @@ flowchart TD
   `offeredRegistry`) can further hide families an account does not have
   (Copilot, merge queue, hosted runners). Hidden ≠ callable: dispatch
   re-checks visibility by name.
-- **The catalogue.** `src/tools/index.js` merges ~173 modules with
+- **The catalogue.** `src/tools/index.js` merges 173 modules with
   `mergeNamespaces` (duplicate or handler-less names throw at startup).
   Areas (by `area:` tag, largest first): repo, server, actions, pr,
   issue, security, enterprise, user, git, copilot, content, review,
@@ -54,7 +54,7 @@ flowchart TD
   `github_call`), `github_call` (run any tool the profile allows, through
   the same dispatcher), `github_batch` (up to 10 reads in one call;
   writes are refused), `github_tool_manifest`. In the compact listing
-  these five are how an agent reaches the other ~500 tools.
+  these five are how an agent reaches all the other tools.
 - **Workflow tools — composed, not new plumbing.** Files
   `workflows-pr.js`, `workflows-merge.js`, `workflows-ci.js`,
   `workflows-find.js`, `workflows-health.js`, `workflows-review.js`,
