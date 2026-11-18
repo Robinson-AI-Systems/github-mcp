@@ -28,29 +28,56 @@ const FAIL_MARKERS = [
   { runner: 'xunit', at: /^\s*(?:\[xUnit\.net [^\]]*\]\s*)?(\S.*?)\s+\[FAIL\]\s*$/ },
   { runner: 'dotnet', at: /^\s*Failed\s+(\S.+?)\s+\[[^\]]*\]\s*$/ },
   { runner: 'node:test', at: /^\s*not ok \d+ - (.+)$/ },
+  // LOG-FIXTURES-1: node's "spec" reporter (the default on a terminal; CI gets TAP above).
+  { runner: 'node:test', at: /^\s*✖ (.+?) \([\d.]+m?s\)\s*$/ },
   { runner: 'vitest/jest', at: /^\s*(?:FAIL\s+\S+\s+>\s+|●\s+)(.+)$/ },
-  { runner: 'pytest', at: /^(?:FAILED|ERROR)\s+(\S+::\S+)(?:\s+-\s+.*)?$/ },
+  // The short summary line carries pytest's own one-line reason after " - "; it is kept as the reason.
+  { runner: 'pytest', at: /^(?:FAILED|ERROR)\s+(\S+::\S+)(?:\s+-\s+(.*))?$/ },
   { runner: 'go', at: /^\s*--- FAIL: (\S+)/ },
 ];
-const NOISE = /^##\[(?:group|endgroup)\]|^\s*$/;
+// LOG-FIXTURES-1: node:test TAP wraps the reason in YAML bookkeeping ("---", duration_ms, type, failureType, "error: |-").
+const NOISE = /^##\[(?:group|endgroup)\]|^\s*$|^\s*(?:---|\.\.\.|duration_ms: \S+|type: 'test'|failureType: '\w+'|error: \|-)\s*$/;
 // LOG-FAILURES-3: where a test run's own summary (or the CI step's end) begins, a reason ends: the last failing test
 // must not pick up "Results File:", "Failed! - Failed: 6, Passed: 548", "##[error]Process completed…" and the like.
-const RUN_END = /^##\[(?:error|warning)\]|^\s*Results File:|^\s*(?:Failed|Passed)!\s+-\s+Failed:|^\s*Total tests:|^\s*Test (?:Files|Suites):?\s+\d|^\s*Tests:?\s+\d|^# (?:tests|suites|pass|fail|cancelled|skipped|todo|duration_ms) \d|^=+ (?:short test summary|\d+ (?:failed|passed))|^(?:FAIL|ok)\s+\S+\s+[\d.]+s$|^FAIL$/;
+const RUN_END = /^##\[(?:error|warning)\]|^\s*Results File:|^\s*(?:Failed|Passed)!\s+-\s+Failed:|^\s*Total tests:|^\s*Test (?:Files|Suites):?\s+\d|^\s*Tests:?\s+\d|^# (?:tests|suites|pass|fail|cancelled|skipped|todo|duration_ms) \d|^=+ (?:short test summary|\d+ (?:failed|passed))|^(?:FAIL|ok)\s+\S+\s+[\d.]+s$|^FAIL$|^ℹ (?:tests|suites|pass|fail|cancelled|skipped|todo|duration_ms) \d|^✖ failing tests:|^\s*✔ |^test at \S+:\d+:\d+$|^\d+ (?:failed|passed|errors?)\b.* in [\d.]+s|^=== (?:RUN|PAUSE|CONT|NAME)\s|^\s*--- (?:PASS|SKIP):/;
+// LOG-FIXTURES-1: real logs (saved verbatim under tests/fixtures/logs) set the RUN_END additions above.
 
 /**
  * The failing tests in a log, each with the lines that say why (assertion, exception, first stack frames).
  * @returns {Array<{ test: string, runner: string, line: number, reason: string[] }>}
  */
 export function testFailures(text, { max = 12, reasonLines = 10 } = {}) {
+  return allTestFailures(text, { reasonLines }).slice(0, max);
+}
+
+/**
+ * LOG-FAILURES-4 (Second Shift review 2026-11-18, two Highs): every failing test across ALL of a job's log
+ * texts, merged by test (a test seen in several texts is one entry, the one with reason lines kept), and an
+ * honest count: `tests_failing` is the real total, `tests_cut` how many are not listed beyond `max`.
+ * @returns {{ test_failures: Array<{ test: string, runner: string, line: number, reason: string[] }>, tests_failing: number, tests_cut: number }}
+ */
+export function testFailureReport(texts, { max = 12, reasonLines = 10 } = {}) {
+  const merged = new Map();
+  for (const text of [].concat(texts ?? [])) {
+    for (const entry of allTestFailures(text, { reasonLines })) {
+      const key = `${entry.runner}\u0000${entry.test}`;
+      const known = merged.get(key);
+      if (!known || (!known.reason.length && entry.reason.length)) merged.set(key, entry);
+    }
+  }
+  const all = [...merged.values()];
+  return { test_failures: all.slice(0, max), tests_failing: all.length, tests_cut: Math.max(0, all.length - max) };
+}
+
+function allTestFailures(text, { reasonLines = 10 } = {}) {
   const lines = redactExcerpt(String(text ?? '')).split('\n').map(clean);
-  const marker = (l) => { for (const m of FAIL_MARKERS) { const hit = m.at.exec(l); if (hit) return { runner: m.runner, test: hit[1].trim().slice(0, 200) }; } return null; };
+  const marker = (l) => { for (const m of FAIL_MARKERS) { const hit = m.at.exec(l); if (hit) return { runner: m.runner, test: hit[1].trim().slice(0, 200), inline: hit[2]?.trim() }; } return null; };
   const out = []; const byTest = new Map();
   for (let i = 0; i < lines.length; i++) {
     const hit = marker(lines[i]);
     if (!hit) continue;
     const known = byTest.get(hit.test);
     if (known && known.reason.length) continue;
-    if (!known && out.length >= max) continue;
     const reason = [];
     for (let j = i + 1; j < lines.length && reason.length < reasonLines; j++) {
       const next = marker(lines[j]);
@@ -59,6 +86,19 @@ export function testFailures(text, { max = 12, reasonLines = 10 } = {}) {
       if (next && next.test === hit.test) continue;
       if (next || RUN_END.test(lines[j])) break;
       if (!NOISE.test(lines[j])) reason.push(lines[j].trim().slice(0, 300));
+    }
+    // pytest's summary line says why on the same line.
+    if (!reason.length && hit.inline) reason.push(hit.inline.slice(0, 300));
+    // `go test -v` prints a test's messages BEFORE its "--- FAIL" line, after its "=== RUN": read back to it.
+    if (!reason.length && hit.runner === 'go') {
+      const back = [];
+      for (let j = i - 1; j >= 0 && back.length < reasonLines; j--) {
+        const run = /^=== RUN\s+(\S+)\s*$/.exec(lines[j]);
+        if (run && run[1] === hit.test) break;
+        if (marker(lines[j]) || RUN_END.test(lines[j])) { back.length = 0; break; }
+        if (!NOISE.test(lines[j])) back.unshift(lines[j].trim().slice(0, 300));
+      }
+      reason.push(...back);
     }
     if (known) { known.reason = reason; continue; }
     const entry = { test: hit.test, runner: hit.runner, line: i + 1, reason };

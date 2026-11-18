@@ -7,7 +7,7 @@ flowchart LR
   Routes["Route knowledge<br/>src/github/routes.js, openapi-index.js,<br/>graphql-schema.js, hand-built-map.js, master-areas.js"]
   Rate["Rate + write pacing — src/github/rate.js<br/>gh_rate_state, gh_write_slots (DB-backed, cross-instance)"]
   GH["GitHub REST + GraphQL"]
-  LogSum["Log summaries — src/github/log-summary.js<br/>testFailures(): failing tests + reasons out of CI logs"]
+  LogSum["Log summaries — src/github/log-summary.js<br/>testFailureReport(): failing tests + reasons out of CI logs<br/>checked against real logs in tests/fixtures/logs/"]
   Webhook["Webhooks — api/github/webhook.js + src/github/webhook.js<br/>HMAC over raw body, bodyParser off"]
   Scan["Content protection + secret scanning<br/>src/github/content-protection.js, scanner-policy.js,<br/>custom-secret-rules.js, secret-literals.js, file-protection.js"]
   Feature["Feature gates — src/github/feature-gates.js<br/>familyOf / offeredTools / featureRefusal"]
@@ -47,7 +47,10 @@ flowchart LR
 - **Log summaries.** CI and Actions tools do not dump raw logs by
   default: `src/github/log-summary.js` extracts the failing tests and
   their reasons (runner-aware markers for vitest/jest, dotnet, pytest,
-  go, and others), caps them, and redacts before return; the full log
+  go, and others), merges them across every log text of a job, caps the
+  list with an honest count (`tests_failing`, `tests_cut`), and redacts
+  before return; the markers are checked against real runner logs kept
+  verbatim in `tests/fixtures/logs/`; the full log
   stays available behind the result handle / `fullText` routes. This
   powers `github_workflow_ci_failure_summary` and the job-log tools.
 - **Webhooks in.** GitHub App webhooks land on

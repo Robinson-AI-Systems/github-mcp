@@ -6,7 +6,7 @@ Chris: "fix the three problems you found instead of just reporting them". Two of
 
 ## Outcome and acceptance
 
-- **LOG-FAILURES-3.** A failing test's reason stops at the test run's own summary or the CI step's end (dotnet, vitest/jest, node:test, pytest, go, `##[error]`). Acceptance: `tests/unit/actions-read.test.js`, the dotnet case and "LOG-FAILURES-3: … run summaries end the last reason"; live re-check on windows-door run 44125265769.
+- **LOG-FAILURES-3.** A failing test's reason stops at the test run's own summary or the CI step's end (dotnet, vitest/jest, node:test, pytest, go, `##[error]`). Acceptance: `tests/unit/actions-read.test.js`, the dotnet case and "LOG-FAILURES-3: … run summaries end the last reason"; live re-check on windows-door run 44125265769. Evidence (added 2026-11-18): the run's raw log excerpt (job 134187200318, step "Unit tests") is saved verbatim as `tests/fixtures/logs/dotnet-xunit-windows-door-44125265769.txt` and asserted in the LOG-FIXTURES-1 cases.
 - **MERGE-WAIT-2.** `github_workflow_merge_when_green` with `waitForChecks`: when the wait found a job that already failed (`failed_runs`), answer `checks_failed` with the job names and a `why_tool` call, never "Checks are still running". Acceptance: `tests/unit/conn-fb-1.test.js`, "MERGE-WAIT-2: …".
 
 ## Drift check

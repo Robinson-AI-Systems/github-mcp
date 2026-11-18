@@ -1,0 +1,33 @@
+Test run for C:\actions-runner\_work\windows-door\windows-door\tests\Unit\bin\Release\net10.0-windows\Door.Unit.Tests.dll (.NETCoreApp,Version=v10.0)
+A total of 1 test files matched the specified pattern.
+[xUnit.net 00:00:08.90]     Door.Unit.Tests.RackBlobStagerTests.WrongBytes_AreRefusedAndLeaveNothing [FAIL]
+  Failed Door.Unit.Tests.RackBlobStagerTests.WrongBytes_AreRefusedAndLeaveNothing [177 ms]
+  Error Message:
+   Assert.Throws() Failure: Exception type was not an exact match
+Expected: typeof(Door.Mcp.RackWorkException)
+Actual:   typeof(System.InvalidOperationException)
+---- System.InvalidOperationException : The security identifier is not allowed to be the owner of this object.
+  Stack Trace:
+     at Door.Unit.Tests.RackBlobStagerTests.WrongBytes_AreRefusedAndLeaveNothing() in C:\actions-runner\_work\windows-door\windows-door\tests\Unit\RackBlobStagerTests.cs:line 78
+--- End of stack trace from previous location ---
+----- Inner Stack Trace -----
+   at System.Security.AccessControl.NativeObjectSecurity.Persist(String name, SafeHandle handle, AccessControlSections includeSections, Object exceptionContext)
+   at System.Security.AccessControl.NativeObjectSecurity.Persist(String name, AccessControlSections includeSections)
+   at System.Security.AccessControl.FileSystemSecurity.Persist(String fullPath)
+   at Door.Mcp.RackBlobStager.EnsureProtectedRoot(String root) in C:\actions-runner\_work\windows-door\windows-door\src\Door.Mcp\RackBlobStager.cs:line 213
+   at Door.Mcp.RackBlobStager.StageAsync(RackWorkItem item, CancellationToken ct) in C:\actions-runner\_work\windows-door\windows-door\src\Door.Mcp\RackBlobStager.cs:line 119
+[xUnit.net 00:00:08.94]     Door.Unit.Tests.RackBlobStagerTests.Poller_DispatchesWithTheStagedPath_ThenCleansUpAfterReporting [FAIL]
+  Failed Door.Unit.Tests.RackBlobStagerTests.Poller_DispatchesWithTheStagedPath_ThenCleansUpAfterReporting [51 ms]
+  Error Message:
+   Assert.True() Failure
+Expected: True
+Actual:   False
+  Stack Trace:
+     at Door.Unit.Tests.RackBlobStagerTests.Poller_DispatchesWithTheStagedPath_ThenCleansUpAfterReporting() in C:\actions-runner\_work\windows-door\windows-door\tests\Unit\RackBlobStagerTests.cs:line 201
+--- End of stack trace from previous location ---
+[xUnit.net 00:00:08.96]     Door.Unit.Tests.RackBlobStagerTests.Poller_ABadBlobFailsTheItem_WithoutDispatching [FAIL]
+  Failed Door.Unit.Tests.RackBlobStagerTests.Poller_ABadBlobFailsTheItem_WithoutDispatching [18 ms]
+  Error Message:
+   Assert.Equal() Failure: Strings differ
+                     ↓ (pos 10)
+Expected: "RACK_WORK_BLOB_FAILED"

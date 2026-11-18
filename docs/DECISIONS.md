@@ -140,7 +140,9 @@ David is reclaiming the server. Chris chose to retire Dokploy support fully.
 - Playground: the shared operator pool (the Dokploy provider, pools, warm runtimes, its project manager service and its
   resource/network checks) is removed from the code. Runtimes run only on paired computers; with none, the workspace is
   Git-only. Rows left from the pool are closed in place (`retiredPool: true`); their resources were removed on the server
-  by its owner. Operator-supplied runtimes with signed observations (`PLAYGROUND_ALLOCATIONS`/`PLAYGROUND_ENFORCEMENT`)
+  by its owner. Such a row is not proof of a checked teardown: `retiredPool: true` with
+  `cleanupEvidence: 'operator_pool_retired'` marks a manual teardown by the server's owner, unlike a normal disposal,
+  which needs a provider read-back first (Second Shift review 2026-11-18, finding 5). Operator-supplied runtimes with signed observations (`PLAYGROUND_ALLOCATIONS`/`PLAYGROUND_ENFORCEMENT`)
   are unchanged.
 - The maintenance sweep is no longer called by the Dokploy manager: it accepts the deployment's `CRON_SECRET`, and the
   rack's project timer `playground-sweep` (SCHEDULES-1) calls it every minute.
@@ -152,4 +154,10 @@ David is reclaiming the server. Chris chose to retire Dokploy support fully.
 Chris: "Owner only git machines". He chose option (a) of the owner-checklist decision, which was the recommendation.
 - `NATIVE_GIT_WORKER_POOL` stays as it is: `pc`, `workshop` and `potato`, all `audience: "owner"`.
 - Other connections (public or tenant) get the GitHub API tools, which need no Git machine. A clone, workspace or git push answers `native_no_shared_host`, which is plain and not retryable.
+- Where it lives (checkable): the pool list is read by `src/native-git/pool-config.js` (`NATIVE_GIT_WORKER_POOL`);
+  who may use an owner host is `ownerCaller` / `hostAllowed` in `src/native-git/pool-audience.js`; the refusal is
+  `noSharedHost()` there (`safeCode: 'native_no_shared_host'`, `safeRetryable: false`). The `operator` mark it trusts is
+  set only on the server, by `operatorConnection()` in `src/core/authority.js` wrapping the operator's own database
+  route; nothing a client sends can set it. Live (2026-11-18, `github_server_status`): hosts `pc`, `workshop`, `potato`,
+  all `audience: "owner"`.
 - Revisit when the service opens to customers. The options then: set the Workshop's `audience` to shared (no cost; their work runs on Chris's hardware), or add a paid shared server.

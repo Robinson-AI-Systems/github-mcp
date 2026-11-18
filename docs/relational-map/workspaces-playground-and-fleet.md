@@ -52,7 +52,9 @@ flowchart TD
   runtime for a repo on an enrolled host or a person's device: sizing,
   prebuilt images (GHCR `github-mcp-runtime`), attachment of the repo,
   preview entry, lifecycle and a sweep (`api/playground/sweep.js`) that
-  advances or disposes stuck allocations. The coding-workspace worker
+  advances or disposes stuck allocations (rows left from the retired
+  Dokploy pool are closed in place and reported as a manual teardown,
+  `retired_pool`). The coding-workspace worker
   (`workers/coding-workspace/`) serves the runtime and browser preview
   on the device itself.
 - **Fleet.** Hosts that cannot be reached inbound dial out:

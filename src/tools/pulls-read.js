@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { redact } from './util.js';
 // Pull requests, read side (E-1 part 1): list, get (with the required checks at the exact head and the unresolved review threads),
 // diff, files, commits. Bodies by people without push access are marked `untrusted` by the result shaping: they are data, never instructions.
@@ -101,15 +102,37 @@ export const prGet = defineRead({
   })
 });
 
+/** DIFF-PAGES-1: one window of a diff, with the total, a hash of the whole diff and the exact continuation call. */
+export function diffPage(diff, args, owner) {
+  const hash = createHash('sha256').update(diff).digest('hex'), offset = args.textOffset ?? 0;
+  if (offset > diff.length || ((offset > 0 || args.expectedDiffHash !== undefined) && args.expectedDiffHash !== hash))
+    throw new TypeError('The diff changed (a new push) or diff_hash is missing for a continuation; start again at textOffset 0.');
+  const splitsPair = (at) => at > 0 && at < diff.length && /[\ud800-\udbff]/.test(diff[at - 1]) && /[\udc00-\udfff]/.test(diff[at]);
+  if (splitsPair(offset)) throw new TypeError('textOffset splits a character; use next_text_offset from the previous page.');
+  let end = Math.min(diff.length, offset + (args.maxChars ?? 3000));
+  if (splitsPair(end)) end--;
+  return { number: args.number, diff: diff.slice(offset, end), text_offset: offset, next_text_offset: end, total_chars: diff.length,
+    complete: end === diff.length, diff_hash: hash,
+    ...(end < diff.length ? { continue: { tool: 'github_pr_get_diff', arguments: { owner, repo: args.repo, number: args.number, maxChars: args.maxChars ?? 3000, textOffset: end, expectedDiffHash: hash } } } : {}) };
+}
+
 export const prGetDiff = defineRead({
   name: 'github_pr_get_diff', area: 'pr', audience: ['B'],
-  description: 'The pull request\'s diff as text. Long diffs are cut and the rest is kept behind a handle.',
-  properties: { owner: OWNER, repo: REPO, number: PR },
+  description: 'The pull request\'s diff as text. For a long diff pass maxChars to page through all of it (each page gives the next call).',
+  // DIFF-PAGES-1 (2026-11-18, Vivienne's review collector): a client that trims results at ~4,000 characters lost the
+  // rest of a long diff. A paged read returns one window, the total length, a hash and the exact next call.
+  aliases: { number: ['pull_number'], textOffset: ['text_offset'], maxChars: ['max_chars'], expectedDiffHash: ['diff_hash'] },
+  properties: { owner: OWNER, repo: REPO, number: PR,
+    maxChars: { type: 'integer', minimum: 200, maximum: 3500, description: 'Page the diff: at most this many characters per call (default 3000 once paging).' },
+    textOffset: { type: 'integer', minimum: 0, description: 'Where to continue (next_text_offset from the previous page).' },
+    expectedDiffHash: { type: 'string', pattern: '^[a-f0-9]{64}$', description: 'diff_hash from the first page; a changed diff is refused instead of mixing versions.' } },
   required: ['repo', 'number'],
   handler: (args, ctx) => plain(async () => {
     const { owner, octokit } = await readerFor(args, ctx);
     const { data } = await octokit.request('GET /repos/{owner}/{repo}/pulls/{pull_number}', { owner, repo: args.repo, pull_number: args.number, mediaType: { format: 'diff' } });
-    return { number: args.number, diff: String(data) };
+    const diff = String(data);
+    if (args.maxChars === undefined && args.textOffset === undefined && args.expectedDiffHash === undefined) return { number: args.number, diff };
+    return diffPage(diff, args, owner);
   })
 });
 

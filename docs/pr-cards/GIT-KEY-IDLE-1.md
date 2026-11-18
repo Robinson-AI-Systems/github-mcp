@@ -8,8 +8,8 @@ It would be smoother if it renewed itself, or if the failed pull pointed straigh
 ## Outcome and acceptance
 
 - A key renewed itself on each use, but only for 8 hours, whatever lifetime it was asked for. A session paused
-  overnight came back to a lapsed key. Now the idle window is the key's requested lifetime (`hours`, at least 8,
-  at most 24), and it is stored on the key (`idle_hours`). The 7-day cap from creation is unchanged.
+  overnight came back to a lapsed key. Now the idle window is the key's requested lifetime (`hours` accepts 1–24; the idle window is never
+  less than 8, so a shorter request still idles for 8; corrected 2026-11-18 after the Second Shift review), and it is stored on the key (`idle_hours`). The 7-day cap from creation is unchanged.
 - An expired key's `remote:` line names the exact renewal call, built only from the key's own row
   (`github_git_remote_setup {"owner":…,"repo":…,"access":…,"hours":24}`), and says the clone and remote stay as
   they are.

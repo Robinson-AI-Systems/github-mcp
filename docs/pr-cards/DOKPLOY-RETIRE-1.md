@@ -15,6 +15,10 @@
   - `tests/unit/playground-sizing.test.js`
   - `tests/unit/server-status.test.js`
   - live: no Dokploy host or pool in `github_server_status`; the timer's `last_outcome` is `ran`.
+    Checked 2026-11-18 ~11:09 UTC (LOG-FIXTURES-1 follow-up to the Second Shift review): `github_server_status` on
+    release `4d1c7370ed68` lists `worker_pool.hosts` = `pc`, `workshop`, `potato` (all `audience: "owner"`), no Dokploy
+    host or pool; Rack Control `rack_list_schedules` shows project timer `playground-sweep` with `last_outcome: "ran"`,
+    HTTP 200, last run 2026-11-18T11:09:14Z.
 
 ## Drift check
 

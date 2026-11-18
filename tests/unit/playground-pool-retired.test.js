@@ -35,7 +35,8 @@ it('a row left from the retired pool is closed in place, reported as retired, an
   expect(await w.ctx.db.compareAndSetSetting(allocationKey(binding), 0, poolRow(w, record, binding))).toBeTruthy();
   const closed = await ensureAllocation(w.ctx, record);
   expect(closed).toMatchObject({phase: 'disposed', disposed: true, retiredPool: true, cleanupEvidence: 'operator_pool_retired'});
-  expect(await inspectAllocation(w.ctx, record)).toMatchObject({phase: 'disposed', disposed: true});
+  // Second Shift review 2026-11-18 (finding 5): a closed pool row is never shown as a checked teardown.
+  expect(await inspectAllocation(w.ctx, record)).toMatchObject({phase: 'disposed', disposed: true, retired_pool: true, cleanup: 'manual_by_server_owner'});
   // Disposing again changes nothing; provisioning again needs a paired computer.
   expect((await disposeAllocation(w.ctx, record)).revision).toBe(closed.revision);
   await expect(ensureAllocation(w.ctx, record)).rejects.toThrow(/github_playground_host_pairing/);
