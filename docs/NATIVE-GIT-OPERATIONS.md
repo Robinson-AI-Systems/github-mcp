@@ -38,7 +38,7 @@ readiness from a configured URL. Future scale-out (several workers, device-hoste
 5. **Recover** — keep `requestKey` stable for the same intent; replays never resend. `operation_result` reads the historical
    receipt via `options.intentKey`. After a lost response or uncertain push, inspect local and remote refs before any new
    intent. A historical success does not mean the workspace has not changed since.
-6. **List and close** — `github_git_workspace_list` pages active workspaces (`max` 1–20, default 10, `after`/`next_cursor`);
+6. **List and close** — `github_git_workspace_list` pages active workspaces (`max` 1–20, default 10, `after`/`next_cursor`; `owner`/`repo` to list one repository's). Each row shows `branch`, `head`, `dirty_files`, `conflicts`, `ahead`/`behind` its tracking ref (as of the last fetch) and GitHub's head (`github_relation`), without renewing the lease; `details: false` lists names only;
    each repository is freshly authorized, so omitted entries never prove absence. `github_git_workspace_close` deletes only
    the local workspace (never the GitHub repository) and verifies absence.
 

@@ -309,13 +309,33 @@ const close = defineGithubWrite({
  },
  verify: ({ after }) => after?.state === 'ready' && after.detail === CLOSED, present: ({ after }) => ({ disposed: after?.state === 'ready' && after.detail === CLOSED })
 });
+// WORKSPACE-LIST-2 (owner feedback 2026-11-18): filter by repository, and say per row where each
+// workspace stands (branch, head, uncommitted files, ahead/behind its tracking ref, GitHub's head) so
+// finding the right workspace takes one call. Reading a row never renews its lease.
+const dirtyCount = status => typeof status === 'string' ? status.split('\n').filter(Boolean).length : null;
+async function workspaceRowState(c, id) {
+ try {
+  const r = await nativeRecord(c, id);
+  const s = await withRemoteHead(c, r, await callNativeWorker(c, { action: 'inspect', binding: r.binding, job: r.job, workspace_id: r.worker, renewLease: false, options: { includeRepository: true } }));
+  if (s?.state !== 'ready') return { state: s?.state ?? 'unknown' };
+  const t = s.tracking && typeof s.tracking === 'object' ? s.tracking : null;
+  return { state: 'ready', branch: s.branch ?? null, head: s.head ?? null, dirty_files: dirtyCount(s.status), conflicts: Array.isArray(s.conflicts) ? s.conflicts.length : null,
+   ...(s.in_progress?.length ? { in_progress: s.in_progress } : {}),
+   ahead: Number.isSafeInteger(t?.ahead) ? t.ahead : null, behind: Number.isSafeInteger(t?.behind) ? t.behind : null, upstream: t?.upstream ?? null,
+   github_head: s.remote?.head ?? null, github_relation: s.remote?.relation ?? 'unknown', generation: s.generation ?? null };
+ } catch { return { state: 'unknown', note: 'The worker did not answer for this workspace; read it with github_git_workspace_read operation status.' }; }
+}
 const list = defineRead({
  name: 'github_git_workspace_list', area: 'git', audience: ['B', 'O', 'Op'],
- description: 'Page this connection’s active native Git workspaces after fresh repository authorization; unavailable names are withheld.',
- properties: { after: WORKSPACE, max: { type: 'integer', minimum: 1, maximum: 20 } }, handler: async (a, c) => {
-  const limit = a.max ?? 10; const page = await c.db.listNativeGitWorkspaces(nativeConnection(c), { after: a.after ?? null, limit }); const rows = page.slice(0, limit); const next = page.length > limit ? rows.at(-1).id : null; const items = []; let unavailable = 0;
+ description: 'Page active native Git workspaces (optionally one repository), each with branch, head, uncommitted files and ahead/behind; unavailable names withheld.',
+ properties: { after: WORKSPACE, max: { type: 'integer', minimum: 1, maximum: 20 }, owner: OWNER, repo: { ...REPO, description: 'Only workspaces of this repository (owner defaults to any).' },
+  details: { type: 'boolean', description: 'Default true: read each workspace\'s branch, uncommitted files and ahead/behind (never renews a lease). false: names and expiry only, faster.' } },
+ handler: async (a, c) => {
+  const limit = a.max ?? 10; const page = await c.db.listNativeGitWorkspaces(nativeConnection(c), { after: a.after ?? null, limit, owner: a.owner ?? null, repo: a.repo ?? null }); const rows = page.slice(0, limit); const next = page.length > limit ? rows.at(-1).id : null; const items = []; let unavailable = 0;
   for (const row of rows) { try { await authorizeNativeRepo(c, row.owner, row.repo); items.push({ workspace_id: row.id, owner: row.owner, repo: row.repo, expires_at: row.expires_at instanceof Date ? row.expires_at.toISOString() : row.expires_at }); } catch { unavailable++; } }
-  return { items, checked: rows.length, unavailable, next_cursor: next, complete: next === null && unavailable === 0, note: 'Unavailable repository names are withheld. Follow next_cursor even when a page has no accessible items; omissions never prove absence.' };
+  if (a.details !== false) { const states = await Promise.all(items.map(i => workspaceRowState(c, i.workspace_id))); states.forEach((s, n) => Object.assign(items[n], s)); }
+  return { items, checked: rows.length, unavailable, next_cursor: next, complete: next === null && unavailable === 0, ...(a.repo || a.owner ? { filter: { owner: a.owner ?? null, repo: a.repo ?? null } } : {}),
+   note: 'Unavailable repository names are withheld. Follow next_cursor even when a page has no accessible items; omissions never prove absence.' + (a.details !== false ? ' ahead/behind count commits against the branch\'s tracking ref as of the workspace\'s last fetch (null when the branch tracks nothing); github_relation compares the head with GitHub\'s branch now.' : '') };
  }
 });
 // GIT-UPLOAD-1: bulk bytes go straight to the worker. The returned address carries a signed,
