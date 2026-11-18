@@ -304,3 +304,13 @@ it('a job GitHub never started: the job log answers with the reason instead of "
  expect(body).toMatchObject({ never_started: true, logs_readable: false });
  expect(body.annotations[0].message).toContain('spending limit');
 });
+it('LOG-RUNNING-1: a job still running says so instead of "expired or not uploaded"', async () => {
+ const w = await makeWorld({ profile: 'read_only' });
+ w.gh.when('GET /repos/{owner}/{repo}/actions/jobs/{job_id}').reply(200, { id: 8, name: 'promote', status: 'in_progress', conclusion: null, started_at: '2026-11-18T13:58:56Z', runner_name: 'rack-pc-1', steps: [{ name: 'Set up job', status: 'completed', conclusion: 'success', number: 1 }], check_run_url: 'https://api.github.com/repos/o/hello/check-runs/8' });
+ w.gh.when('GET /repos/{owner}/{repo}/actions/jobs/{job_id}/logs').reply(404, { message: 'Not Found' });
+ w.gh.when('GET /repos/{owner}/{repo}/check-runs/{check_run_id}/annotations').reply(200, []);
+ const { body } = await run(w, 'github_actions_get_job_log', { ...R, jobId: 8 });
+ expect(body).toMatchObject({ never_started: false, still_running: true, logs_readable: false });
+ expect(body.note).toMatch(/still running/);
+ expect(body.note).not.toMatch(/expired/);
+});

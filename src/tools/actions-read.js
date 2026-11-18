@@ -98,8 +98,13 @@ export const actionsGetJobLog = defineRead({
       if (error?.status !== 404 && error?.status !== 410) throw error;
       const annotations = await jobAnnotations(octokit, owner, args.repo, job);
       const never = neverStarted(job);
+      const running = !never && (job.status === 'in_progress' || job.status === 'queued' || job.status === 'waiting' || job.status === 'pending');
       return { job_id: job.id, name: job.name, status: job.status, conclusion: job.conclusion, never_started: never, logs_readable: false, annotations,
+        // LOG-RUNNING-1 (2026-11-18): a job still running has no downloadable log yet; saying "expired or not
+        // uploaded" sent callers looking for a problem that was not there.
+        ...(running ? { still_running: true } : {}),
         note: never ? 'GitHub never started this job, so it has no log. Its reason is in annotations.'
+          : running ? 'This job is still running; GitHub publishes its log only when the job finishes. Wait for it (github_check_wait, or github_actions_get_run), then read the log again.'
           : 'GitHub has no log for this job (expired or not uploaded). Annotations are what GitHub kept.' };
     }
     const text=textOfBody(res.data);
