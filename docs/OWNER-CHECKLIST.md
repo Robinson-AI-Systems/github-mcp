@@ -6,6 +6,7 @@ Only things that need you (your sign-in, phone or desktop, money, or a decision)
 
 - The connector is live at `https://github.robinsonaisystems.com` with owner operations, PR/CI/review tools and Git workspaces (clone, edit, commit, fetch, merge, push). Public sign-in was approved and `GITHUB_PUBLIC_CONNECT=enabled` is set in Vercel production (checked 2026-10-30). Do not re-approve it or reinstall the connector as a test.
 - Git workspaces close after 4 idle hours (activity renews the time). There is no daily job limit and no fixed workspace count; only real server load limits work. Source: `docs/OWNER-DECISION-2026-10-27.md`.
+- **Git machines stay yours only (decided 2026-11-17, NO-SHARED-HOST-1).** Your PC, the Workshop and potato serve only your own connection. Anyone else gets the GitHub API tools and a plain "no shared Git machine" answer. Revisit when you open the service to customers (share the Workshop, or add a paid shared server). Source: [DECISIONS](DECISIONS.md).
 - ~~New workspaces run on Dokploy.~~ Dokploy is retired (2026-11-17): native Git runs on the PC, the Workshop and potato; Playground runtimes on paired computers. Evidence: [rollout note](status/2026-10-29-native-resource-admission.md).
 
 ## Do when you have time
@@ -24,12 +25,6 @@ Only things that need you (your sign-in, phone or desktop, money, or a decision)
 7. **Optional: the GitHub App's own name on GitHub (BRAND-UNLEASHED-1, added 2026-11-03).** Every page, the MCP title and the docs now say "GitHub Unleashed by Robinson AI Systems". The registered GitHub App (and a Marketplace listing, if you publish one) keeps its current name on GitHub, because renaming an App can change its web address and bot name that installs and links rely on. Recommendation: leave it. If you want it renamed anyway, do it in GitHub's App settings yourself after checking GitHub's naming rules (they limit how "GitHub" may appear in names); nothing in this server needs to change.
 
 8. **Your own GitHub number for "only my work on my PC" (RELAY-OWNER-1, added 2026-11-03).** Your claude.ai connection is a public-connect sign-in, so the server needs to know which GitHub account is yours. One value in Vercel production (an agent with your Vercel connection can set it; it is not a secret, but this public repository must not hold it): `OPERATOR_GITHUB_USER_ID` = the same number already saved in `PUBLIC_UNLIMITED_SUBJECTS` (your numeric GitHub id; also the `id` at `https://api.github.com/users/christcr2012`). It takes effect with the next deployment. (Dokploy is retired since 2026-11-17: without this value your claude.ai work would have no Git machine at all. As of 2026-11-17 your connection is recognised as the owner and uses your machines.)
-
-9. **Decision: Git machines for other people (NO-SHARED-HOST-1, added 2026-11-17).** With Dokploy retired, all three Git machines (your PC, the Workshop, potato) are yours only. Anyone else who connects to GitHub Unleashed gets the GitHub API tools (commit files, branches, PRs, merges), but no clone, workspace or git push. They now get a plain message saying so, instead of "busy, try again". Options:
-   - **(a) Keep it owner-only for now (recommended).** Nobody else uses the service yet, and nothing costs money.
-   - **(b) Share the Workshop with other people.** One setting (`audience` of the Workshop host), no cost. The trade-off: other people's work runs on your hardware.
-   - **(c) Add a shared machine later,** when you open the service to customers. It needs a server (a monthly cost).
-   Nothing is blocked while you decide.
 
 ## Only if you want them
 
