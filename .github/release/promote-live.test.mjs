@@ -30,6 +30,9 @@ test('requires successful latest exact-head trusted checks', () => {
   assert.equal(checksPass([], ['ci'], main), false);
   assert.equal(checksPass([good, { ...good, id: 2, conclusion: 'failure' }], ['ci'], main), false);
   assert.equal(checksPass([good], ['ci', 'missing'], main), false);
+  // RUNNER-DEADLOCK-1: a newer queued copy does not hold back a finished success; a newer finished failure still does.
+  assert.equal(checksPass([good, { ...good, id: good.id + 1, status: 'queued', conclusion: null }], ['ci'], main), true);
+  assert.equal(checksPass([{ ...good, status: 'queued', conclusion: null }], ['ci'], main), false);
   assert.equal(checksFailed([{ ...good, conclusion: 'failure' }], ['ci'], main), true);
   assert.equal(checksFailed([{ ...good, status: 'in_progress', conclusion: null }], ['ci'], main), false);
   assert.equal(checksFailed([{ ...good, head_sha: live, conclusion: 'failure' }], ['ci'], main), false);
