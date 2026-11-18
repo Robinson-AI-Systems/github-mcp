@@ -686,11 +686,14 @@ export function createDb(sql = productionSql()) {
     },
 
     /** Connection-bound native workspace inventory; metadata is reauthorized before tools return it. */
-    async listNativeGitWorkspaces(connection, { after = null, limit = 10 } = {}) {
+    async listNativeGitWorkspaces(connection, { after = null, limit = 10, owner = null, repo = null } = {}) {
       if (typeof connection !== 'string' || !connection) return [];
       if (after !== null && !JOB_ID.test(after) || !Number.isSafeInteger(limit) || limit < 1 || limit > 20) throw new TypeError('Invalid workspace inventory page.');
+      // WORKSPACE-LIST-2: optional repository filter (case-insensitive, like GitHub names).
+      const o = typeof owner === 'string' && owner ? owner.toLowerCase() : null, r = typeof repo === 'string' && repo ? repo.toLowerCase() : null;
       return sql`SELECT id, owner, repo, expires_at FROM gh_async_jobs
         WHERE connection_id = ${connection} AND kind = 'native-git-workspace' AND state = 'pending' AND expires_at > now() AND (${after}::text IS NULL OR id > ${after})
+          AND (${o}::text IS NULL OR lower(owner) = ${o}) AND (${r}::text IS NULL OR lower(repo) = ${r})
         ORDER BY id LIMIT ${limit + 1}`;
     },
 

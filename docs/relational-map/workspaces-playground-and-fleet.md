@@ -30,6 +30,11 @@ flowchart TD
   operations, commit and push with real ancestry. Tool entry points:
   `src/tools/native-git.js` (workspace open/read/write/commit/push),
   `repo-change.js`, `branches.js`, `git-remote.js`.
+  `github_git_workspace_list` filters by `owner`/`repo` in the query
+  (`listNativeGitWorkspaces`) and reads each row's branch, head,
+  dirty-file count, conflicts and ahead/behind with a no-renew inspect
+  (`includeRepository`; the worker's inspect returns `tracking`), plus
+  GitHub's head (WORKSPACE-LIST-2).
 - **The pool.** `src/native-git/pool.js` tries configured hosts in
   priority order: enabled, answers its signed capabilities call, not
   paused by its owner, admits work by measured resources, under its

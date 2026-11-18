@@ -67,6 +67,14 @@ describe('long text and big results are kept behind a handle', () => {
     expect(more.body).toBe('b'.repeat(3000));
     expect(more.text_cut).toBeUndefined();
   });
+  it('says how many rows a whole list reply carries (RETURNED-COUNT-1)', async () => {
+    const { run } = await setup();
+    current = () => Array.from({ length: 3 }, (_, i) => pr(i + 1));
+    const r = out(await run('github_t_plain', {}));
+    expect(r.returned_count).toBe(3);
+    expect(r.all_returned).toBeUndefined();
+    expect(r.kept_result).toBeUndefined();
+  });
   it('turns an oversize list into a preview with a note, and pages through the rest', async () => {
     const { run } = await setup();
     current = () => Array.from({ length: 60 }, (_, i) => pr(i + 1));
@@ -74,6 +82,11 @@ describe('long text and big results are kept behind a handle', () => {
     expect(sizeOf(r)).toBeLessThanOrEqual(8192);
     expect(r.kept_result.of).toBe(60);
     expect(r.items.length).toBe(r.kept_result.shown);
+    // RETURNED-COUNT-1: the reply itself says how many rows it carries and that more exist.
+    expect(r.returned_count).toBe(r.items.length);
+    expect(r.all_returned).toBe(false);
+    expect(r.returned_note).toContain(`Only ${r.items.length} of 60 rows`);
+    expect(r.returned_note).toContain('kept_result.continue');
     const shown = r.kept_result.shown;
     expect(r.kept_result.next).toEqual({ page: 2, pageSize: shown });
     const p2 = out(await run('github_get_result', { handle: r.kept_result.handle, ...r.kept_result.next }));

@@ -169,10 +169,10 @@ export function createFakeDb({ clock = Date.now } = {}) {
       row.expires_at=new Date(Math.max(row.expires_at.getTime(),expiresAt??clock()+idleTimeoutMs));
       return {...row};
     },
-    async listNativeGitWorkspaces(connection, { after = null, limit = 10 } = {}) {
+    async listNativeGitWorkspaces(connection, { after = null, limit = 10, owner = null, repo = null } = {}) {
       if (typeof connection !== 'string' || !connection) return [];
       if (after !== null && !JOB_ID.test(after) || !Number.isSafeInteger(limit) || limit < 1 || limit > 20) throw new TypeError('Invalid workspace inventory page.');
-      return [...jobs.values()].filter(j => j.connection_id === connection && j.kind === 'native-git-workspace' && j.state === 'pending' && j.expires_at.getTime() > clock() && (after === null || j.id > after)).sort((a,b) => a.id.localeCompare(b.id)).slice(0,limit + 1).map(j => ({ id: j.id, owner: j.owner, repo: j.repo, expires_at: j.expires_at }));
+      return [...jobs.values()].filter(j => j.connection_id === connection && j.kind === 'native-git-workspace' && j.state === 'pending' && j.expires_at.getTime() > clock() && (after === null || j.id > after) && (!owner || j.owner.toLowerCase() === owner.toLowerCase()) && (!repo || j.repo.toLowerCase() === repo.toLowerCase())).sort((a,b) => a.id.localeCompare(b.id)).slice(0,limit + 1).map(j => ({ id: j.id, owner: j.owner, repo: j.repo, expires_at: j.expires_at }));
     },
     async finishJob(id, connection, { state, resultHandle = null, detail = null }) {
       if (!['ready', 'failed', 'expired'].includes(state)) throw new TypeError('A job finishes as ready, failed or expired.');

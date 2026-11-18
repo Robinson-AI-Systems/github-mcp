@@ -78,6 +78,10 @@ flowchart TD
   the result store (`result_store` table, `api/results/[handle].js`)
   behind a 24-hour, connection-scoped handle; the reply names the exact
   `github_get_result` continuation call.
+  Every list reply carries `returned_count` next to `count`; when the
+  limit cut the list it also says `all_returned: false` with a
+  `returned_note` naming the next call (`withReturnedCount`,
+  RETURNED-COUNT-1).
 - **Errors.** `src/tools/errors.js` renders GitHub failures as what
   happened / likely cause / what to do / one technical line with the
   GitHub request id.

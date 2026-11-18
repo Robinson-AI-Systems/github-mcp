@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated": "2026-11-15",
+  "updated": "2026-11-18",
   "order": [
     "A",
     "B",
@@ -4261,6 +4261,25 @@
       "budget": 100,
       "units": [
         "MAP-COUNTS-1"
+      ],
+      "readiness": "READY",
+      "ownerInputs": []
+    },
+    {
+      "id": "RETURNED-COUNT-1",
+      "title": "List replies say how many rows they carry; workspace list filters by repository and shows branch, dirty files, ahead/behind",
+      "batch": "FIN",
+      "design": "docs/pr-cards/RETURNED-COUNT-1.md",
+      "dependencies": [
+        "MAP-COUNTS-1"
+      ],
+      "card": "docs/pr-cards/RETURNED-COUNT-1.md",
+      "status": "MERGED",
+      "migration": "none",
+      "budget": 150,
+      "units": [
+        "RETURNED-COUNT-1",
+        "WORKSPACE-LIST-2"
       ],
       "readiness": "READY",
       "ownerInputs": []

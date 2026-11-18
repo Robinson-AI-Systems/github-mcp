@@ -58,6 +58,20 @@ function continueFor(handle, fit, cut) {
   if (text) out.text_continue = text;
   return out;
 }
+// RETURNED-COUNT-1 (owner feedback 2026-11-18: a PR list said count 82 but carried 13 rows, and only the
+// kept_result note said why). Every list reply says how many rows it actually carries, next to count;
+// when the size limit cut the list, all_returned:false and one plain line say so and name the next call.
+export function withReturnedCount(body, fit) {
+  if (!isObject(body) || !Array.isArray(body.items) || Object.hasOwn(body, 'returned_count')) return body;
+  const returned = body.items.length;
+  const trimmed = !!(fit?.fitted && fit.of !== null && fit.shown !== null && fit.shown < fit.of);
+  const extra = { returned_count: returned, ...(trimmed ? { all_returned: false,
+    returned_note: `Only ${returned} of ${fit.of} rows fit in this reply (replies have a size limit). ${body.kept_result?.continue ? 'The rest are kept: make the call in kept_result.continue, or ask' : 'Ask'} for fewer fields (fields: [...]) to get more rows per reply.` } : {}) };
+  if (!Object.hasOwn(body, 'count')) return { ...extra, ...body };
+  const out = {};
+  for (const [k, v] of Object.entries(body)) { out[k] = v; if (k === 'count') Object.assign(out, extra); }
+  return out;
+}
 async function readReply({ tool, args, raw, connection, db, mode }) {
   const shaped = shapeResult(summarized(tool, args, raw), { mode });
   const { value, unknown } = Array.isArray(args?.fields) && args.fields.length && tool.area !== 'server'
@@ -107,7 +121,7 @@ async function readReply({ tool, args, raw, connection, db, mode }) {
         ...continueFor(handle, fit, capped.cut) }
       : { note: 'This result was cut and could not be kept. Ask for less (fields, a smaller page) or a narrower search.', ...(capped.cut.length ? { text_cut: capped.cut.slice(0, 10) } : {}) };
   }
-  const body = Array.isArray(fit.value) ? { items: fit.value, ...notes } : isObject(fit.value) ? { ...fit.value, ...notes } : fit.value;
+  const body = withReturnedCount(Array.isArray(fit.value) ? { items: fit.value, ...notes } : isObject(fit.value) ? { ...fit.value, ...notes } : fit.value, fit);
   // An explicitly requested whole file or window stays whole in structuredContent too: many clients show only that channel.
   return { content: [{ type: 'text', text: JSON.stringify(body) }], structuredContent: body, ...(fullFile || lineWindow || byteWindow || keptLines ? { [KEEP_WHOLE]: true } : {}) };
 }

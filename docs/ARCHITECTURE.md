@@ -203,7 +203,7 @@ token rather than send an empty list (which GitHub reads as "everything"). Fine-
 
 ### Small results (C-1)
 
-Read replies go through `readReply` in `src/tools/dispatch.js`: summary form (tools defined with `defineRead` and a `summaryType`; `detail: 'full'` for the whole object) → shaping (`shapeResult`) → `fields` (keeps `untrusted`, brings `_local` times) → the full result is kept if anything will be cut → text caps → 8 KB fit. Rules live in `src/core/result-rules.js` (4,000 characters, 400 log lines, 8,192 bytes, 20 per page, 100 max). `kept_result` in a reply carries the handle; `github_get_result` reads it for the same connection only and shrinks a page that would not fit.
+Read replies go through `readReply` in `src/tools/dispatch.js`: summary form (tools defined with `defineRead` and a `summaryType`; `detail: 'full'` for the whole object) → shaping (`shapeResult`) → `fields` (keeps `untrusted`, brings `_local` times) → the full result is kept if anything will be cut → text caps → 8 KB fit. Rules live in `src/core/result-rules.js` (4,000 characters, 400 log lines, 8,192 bytes, 20 per page, 100 max). `kept_result` in a reply carries the handle, and every list reply says `returned_count` (with `all_returned: false` and a `returned_note` when the list was cut, RETURNED-COUNT-1); `github_get_result` reads it for the same connection only and shrinks a page that would not fit.
 
 ### Connection tools and the write-safety check (B-7, B-8)
 

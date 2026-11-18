@@ -96,6 +96,18 @@ it('reports actual signed worker capabilities and pages connection-bound workspa
  const inventory = parse(await invoke('github_git_workspace_list', { max: 1 }));
  expect(inventory.items).toMatchObject([{ workspace_id: id, owner: 'example-org', repo: 'hello' }]); expect(inventory.next_cursor).toBeNull(); expect(inventory.complete).toBe(true);
  expect(JSON.stringify(inventory)).not.toContain('authority');
+ // WORKSPACE-LIST-2: each row says where the workspace stands; a repository filter narrows the list.
+ expect(inventory.items[0]).toMatchObject({ state: 'ready', dirty_files: 0, conflicts: 0 });
+ expect(typeof inventory.items[0].branch).toBe('string'); expect(inventory.items[0].head).toMatch(/^[a-f0-9]{40}$/);
+ expect(inventory.items[0]).toHaveProperty('ahead'); expect(inventory.items[0]).toHaveProperty('behind');
+ const { nativeConnection } = await import('../../src/native-git/client.js');
+ const backend = JSON.parse((await w.db.getJob(id, nativeConnection(w.ctx))).provider_ref).worker;
+ await writeFile(join(dir, 'storage', backend, 'repo', 'new-file.txt'), 'x');
+ expect(parse(await invoke('github_git_workspace_list', { repo: 'HELLO' })).items).toMatchObject([{ workspace_id: id, dirty_files: 1 }]);
+ const other = parse(await invoke('github_git_workspace_list', { repo: 'other-repo' }));
+ expect(other.items).toEqual([]); expect(other.filter).toEqual({ owner: null, repo: 'other-repo' });
+ const quick = parse(await invoke('github_git_workspace_list', { details: false }));
+ expect(quick.items[0]).not.toHaveProperty('dirty_files');
 });
 
 it('relays a stated content-protection refusal and returns a value-free report for an uncommitted file', async () => {

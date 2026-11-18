@@ -165,7 +165,17 @@ export class NativeGitWorker {
       const location = (await this.git(w.repo, ['rev-parse', '--git-path', name])).stdout.trim();
       try { await lstat(resolve(w.repo, location)); inProgress.push(name); } catch (e) { if (e.code !== 'ENOENT') throw e; }
     }
-    return { state: 'ready', generation: w.meta.generation, branch: branch.code === 0 ? branch.stdout.trim() : null, head: head.code === 0 ? head.stdout.trim() : null, status: status.stdout, conflicts: conflicts.stdout.split('\n').filter(Boolean), in_progress: inProgress, expires_at: w.meta.expiresAt };
+    // WORKSPACE-LIST-2: commits ahead of / behind the branch's tracking ref (as of the last fetch).
+    let tracking = null;
+    if (branch.code === 0 && head.code === 0) {
+      const up = await this.git(w.repo, ['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{upstream}'], { allowedCodes: [0, 128] });
+      if (up.code === 0 && up.stdout.trim()) {
+        const counts = await this.git(w.repo, ['rev-list', '--left-right', '--count', '@{upstream}...HEAD'], { allowedCodes: [0, 128] });
+        const [behind, ahead] = counts.code === 0 ? counts.stdout.trim().split(/\s+/).map(Number) : [NaN, NaN];
+        tracking = { upstream: up.stdout.trim(), ...(Number.isSafeInteger(ahead) && Number.isSafeInteger(behind) ? { ahead, behind } : {}) };
+      }
+    }
+    return { state: 'ready', generation: w.meta.generation, branch: branch.code === 0 ? branch.stdout.trim() : null, head: head.code === 0 ? head.stdout.trim() : null, status: status.stdout, conflicts: conflicts.stdout.split('\n').filter(Boolean), in_progress: inProgress, tracking, expires_at: w.meta.expiresAt };
   }
   async selectWorktree(w, name) {
     if (name === undefined) return;
