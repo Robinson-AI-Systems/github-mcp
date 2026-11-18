@@ -1,8 +1,9 @@
 import zlib from 'node:zlib';
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { createDispatch } from '../../src/tools/dispatch.js';
 import { registry } from '../../src/tools/index.js';
-import { readZip, summarizeLog, testFailures } from '../../src/github/log-summary.js';
+import { readZip, summarizeLog, testFailureReport, testFailures } from '../../src/github/log-summary.js';
 import { makeWorld, parse } from '../../test/helpers/write-contract.js';
 
 const R = { repo: 'hello' };
@@ -106,6 +107,63 @@ describe('failing tests with their reasons (LOG-FAILURES-1)', () => {
     expect(testFailures('FAILED tests/test_a.py::test_b - AssertionError: 1 != 2')[0].test).toBe('tests/test_a.py::test_b');
   });
   it('a clean log has none', () => { expect(testFailures('all good\nok 1 - fine')).toEqual([]); });
+  it('LOG-FAILURES-4: never a silent cap — the real count and how many are not listed', () => {
+    const log = Array.from({ length: 15 }, (_, k) => `not ok ${k + 1} - case ${k + 1}\n  error: boom ${k + 1}`).join('\n');
+    const r = testFailureReport(log);
+    expect(r.test_failures).toHaveLength(12);
+    expect(r.tests_failing).toBe(15);
+    expect(r.tests_cut).toBe(3);
+    expect(testFailureReport('ok 1 - fine')).toEqual({ test_failures: [], tests_failing: 0, tests_cut: 0 });
+  });
+  it('LOG-FAILURES-4: failures in every log text of a job are kept, and one test seen twice is one entry', () => {
+    const stepA = 'not ok 1 - alpha\n  error: alpha broke';
+    const stepB = 'not ok 2 - beta\n  error: beta broke';
+    const whole = `${stepA}\n${stepB}`; // the job's full log repeats the step logs
+    const r = testFailureReport([stepA, stepB, whole]);
+    expect(r.test_failures.map((f) => f.test)).toEqual(['alpha', 'beta']);
+    expect(r.tests_failing).toBe(2);
+    expect(r.tests_cut).toBe(0);
+    // A bare marker in one text and the reason in another: the entry with the reason wins.
+    const merged = testFailureReport(['not ok 1 - gamma', 'not ok 1 - gamma\n  error: gamma reason']);
+    expect(merged.test_failures).toEqual([expect.objectContaining({ test: 'gamma', reason: ['error: gamma reason'] })]);
+  });
+  // LOG-FIXTURES-1: real logs, saved verbatim, instead of hand-written imitations.
+  const fixture = (name) => readFileSync(new URL(`../fixtures/logs/${name}`, import.meta.url), 'utf8');
+  it('LOG-FIXTURES-1: a real dotnet/xUnit log (windows-door run 44125265769) — each test once, with its reason', () => {
+    const r = testFailureReport([fixture('dotnet-xunit-windows-door-44125265769.txt')]);
+    expect(r.tests_failing).toBe(3); // the xUnit "[FAIL]" line and dotnet "Failed" line are the same test
+    expect(r.test_failures.map((f) => f.test)).toEqual([
+      'Door.Unit.Tests.RackBlobStagerTests.WrongBytes_AreRefusedAndLeaveNothing',
+      'Door.Unit.Tests.RackBlobStagerTests.Poller_DispatchesWithTheStagedPath_ThenCleansUpAfterReporting',
+      'Door.Unit.Tests.RackBlobStagerTests.Poller_ABadBlobFailsTheItem_WithoutDispatching',
+    ]);
+    expect(r.test_failures[0].reason).toContain('Assert.Throws() Failure: Exception type was not an exact match');
+    expect(r.test_failures[1].reason).toContain('Assert.True() Failure');
+    // The next test's marker ends the previous reason: no stack lines leak across tests.
+    expect(r.test_failures[0].reason.join('\n')).not.toContain('Poller_');
+  });
+  it('LOG-FIXTURES-1: a real vitest 5.1.1 log — both failures, not the summary lines', () => {
+    const r = testFailureReport([fixture('vitest-5.1.1-two-failures.txt')]);
+    expect(r.tests_failing).toBe(2);
+    expect(r.test_failures.map((f) => f.test)).toEqual(['totals > adds two numbers', 'totals > keeps names']);
+    expect(r.test_failures[0].reason[0]).toBe('AssertionError: expected 2 to be 3 // Object.is equality');
+    expect(r.test_failures[1].reason[0]).toMatch(/^AssertionError: expected \{ name: 'a' \} to deeply equal/);
+  });
+  it.each([
+    ['node-test-tap-22.23.4.txt', 'node:test', 'adds two numbers', '2 !== 3'],
+    ['node-test-spec-22.23.4.txt', 'node:test', 'adds two numbers', '2 !== 3'],
+    ['pytest-9.1.1.txt', 'pytest', 'test_a.py::test_adds', 'assert (1 + 1) == 3'],
+    ['pytest-9.1.1-quiet.txt', 'pytest', 'test_a.py::test_adds', 'assert (1 + 1) == 3'],
+    ['go-1.24.7.txt', 'go', 'TestRoute', 'x_test.go:3: want 3 got 2'],
+    ['go-1.24.7-verbose.txt', 'go', 'TestRoute', 'x_test.go:3: want 3 got 2'],
+  ])('LOG-FIXTURES-1: real %s — one failure, its real reason, no summary or passing-test lines', (file, runner, test, why) => {
+    const r = testFailureReport([fixture(file)]);
+    expect(r.tests_failing).toBe(1);
+    expect(r.test_failures[0]).toMatchObject({ runner, test });
+    expect(r.test_failures[0].reason).toContain(why);
+    const reason = r.test_failures[0].reason.join('\n');
+    expect(reason).not.toMatch(/passed|duration_ms|TestOk|ℹ |^---$|failureType/m);
+  });
 });
 
 describe('Actions read tools (G-1)', () => {

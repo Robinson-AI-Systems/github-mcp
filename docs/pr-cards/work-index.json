@@ -4209,6 +4209,25 @@
       ],
       "readiness": "READY",
       "ownerInputs": []
+    },
+    {
+      "id": "REVIEW-1118",
+      "title": "Second Shift review 2026-11-18: no silent test-failure cap, every log text, real-log fixtures, exact archived match, retired-pool rows honest, evidence for live claims",
+      "batch": "FIN",
+      "design": "docs/pr-cards/REVIEW-1118.md",
+      "dependencies": [
+        "AGENT-FB-1117",
+        "LOG-FAILURES-3"
+      ],
+      "card": "docs/pr-cards/REVIEW-1118.md",
+      "status": "MERGED",
+      "migration": "none",
+      "budget": 400,
+      "units": [
+        "REVIEW-1118"
+      ],
+      "readiness": "READY",
+      "ownerInputs": []
     }
   ],
   "gatewayBoundary": {

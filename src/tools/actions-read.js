@@ -2,7 +2,7 @@ import {createHash} from 'node:crypto';
 import {redactExcerpt} from '../github/content-protection.js';
 // GitHub Actions, read side (G-1 part 1): workflows, runs, one run with its jobs, job and run log summaries, runs waiting for approval.
 // Logs are summarised, never dumped (BATCH-G G1): failed steps first, error lines, the last lines; the rest stays on GitHub.
-import { readZip, summarizeLog, testFailures, textOfBody } from '../github/log-summary.js';
+import { readZip, summarizeLog, testFailureReport, textOfBody } from '../github/log-summary.js';
 import { defineRead } from './define-read.js';
 import { plain, readerFor } from './github-read.js';
 
@@ -145,10 +145,17 @@ export const actionsGetJobLog = defineRead({
     if(args.textOffset!==undefined||args.maxChars!==undefined||args.expectedLogHash!==undefined)
       throw new TypeError('Log continuation requires fullText:true.');
     const summary = summarizeLog(text, { tailLines: args.tailLines ?? 400 });
-    const failing = testFailures(text);
-    return { job: jobBrief(job), failed_steps_first: jobBrief(job).failed_steps, ...(failing.length ? { test_failures: failing } : {}), ...summary };
+    const report = testFailureReport(text);
+    return { job: jobBrief(job), failed_steps_first: jobBrief(job).failed_steps, ...failureFields(report), ...summary };
   })
 });
+
+// LOG-FAILURES-4: the failing tests, with the real count and how many are not listed (never a silent cap).
+function failureFields(report) {
+  if (!report.tests_failing) return {};
+  return { test_failures: report.test_failures, tests_failing: report.tests_failing,
+    ...(report.tests_cut ? { tests_cut: report.tests_cut, tests_note: `${report.tests_failing} tests failed; the first ${report.test_failures.length} are listed. search_log or full_log reads the rest.` } : {}) };
+}
 
 // Generic runner lines say only that a step failed; the lines just before them say why (owner feedback 2026-11-02).
 // JOB-NOT-STARTED-1: a job GitHub refused to start (billing, no matching runner, a
@@ -246,9 +253,11 @@ export const actionsGetRunLogsSummary = defineRead({
       // Only "Process completed with exit code 1"? Show the lines that ran just before it, from this job's own log.
       const before = errors.length && errors.every((l) => GENERIC_ERROR.test(l)) ? [...texts, ...(direct ? [direct] : [])].map((t) => linesBeforeFailure(t)).find((l) => l.length) ?? [] : [];
       // LOG-FAILURES-1: each failing test with its own reason lines, and a ready search call.
-      const failing=[...texts,...(direct?[direct]:[])].map((t)=>testFailures(t)).find((f)=>f.length)??[];
+      // LOG-FAILURES-4: every text of the job is read and merged (not just the first one with failures).
+      const report=testFailureReport([...texts,...(direct?[direct]:[])]);
+      const failing=report.test_failures;
       const searchFor=failing.length?(failing[0].runner==='xunit'?'[FAIL]':failing[0].runner==='node:test'?'not ok':failing[0].runner==='go'?'--- FAIL':failing[0].test):(errors.find((l)=>!GENERIC_ERROR.test(l))??'error').slice(0,120);
-      return { ...jobBrief(job), ...(failing.length?{test_failures:failing}:{}), error_lines: errors, ...(before.length ? { lines_before_failure: before } : {}), logs_source:source,logs_readable:source!=='unavailable'&&source!=='annotations',
+      return { ...jobBrief(job), ...failureFields(report), error_lines: errors, ...(before.length ? { lines_before_failure: before } : {}), logs_source:source,logs_readable:source!=='unavailable'&&source!=='annotations',
         ...(!never?{search_log:{tool:'github_actions_get_job_log',args:{owner,repo:args.repo,jobId:job.id,search:searchFor,contextLines:12},note:'Every match with the lines around it, without paging the whole log.'}}:{}),
         ...(never?{never_started:true,note:'GitHub never started this job (no runner, no steps), so there is no log; error_lines are GitHub\'s own reason from the job\'s annotations.'}
           :{full_log:{tool:'github_actions_get_job_log',args:{owner,repo:args.repo,jobId:job.id,fullText:true}}}),
