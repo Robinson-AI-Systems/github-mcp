@@ -1748,6 +1748,14 @@ export function createDb(sql = productionSql()) {
       return { claimed: false, existing: existing[0] ? changeView(existing[0]) : null };
     },
 
+    /** REPLAY-STALE-1: the newest real change to the same target recorded after `afterId` ({ id, requestKey, tool }), or null. */
+    async newerChangeOnTarget({ target, afterId }) {
+      if (!target || !Number.isSafeInteger(afterId)) return null;
+      const rows = await sql`SELECT id, request_key, tool FROM change_log WHERE target = ${target} AND dry_run = FALSE AND id > ${afterId}
+        ORDER BY id DESC LIMIT 1`;
+      return rows[0] ? { id: Number(rows[0].id), requestKey: rows[0].request_key ?? null, tool: rows[0].tool ?? null } : null;
+    },
+
     /** Completes a claimed row once GitHub answered and the read-back was compared. `releaseKey` frees the request key after a definitive rejection so a corrected retry is not mistaken for a replay. */
     async finishChange(id, { summary, before, after, confirmed, githubRequestId = null, inverse = null, releaseKey = false, actedAs = null }) {
       const rows = await sql`UPDATE change_log SET summary = ${summary}, acted_as = ${['you', 'app', 'mixed'].includes(actedAs) ? actedAs : null}, before = COALESCE(${before === undefined ? null : JSON.stringify(before)}::jsonb, before),

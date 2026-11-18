@@ -35,6 +35,15 @@ const projected={
     updated_at:x.updated_at,url:x.html_url}),
   user:x=>({login:x.login,type:x.type,url:x.html_url})
 };
+// SEARCH-EXACT-1: GitHub's code index can miss files (new pushes, large or private repositories, forks), so a zero-hit
+// code search proves nothing. When the query names one repository, give the one call that searches its real files.
+function exactSearchNext(query){
+  const m=/(?:^|\s)repo:([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)(?=\s|$)/.exec(query);
+  if(!m)return {next:'To search the real files, name one repository (repo:owner/name) or download it with github_repo_download and search it locally.'};
+  const terms=query.replace(/(?:^|\s)(?:repo|org|user|path|language|extension|filename|in|is|fork|size):\S+/g,' ').replace(/["']/g,'').trim().replace(/\s+/g,' ').slice(0,200);
+  return {next:'Search the repository\'s real files instead of the index: download it with this call, then search it locally (for example with grep -rn).',
+    exact_search:{tool:'github_repo_download',arguments:{owner:m[1],repo:m[2],mode:'git'},then:terms?`grep -rn -- ${JSON.stringify(terms)} repo`:'grep -rn <text> repo'}};
+}
 export const searchGitHub=defineRead({
   name:'github_search_github',area:'search',audience:['B','Op'],
   description:'Search GitHub code, issues, PRs, commits, repos or users (find organizations: type users plus type:org in the query).',
@@ -72,6 +81,7 @@ export const searchGitHub=defineRead({
       ...(items.length===0?{absence_verified:false,warning:data.incomplete_results===true
         ?'GitHub returned an incomplete zero-hit search. This does not establish absence. Narrow the query and retry, or inspect the exact file/tree at a ref.'
         :'No indexed matches were returned. Search indexing, visibility and query semantics can omit existing content; inspect exact files before asserting absence.'}:{}),
+      ...(items.length===0&&a.type==='code'?exactSearchNext(query):{}),
       items,more_possible:page*max<Math.min(data.total_count,1000),
       ...(data.total_count>1000?{github_result_cap:1000}:{})
     };

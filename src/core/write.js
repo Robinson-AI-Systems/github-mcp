@@ -247,6 +247,28 @@ export function defineWrite(spec) {
       claim = await ctx.db.claimChange({ account: tgt.owner, repo: tgt.repo ? slug : null, mode: connection.mode, connection: connection.client_id ?? null, tool: name,
         target: slug, summary: `PENDING: ${line}`, before, requestKey: key, ...recordFields() });
     } catch { return refuseOutright('The change could not be recorded, so nothing was sent.'); }
+    // REPLAY-STALE-1: an automatic key only means "the same intent" while nothing else has changed this target. If a
+    // different change to the same target was recorded after a FINISHED prior one (archive, unarchive, archive again),
+    // the prior result is stale: this is a new intent, so it gets its own key and is sent. If the newest change is this
+    // same intent already re-sent, that one is replayed. Kept as before: a caller's own requestKey (a deliberate promise
+    // of sameness), an unfinished or uncertain prior (never risk a double send), and resumable tools.
+    if (!claim.claimed && claim.existing?.confirmed === true && Number.isSafeInteger(claim.existing.id) && !resumeReplay
+        && !(typeof args.requestKey === 'string' && args.requestKey) && typeof ctx.db.newerChangeOnTarget === 'function') {
+      let newer = null;
+      try { newer = await ctx.db.newerChangeOnTarget({ target: slug, afterId: claim.existing.id }); } catch { newer = null; }
+      const ours = newer && typeof newer.requestKey === 'string' && newer.requestKey.startsWith(`${key}_after`);
+      // A fresh send only when the state now differs from what the prior change left AND the change in between came from
+      // this same tool (archive/unarchive/archive). An unrelated change in between never turns a retried create into a
+      // duplicate, and a state that still matches the prior result is honestly a replay.
+      const stateMoved = before != null && claim.existing.after != null && JSON.stringify(before) !== JSON.stringify(claim.existing.after);
+      if (newer && Number.isSafeInteger(newer.id) && (ours || (newer.tool === name && stateMoved))) {
+        key = typeof newer.requestKey === 'string' && newer.requestKey.startsWith(`${key}_after`) ? newer.requestKey : `${key}_after${newer.id}`;
+        try {
+          claim = await ctx.db.claimChange({ account: tgt.owner, repo: tgt.repo ? slug : null, mode: connection.mode, connection: connection.client_id ?? null, tool: name,
+            target: slug, summary: `PENDING: ${line}`, before, requestKey: key, ...recordFields() });
+        } catch { return refuseOutright('The change could not be recorded, so nothing was sent.'); }
+      }
+    }
     if (!claim.claimed) {
       const prior = claim.existing;
       // A tool whose result changes after the write (a running command) may re-read the

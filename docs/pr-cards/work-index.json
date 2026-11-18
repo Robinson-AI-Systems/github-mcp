@@ -4191,6 +4191,24 @@
       ],
       "readiness": "READY",
       "ownerInputs": []
+    },
+    {
+      "id": "AGENT-FB-1117",
+      "title": "Problems found while retiring Dokploy, fixed: archived-repo error, stale replay, download reuse, exact code search, every refused file named, no-shared-host answer",
+      "batch": "FIN",
+      "design": "docs/pr-cards/AGENT-FB-1117.md",
+      "dependencies": [
+        "DOKPLOY-RETIRE-1"
+      ],
+      "card": "docs/pr-cards/AGENT-FB-1117.md",
+      "status": "MERGED",
+      "migration": "none",
+      "budget": 400,
+      "units": [
+        "AGENT-FB-1117"
+      ],
+      "readiness": "READY",
+      "ownerInputs": []
     }
   ],
   "gatewayBoundary": {

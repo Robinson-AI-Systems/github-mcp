@@ -13,7 +13,7 @@
 // never reused: those answers are fast, so a host the owner resumes takes work again at once.
 import { callNativeWorker } from './client.js';
 import { configuredHosts, applyPoolSetting } from './pool-config.js';
-import { hostAllowed, ownerCaller } from './pool-audience.js';
+import { hostAllowed, ownerCaller, noSharedHost } from './pool-audience.js';
 import { rootAllocationDb } from '../playground/index.js';
 
 export const POOL_SETTING = 'native_git.worker_pool';
@@ -130,6 +130,7 @@ export function poolRefusal(tried, { download = false } = {}) {
 export async function placeWorkspace(ctx, { download = false, exclude = [], call = callNativeWorker, needs = null, workspace = true } = {}) {
  const all = await poolHosts(ctx);
  const hosts = all.filter(h => hostAllowed(ctx, h));
+ if (all.length && !hosts.length) throw noSharedHost();
  if (!all.length) throw Object.assign(new TypeError('Native Git worker is not configured. Set NATIVE_GIT_WORKER_URL (docs/NATIVE-GIT-OPERATIONS.md). Existing GitHub API tools remain available.'), { safeMessage: true, safeCode: 'native_worker_unconfigured', noOperationStarted: true });
  const tried = [];
  for (const host of hosts) {

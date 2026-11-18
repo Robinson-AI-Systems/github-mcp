@@ -96,6 +96,13 @@ export function describeGithubError(error, { account = null } = {}) {
     if (status === 429 || remaining === '0' || /rate limit exceeded/i.test(message)) {
       return out('primary_rate_limit', 'This account has used its GitHub request budget for now.', 'The hourly request allowance is spent.', when ? `Try again after ${when}.` : 'Try again in a while.', { retryable: true });
     }
+    // ARCHIVED-ERR-1: GitHub answers 403 "Repository was archived so is read-only" for any write to an archived
+    // repository. That is not an access problem; saying "the credential lacks access / SAML" sent agents the wrong way.
+    if (/repository was archived|archived so is read-only/i.test(message)) {
+      return out('archived_repository', `This repository is archived, so it is read-only${account ? ` (using the ${account} account)` : ''}.`,
+        'GitHub refuses every change to an archived repository. The credential and its access are fine.',
+        'Unarchive it first (github_repo_change with archived:false) if the change is really wanted, then archive it again afterwards; otherwise leave it as it is.');
+    }
     const accepted = acceptedPermissions(headerOf(error, 'x-accepted-github-permissions'));
     if (/resource not accessible by integration/i.test(message) || accepted.length) {
       if (!accepted.length) return out('forbidden',

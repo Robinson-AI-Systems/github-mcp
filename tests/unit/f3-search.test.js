@@ -59,6 +59,16 @@ describe('F-3 genuine GitHub REST search routes',()=>{
     const result=await call(w,{type:'user',query:'needle',max:25});
     expect(result).toMatchObject({incomplete_results:true,github_result_cap:1000,more_possible:true});
   });
+  it('an empty code search scoped to one repository names the exact-search call (SEARCH-EXACT-1)',async()=>{
+    const w=await makeWorld({gates:[]});
+    w.gh.when(R.code).reply(200,{total_count:0,incomplete_results:true,items:[]});
+    const result=await call(w,{type:'code',query:'registry_merge repo:example-org/hello path:host'});
+    expect(result).toMatchObject({count:0,absence_verified:false,
+      exact_search:{tool:'github_repo_download',arguments:{owner:'example-org',repo:'hello',mode:'git'},then:'grep -rn -- "registry_merge" repo'}});
+    const loose=await call(w,{type:'code',query:'registry_merge'});
+    expect(loose.exact_search).toBeUndefined();
+    expect(loose.next).toMatch(/repo:owner\/name/);
+  });
   it('rejects searches beyond the 1000-result page window before network',async()=>{
     const w=await makeWorld({});
     const dispatch=createDispatch({credentials:w.credentials,fetch:w.gh.fetch,now:w.ctx.now,gates:[]});

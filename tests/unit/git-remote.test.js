@@ -229,10 +229,12 @@ describe('the git remote: setup, clone, pull and push with plain git', () => {
   expect(protectedPush.stderr).toMatch(/! \[remote rejected\] HEAD -> protected \(pre-receive hook declined\)/);
   // 2. Content protection: a credential-shaped value is refused before GitHub, wherever it is.
   const LEAK = ['ghp', 'A1b2'.repeat(9)].join('_'); // real-shaped (not FAKE) and built at runtime, so it is refused
-  await writeFile(join(repo, 'config.js'), `export const token = "${LEAK}";\n`); await t.git(repo, 'add', '.'); await t.git(repo, 'commit', '-qm', 'config');
+  await writeFile(join(repo, 'config.js'), `export const token = "${LEAK}";\n`); await writeFile(join(repo, 'second.js'), `export const again = "${LEAK}";\n`); await t.git(repo, 'add', '.'); await t.git(repo, 'commit', '-qm', 'config');
   const leak = await t.git(repo, 'push', 'origin', 'HEAD:refs/heads/leak', 'HEAD~1:refs/heads/clean');
   expect(leak.status).not.toBe(0);
-  expect(leak.stderr).toMatch(/remote: Refused: content protection found credential-shaped content in 1 file\(s\) or commit message\(s\), first "config\.js" \(line 1 \(/);
+  expect(leak.stderr).toMatch(/remote: Refused: content protection found credential-shaped content in 2 file\(s\) or commit message\(s\), first "config\.js" \(line 1 \(/);
+  // SCAN-ALL-FILES-1: every refused file is named, so one round of fixes clears them all.
+  expect(leak.stderr).toMatch(/remote: All 2 file\(s\) or commit message\(s\) with findings: "config\.js", "second\.js"\./);
   expect(leak.stderr).toMatch(/remote: Nothing was pushed to GitHub\. Remove the value from your commits/);
   expect(leak.stderr).not.toContain(LEAK);
   // 3. The guard gates run for every ref, as for github_git_workspace_run push; one refusal stops the whole push.

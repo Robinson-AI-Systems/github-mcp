@@ -502,13 +502,21 @@ const repoDownload = defineGithubWrite({
   if (id) {
    try { record = await nativeRecord(c, id); await downloadPreflight(c, record); reused = true; }
    catch { id = null; record = null; } // e.g. an attached runtime on an older image: clone a Git-only copy instead.
-   if (reused) { const state = await callNativeWorker(c, { action: 'inspect', binding: record.binding, job: record.job, workspace_id: record.worker }); if (state.state !== 'ready') return { workspace_id: id, reused, state: state.state ?? 'uncertain' }; }
+   if (reused) {
+    const state = await callNativeWorker(c, { action: 'inspect', binding: record.binding, job: record.job, workspace_id: record.worker });
+    // DOWNLOAD-REUSE-1: a reused workspace that is still cloning is reported as such; one in any other non-ready state
+    // (expired, stopped, busy, failed) is skipped and a fresh Git-only copy is cloned, instead of ending "unconfirmed".
+    if (state.state === 'opening') return { workspace_id: id, reused, state: 'opening' };
+    if (state.state !== 'ready') { id = null; record = null; reused = false; }
+   }
   }
   if (!id) {
    if (before?.reuse) await admitClone(c, { download: true });
    const opened = await openWorkspace(c, t, { branch: branchOf(a.ref), leaseMinutes: 60, download: true }, requestKey);
    id = opened.workspace_id;
-   if (opened.result.state !== 'ready') return { workspace_id: id, reused, state: opened.result.state ?? 'uncertain' };
+   const state = opened.result.state ?? 'uncertain';
+   if (state === 'opening') return { workspace_id: id, reused, state };
+   if (state !== 'ready') throw Object.assign(safe(`The Git worker could not prepare ${t.owner}/${t.repo} for download (its state is "${String(state).slice(0, 40)}"). Nothing on GitHub changed. Call github_repo_download again with fresh: true; if it repeats, github_server_status shows whether the Git worker is healthy.`, 'download_not_ready'), { status: 409 });
    record = await nativeRecord(c, id);
   }
   const begun = await beginDownload(c, { ...t, record }, { ...a, mode }, requestKey);
