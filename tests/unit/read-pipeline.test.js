@@ -82,7 +82,7 @@ describe('long text and big results are kept behind a handle', () => {
     const { db, run } = await setup();
     const { TenantCapacityError } = await import('../../src/tenancy/runtime-limits.js');
     const put = db.putResult.bind(db);
-    db.putResult = async (input) => { if (Buffer.byteLength(JSON.stringify(input.body)) > 262144) throw new TenantCapacityError('result', 0, 'too_large'); return put(input); };
+    db.putResult = async (input) => { if (Buffer.byteLength(JSON.stringify(input.body)) > 262144) throw new TenantCapacityError('result', 0, 'too_large', 262144); return put(input); };
     current = () => Array.from({ length: 200 }, (_, i) => ({ ...pr(i + 1), body: 'y'.repeat(3000) }));
     const r = out(await run('github_t_plain', {}));
     expect(r.kept_result.handle).toMatch(/^res_/);

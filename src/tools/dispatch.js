@@ -109,7 +109,7 @@ async function readReply({ tool, args, raw, connection, db, mode }) {
         const key = keepFailed === 'too_large' ? listKeyOfBody(value) : null;
         const list = key === null ? null : key === '' ? value : value[key];
         if (Array.isArray(list) && list.length > 1) {
-          const cap = Math.max(1024, (TENANT_RUNTIME_LIMITS.resultMaxBytes ?? 262144) - 2048);
+          const cap = Math.max(1024, (error?.maxBytes ?? TENANT_RUNTIME_LIMITS.resultMaxBytes ?? 262144) - 2048);
           const part = (n) => (key === '' ? list.slice(0, n) : { ...value, [key]: list.slice(0, n) });
           let lo = 0, hi = list.length - 1;
           while (lo < hi) { const mid = Math.ceil((lo + hi) / 2); if (Buffer.byteLength(JSON.stringify(part(mid))) <= cap) lo = mid; else hi = mid - 1; }

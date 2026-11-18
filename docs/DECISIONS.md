@@ -161,3 +161,11 @@ Chris: "Owner only git machines". He chose option (a) of the owner-checklist dec
   route; nothing a client sends can set it. Live (2026-11-18, `github_server_status`): hosts `pc`, `workshop`, `potato`,
   all `audience: "owner"`.
 - Revisit when the service opens to customers. The options then: set the Workshop's `audience` to shared (no cost; their work runs on Chris's hardware), or add a paid shared server.
+
+## 2026-11-18 — Capability matches GitHub; no usage limits of our own (LIMITS-MATCH-GITHUB-1)
+
+Chris: "The capability needs to match GitHub. If I ever decide to monetize, then I will probably monetize usage, and then I would gate different usage limits for monetization purposes."
+- Every usage limit GitHub Unleashed set itself now defaults to none: calls per minute, calls per day, changes per hour, saved-result daily bytes and slots, pending jobs. GitHub's own limits are the only ones.
+- The settings stay, so paid tiers can set limits later (tenant policy; `PUBLIC_FREE_CALLS_PER_DAY`, `PUBLIC_FREE_WRITES_PER_HOUR`).
+- Kept, because they are not usage limits: sign-in attempt limits (abuse protection), 24-hour life of saved results and jobs, a 16 MB technical ceiling per saved result, the public spend pause.
+- Where it lives: `TENANT_RUNTIME_LIMITS` in `src/tenancy/runtime-limits.js`, `publicUsageLimits` in `src/tenancy/public-usage.js`, the `/limits` page in `src/tenancy/public-http.js`. Card `docs/pr-cards/LIMITS-MATCH-GITHUB-1.md`.

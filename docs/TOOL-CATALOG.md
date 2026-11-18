@@ -11,6 +11,8 @@
 
 **Name alias (2026-11-09):** `github_api_request` is accepted as another name for `github_api_read` (read-only GET) in `github_call`, `github_describe_tool` and `github_batch`; no new tool, never reaches `github_api_write`.
 
+**Capability matches GitHub (LIMITS-MATCH-GITHUB-1, owner ruling 2026-11-18):** no tool is held to a usage limit of GitHub Unleashed's own by default (calls per minute or day, changes per hour, saved-result budgets and slots, pending jobs); GitHub's own limits govern and every reply's `meta.github_rate` shows what is left. A saved result can be up to 16 MB (was 256 KB). The knobs stay settable for paid tiers later.
+
 **Argument name (CALL-ARGS-1, 2026-11-18):** `github_call` and each `github_batch` call accept the tool's arguments as `args` or `arguments` (the name Rack Control's `rack_call` uses); both with different values is refused. A top-level object argument sent as JSON text (a client whose cached tool list is older than the argument does this) is read as that object (CALL-ARGS-2).
 
 **Unknown tool names (2026-11-09):** `github_call` errors for an unknown or hidden tool add "Did you mean: …" with close visible names (a guessed `github_api_request` points at `github_api_read`, the general read-only GET tool).

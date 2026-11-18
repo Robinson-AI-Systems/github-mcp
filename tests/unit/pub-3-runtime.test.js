@@ -35,6 +35,23 @@ describe('PUB-3 scoped runtime fail-closed validation',()=>{
     expect(error.message).not.toContain('client');
   });
 
+  it('adds no usage limit of its own by default; a set limit still applies (LIMITS-MATCH-GITHUB-1)',async()=>{
+    const {admitTenantMcp,reserveTenantStorage}=await import('../../src/tenancy/runtime-limits.js');
+    // The policy read answers "nothing stored"; no budget or slot claim may follow it.
+    const sql=vi.fn(async()=>[]);
+    expect(await admitTenantMcp(sql,'client')).toMatchObject({allowed:true,unlimited:true});
+    await reserveTenantStorage(sql,'result','client','res_'+'a'.repeat(30),60);
+    expect(sql).toHaveBeenCalledTimes(2);
+    expect(TENANT_RUNTIME_LIMITS.resultMaxBytes).toBe(16*1024*1024);
+    expect(TENANT_RUNTIME_LIMITS.oauthClientPerMinute).toBe(30);
+    // A tenant that sets a limit (a future paid tier) is held to it.
+    const capped=vi.fn(async(strings)=>String(strings.join('')).includes('server_settings')?[{value:{mcpClientPerMinute:5,mcpTenantPerMinute:10}}]:[]);
+    await expect(admitTenantMcp(capped,'client')).rejects.toBeInstanceOf(TenantCapacityError);
+    // Saving stores only what was set, so later default changes still reach the tenant.
+    const saved=[];const store=vi.fn(async(strings,...values)=>{saved.push(values);return [];});
+    await saveTenantRuntimePolicy(store,{mcpClientPerMinute:50,mcpTenantPerMinute:100});
+    expect(JSON.parse(saved.at(-1)[1])).toEqual({mcpClientPerMinute:50,mcpTenantPerMinute:100});
+  });
   it('counts the wait to when the window reopens (BUSY-RETRY-1)',async()=>{
     const {secondsUntilWindowEnds}=await import('../../src/tenancy/runtime-limits.js');
     expect(secondsUntilWindowEnds(60,Date.UTC(2026,10,18,19,0,45))).toBe(15);
