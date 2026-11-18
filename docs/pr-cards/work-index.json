@@ -4305,6 +4305,24 @@
       ],
       "readiness": "READY",
       "ownerInputs": []
+    },
+    {
+      "id": "LIMITS-MATCH-GITHUB-1",
+      "title": "GitHub Unleashed adds no usage limit of its own; GitHub's limits govern; knobs kept for paid tiers",
+      "batch": "FIN",
+      "design": "docs/pr-cards/LIMITS-MATCH-GITHUB-1.md",
+      "dependencies": [
+        "CONN-FIX-1118"
+      ],
+      "card": "docs/pr-cards/LIMITS-MATCH-GITHUB-1.md",
+      "status": "MERGED",
+      "migration": "none",
+      "budget": 150,
+      "units": [
+        "LIMITS-MATCH-GITHUB-1"
+      ],
+      "readiness": "READY",
+      "ownerInputs": []
     }
   ],
   "gatewayBoundary": {

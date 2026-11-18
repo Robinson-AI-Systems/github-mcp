@@ -488,7 +488,7 @@ describe('My connection', () => {
       expect(await b.page.title()).toBe('Limits');
       const text = await b.page.textContent('main');
       expect(text).toContain('Assistant calls');
-      expect(text).toContain('120 a minute per app');
+      expect(text).toContain('adds no usage limit of its own'); // LIMITS-MATCH-GITHUB-1
       expect(text).toContain('Saved results');
       expect(text).toContain('up to 50');
       await fitsScreen(b.page);

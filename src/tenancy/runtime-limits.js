@@ -5,24 +5,35 @@
 import { createHash } from 'node:crypto';
 import { keepVerifiedSubject } from './verified-subject.js';
 
+// LIMITS-MATCH-GITHUB-1 (owner ruling 2026-11-18: "The capability needs to match GitHub. If I ever decide
+// to monetize, then I will probably monetize usage, and then I would gate different usage limits"):
+// GitHub Unleashed adds no usage limit of its own by default. GitHub's own limits (about 5,000 API
+// calls an hour per account, plus its secondary limits) are the only ones, and the connector already
+// reports them and says when to retry. null = no limit of ours; every knob below stays settable (a
+// tenant policy, or these defaults) so paid tiers can gate usage later.
+// Kept on purpose: sign-in attempt limits (they stop password-guessing style abuse, not usage), the
+// 24-hour life of saved results and jobs, and a 16 MB technical ceiling per saved result (one row in
+// the server's own database; a list bigger than that is kept up to the rows that fit, KEEP-PART-1).
 export const TENANT_RUNTIME_LIMITS = Object.freeze({
-  mcpClientPerMinute: 120,
-  mcpTenantPerMinute: 600,
+  mcpClientPerMinute: null,
+  mcpTenantPerMinute: null,
   oauthClientPerMinute: 30,
   oauthTenantPerMinute: 150,
   jobsClientPerDay: null,
   jobsTenantPerDay: null,
-  resultMaxBytes: 256 * 1024,
-  resultsClientBytesPerDay: 8 * 1024 * 1024,
-  resultsTenantBytesPerDay: 40 * 1024 * 1024,
+  resultMaxBytes: 16 * 1024 * 1024,
+  resultsClientBytesPerDay: null,
+  resultsTenantBytesPerDay: null,
   jobMaxTtlMinutes: 1440,
   resultMaxTtlSeconds: 86400,
-  // Active-item admission caps, independent of daily byte/request budgets.
-  jobsClientPending: 8,
-  jobsTenantPending: 64,
-  resultsClientActive: 100,
-  resultsTenantActive: 400
+  jobsClientPending: null,
+  jobsTenantPending: null,
+  resultsClientActive: null,
+  resultsTenantActive: null
 });
+const NO_LIMIT = 1000000000;
+const capOf = (v) => (v === null || v === undefined ? NO_LIMIT : v);
+const unlimited = (...values) => values.every((v) => v === null || v === undefined);
 
 // Optional PRIVATE tenant-owner runtime policy. Defaults preserve current
 // source behavior; changes persist only inside that tenant's isolated schema.
@@ -53,7 +64,8 @@ export function validateTenantRuntimePolicy(value) {
       if (val!==null && (!Number.isSafeInteger(val) || val<1)) throw new TypeError('Invalid retired job quota setting.');
       continue;
     }
-    if (!Number.isSafeInteger(val) || val < 1 || val > CONFIG_FIELDS[key])
+    // null = no limit of ours for that knob (LIMITS-MATCH-GITHUB-1).
+    if (val !== null && (!Number.isSafeInteger(val) || val < 1 || val > CONFIG_FIELDS[key]))
       throw new TypeError('Private tenant capacity policy has an invalid limit.');
     merged[key] = val;
   }
@@ -63,7 +75,7 @@ export function validateTenantRuntimePolicy(value) {
     ['resultsClientBytesPerDay','resultsTenantBytesPerDay'],
     ['jobsClientPending','jobsTenantPending'],
     ['resultsClientActive','resultsTenantActive']
-  ]) if (merged[perClient] > merged[perTenant])
+  ]) if (capOf(merged[perClient]) > capOf(merged[perTenant]))
     throw new TypeError('Tenant capacity must not be lower than its per-client budget.');
   return Object.freeze(merged);
 }
@@ -76,7 +88,9 @@ export async function readTenantRuntimePolicy(sql) {
  * This store API never grants that authority merely by having a tenant ID. */
 export async function saveTenantRuntimePolicy(sql, limits) {
   const policy = validateTenantRuntimePolicy(limits);
-  const overrides = Object.fromEntries(Object.keys(CONFIG_FIELDS).map(k=>[k,policy[k]]));
+  // Only the limits the owner actually set are stored (LIMITS-MATCH-GITHUB-1): storing every field froze
+  // the defaults of the day into the tenant, so a later change of default never reached it.
+  const overrides = Object.fromEntries(Object.keys(CONFIG_FIELDS).filter(k=>Object.hasOwn(limits,k)).map(k=>[k,policy[k]]));
   await sql`INSERT INTO server_settings(setting,value,updated_at)
     VALUES(${CONFIG_KEY},${JSON.stringify(overrides)}::jsonb,now())
     ON CONFLICT (setting) DO UPDATE SET value=EXCLUDED.value,updated_at=now()`;
@@ -99,7 +113,7 @@ export function secondsUntilWindowEnds(windowSeconds, nowMs = Date.now()) {
   return Math.max(1, windowSeconds - (nowS % windowSeconds));
 }
 export class TenantCapacityError extends Error {
-  constructor(operation, waitSeconds, reason = 'busy') {
+  constructor(operation, waitSeconds, reason = 'busy', maxBytes = null) {
     super(reason === 'too_large'
       ? 'The result is larger than this private connection keeps.'
       : `The private tenant is temporarily busy. Retry in ${waitSeconds} seconds.`);
@@ -107,6 +121,7 @@ export class TenantCapacityError extends Error {
     this.operation = operation;
     this.retryAfterSeconds = waitSeconds;
     this.reason = reason;
+    if (maxBytes !== null) this.maxBytes = maxBytes;
   }
 }
 
@@ -236,8 +251,9 @@ export async function claimTenantBudget(sql, { operation, clientId, amount = 1,
 
 export async function admitTenantMcp(sql, clientId) {
   const policy=await readTenantRuntimePolicy(sql);
+  if (unlimited(policy.mcpClientPerMinute, policy.mcpTenantPerMinute)) return { allowed: true, unlimited: true };
   return claimTenantBudget(sql, { operation: 'mcp', clientId,
-    clientMax: policy.mcpClientPerMinute, tenantMax: policy.mcpTenantPerMinute });
+    clientMax: Math.min(capOf(policy.mcpClientPerMinute), capOf(policy.mcpTenantPerMinute)), tenantMax: capOf(policy.mcpTenantPerMinute) });
 }
 export async function admitTenantOAuth(sql, clientId) {
   const policy=await readTenantRuntimePolicy(sql);
@@ -357,8 +373,9 @@ export async function reserveTenantStorage(sql, kind, clientId, resourceId, ttlS
   const policy=await readTenantRuntimePolicy(sql);
   const clientMax=kind==='job'?policy.jobsClientPending:policy.resultsClientActive;
   const tenantMax=kind==='job'?policy.jobsTenantPending:policy.resultsTenantActive;
+  if (unlimited(clientMax, tenantMax)) return;
   const rows=await sql`SELECT gh_claim_tenant_storage_slot(${kind},${clientKey},
-    ${resourceId},${ttlSeconds},${tenantMax},${clientMax}) AS admitted`;
+    ${resourceId},${ttlSeconds},${capOf(tenantMax)},${Math.min(capOf(clientMax),capOf(tenantMax))}) AS admitted`;
   if(rows.length!==1||rows[0].admitted!==true)
     throw new TenantCapacityError(kind,ttlSeconds);
 }
@@ -410,16 +427,17 @@ export function withTenantStorageLimits(db, sql, clientId) {
       if (typeof encoded !== 'string') throw new TypeError('Result is not valid JSON.');
       const bytes=Buffer.byteLength(encoded);
       if (!bound(bytes,1,TENANT_RUNTIME_LIMITS.resultMaxBytes))
-        throw new TenantCapacityError('result',0,'too_large');
+        throw new TenantCapacityError('result',0,'too_large',TENANT_RUNTIME_LIMITS.resultMaxBytes);
       if(typeof input?.handle!=='string' || !/^res_[A-Za-z0-9_-]{20,64}$/.test(input.handle) ||
           typeof input.connection!=='string' || !input.connection)
         throw new TypeError('Invalid tenant result handle or connection.');
       await reserveTenantStorage(sql,'result',clientId,input.handle,input.ttlSeconds??86400);
       try {
         const policy=await readTenantRuntimePolicy(sql);
-        await claimTenantBudget(sql,{operation:'result',clientId,amount:bytes,window:'day',
-          clientMax:policy.resultsClientBytesPerDay,
-          tenantMax:policy.resultsTenantBytesPerDay});
+        if (!unlimited(policy.resultsClientBytesPerDay, policy.resultsTenantBytesPerDay))
+          await claimTenantBudget(sql,{operation:'result',clientId,amount:bytes,window:'day',
+            clientMax:Math.min(capOf(policy.resultsClientBytesPerDay),capOf(policy.resultsTenantBytesPerDay)),
+            tenantMax:capOf(policy.resultsTenantBytesPerDay)});
         return await db.putResult(input);
       } catch(error) {
         await releaseTenantStorage(sql,'result',clientId,input.handle).catch(()=>{});

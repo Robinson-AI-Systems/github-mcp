@@ -95,12 +95,13 @@ describe('the dispatch usage hook', () => {
 });
 
 describe('fair-use settings and messages', () => {
-  it('start at 5,000 calls a day and 300 changes an hour, accept only sensible overrides', () => {
-    expect(publicUsageLimits({})).toMatchObject({ callsPerDay: 5000, writesPerHour: 300, costPauseCents: 5000, inactiveDays: 180, unlimitedSubjects: [] });
+  it('add no usage limit of their own by default (LIMITS-MATCH-GITHUB-1), accept only sensible overrides', () => {
+    expect(publicUsageLimits({})).toMatchObject({ callsPerDay: null, writesPerHour: null, costPauseCents: 5000, inactiveDays: 180, unlimitedSubjects: [] });
+    expect(publicUsageLimits({ PUBLIC_FREE_CALLS_PER_DAY: 'unlimited', PUBLIC_FREE_WRITES_PER_HOUR: '' })).toMatchObject({ callsPerDay: null, writesPerHour: null });
     expect(publicUsageLimits({ PUBLIC_FREE_CALLS_PER_DAY: '100', PUBLIC_FREE_WRITES_PER_HOUR: '7', PUBLIC_COST_PAUSE_CENTS: '0', PUBLIC_INACTIVE_DAYS: '30' }))
       .toMatchObject({ callsPerDay: 100, writesPerHour: 7, costPauseCents: 0, inactiveDays: 30 });
     expect(publicUsageLimits({ PUBLIC_FREE_CALLS_PER_DAY: '0', PUBLIC_FREE_WRITES_PER_HOUR: '-5', PUBLIC_INACTIVE_DAYS: 'abc' }))
-      .toMatchObject({ callsPerDay: 5000, writesPerHour: 300, inactiveDays: 180 });
+      .toMatchObject({ callsPerDay: null, writesPerHour: null, inactiveDays: 180 });
   });
   it('the exempt list takes numeric GitHub ids only (a login can be renamed and taken by someone else)', () => {
     expect(publicUsageLimits({ PUBLIC_UNLIMITED_SUBJECTS: ' 12345 , christcr2012,0,99999999999999999999 ,678 ' }).unlimitedSubjects).toEqual(['12345', '678']);

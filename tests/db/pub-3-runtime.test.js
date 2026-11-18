@@ -129,13 +129,17 @@ describe('PUB-3 tenant capacity with REAL PostgreSQL',()=>{
   });
 
   it('serializes active pending job slots across instances and isolates tenants',async()=>{
+    // LIMITS-MATCH-GITHUB-1: no slot limit by default; a tenant that sets one (a paid tier) is held to it.
+    const JOB_CAP=8,oldA=await readTenantRuntimePolicy(sqlA),oldB=await readTenantRuntimePolicy(sqlB);
+    await saveTenantRuntimePolicy(sqlA,{jobsClientPending:JOB_CAP,jobsTenantPending:64});
+    await saveTenantRuntimePolicy(sqlB,{jobsClientPending:1,jobsTenantPending:64});
+    try {
     const key='concurrency-client';
-    const jobs=Array.from({length:TENANT_RUNTIME_LIMITS.jobsClientPending+3},
+    const jobs=Array.from({length:JOB_CAP+3},
       ()=> 'job_'+randomBytes(8).toString('hex'));
     const requests=await Promise.allSettled(jobs.map((id,i)=>
       reserveTenantStorage(i%2?sqlA2:sqlA,'job',key,id,60)));
-    expect(requests.filter(x=>x.status==='fulfilled')).toHaveLength(
-      TENANT_RUNTIME_LIMITS.jobsClientPending);
+    expect(requests.filter(x=>x.status==='fulfilled')).toHaveLength(JOB_CAP);
     expect(requests.filter(x=>x.status==='rejected')).toHaveLength(3);
     expect(requests.filter(x=>x.status==='rejected').every(x=>
       x.reason instanceof TenantCapacityError)).toBe(true);
@@ -158,23 +162,29 @@ describe('PUB-3 tenant capacity with REAL PostgreSQL',()=>{
       WHERE kind='job' AND expires_at>now()`;
     const bRows=await sqlB`SELECT count(*)::integer AS n FROM gh_tenant_storage_slots
       WHERE kind='job' AND expires_at>now()`;
-    expect(scoped[0].n).toBe(TENANT_RUNTIME_LIMITS.jobsClientPending);
-    expect(aRows[0].n).toBe(TENANT_RUNTIME_LIMITS.jobsClientPending+1);
+    expect(scoped[0].n).toBe(JOB_CAP);
+    expect(aRows[0].n).toBe(JOB_CAP); // no other A job holds a slot: there is no slot limit by default
     expect(bRows[0].n).toBe(1);
+    } finally {
+      await saveTenantRuntimePolicy(sqlA,{jobsClientPending:oldA.jobsClientPending,jobsTenantPending:oldA.jobsTenantPending});
+      await saveTenantRuntimePolicy(sqlB,{jobsClientPending:oldB.jobsClientPending,jobsTenantPending:oldB.jobsTenantPending});
+    }
   });
 
   it('limits stored result handle rows and cleans only expired reservations',async()=>{
+    const RESULT_CAP=100,oldA=await readTenantRuntimePolicy(sqlA);
+    await saveTenantRuntimePolicy(sqlA,{resultsClientActive:RESULT_CAP,resultsTenantActive:400});
+    try {
     const client='result-row-fixture';
-    const ids=Array.from({length:TENANT_RUNTIME_LIMITS.resultsClientActive+1},
+    const ids=Array.from({length:RESULT_CAP+1},
       ()=> 'res_'+randomBytes(16).toString('base64url'));
     const claims=await Promise.allSettled(ids.map((id,i)=>
       reserveTenantStorage(i%2?sqlA:sqlA2,'result',client,id,60)));
-    expect(claims.filter(x=>x.status==='fulfilled')).toHaveLength(
-      TENANT_RUNTIME_LIMITS.resultsClientActive);
+    expect(claims.filter(x=>x.status==='fulfilled')).toHaveLength(RESULT_CAP);
     expect(claims.filter(x=>x.status==='rejected')).toHaveLength(1);
     const reservation=await sqlB`SELECT count(*)::integer AS n FROM gh_tenant_storage_slots
       WHERE kind='result'`;
-    expect(reservation[0].n).toBe(1); // Earlier tenant-B retained result
+    // No slot limit by default (LIMITS-MATCH-GITHUB-1), so earlier tenant-B results hold no slot rows; B stays as it was.
     await sqlA`UPDATE gh_tenant_storage_slots SET expires_at=now()-interval '1 second'
       WHERE kind='result' AND client_key IS NOT NULL`;
     const clean=await purgeExpiredTenantRuntime(sqlA);
@@ -184,6 +194,9 @@ describe('PUB-3 tenant capacity with REAL PostgreSQL',()=>{
     expect(other).toEqual(reservation); // B never touched
     await expect(reserveTenantStorage(sqlA,'result',client,ids.at(-1),60))
       .resolves.toBeUndefined();
+    } finally {
+      await saveTenantRuntimePolicy(sqlA,{resultsClientActive:oldA.resultsClientActive,resultsTenantActive:oldA.resultsTenantActive});
+    }
   });
 
   it('refuses malformed or slot-capped storage without spending the retained-result budget',async()=>{
@@ -194,7 +207,8 @@ describe('PUB-3 tenant capacity with REAL PostgreSQL',()=>{
     const scopeJob='job:client:'+key, scopeResult='result:client:'+key;
     const job='job_'+randomBytes(8).toString('hex');
     const result='res_'+randomBytes(16).toString('base64url');
-    await saveTenantRuntimePolicy(sqlA,{jobsClientPending:1,resultsClientActive:1});
+    // A tier that sets slot and daily-byte limits (LIMITS-MATCH-GITHUB-1: none by default).
+    await saveTenantRuntimePolicy(sqlA,{jobsClientPending:1,resultsClientActive:1,resultsClientBytesPerDay:8*1024*1024,resultsTenantBytesPerDay:40*1024*1024});
     try {
       // Both malformed inputs must be rejected before their
       // identifier was validated. Neither may even reserve a slot.
@@ -234,7 +248,9 @@ describe('PUB-3 tenant capacity with REAL PostgreSQL',()=>{
       // Persist only owner-configurable fields, not resolved fixed maxima.
       await saveTenantRuntimePolicy(sqlA,{
         jobsClientPending:policy.jobsClientPending,
-        resultsClientActive:policy.resultsClientActive
+        resultsClientActive:policy.resultsClientActive,
+        resultsClientBytesPerDay:policy.resultsClientBytesPerDay,
+        resultsTenantBytesPerDay:policy.resultsTenantBytesPerDay
       });
     }
   });

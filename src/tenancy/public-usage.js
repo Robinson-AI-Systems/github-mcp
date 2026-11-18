@@ -2,6 +2,8 @@
 // real changes each public person made, per UTC day and per hour. No names, tokens, repository text or client ids are stored.
 // Settings are plain environment values with a starting value (explained on /limits and in docs/OWNER-CHECKLIST.md).
 // The free limits are fair-use limits per person. They are NOT a cap on the number of people.
+const optionalWhole = (text) => (text === undefined || text === null || String(text).trim() === '' || /^(none|off|unlimited)$/i.test(String(text).trim())
+  ? null : whole(text, null));
 const whole = (text, fallback, { min = 1, max = 100000000 } = {}) => {
   const n = Number(text ?? fallback);
   return Number.isSafeInteger(n) && n >= min && n <= max ? n : fallback;
@@ -11,8 +13,10 @@ const SUBJECT = /^[1-9][0-9]{0,18}$/;
 /** @param {Record<string,string|undefined>} env */
 export function publicUsageLimits(env = process.env) {
   return Object.freeze({
-    callsPerDay: whole(env.PUBLIC_FREE_CALLS_PER_DAY, 5000),
-    writesPerHour: whole(env.PUBLIC_FREE_WRITES_PER_HOUR, 300),
+    // LIMITS-MATCH-GITHUB-1 (owner ruling 2026-11-18): no usage limit of ours by default; GitHub's own
+    // limits govern. Set these to gate usage (for example, free and paid tiers later). null = no limit.
+    callsPerDay: optionalWhole(env.PUBLIC_FREE_CALLS_PER_DAY),
+    writesPerHour: optionalWhole(env.PUBLIC_FREE_WRITES_PER_HOUR),
     // Numeric GitHub user ids (logins can be renamed and taken by someone else). Empty by default.
     unlimitedSubjects: Object.freeze(String(env.PUBLIC_UNLIMITED_SUBJECTS ?? '').split(',').map((s) => s.trim()).filter((s) => SUBJECT.test(s))),
     // 0 turns the automatic pause off; the manual switch GITHUB_PUBLIC_NEW_SIGNUPS=paused always works.
@@ -52,7 +56,7 @@ export function createPublicUsage(rootSql, limits, { random = Math.random, now =
     },
     /** Counts `n` assistant calls for today unless that would pass the daily limit. One statement, so it is atomic. */
     async claimCalls(tenantId, { n = 1, exempt = false } = {}) {
-      const limit = exempt ? 2147483647 : limits.callsPerDay;
+      const limit = exempt || limits.callsPerDay === null ? 2147483647 : limits.callsPerDay;
       if (n > limit) return { ok: false, limit, retryAfterSeconds: secondsUntilNextUtcMidnight(now()), message: callLimitText(limit) };
       const rows = await rootSql`INSERT INTO gh_public_usage_daily (day, tenant_id, calls)
         VALUES ((now() AT TIME ZONE 'UTC')::date, ${tenantId}::uuid, ${n})
@@ -66,7 +70,7 @@ export function createPublicUsage(rootSql, limits, { random = Math.random, now =
     /** Reserves one real change for this hour unless the free limit is reached. One statement, so parallel calls cannot slip past
      *  the limit. The slot is handed back with `releaseWrite` if the change turns out not to count. Reads and previews never come here. */
     async reserveWrite(tenantId, { exempt = false } = {}) {
-      const limit = exempt ? 2147483647 : limits.writesPerHour;
+      const limit = exempt || limits.writesPerHour === null ? 2147483647 : limits.writesPerHour;
       const rows = await rootSql`INSERT INTO gh_public_usage_hourly (hour, tenant_id, writes) VALUES (date_trunc('hour', now()), ${tenantId}::uuid, 1)
         ON CONFLICT (hour, tenant_id) DO UPDATE SET writes = gh_public_usage_hourly.writes + 1
           WHERE gh_public_usage_hourly.writes + 1 <= ${limit}
