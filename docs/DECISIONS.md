@@ -147,3 +147,9 @@ David is reclaiming the server. Chris chose to retire Dokploy support fully.
 - Consequence for other people's work: Chris's earlier rule sent other users' workloads to Dokploy, never to his PC. With
   Dokploy gone they have no shared host; they use their own paired computers.
 
+## 2026-11-17 — Git machines stay owner-only (NO-SHARED-HOST-1)
+
+Chris: "Owner only git machines". He chose option (a) of the owner-checklist decision, which was the recommendation.
+- `NATIVE_GIT_WORKER_POOL` stays as it is: `pc`, `workshop` and `potato`, all `audience: "owner"`.
+- Other connections (public or tenant) get the GitHub API tools, which need no Git machine. A clone, workspace or git push answers `native_no_shared_host`, which is plain and not retryable.
+- Revisit when the service opens to customers. The options then: set the Workshop's `audience` to shared (no cost; their work runs on Chris's hardware), or add a paid shared server.
