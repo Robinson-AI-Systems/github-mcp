@@ -4228,6 +4228,24 @@
       ],
       "readiness": "READY",
       "ownerInputs": []
+    },
+    {
+      "id": "LOG-RUNNING-1",
+      "title": "A running job's log says still running, not expired",
+      "batch": "FIN",
+      "design": "docs/pr-cards/LOG-RUNNING-1.md",
+      "dependencies": [
+        "REVIEW-1118"
+      ],
+      "card": "docs/pr-cards/LOG-RUNNING-1.md",
+      "status": "MERGED",
+      "migration": "none",
+      "budget": 50,
+      "units": [
+        "LOG-RUNNING-1"
+      ],
+      "readiness": "READY",
+      "ownerInputs": []
     }
   ],
   "gatewayBoundary": {

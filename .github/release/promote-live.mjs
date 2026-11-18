@@ -45,10 +45,14 @@ export function refusalReason(env, repository, mainHead = '') {
 }
 
 export function checksPass(runs, required, sha) {
+  // RUNNER-DEADLOCK-1 (2026-11-18): the newest FINISHED run of each check decides. A newer copy still waiting in
+  // the queue (another release run's own release-policy job) used to hold promotion until it timed out, and with a
+  // single self-hosted runner that copy could only start after this job gave the runner back. A newer failure
+  // still wins, and nothing passes without a finished success.
   return required.every(name => {
     const run = runs.filter(r => r.name === name && r.app?.slug === 'github-actions' &&
-      r.head_sha === sha).sort((a, b) => b.id - a.id)[0];
-    return run?.status === 'completed' && run.conclusion === 'success';
+      r.head_sha === sha && r.status === 'completed').sort((a, b) => b.id - a.id)[0];
+    return run?.conclusion === 'success';
   });
 }
 
