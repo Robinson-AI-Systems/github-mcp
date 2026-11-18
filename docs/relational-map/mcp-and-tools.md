@@ -81,7 +81,12 @@ flowchart TD
   Every list reply carries `returned_count` next to `count`; when the
   limit cut the list it also says `all_returned: false` with a
   `returned_note` naming the next call (`withReturnedCount`,
-  RETURNED-COUNT-1).
+  RETURNED-COUNT-1). A list whose single row is too big shows that row
+  with its largest fields named in `_left_out` instead of an empty list
+  (`fitToBudget`, FULL-ROWS-1); a list too big to keep whole is kept up
+  to the rows that fit (`kept_rows`/`of_rows`, KEEP-PART-1).
+  `github_call` and `github_batch` take a tool's arguments as `args`
+  or `arguments` (CALL-ARGS-1).
 - **Errors.** `src/tools/errors.js` renders GitHub failures as what
   happened / likely cause / what to do / one technical line with the
   GitHub request id.

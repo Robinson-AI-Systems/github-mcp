@@ -201,6 +201,16 @@ describe('github_call', () => {
     const called = data(await w.run('github_call', { name: 'github_whoami', args: {} }));
     expect(called).toEqual(direct);
   });
+  it('takes the arguments as args or as arguments (the Rack Control name), not both differently (CALL-ARGS-1)', async () => {
+    const w = await world();
+    const direct = data(await w.run('github_whoami', {}));
+    expect(data(await w.run('github_call', { name: 'github_whoami', arguments: {} }))).toEqual(direct);
+    const both = await w.run('github_call', { name: 'github_whoami', args: {}, arguments: { x: 1 } });
+    expect(both.isError).toBe(true);
+    expect(JSON.stringify(both)).toContain('not both');
+    const batch = data(await w.run('github_batch', { calls: [{ name: 'github_whoami', arguments: {} }] }));
+    expect(batch.results[0].ok).toBe(true);
+  });
   it('runs a change through the write layer: preview, then the same refusals', async () => {
     const w = await world();
     await w.db.upsertAccount({ login: 'example-user', accountId: 55, accountType: 'User', label: 'P', credentialKind: 'fine_grained' });

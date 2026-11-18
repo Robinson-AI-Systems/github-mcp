@@ -10,7 +10,8 @@ import {withProtectionContext,withRepositoryProtection} from '../github/content-
 import { randomBytes } from 'node:crypto';
 import { validateArgs } from '../core/validate.js';
 import {RetainedResultNotFound} from '../core/result-errors.js';
-import { capText, describeBody, fitToBudget, projectFields } from '../core/result-rules.js';
+import { capText, describeBody, fitToBudget, projectFields, listKeyOf as listKeyOfBody } from '../core/result-rules.js';
+import { TENANT_RUNTIME_LIMITS } from '../tenancy/runtime-limits.js';
 import { textContinueCall } from '../core/continuation.js';
 import { deduplicateLargeEnvelope, KEEP_WHOLE } from '../core/result-envelope.js';
 import { summarize } from './summaries.js';
@@ -66,7 +67,7 @@ export function withReturnedCount(body, fit) {
   const returned = body.items.length;
   const trimmed = !!(fit?.fitted && fit.of !== null && fit.shown !== null && fit.shown < fit.of);
   const extra = { returned_count: returned, ...(trimmed ? { all_returned: false,
-    returned_note: `Only ${returned} of ${fit.of} rows fit in this reply (replies have a size limit). ${body.kept_result?.continue ? 'The rest are kept: make the call in kept_result.continue, or ask' : 'Ask'} for fewer fields (fields: [...]) to get more rows per reply.` } : {}) };
+    returned_note: `Only ${returned} of ${fit.of} rows fit in this reply (replies have a size limit). ${body.kept_result?.continue ? (body.kept_result.kept_rows ? `Rows up to ${body.kept_result.kept_rows} are kept: make the call in kept_result.continue; for the rest ask` : 'The rest are kept: make the call in kept_result.continue, or ask') : 'Ask'} for fewer fields (fields: [...]) to get more rows per reply.` } : {}) };
   if (!Object.hasOwn(body, 'count')) return { ...extra, ...body };
   const out = {};
   for (const [k, v] of Object.entries(body)) { out[k] = v; if (k === 'count') Object.assign(out, extra); }
@@ -98,9 +99,25 @@ async function readReply({ tool, args, raw, connection, db, mode }) {
   if (capped.cut.length || fit.fitted) {
     const owner = connection?.client_id ?? connection?.pass_id;
     const handle = `res_${randomBytes(16).toString('base64url')}`;
-    let kept = false;
+    let kept = false, keptPart = null, keepFailed = null;
     if (owner && typeof db?.putResult === 'function') {
-      try { await db.putResult({ handle, connection: String(owner), summary: describeBody(value), body: value }); kept = true; } catch { kept = false; }
+      try { await db.putResult({ handle, connection: String(owner), summary: describeBody(value), body: value }); kept = true; }
+      catch (error) {
+        keepFailed = error?.reason === 'too_large' ? 'too_large' : 'unavailable';
+        // KEEP-PART-1 (2026-11-18): a list too big for this connection's saved-result size is kept up to the
+        // rows that fit, so github_get_result still pages through those, and the reply says where it stops.
+        const key = keepFailed === 'too_large' ? listKeyOfBody(value) : null;
+        const list = key === null ? null : key === '' ? value : value[key];
+        if (Array.isArray(list) && list.length > 1) {
+          const cap = Math.max(1024, (TENANT_RUNTIME_LIMITS.resultMaxBytes ?? 262144) - 2048);
+          const part = (n) => (key === '' ? list.slice(0, n) : { ...value, [key]: list.slice(0, n) });
+          let lo = 0, hi = list.length - 1;
+          while (lo < hi) { const mid = Math.ceil((lo + hi) / 2); if (Buffer.byteLength(JSON.stringify(part(mid))) <= cap) lo = mid; else hi = mid - 1; }
+          if (lo > 0) {
+            try { await db.putResult({ handle, connection: String(owner), summary: describeBody(part(lo)), body: part(lo) }); kept = true; keptPart = { rows: lo, of: list.length }; } catch { kept = false; }
+          }
+        }
+      }
     }
     // Retention is an optimization, never the only route to complete source.
     // A file blob SHA is immutable, so continuation survives branch movement.
@@ -116,10 +133,11 @@ async function readReply({ tool, args, raw, connection, db, mode }) {
         note: 'Read exact base64 byte windows at this immutable blob SHA; advance using next_byte_offset until complete.' };
     }
     notes.kept_result = kept
-      ? { handle, what: describeBody(value), ...(fit.fitted && fit.of !== null ? { shown: fit.shown, of: fit.of, ...(fit.shown > 0 ? { next: { page: 2, pageSize: fit.shown } } : {}) } : {}), ...(capped.cut.length ? { text_cut: capped.cut.slice(0, 10) } : {}),
+      ? { handle, what: describeBody(value), ...(keptPart ? { kept_rows: keptPart.rows, of_rows: keptPart.of,
+          partial_note: `The whole result is larger than this connection keeps, so only the first ${keptPart.rows} of ${keptPart.of} rows are kept. For the rest ask for fewer fields (fields: [...]) or a smaller max, or leave out detail: 'full'.` } : {}), ...(fit.fitted && fit.of !== null ? { shown: fit.shown, of: fit.of, ...(fit.shown > 0 ? { next: { page: 2, pageSize: fit.shown } } : {}) } : {}), ...(capped.cut.length ? { text_cut: capped.cut.slice(0, 10) } : {}),
         how: 'Call github_get_result with this handle to read the rest (page, fields, offset, or startLine/endLine for a long text). It is kept for 24 hours.',
-        ...continueFor(handle, fit, capped.cut) }
-      : { note: 'This result was cut and could not be kept. Ask for less (fields, a smaller page) or a narrower search.', ...(capped.cut.length ? { text_cut: capped.cut.slice(0, 10) } : {}) };
+        ...continueFor(handle, keptPart && fit?.fitted ? { ...fit, of: keptPart.rows } : fit, capped.cut) }
+      : { note: keepFailed === 'too_large' ? 'This result is larger than this connection keeps, so it was not kept. Ask for fewer fields (fields: [...]), a smaller max, or leave out detail: \'full\'.' : 'This result was cut and could not be kept. Ask for less (fields, a smaller page) or a narrower search.', ...(keepFailed ? { reason: keepFailed } : {}), ...(capped.cut.length ? { text_cut: capped.cut.slice(0, 10) } : {}) };
   }
   const body = withReturnedCount(Array.isArray(fit.value) ? { items: fit.value, ...notes } : isObject(fit.value) ? { ...fit.value, ...notes } : fit.value, fit);
   // An explicitly requested whole file or window stays whole in structuredContent too: many clients show only that channel.

@@ -102,7 +102,7 @@ async function callHandler(args, ctx) {
   if (!callable(ctx, args.name)) {
     return { isError: true, content: [{ type: 'text', text: `Unknown or unavailable tool: ${redact(String(args.name)).slice(0, 80)}. Search with github_search_tools.${closeNames(ctx, args.name).length ? ' Did you mean: ' + closeNames(ctx, args.name).join(', ') + '?' : ''}${find(ctx, args.name) ? ' The tool-finding tools are called directly, not through github_call.' : ''}` }] };
   }
-  return ctx.callTool(canon(args.name), args.args ?? {});
+  return ctx.callTool(canon(args.name), callArgs(args));
 }
 
 async function batchHandler(args, ctx) {
@@ -115,7 +115,7 @@ async function batchHandler(args, ctx) {
   const results = [];
   for (let offset = 0; offset < calls.length; offset += 3) {
     const wave = await Promise.all(calls.slice(offset, offset + 3).map(async (call) => {
-      const r = await ctx.callTool(canon(call.name), call.args ?? {});
+      const r = await ctx.callTool(canon(call.name), callArgs(call));
       if (r._meta?.['mcp/www_authenticate']) throw new OptionalConsentRequired(r);
       if (r.isError) return { name: call.name, ok: false, error: r.content?.[0]?.text ?? 'The call failed.' };
       // A whole file or an explicit window (fullText, startLine, byte range) is the caller's choice to receive large text; a
@@ -123,7 +123,7 @@ async function batchHandler(args, ctx) {
       // (owner feedback 2026-11-02: "github_batch truncates bodies to 4000 characters and fullText overflows").
       if (r[KEEP_WHOLE] && JSON.stringify(r.structuredContent ?? null).length > BATCH_ITEM_CHARS)
         return { name: call.name, ok: true, omitted: 'too_large_for_batch', characters: JSON.stringify(r.structuredContent).length,
-          call_alone: { name: call.name, args: call.args ?? {} }, note: 'This whole-text result is too large to share a batch reply. Call that tool on its own (directly or with github_call) to receive it whole.' };
+          call_alone: { name: call.name, args: callArgs(call) }, note: 'This whole-text result is too large to share a batch reply. Call that tool on its own (directly or with github_call) to receive it whole.' };
       return { name: call.name, ok: true, result: r.structuredContent ?? null };
     }));
     results.push(...wave);
@@ -133,7 +133,14 @@ async function batchHandler(args, ctx) {
 }
 const BATCH_ITEM_CHARS = 3500;
 
-const CALL_ITEM = { type: 'object', properties: { name: { type: 'string', maxLength: 80 }, args: { type: 'object', additionalProperties: true } }, required: ['name'], additionalProperties: false };
+// CALL-ARGS-1 (owner feedback 2026-11-18): Rack Control's rack_call names them `arguments`, so an agent
+// moving between the two connectors sent the wrong name. Both names work here; giving both is refused.
+const CALL_ITEM = { type: 'object', properties: { name: { type: 'string', maxLength: 80 }, args: { type: 'object', additionalProperties: true }, arguments: { type: 'object', additionalProperties: true, description: 'Same as args' } }, required: ['name'], additionalProperties: false };
+export function callArgs(a) {
+  if (a.args !== undefined && a.arguments !== undefined && JSON.stringify(a.args) !== JSON.stringify(a.arguments))
+    throw new TypeError('Give the tool\'s arguments once: as args or as arguments, not both.');
+  return a.args ?? a.arguments ?? {};
+}
 
 export const tools = [
   {
@@ -157,7 +164,7 @@ export const tools = [
   {
     name: 'github_call', area: 'meta', audience: ['B', 'O', 'Op'], compact: true, usesRegistry: true, passthrough: true,
     description: 'Run a visible tool with its original guards.',
-    inputSchema: { type: 'object', properties: { name: { type: 'string', maxLength: 80 }, args: { type: 'object', additionalProperties: true, description: 'That tool\'s arguments' } }, required: ['name'], additionalProperties: false },
+    inputSchema: { type: 'object', properties: { name: { type: 'string', maxLength: 80 }, args: { type: 'object', additionalProperties: true, description: 'That tool\'s arguments' }, arguments: { type: 'object', additionalProperties: true, description: 'Same as args (the name Rack Control uses)' } }, required: ['name'], additionalProperties: false },
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true }
   },
   {

@@ -159,7 +159,7 @@ export function makePrivateOptionalPage({
     }catch(error){
       if(error instanceof TenantCapacityError){
         res.setHeader('Retry-After',String(error.retryAfterSeconds));
-        return send(res,429,{error:'rate_limited',description:'This private connection is temporarily busy.'});
+        return send(res,429,{error:'rate_limited',description:`This private connection is temporarily busy. Retry in ${error.retryAfterSeconds} seconds.`,retry_after_seconds:error.retryAfterSeconds});
       }
       if(req.method==='POST')res.setHeader('Set-Cookie',CLEAR);
       // PUB-9: our own fixed sentence (never a token or a GitHub response) says what to change.

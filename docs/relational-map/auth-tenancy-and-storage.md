@@ -79,4 +79,9 @@ flowchart TD
   schema fails closed and never falls back to the owner's data.
   Capacity (`src/tenancy/runtime-limits.js`) and public fair-use
   counters (`src/tenancy/public-usage.js`: free calls/day, writes/hour,
-  cost pause, inactivity cleanup) are enforced per tenant.
+  cost pause, inactivity cleanup) are enforced per tenant. A refused
+  budget says how long until its window reopens (`retry_after_seconds`,
+  the `Retry-After` header, and "Retry in N seconds" in the words;
+  BUSY-RETRY-1); a saved result over the size cap is refused as
+  `too_large`, and the read pipeline then keeps the rows that fit
+  (KEEP-PART-1).

@@ -4283,6 +4283,27 @@
       ],
       "readiness": "READY",
       "ownerInputs": []
+    },
+    {
+      "id": "CONN-FIX-1118",
+      "title": "Full-detail lists never empty, partial keeping, args/arguments, busy replies carry the wait",
+      "batch": "FIN",
+      "design": "docs/pr-cards/CONN-FIX-1118.md",
+      "dependencies": [
+        "RETURNED-COUNT-1"
+      ],
+      "card": "docs/pr-cards/CONN-FIX-1118.md",
+      "status": "MERGED",
+      "migration": "none",
+      "budget": 150,
+      "units": [
+        "FULL-ROWS-1",
+        "KEEP-PART-1",
+        "CALL-ARGS-1",
+        "BUSY-RETRY-1"
+      ],
+      "readiness": "READY",
+      "ownerInputs": []
     }
   ],
   "gatewayBoundary": {

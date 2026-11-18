@@ -90,12 +90,23 @@ const bound = (number, low, high) => Number.isSafeInteger(number) && number >= l
 const bucketFor = ms => ms < 100 ? 'lt100ms' : ms < 500 ? 'lt500ms' : ms < 2000 ? 'lt2s' : 'gte2s';
 const digest = value => createHash('sha256').update(value).digest('hex').slice(0, 24);
 
+// BUSY-RETRY-1 (owner feedback 2026-11-18: "returned 'connection is temporarily busy' and succeeded on
+// retry. Returning a retry interval with that response would improve automated recovery"): a budget
+// refusal says how long until its window reopens (not the whole window length), and the words carry it
+// too, because many MCP clients show only the text. `reason` tells a too-large result from a busy one.
+export function secondsUntilWindowEnds(windowSeconds, nowMs = Date.now()) {
+  const nowS = Math.floor(nowMs / 1000);
+  return Math.max(1, windowSeconds - (nowS % windowSeconds));
+}
 export class TenantCapacityError extends Error {
-  constructor(operation, waitSeconds) {
-    super('The private tenant is temporarily busy. Retry after the indicated interval.');
+  constructor(operation, waitSeconds, reason = 'busy') {
+    super(reason === 'too_large'
+      ? 'The result is larger than this private connection keeps.'
+      : `The private tenant is temporarily busy. Retry in ${waitSeconds} seconds.`);
     this.name = 'TenantCapacityError';
     this.operation = operation;
     this.retryAfterSeconds = waitSeconds;
+    this.reason = reason;
   }
 }
 
@@ -219,7 +230,7 @@ export async function claimTenantBudget(sql, { operation, clientId, amount = 1,
   const at = window === 'minute' ? 'minute' : 'day';
   const rows=await sql`SELECT tenant_used,client_used FROM gh_claim_tenant_capacity(
     ${tenantScope},${clientScope},${at},${length},${amount},${tenantMax},${clientMax})`;
-  if (rows.length!==1) throw new TenantCapacityError(operation,length);
+  if (rows.length!==1) throw new TenantCapacityError(operation,secondsUntilWindowEnds(length));
   return { allowed: true, clientUsed: Number(rows[0].client_used), tenantUsed: Number(rows[0].tenant_used) };
 }
 
@@ -399,7 +410,7 @@ export function withTenantStorageLimits(db, sql, clientId) {
       if (typeof encoded !== 'string') throw new TypeError('Result is not valid JSON.');
       const bytes=Buffer.byteLength(encoded);
       if (!bound(bytes,1,TENANT_RUNTIME_LIMITS.resultMaxBytes))
-        throw new TenantCapacityError('result',86400);
+        throw new TenantCapacityError('result',0,'too_large');
       if(typeof input?.handle!=='string' || !/^res_[A-Za-z0-9_-]{20,64}$/.test(input.handle) ||
           typeof input.connection!=='string' || !input.connection)
         throw new TypeError('Invalid tenant result handle or connection.');
