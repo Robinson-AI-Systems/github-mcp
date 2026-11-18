@@ -23,3 +23,8 @@ same change; a feature is not landed until the diagram matches the code.
   describing the real system as surveyed from the code — no stubs, no
   planned parts presented as built.
 <!-- relational-map-rule: end -->
+
+Numbers in the map (tool, module, table and operation counts) are checked
+against the code in CI by `scripts/check-map-counts.mjs`, using
+`docs/relational-map/counts.json` (MAP-COUNTS-1, 2026-11-18). A count the
+file does not list, or a "~" approximate count, fails the check.

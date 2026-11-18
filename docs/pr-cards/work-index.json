@@ -4246,6 +4246,24 @@
       ],
       "readiness": "READY",
       "ownerInputs": []
+    },
+    {
+      "id": "MAP-COUNTS-1",
+      "title": "The relational map's numbers are checked against the code",
+      "batch": "FIN",
+      "design": "docs/pr-cards/MAP-COUNTS-1.md",
+      "dependencies": [
+        "LOG-RUNNING-1"
+      ],
+      "card": "docs/pr-cards/MAP-COUNTS-1.md",
+      "status": "MERGED",
+      "migration": "none",
+      "budget": 100,
+      "units": [
+        "MAP-COUNTS-1"
+      ],
+      "readiness": "READY",
+      "ownerInputs": []
     }
   ],
   "gatewayBoundary": {
