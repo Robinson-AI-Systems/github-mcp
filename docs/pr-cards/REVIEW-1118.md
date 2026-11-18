@@ -36,6 +36,12 @@ Chris: "PenPal". Vivienne's Review Second Shift re-run (second-shift-20261118-10
   `src/core/authority.js`, applied by the operator's own database route). REPLAY-STALE-1's cross-tool case is
   intentional and bounded (written into `AGENT-FB-1117.md`).
 
+- **DIFF-PAGES-1 (Vivienne's ask, same night).** `github_pr_get_diff` can page a long diff: `maxChars` (200–3500,
+  default 3000 once paging), then `textOffset` + `expectedDiffHash` from the returned `continue` call. Each page states
+  `total_chars`, `diff_hash` and `complete`; a diff that changed between pages (a new push) is refused rather than
+  mixed. Without these arguments the tool answers as before. Acceptance: `tests/unit/pulls-read.test.js`, DIFF-PAGES-1.
+- **Map refreshed** (relational-map rule, adopted 2026-11-18): log summaries and the retired-pool rows.
+
 ## Drift check
 
 No migration, no new tool, no change to who may do what. Only answers get more honest and more complete.

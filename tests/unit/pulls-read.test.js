@@ -194,6 +194,25 @@ describe('pull request reads (E-1a)', () => {
     expect(body.diff).toContain('+hi');
     expect(w.gh.calls[0].headers?.accept ?? '').toContain('diff');
   });
+  it('DIFF-PAGES-1: pages a long diff losslessly, and refuses a continuation after the diff changed', async () => {
+    const w = await world();
+    const long = `diff --git a/x b/x\n${Array.from({ length: 400 }, (_, k) => `+line ${k} "quoted" é`).join('\n')}\n`;
+    w.gh.when('GET /repos/{owner}/{repo}/pulls/{pull_number}').reply(200, long);
+    let page = (await run(w, 'github_pr_get_diff', { ...R, number: 7, maxChars: 2000 })).body;
+    expect(page).toMatchObject({ text_offset: 0, next_text_offset: 2000, total_chars: long.length, complete: false });
+    let joined = page.diff; const hash = page.diff_hash;
+    while (!page.complete) {
+      page = (await run(w, 'github_pr_get_diff', page.continue.arguments)).body;
+      expect(page.diff_hash).toBe(hash);
+      joined += page.diff;
+    }
+    expect(joined).toBe(long);
+    const changed = await world();
+    changed.gh.when('GET /repos/{owner}/{repo}/pulls/{pull_number}').reply(200, `${long}+one more\n`);
+    const refused = await run(changed, 'github_pr_get_diff', { ...R, number: 7, maxChars: 2000, textOffset: 2000, expectedDiffHash: hash });
+    expect(refused.result.isError).toBe(true);
+    expect(JSON.stringify(refused.result.content)).toMatch(/diff changed/);
+  });
   it('lists files, cutting long patches', async () => {
     const w = await world();
     w.gh.when('GET /repos/{owner}/{repo}/pulls/{pull_number}/files').reply(200, [{ filename: 'a.js', status: 'modified', additions: 1, deletions: 0, patch: 'x'.repeat(4000) }, { filename: 'b.js', status: 'renamed', previous_filename: 'c.js', additions: 0, deletions: 0 }]);
