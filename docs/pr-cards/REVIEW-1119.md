@@ -11,6 +11,8 @@
   minute re-checking all 121 stored rows. A row whose runtime and workspace are both gone (`phase: disposed`,
   `sourceDisposed: true`; 51 of them in production on 2026-11-19) is now skipped without loading its scope; the reply adds
   `skipped`. New test in `playground-pool-retired.test.js`.
+  **After release the run still took ~20 s** (timer reads 11:32 and 11:34 UTC, 19.6 s and 20.1 s): the budget goes to the
+  63 disposed rows whose workspace close never succeeded (plus 6 runtime-only rows), retried every minute. Follow-up open.
 
 ## Findings answered without a code change (evidence)
 
