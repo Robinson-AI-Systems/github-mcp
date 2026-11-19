@@ -50,3 +50,9 @@ it('unattached capabilities disclose only nonsecret setup binding after exact re
  const setup=await playground.handlers.github_playground_read({...base,operation:'capabilities'},ctx);expect(setup).toMatchObject({setup_required:true,runtime_attached:false,workspace_id:base.workspace_id});expect(setup.allocation_binding).toMatch(/^[a-f0-9]{64}$/);expect(setup.verification_key).toMatch(/^ed25519:/);expect(setup).not.toHaveProperty('authority');expect(w.playgroundRequests).toHaveLength(0);
  await expect(playground.handlers.github_playground_read({...base,repo:'foreign',operation:'capabilities'},ctx)).rejects.toThrow();
 });
+// Second Shift review 2026-11-19 (PR #663): capabilities without a workspace threw a ReferenceError
+// (warmRuntimeStatus was deleted with the Dokploy pool but still called). It answers setup guidance now.
+it('capabilities without a workspace answers setup guidance and never throws',async()=>{
+ const w=await world();const out=await playground.handlers.github_playground_read({owner:'example-org',repo:'hello',operation:'capabilities'},w.ctx);
+ expect(out).toMatchObject({product:"Robinson's Playground",runtime_attached:false,setup_required:true});expect(out).not.toHaveProperty('warm_runtimes');
+});

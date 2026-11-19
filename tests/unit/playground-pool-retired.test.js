@@ -82,3 +82,22 @@ it('the sweep accepts the deployment CRON_SECRET (rack timer) or the sweep key, 
   await sweep({method: 'POST', headers: {authorization: 'Bearer short'}}, res, {env: weak, root: {}, run: async () => ({})});
   expect(code).toBe(401);
 });
+
+// Second Shift review 2026-11-19 (PR #663): finished rows (runtime and workspace both gone) are skipped
+// without loading their scope, so they no longer use up the per-minute sweep's time budget.
+it('the sweep skips finished rows without loading them and still advances its cursor', async () => {
+  const {sweepAllocations} = await import('../../src/playground/manager.js');
+  const settings = new Map();
+  const rows = [
+    {setting: 'pg_index.a', value: {allocation: {binding: 'a'.repeat(64), phase: 'disposed', sourceDisposed: true}}},
+    {setting: 'pg_index.b', value: {allocation: {binding: 'b'.repeat(64), phase: 'disposed', sourceDisposed: true}}},
+    {setting: 'pg_index.c', value: {allocation: {binding: 'c'.repeat(64), phase: 'disposed'}}}
+  ];
+  const root = {getSetting: async k => settings.get(k) ?? null, compareAndSetSetting: async (k, _r, v) => (settings.set(k, v), v), listPlaygroundIndexes: async () => rows};
+  const loaded = [];
+  const load = async q => { loaded.push(q.binding); throw new TypeError('scope gone'); };
+  const out = await sweepAllocations({root, load, env: {}});
+  expect(loaded).toEqual(['c'.repeat(64)]);
+  expect(out).toMatchObject({inspected: 3, skipped: 2, pending: 1, disposed: 0, next_page: false});
+  expect(settings.get('playground_sweep_cursor')).toMatchObject({after: ''});
+});

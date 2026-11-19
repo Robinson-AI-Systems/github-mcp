@@ -6,7 +6,8 @@ Values below were checked against code on 2026-11-01.
 
 > **2026-11-17 — the shared Dokploy pool is retired (DOKPLOY-RETIRE-1).** Every Dokploy-specific section below is history:
 > the provider, `PLAYGROUND_DOKPLOY_*`/`PLAYGROUND_POOLS`, warm runtimes, telemetry admission and the project manager
-> service are gone from the code. Runtimes run on computers paired with `github_playground_host_pairing`
+> service are gone from the code, except the transfer relay's broker route (`src/native-git/relay.js`), which still reads
+> `PLAYGROUND_INGRESS_IPV4`/`PLAYGROUND_POOLS`; both settings are removed from production, so it is inert (checked 2026-11-19). Runtimes run on computers paired with `github_playground_host_pairing`
 > (`src/fleet/device-allocations.js`). The maintenance sweep `POST /api/playground/sweep` takes `Authorization: Bearer
 > <CRON_SECRET>` (or the old derived sweep key) and is called every minute by the rack's project timer
 > `playground-sweep` on the `github` project (Rack Control `rack_schedule_set`).
