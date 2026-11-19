@@ -39,6 +39,8 @@ Never record values here. Vercel provides `VERCEL_ENV` and `VERCEL_GIT_COMMIT_SH
 | `DATABASE_URL` | `productionSql()` in `src/db.js` (first use, never at import) | This server's Neon database; previews share it and never offer production mode |
 | `PUBLIC_BASE_URL` | `publicOrigin()` in `src/core/http.js` | HTTPS origin, no path (OAuth issuer, MCP resource, Playground control origin); never taken from a request header; missing or malformed makes OAuth answer 503 |
 | `ADMIN_PASSPHRASE` | `src/core/oauth-handlers.js` | Owner sign-in passphrase; missing fails closed with 503 |
+| `MERGE_WAIT_SECONDS` | `src/tools/workflows-merge.js` | How long one `github_workflow_merge_when_green` call with `waitForChecks` waits for running checks (default 70, 0–150; MERGE-WAIT-3). Lower it if a client gives up on long calls |
+| `NATIVE_GIT_WORKER_OFF` | `src/native-git/pool-config.js` | Comma list of pool host names switched off without rewriting `NATIVE_GIT_WORKER_POOL` (SWEEP-CLEANUP-1) |
 | `TOKEN_ENCRYPTION_KEY`, `TOKEN_ENCRYPTION_KEY_PREVIOUS` | `src/core/crypto.js` | Base64 32-byte AES-256-GCM key for every stored credential; previous = at most two decrypt-only keys. Also the root for the purpose-separated Ed25519 native-worker signing key (HKDF, `src/native-git/signing.js`) |
 | `VERCEL_ENV`, `VERCEL_GIT_COMMIT_SHA` | `src/oauth/policy.js`, `src/rtc/scope.js`, `api/index.js` | Only `production` allows production mode; build SHA is self-reported and not independent deployment evidence |
 | `GITHUB_STATELESS_INSTALLATION_TOKENS` | `src/github/credentials.js` | Installation-token format switch |

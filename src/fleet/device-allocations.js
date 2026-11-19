@@ -97,6 +97,22 @@ export async function disposeDeviceAllocation(ctx, stored, save, {waitMs = 20000
   const r = m?.result;
   if (m?.state === 'done' && r?.containersAbsent === true && r.volumesAbsent === true && r.networksAbsent === true)
     return save({phase: 'disposed', disposed: true, disposedAt: now(), cleanupEvidence: 'device_attested'});
+  // SWEEP-CLEANUP-1 (2026-11-19): a removal order is never waited on forever.
+  //  - The order lapsed (7 days) while the computer was online: send a fresh one.
+  //  - The order lapsed while the computer stayed offline the whole time, the computer was unpaired without
+  //    confirming, or it refused the order (re-paired since): close the record and say plainly that removal was
+  //    not confirmed. If the computer comes back and still reports the runtime, its check-in orders it down
+  //    (orphanRuntimeOrders in src/fleet/host.js).
+  const unconfirmed = reason => save({phase: 'disposed', disposed: true, disposedAt: now(), cleanupEvidence: 'device_unconfirmed', unconfirmedReason: reason});
+  if (host?.status === 'revoked' || !host) return unconfirmed(host ? 'computer_unpaired' : 'computer_removed');
+  if (m?.state === 'refused') return unconfirmed('order_refused');
+  // Lapsed: marked expired, gone, or past its life while delivered but never answered.
+  if (!m || m.state === 'expired' || (m.state !== 'done' && m.expiresAt <= now())) {
+    if (!hostIsLive(host, now())) return unconfirmed('computer_offline_7_days');
+    const order = await enqueue(ctx.db, {deviceId: stored.device.deviceId, generation: stored.device.generation, kind: 'allocation_down',
+      payload: {binding: stored.binding, project: stored.plan.name}, ttlMs: 7 * 86400000, now});
+    stored = await save({phase: 'deleting', downOrder: order.id});
+  }
   return {...stored, disposed: false, next: 'Waiting for your computer to confirm the runtime and its volumes are gone. It finishes when the computer is online.'};
 }
 

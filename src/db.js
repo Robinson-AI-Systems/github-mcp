@@ -1534,13 +1534,19 @@ export function createDb(sql = productionSql()) {
       return sql`SELECT setting,value FROM server_settings WHERE setting LIKE 'pg_index.%' AND setting>${after}
         AND value->>'kind'='playground-index' AND value->'allocation'->>'phase'<>'disposed' ORDER BY setting LIMIT ${limit}`;
     },
-    /** FLEET-7 demand: new pool allocations (any phase, disposed included) created at or after `since` (ms), per pool and image variant. */
-    async playgroundDemandSince(since) {
-      if(!Number.isSafeInteger(since)||since<0)throw new TypeError('Invalid allocation demand window.');
-      const rows = await sql`SELECT coalesce(value->'allocation'->>'pool','default') AS pool, coalesce(value->'allocation'->'runtimeImage'->>'variant','unknown') AS variant, count(*)::int AS count
-        FROM server_settings WHERE setting LIKE 'pg_index.%' AND value->>'kind'='playground-index' AND jsonb_typeof(value->'allocation'->'createdAt')='number'
-        AND (value->'allocation'->>'createdAt')::numeric >= ${since} AND coalesce(value->'allocation'->>'placement','')<>'device' GROUP BY 1,2 ORDER BY 1,2`;
-      return rows.map(r => ({ pool: r.pool, variant: r.variant, count: Number(r.count) }));
+    /** SWEEP-CLEANUP-1: closed allocation index rows, closed before `before` (ms; the allocation's disposedAt, else the row's last update), oldest key order. */
+    async listClosedPlaygroundIndexes({before,after='',limit=25}={}) {
+      if(!Number.isSafeInteger(before)||before<0||typeof after!=='string'||after.length>63||!Number.isSafeInteger(limit)||limit<1||limit>100)throw new TypeError('Invalid closed allocation page.');
+      return sql`SELECT setting,value FROM server_settings WHERE setting LIKE 'pg_index.%' AND setting>${after}
+        AND value->>'kind'='playground-index' AND value->'allocation'->>'phase'='disposed'
+        AND (CASE WHEN jsonb_typeof(value->'allocation'->'disposedAt')='number' THEN (value->'allocation'->>'disposedAt')::numeric ELSE extract(epoch FROM updated_at)*1000 END) < ${before}
+        ORDER BY setting LIMIT ${limit}`;
+    },
+    /** Deletes one setting only if it is still at `revision` (a concurrent change keeps it). True when deleted. */
+    async deleteSettingAt(key, revision) {
+      if(typeof key!=='string'||!/^[a-z][a-z0-9_.]{0,62}$/.test(key)||!Number.isSafeInteger(revision)||revision<0)throw new TypeError('A valid setting key and revision are required.');
+      const rows=await sql`DELETE FROM server_settings WHERE setting=${key} AND (value->>'revision')::bigint=${revision} RETURNING setting`;
+      return rows.length===1;
     },
     /** An owner setting (JSON), or null. Settings hold names and numbers, never a credential. */
     async getSetting(key) {

@@ -25,10 +25,11 @@ const cleanups = [];
 afterEach(async () => { for (const c of cleanups.splice(0)) await c(); });
 
 describe('addresses', () => {
- it('issues on PUBLIC_BASE_URL with a route naming only the configured worker or a configured-ingress broker; off switch and missing origin fall back', () => {
+ it('issues on PUBLIC_BASE_URL with a route naming only a configured worker; off switch and missing origin fall back', () => {
   const cap = download(), url = transferUrl(ENV, { kind: 'd', destinationOrigin: 'https://worker.example.test', capability: cap });
   expect(url).toMatch(new RegExp(`^https://mcp\\.example\\.test/v1/transfer/d/w/[A-Za-z0-9_-]{32}/${cap.replace('.', '\\.')}$`));
-  expect(routeFor(ENV, BROKER)).toBe('b.' + new URL(BROKER).hostname);
+  // SWEEP-CLEANUP-1: the retired pool's broker route is gone, even with its old ingress setting present.
+  expect(routeFor(ENV, BROKER)).toBeNull();
   expect(routeFor(ENV, 'https://ras-pg-' + 'a'.repeat(32) + '-198-51-100-7.sslip.io')).toBeNull(); // not a configured ingress
   expect(routeFor(ENV, 'https://evil.example.test')).toBeNull();
   expect(routeFor(ENV, BROKER + ':8443')).toBeNull();
@@ -64,7 +65,7 @@ describe('refusals', () => {
   const tag = good.split('/')[7];
   expect(plan(good.replace(tag, (tag[0] === 'A' ? 'B' : 'A') + tag.slice(1)))).toMatchObject({ ok: false, status: 403 });
   expect(plan(good.replace('/d/w/', '/u/w/'), { method: 'PUT' })).toMatchObject({ ok: false, status: 403 });
-  expect(plan(good.replace('/d/w/', '/d/b.' + new URL(BROKER).hostname + '/'))).toMatchObject({ ok: false, status: 403 });
+  expect(plan(good.replace('/d/w/', '/d/b.' + new URL(BROKER).hostname + '/'))).toMatchObject({ ok: false, status: 404 });
   // Another shared key (not this service's) is not accepted.
   expect(plan(transferUrl(ENV, { kind: 'd', destinationOrigin: 'https://worker.example.test', capability: download({ ...ENV, NATIVE_GIT_WORKER_KEY: HMAC }) }))).toMatchObject({ ok: false, status: 403 });
  });
@@ -82,15 +83,6 @@ describe('refusals', () => {
   expect(plan('https://mcp.example.test/v1/transfer/')).toMatchObject({ ok: false, status: 404 });
   // Refusal text never echoes the request.
   expect(plan(`https://mcp.example.test/v1/transfer/d/b.evil.example.test/${tag}/${cap}`).message).not.toContain('evil');
- });
- it('a dedicated broker route needs an Ed25519 control-plane capability; a shared-secret one is refused', () => {
-  const env = { ...ENV, NATIVE_GIT_WORKER_KEY: HMAC };
-  const ed = download(ENV), url = transferUrl(env, { kind: 'd', destinationOrigin: BROKER, capability: ed });
-  expect(plan(url, { env })).toMatchObject({ ok: true, destination: `${BROKER}/v1/download/${ed}` });
-  const shared = download(env);
-  expect(plan(transferUrl(env, { kind: 'd', destinationOrigin: BROKER, capability: shared }), { env })).toMatchObject({ ok: false, status: 403 });
-  // …while the shared worker accepts the shared-secret capability it was signed for.
-  expect(plan(transferUrl(env, { kind: 'd', destinationOrigin: 'https://worker.example.test', capability: shared }), { env })).toMatchObject({ ok: true });
  });
  it('forwards only the transfer header allowlist: cookies, authorization and service headers are dropped', () => {
   const out = plan(good + '/git-upload-pack', { method: 'POST', headers: { Cookie: 'FAKE_SESSION=1', Authorization: 'Bearer ghp_FAKE0000', 'Proxy-Authorization': 'Basic FAKE', 'x-robinson-signature': 'FAKE', 'x-forwarded-host': 'evil.example.test', 'Content-Type': 'application/x-git-upload-pack-request', 'Git-Protocol': 'version=2', 'Content-Encoding': 'gzip', 'Content-Length': '12', 'User-Agent': 'git/2.45' } });

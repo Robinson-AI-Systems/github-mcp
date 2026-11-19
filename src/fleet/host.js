@@ -64,6 +64,23 @@ async function saveHost(db,deviceId,update){
  }
  throw deny('concurrent');
 }
+// Bindings the computer reports running whose allocation is closed or unknown get one removal order each
+// (re-sent only after the last one lapsed). Returns the updated {binding: {order, expiresAt}} map, or null if unchanged.
+export async function orphanRuntimeOrders(db,host,reported,now=Date.now){
+ const known=host.orphanDowns??{},next={};let changed=false;
+ for(const binding of reported.slice(0,64)){
+  if(!/^[a-f0-9]{64}$/.test(binding))continue;
+  const stored=await db.getSetting('playground.'+binding.slice(0,40));
+  if(stored?.binding===binding&&stored.phase!=='disposed')continue;
+  const prior=known[binding];
+  if(prior&&prior.expiresAt>now()){next[binding]=prior;continue;}
+  if(Object.keys(next).length>=8)break;
+  const order=await enqueue(db,{deviceId:host.deviceId,generation:host.generation,kind:'allocation_down',payload:{binding,project:'ras-pg-'+binding.slice(0,32)},ttlMs:86400000,now});
+  next[binding]={order:order.id,expiresAt:order.expiresAt};changed=true;
+ }
+ if(Object.keys(known).some(b=>!(b in next)))changed=true;
+ return changed?next:null;
+}
 export async function checkIn(scope,{body,signature,env,now=Date.now,waitMs=20000,pollMs=500,sleep=sleepDefault}){
  // A grant that was revoked or downgraded since pairing stops all new work.
  if(scope.grantActive===false)throw deny('grant_inactive');
@@ -79,6 +96,10 @@ export async function checkIn(scope,{body,signature,env,now=Date.now,waitMs=2000
   const order=await enqueue(scope.db,{deviceId:host.deviceId,generation:agentGeneration,kind:'terminate',payload:{reason:'device_revoked'},ttlMs:7*86400000,now});
   patch.terminateOrder=order.id;
  }
+ // SWEEP-CLEANUP-1 (2026-11-19): a runtime the computer still runs but the server has closed (or never knew) is
+ // ordered down here, so closing a record while the computer was offline never leaves a runtime behind.
+ const orphanDowns=host.status==='ready'?await orphanRuntimeOrders(scope.db,host,patch.capacity?.allocations??[],now):null;
+ if(orphanDowns)patch.orphanDowns=orphanDowns;
  host=await saveHost(scope.db,host.deviceId,current=>({...patch,...(current.readinessOrder&&patch.readinessOrder?{readinessOrder:current.readinessOrder}:{}),...(current.terminateOrder&&patch.terminateOrder?{terminateOrder:current.terminateOrder}:{})}));
  const until=now()+Math.max(0,Math.min(waitMs,25000));let orders=[];
  for(;;){orders=await take(scope.db,host.deviceId,{now});if(orders.length||now()>=until)break;await sleep(pollMs);}

@@ -256,9 +256,24 @@ describe('merge_when_green: waitForChecks and the stack sibling message', () => 
     w.gh.when('GET /repos/{owner}/{repo}/commits/{ref}/status').reply(200, { state: 'pending', statuses: [] });
     const out = parse(await call(w, 'github_workflow_merge_when_green', { repo: 'hello', number: 6, expectedHeadSha: A, waitForChecks: true, confirm: true }));
     expect(out).toMatchObject({ status: 'checks_running', done: false, checks: 'pending', still_running: ['ci'] });
+    // MERGE-WAIT-3: one call waits up to MERGE_WAIT_SECONDS (default 70) in check_wait slices, not 30 s.
+    expect(out.waited_seconds).toBeGreaterThanOrEqual(60);
     expect(out.next).toMatch(/waitForChecks: true/);
     expect(w.gh.calls.filter((c) => c.method === 'PUT')).toHaveLength(0);
     expect(w.gh.invalid).toEqual([]);
+  });
+  it('MERGE-WAIT-3: MERGE_WAIT_SECONDS sets how long one call waits (0 keeps the call short)', async () => {
+    const w = await makeWorld({ advanceClockOnSleep: true, profile: 'full' }); w.ctx.env = { ...w.ctx.env, MERGE_WAIT_SECONDS: '10' };
+    w.gh.when('GET /repos/{owner}/{repo}').reply(200, { default_branch: 'main', name: 'hello' });
+    w.gh.when('GET /repos/{owner}/{repo}/pulls/{pull_number}').reply(200, { number: 6, state: 'open', draft: false, merged: false, mergeable: true, head: { ref: 'work', sha: A }, base: { ref: 'main', sha: B } });
+    w.gh.when('POST /graphql').reply(200, { data: { repository: { pullRequest: { reviewDecision: null, reviewThreads: { totalCount: 0, pageInfo: { hasNextPage: false }, nodes: [] } } } } });
+    w.gh.when('GET /repos/{owner}/{repo}/rules/branches/{branch}').reply(200, []);
+    w.gh.when('GET /repos/{owner}/{repo}/branches/{branch}/protection/required_status_checks').reply(404, { message: 'Not Found' });
+    w.gh.when('GET /repos/{owner}/{repo}/commits/{ref}/check-runs').reply(200, { total_count: 1, check_runs: [{ id: 1, name: 'ci', status: 'in_progress', conclusion: null, started_at: '2026-11-02T10:00:00Z' }] });
+    w.gh.when('GET /repos/{owner}/{repo}/commits/{ref}/status').reply(200, { state: 'pending', statuses: [] });
+    const out = parse(await call(w, 'github_workflow_merge_when_green', { repo: 'hello', number: 6, expectedHeadSha: A, waitForChecks: true, confirm: true }));
+    expect(out).toMatchObject({ status: 'checks_running' });
+    expect(out.waited_seconds).toBeLessThanOrEqual(12);
   });
   it('MERGE-WAIT-2: a job that already failed is reported as failing with its name, not "still running"', async () => {
     const w = await makeWorld({ advanceClockOnSleep: true, profile: 'full' });

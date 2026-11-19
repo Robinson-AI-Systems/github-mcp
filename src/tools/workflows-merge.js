@@ -15,6 +15,11 @@ const scope=a=>({...(a.owner?{owner:a.owner}:{}),repo:a.repo});
 const now=ctx=>ctx.now();
 const shape=guardedResultBody;
 const stop=(start,ctx)=>now(ctx)-start>=46000;
+// How long merge_when_green may wait for running checks inside one call, ending 16 s before the call's own deadline.
+export const MERGE_WAIT_DEFAULT_SECONDS=70;
+// The wait ends this long after the call started; the usual 46 s budget then restarts its clock for the merge, so
+// waiting longer never shortens the time the merge itself gets (16 s, as before).
+const mergeWaitBudgetMs=env=>{const v=Number(env?.MERGE_WAIT_SECONDS);return (Number.isFinite(v)&&v>=0&&v<=150?v:MERGE_WAIT_DEFAULT_SECONDS)*1000;};
 async function invoke(ctx,name,args){
   if(typeof ctx.callTool!=='function')throw new Error('Guarded tool dispatch is unavailable.');
   return shape(await ctx.callTool(name,args));
@@ -110,7 +115,7 @@ function withMergeInto(a){
 async function mergeOne(a,ctx){
   a=withMergeInto(a);
   if(!authorize(ctx))return refuse('Merge workflows require an everyday or full connection.');
-  const start=now(ctx),s=scope(a);
+  let start=now(ctx);const s=scope(a);
   // Both observations are independently authorized. The guarded merge writer
   // still rechecks the exact head and branch state immediately before mutation.
   let [p,r]=await Promise.all([pr(ctx,s,a.number),repo(ctx,s)]);
@@ -129,20 +134,32 @@ async function mergeOne(a,ctx){
   // running. A red check, any other blocker, or a moved head is never waited on; the merge path below is unchanged.
   if(a.waitForChecks===true&&waitable.length===1&&waitable[0]===CI_NOT_GREEN&&p?.checks?.green===false&&
     !(p.checks.items??[]).some(x=>x.state==='failure')){
-    const budget=Math.floor((46000-(now(ctx)-start)-16000)/1000);
+    // MERGE-WAIT-3 (2026-11-19): the wait used to stop at 30 s, so an agent called again and again while CI ran (it
+    // took 8+ calls on a 5-minute run). It now waits up to MERGE_WAIT_SECONDS (default 70, settable; 0-150) in
+    // check_wait slices of up to 45 s, still keeping 16 s for the merge itself. The service runs on the rack, not
+    // under Vercel's 60 s function limit; lower the setting if a client gives up sooner.
+    const budget=Math.floor((mergeWaitBudgetMs(ctx.env)-(now(ctx)-start))/1000);
     if(budget>=5){
-      const waited=await invoke(ctx,'github_check_wait',{...s,pr:a.number,expectedHeadSha:a.expectedHeadSha,timeoutSeconds:Math.min(budget,30)});
+      let waited,waitedTotal=0;
+      for(;;){
+        const left=Math.floor((mergeWaitBudgetMs(ctx.env)-(now(ctx)-start))/1000);
+        waited=await invoke(ctx,'github_check_wait',{...s,pr:a.number,expectedHeadSha:a.expectedHeadSha,timeoutSeconds:Math.min(left,45)});waitedTotal+=waited?.waited_seconds??0;
+        const running=waited?.overall!=='green'&&waited?.overall!=='no_ci'&&waited?.overall!=='red'&&waited?.status!=='head_moved'&&!waited?.failed_runs?.length;
+        if(!running||Math.floor((mergeWaitBudgetMs(ctx.env)-(now(ctx)-start))/1000)<5)break;
+      }
+      // Time spent waiting past the old 30 s does not come out of the merge's own budget.
+      start=Math.max(start,now(ctx)-30000);
       // A red check is not "still running": fall through to the blocker answer, which names it.
       // MERGE-WAIT-2 (owner report 2026-11-17): the wait stops at once when a job has already failed while the roll-up
       // check has not reported; that is not "still running" (it read as giving up after 1 s). Say a job failed, name it,
       // and hand over the log-summary call, so the agent reads why instead of calling again.
       if(waited?.failed_runs?.length&&waited?.overall!=='green')return reply({status:'checks_failed',done:false,number:a.number,
-        expected_head:a.expectedHeadSha,checks:'failing',failed_runs:waited.failed_runs,waited_seconds:waited?.waited_seconds??null,
+        expected_head:a.expectedHeadSha,checks:'failing',failed_runs:waited.failed_runs,waited_seconds:waitedTotal,
         ...(waited?.not_reported_yet?{not_reported_yet:waited.not_reported_yet}:{}),
         why_tool:{tool:'github_actions_get_run_logs_summary',arguments:{...(s.owner?{owner:s.owner}:{}),repo:s.repo,pr:a.number}},
         next:'A job already failed ('+waited.failed_runs.slice(0,5).join(', ')+'), so the required check will fail too; waiting longer will not help. Read why with why_tool, fix it, push, and call again with the new head.'});
       if(waited?.overall!=='green'&&waited?.overall!=='no_ci'&&waited?.overall!=='red')return reply({status:waited?.status==='head_moved'?'not_ready':'checks_running',done:false,number:a.number,
-        expected_head:a.expectedHeadSha,checks:waited?.overall??'unknown',waited_seconds:waited?.waited_seconds??null,
+        expected_head:a.expectedHeadSha,checks:waited?.overall??'unknown',waited_seconds:waitedTotal,
         ...(waited?.still_running?{still_running:waited.still_running}:{}),...(waited?.not_reported_yet?{not_reported_yet:waited.not_reported_yet}:{}),
         next:waited?.overall==='red'?'A required check failed; fix it, push, and call again with the new head.':
           waited?.status==='head_moved'?'The PR head moved; re-read it and call again with the new expectedHeadSha.':
