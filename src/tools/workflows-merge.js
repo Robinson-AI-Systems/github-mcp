@@ -16,7 +16,9 @@ const now=ctx=>ctx.now();
 const shape=guardedResultBody;
 const stop=(start,ctx)=>now(ctx)-start>=46000;
 // How long merge_when_green may wait for running checks inside one call, ending 16 s before the call's own deadline.
-export const MERGE_WAIT_DEFAULT_SECONDS=70;
+// 45, not 70 (2026-11-19, measured live): a 65 s wait came back, but longer calls were cut off in front of the server
+// ("connection lost", "Bad Gateway"), so one call stays under about a minute in all.
+export const MERGE_WAIT_DEFAULT_SECONDS=45;
 // The wait ends this long after the call started; the usual 46 s budget then restarts its clock for the merge, so
 // waiting longer never shortens the time the merge itself gets (16 s, as before).
 const mergeWaitBudgetMs=env=>{const v=Number(env?.MERGE_WAIT_SECONDS);return (Number.isFinite(v)&&v>=0&&v<=150?v:MERGE_WAIT_DEFAULT_SECONDS)*1000;};
@@ -120,6 +122,11 @@ async function mergeOne(a,ctx){
   // still rechecks the exact head and branch state immediately before mutation.
   let [p,r]=await Promise.all([pr(ctx,s,a.number),repo(ctx,s)]);
   if(!r?.default_branch)return refuse('Default-branch provider evidence unavailable.');
+  // MACHINES-1 follow-up (2026-11-19): asking again after the merge landed (for example after a call whose reply
+  // was lost) answers plainly instead of listing "not open", "mergeability" and "CI" as blockers.
+  if(p?.merged===true)return reply({status:'already_merged',done:true,number:a.number,merge_commit:p.merge_commit_sha??null,
+    ...(p.head_sha&&p.head_sha!==a.expectedHeadSha?{merged_head:p.head_sha,note:'It was merged at a different head than the one you named.'}:{}),
+    next:'Already merged; nothing to do.'});
   // Owner feedback 2026-11-12: merging into anything but the default branch must be deliberate. The caller names the branch it
   // means to merge into; a mismatch or a missing name stops here, before any CI wait or write.
   if(p&&p.state==='open'&&p.base&&p.base!==r.default_branch&&a.mergeIntoBranch!==p.base)
@@ -135,7 +142,7 @@ async function mergeOne(a,ctx){
   if(a.waitForChecks===true&&waitable.length===1&&waitable[0]===CI_NOT_GREEN&&p?.checks?.green===false&&
     !(p.checks.items??[]).some(x=>x.state==='failure')){
     // MERGE-WAIT-3 (2026-11-19): the wait used to stop at 30 s, so an agent called again and again while CI ran (it
-    // took 8+ calls on a 5-minute run). It now waits up to MERGE_WAIT_SECONDS (default 70, settable; 0-150) in
+    // took 8+ calls on a 5-minute run). It now waits up to MERGE_WAIT_SECONDS (default 45, settable; 0-150) in
     // check_wait slices of up to 45 s, still keeping 16 s for the merge itself. The service runs on the rack, not
     // under Vercel's 60 s function limit; lower the setting if a client gives up sooner.
     const budget=Math.floor((mergeWaitBudgetMs(ctx.env)-(now(ctx)-start))/1000);

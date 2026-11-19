@@ -32,3 +32,10 @@ the Workshop pairing that would show "revocation pending" forever.
 
 Two tools added (`github_machines`, `github_machine_change`); counts updated. `github_playground_hosts` and
 `github_playground_host_pairing` unchanged.
+
+## Follow-up (same day): merge-when-green wait measured live
+
+Merging this PR exercised the 70 s wait: a 65 s call came back, but longer ones were cut off in front of the server
+("connection lost", "Bad Gateway"). Default lowered to 45 s (`MERGE_WAIT_SECONDS`). A call after the merge landed used to
+list "not open", "mergeability" and "CI" as blockers; it now answers `already_merged`, done.
+
