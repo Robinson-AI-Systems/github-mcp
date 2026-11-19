@@ -462,6 +462,7 @@ and spill to the next one when it is busy, paused or offline. Agents call the sa
 | `NATIVE_GIT_WORKER_URL` | The primary host (name `primary`, priority 10). Unchanged. |
 | `NATIVE_GIT_PREVIOUS_WORKER_URL` | The previous host (name `previous`, priority 90). Still routes its old workspaces and now also takes new work when the hosts before it cannot. |
 | `NATIVE_GIT_WORKER_POOL` | Optional JSON list `[{"name":"workshop","origin":"https://<host>","priority":50,"maxWorkspaces":4,"enabled":true,"audience":"shared"}]` (`audience`: WORKER-POOL-2, below). `name`: 1–32 of `a-z 0-9 -`. `priority`: 0–1000, **lower is tried first** (default 50). `maxWorkspaces`: 1–1000 (default: resources only). An entry whose `origin` is the primary's or previous host's only renames it or sets its priority, limit or `enabled`. Invalid entries are skipped and reported by `github_server_status`. At most 16 hosts. |
+| `NATIVE_GIT_WORKER_OFF` | Optional comma list of pool host names to switch off without rewriting `NATIVE_GIT_WORKER_POOL` (SWEEP-CLEANUP-1): no new workspaces go there and status reads `disabled` without calling it; workspaces pinned there keep their route. Never turns off the primary. |
 
 On each worker host, optionally set `NATIVE_GIT_MAX_WORKSPACES` (1–1000): the worker reports it in its signed
 capabilities with `active_workspaces`, and refuses a new clone over it with `no_operation_started` (the control plane then

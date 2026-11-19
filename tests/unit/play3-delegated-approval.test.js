@@ -7,7 +7,7 @@
 import {describe, it, expect} from 'vitest';
 import {generateKeyPairSync, sign, createPublicKey} from 'node:crypto';
 import {createEnrolledHostStore, pairingMessage} from '../../src/playground/enrolled-hosts.js';
-import {hostPairingAction, hostStore} from '../../src/tools/playground-hosts.js';
+import {hostPairingAction, hostStore, pairingErrorClass} from '../../src/tools/playground-hosts.js';
 
 function fakeDb(connections = [{client_id: 'app-1', profile: 'full', client_name: 'Test app'}]) {
   const m = new Map();
@@ -78,6 +78,13 @@ describe('PLAY-3 delegated host approval', () => {
     await hostPairingAction(ctx, {operation: 'approve', device_id: begun.device_id});
     const r = await hostPairingAction(ctx, {operation: 'revoke', device_id: begun.device_id});
     expect(r.status).toBe('revoked');
+  });
+  it('a refusal by the enrollment store (e.g. another connection\'s device) is reported as rejected, not uncertain', async () => {
+    const db = fakeDb(), root = fakeDb(), ctx = ctxFor(db, root);
+    const error = await hostPairingAction(ctx, {operation: 'revoke', device_id: 'e'.repeat(32)}).catch(e => e);
+    expect(error.message).toMatch(/not enrolled under this connection/);
+    expect(pairingErrorClass(error)).toBe('rejected');
+    expect(pairingErrorClass(Object.assign(new Error('fetch failed'), {cause: {code: 'ECONNRESET'}}))).toBe('uncertain');
   });
   it('hostStore refuses a call with no connection scope', async () => {
     await expect(hostStore({db: fakeDb(), connection: {client_id: 'app-1'}})).rejects.toThrow(/scope/);

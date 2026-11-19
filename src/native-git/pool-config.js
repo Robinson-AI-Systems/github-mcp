@@ -91,6 +91,11 @@ export function configuredHosts(env) {
   if (entry.enabled !== undefined) host.enabled = entry.enabled;
   if (entry.audience !== undefined) host.audience = entry.audience;
  }
+ // SWEEP-CLEANUP-1 (2026-11-19): NATIVE_GIT_WORKER_OFF ("workshop" or "workshop,potato") switches named hosts off
+ // without rewriting NATIVE_GIT_WORKER_POOL: no new workspace goes there and status reads "disabled" without
+ // calling it. Workspaces already pinned there keep their route. Unknown names are ignored.
+ const off = new Set(String(env?.NATIVE_GIT_WORKER_OFF ?? '').split(',').map(x => x.trim()).filter(x => HOST_NAME.test(x)));
+ for (const h of hosts) if (off.has(h.name) && h.role !== 'primary') h.enabled = false;
  // WORKER-POOL-2 default: the primary is owner-only whenever another host serves everyone.
  const sharedOther = hosts.some(h => h.role !== 'primary' && (h.audience ?? 'shared') === 'shared');
  for (const h of hosts) if (h.audience === undefined) h.audience = h.role === 'primary' && sharedOther ? 'owner' : 'shared';

@@ -13,7 +13,8 @@
 // connection scope is refused; a device from another tenant or client is
 // invisible to this scope and cannot be approved through it.
 import {defineRead} from './define-read.js';
-import {defineGithubWrite} from './define-github-write.js';
+import {defineGithubWrite, classifyGithubError} from './define-github-write.js';
+import {isOwnRefusal} from '../core/error-origin.js';
 import {createEnrolledHostStore} from '../playground/enrolled-hosts.js';
 import {rootAllocationDb} from '../playground/index.js';
 import {MANAGE_CLIENT} from '../tenancy/public-connect.js';
@@ -57,6 +58,7 @@ const readHosts = defineRead({name: 'github_playground_hosts', area: 'playground
   properties: {operation: {type: 'string', enum: ['list']}}, required: ['operation'],
   handler: async (a, c) => hostPairingAction(c, {operation: 'list'})});
 
+export const pairingErrorClass = error => error?.safeCode === 'playground_enrollment_denied' || isOwnRefusal(error) ? 'rejected' : classifyGithubError(error);
 const pairing = defineGithubWrite({name: 'github_playground_host_pairing', area: 'playground', audience: ['B', 'O', 'Op'],
   description: 'Begin, approve or revoke a Playground host pairing for this connection; approval is recorded as owner-delegated.',
   guidance,
@@ -73,6 +75,9 @@ const pairing = defineGithubWrite({name: 'github_playground_host_pairing', area:
     catch (e) { return {device: null, blocked: e.message}; }
   },
   classify: () => ({}),
+  // SWEEP-CLEANUP-1 (2026-11-19): the enrollment store's own refusals ("not enrolled under this connection", wrong
+  // state) happen before anything is written; they are a plain refusal, not "outcome uncertain".
+  classifyError: error => pairingErrorClass(error),
   summarize: ({args}) => args.operation === 'begin' ? 'Begin a new Playground host pairing for this connection (one-time code, ten minutes).'
     : args.operation === 'approve' ? `Approve Playground host ${args.device_id} under this connection, recorded as owner-delegated approval.`
     : `Revoke Playground host ${args.device_id}; its runtimes stop and are deleted at its next check-in.`,

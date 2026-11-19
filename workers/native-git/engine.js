@@ -15,6 +15,7 @@ import { blankedInDiff, blankingRefusalText } from '../../src/github/placeholder
 const ID = /^git_[a-f0-9]{32}$/;
 export const hash = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 export const json = async path => JSON.parse(await readFile(path, 'utf8'));
+export const ORPHAN_KEEP_MS = 14 * 86400000;
 export const bindingHash = binding => hash(['authority', 'connection', 'owner', 'repo'].map(k => value(binding?.[k])));
 export async function save(path, data) {
   const temp = path + '.' + randomBytes(8).toString('hex');
@@ -315,21 +316,25 @@ export class NativeGitWorker {
     let lock; try { lock = await open(join(w.dir, 'mutation.lock'), 'wx', 0o600); } catch { throw new TypeError('Workspace is busy; no files deleted.'); }
     try { await rm(w.dir, { recursive: true, force: true });await rm(join(this.root,'.attachments',id),{recursive:true,force:true});await rm(join(this.root,'.uploads',id),{recursive:true,force:true});await rm(join(this.root,'.downloads',id),{recursive:true,force:true}); return { disposed: true }; } finally { await lock.close(); }
   }
+  // SWEEP-CLEANUP-1 (2026-11-19): unused workspaces are always cleared. An expired workspace is removed as before. A
+  // folder whose metadata is missing or unreadable is kept for operator recovery, but only for ORPHAN_KEEP_MS (twice the
+  // longest lease): after that no live workspace can own it, so it is removed too. One bad folder never stops the pass.
   async prune({ skip = new Set(), limit = 100 } = {}) {
-    let removed = 0;
+    let removed = 0, orphans = 0, failed = 0;
     for (const id of await readdir(this.root).catch(e => e.code === 'ENOENT' ? [] : Promise.reject(e))) {
       if (removed >= limit || !ID.test(id) || skip.has(id) || CLONING.has(join(this.root, id))) continue;
       const dir = join(this.root, id); let lock;
       try {
         if (await realpath(dir) !== dir) continue;
-        const meta = await json(join(dir, 'workspace.json'));
-        if (!Number.isFinite(meta.expiresAt) || meta.expiresAt > this.now()) continue;
+        let meta = null; try { meta = await json(join(dir, 'workspace.json')); } catch { /* missing or unreadable */ }
+        const orphan = !meta || !Number.isFinite(meta.expiresAt);
+        if (orphan ? (await lstat(dir)).mtimeMs > this.now() - ORPHAN_KEEP_MS : meta.expiresAt > this.now()) continue;
         lock = await open(join(dir, 'mutation.lock'), 'wx', 0o600);
-        await rm(dir, { recursive: true, force: true });await rm(join(this.root,'.attachments',id),{recursive:true,force:true});await rm(join(this.root,'.uploads',id),{recursive:true,force:true});await rm(join(this.root,'.downloads',id),{recursive:true,force:true}); removed++;
-      } catch (e) { if (!['EEXIST', 'ENOENT'].includes(e.code)) throw e; }
+        await rm(dir, { recursive: true, force: true });await rm(join(this.root,'.attachments',id),{recursive:true,force:true});await rm(join(this.root,'.uploads',id),{recursive:true,force:true});await rm(join(this.root,'.downloads',id),{recursive:true,force:true}); removed++; if (orphan) orphans++;
+      } catch (e) { if (!['EEXIST', 'ENOENT'].includes(e.code)) failed++; }
       finally { if (lock) await lock.close(); }
     }
-    return { removed };
+    return { removed, orphans, failed };
   }
   /** WORKER-POOL-1: workspaces on this volume that are cloning or ready and not past their idle lease (any tenant). */
   async countActive() {

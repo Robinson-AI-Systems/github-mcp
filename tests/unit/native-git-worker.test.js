@@ -152,8 +152,8 @@ it('returns durable historical operation receipts and cleans only expired unlock
  const result = await run('branch_create', { name: 'receipt-branch' }, 'receipt-key');
  const kept = await run('operation_result', { intentKey: 'receipt-key' }); expect(kept).toMatchObject({ historical: true, result: { status: 'applied', head: result.head } });
  const expired = new NativeGitWorker({ root: join(dir, 'worker'), authorize: async () => true, now: () => Date.now() + 2 * 86400000 });
- expect(await expired.prune({ skip: new Set([id]) })).toEqual({ removed: 0 });
- expect(await expired.prune()).toEqual({ removed: 1 });
+ expect(await expired.prune({ skip: new Set([id]) })).toMatchObject({ removed: 0 });
+ expect(await expired.prune()).toMatchObject({ removed: 1 });
  expect(await readFile(join(seed, 'file.txt'), 'utf8')).toBe('base\n');
 });
 
@@ -189,4 +189,19 @@ describe('large clones continue in the background', () => {
   expect((await bad.recoverInterruptedClones()).failed).toBe(1);
   expect(JSON.parse(await readFile(join(orphan, 'workspace.json'), 'utf8')).state).toBe('failed');
  });
+});
+
+// SWEEP-CLEANUP-1 (2026-11-19): unused workspaces are always cleared. A folder with damaged or missing metadata no
+// longer stops the whole pass, and is removed once it is older than twice the longest lease.
+it('prune skips past a damaged workspace, keeps orphans for recovery, then clears them after ORPHAN_KEEP_MS', async () => {
+ const { ORPHAN_KEEP_MS } = await import('../../workers/native-git/engine.js');
+ const root = join(dir, 'prune-root'); await mkdir(root, { recursive: true });
+ const ids = ['a', 'b', 'c'].map(x => 'git_' + x.repeat(32));
+ await mkdir(join(root, ids[0])); await writeFile(join(root, ids[0], 'workspace.json'), '{not json');
+ await mkdir(join(root, ids[1]));
+ await mkdir(join(root, ids[2])); await writeFile(join(root, ids[2], 'workspace.json'), JSON.stringify({ expiresAt: 1 }));
+ const now = new NativeGitWorker({ root, authorize: async () => false });
+ expect(await now.prune()).toMatchObject({ removed: 1, orphans: 0, failed: 0 });
+ const later = new NativeGitWorker({ root, authorize: async () => false, now: () => Date.now() + ORPHAN_KEEP_MS + 60000 });
+ expect(await later.prune()).toMatchObject({ removed: 2, orphans: 2, failed: 0 });
 });

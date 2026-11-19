@@ -347,3 +347,15 @@ describe('git remote setup places the key', () => {
   expect(w.pool.pc.requests).not.toContain('direct_configure');
  });
 });
+
+// SWEEP-CLEANUP-1 (2026-11-19): a machine can be switched off by name without rewriting the stored pool list.
+describe('NATIVE_GIT_WORKER_OFF', () => {
+  const env = { NATIVE_GIT_WORKER_URL: 'https://primary.example.test', NATIVE_GIT_WORKER_POOL: JSON.stringify([
+    { name: 'workshop', origin: 'https://workshop.example.test', priority: 30 }, { name: 'potato', origin: 'https://potato.example.test', priority: 900 }]) };
+  it('turns named hosts off, keeps the rest and never the primary; unknown or invalid names are ignored', () => {
+    const on = h => Object.fromEntries(configuredHosts(h).map(x => [x.name, x.enabled]));
+    expect(on(env)).toEqual({ primary: true, workshop: true, potato: true });
+    expect(on({ ...env, NATIVE_GIT_WORKER_OFF: 'workshop' })).toEqual({ primary: true, workshop: false, potato: true });
+    expect(on({ ...env, NATIVE_GIT_WORKER_OFF: ' workshop , potato,primary,Bad Name,nobody' })).toEqual({ primary: true, workshop: false, potato: false });
+  });
+});

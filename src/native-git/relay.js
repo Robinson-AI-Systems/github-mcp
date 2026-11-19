@@ -8,8 +8,8 @@
 //
 // It can never become an open proxy:
 //  - the destination is never read from the request: <route> only selects the configured worker
-//    origin ("w", "p" for the previous one, "h.<id>" for another configured pool host) or names a dedicated runtime broker host that must
-//    have the exact Playground shape on a configured ingress address;
+//    origin ("w", "p" for the previous one, "h.<id>" for another configured pool host). (The "b.<host>" route to a
+//    shared-pool runtime broker was removed with the retired pool, SWEEP-CLEANUP-1 2026-11-19.)
 //  - <mac> is a server-side HMAC binding kind + destination + capability, so a valid capability
 //    cannot be pointed at another destination, and a route cannot be reused with another capability;
 //  - the capability itself is verified here exactly as the worker verifies it (signature, purpose,
@@ -26,7 +26,6 @@ import { workerUrl, verifyDownloadCapability, verifyUploadCapability, DOWNLOAD_S
 export const TRANSFER_PREFIX = '/v1/transfer/';
 const KIND = { d: { path: '/v1/download/', pack: '/git-upload-pack', service: 'git-upload-pack', methods: ['GET', 'POST'] },
  u: { path: '/v1/upload/', pack: '/git-receive-pack', service: 'git-receive-pack', methods: ['GET', 'POST', 'PUT'] } };
-const BROKER_HOST = /^ras-pg-[a-f0-9]{32}-(\d{1,3}-\d{1,3}-\d{1,3}-\d{1,3})\.sslip\.io$/;
 // Only what a Git smart-HTTP client or curl needs. Everything else (Cookie, Authorization,
 // Proxy-Authorization, x-robinson-*, forwarding headers) is dropped before the proxy hop.
 // x-content-sha256 lets a one-request upload be checked against the client's own digest on receipt.
@@ -43,12 +42,6 @@ export function relayOrigin(env) {
  try { return publicOrigin(env); } catch { return null; }
 }
 
-/** Configured ingress addresses of Playground pools (protected settings, never the request). */
-function ingressAddresses(env) {
- const out = new Set(); if (typeof env?.PLAYGROUND_INGRESS_IPV4 === 'string') out.add(env.PLAYGROUND_INGRESS_IPV4);
- try { for (const pool of JSON.parse(env?.PLAYGROUND_POOLS ?? '[]')) if (typeof pool?.ingress === 'string') out.add(pool.ingress); } catch { /* invalid pools allow no broker */ }
- return [...out].filter(ip => /^\d{1,3}(?:\.\d{1,3}){3}$/.test(ip));
-}
 export const workerOrigin = (env, previous) => {
  const raw = previous ? env?.NATIVE_GIT_PREVIOUS_WORKER_URL : env?.NATIVE_GIT_WORKER_URL;
  if (!raw) return null;
@@ -64,18 +57,13 @@ export function routeFor(env, destinationOrigin) {
  if (destinationOrigin === workerOrigin(env, true)) return 'p';
  const pooled = configuredHosts(env).find(h => h.origin === destinationOrigin);
  if (pooled) return 'h.' + pooled.id;
- let url; try { url = new URL(destinationOrigin); } catch { return null; }
- const m = BROKER_HOST.exec(url.hostname);
- if (url.protocol !== 'https:' || url.port || url.username || url.password || url.pathname !== '/' || url.search || url.hash || !m || url.origin !== destinationOrigin) return null;
- return ingressAddresses(env).includes(m[1].replaceAll('-', '.')) ? 'b.' + url.hostname : null;
+ return null;
 }
 function resolveRoute(env, route) {
  if (route === 'w') return workerOrigin(env, false);
  if (route === 'p') return workerOrigin(env, true);
  if (route.startsWith('h.')) { const host = configuredHost(env, route.slice(2)); return host && routeFor(env, host.origin) === route ? host.origin : null; }
- if (!route.startsWith('b.')) return null;
- const origin = 'https://' + route.slice(2);
- return routeFor(env, origin) === route ? origin : null;
+ return null;
 }
 
 /** Builds the single-domain address for a signed capability, or null when the relay is not available. */
@@ -87,8 +75,8 @@ export function transferUrl(env, { kind, destinationOrigin, capability }) {
 
 const refuse = (status, message) => ({ ok: false, status, message: message + '\n' });
 // The worker's own capability key: a shared secret (HMAC) for the configured worker when one is
-// set, otherwise the Ed25519 control-plane key; dedicated brokers always pin the Ed25519 key.
-const capabilityKey = (env, route) => route.startsWith('b.') || !env.NATIVE_GIT_WORKER_KEY || env.NATIVE_GIT_WORKER_KEY.startsWith('ed25519:') ? nativeWorkerPublicKey(env) : env.NATIVE_GIT_WORKER_KEY;
+// set, otherwise the Ed25519 control-plane key.
+const capabilityKey = (env) => !env.NATIVE_GIT_WORKER_KEY || env.NATIVE_GIT_WORKER_KEY.startsWith('ed25519:') ? nativeWorkerPublicKey(env) : env.NATIVE_GIT_WORKER_KEY;
 
 /**
  * Decides one relayed request. Returns { ok: true, destination, headers } for the proxy hop, or
@@ -97,7 +85,7 @@ const capabilityKey = (env, route) => route.startsWith('b.') || !env.NATIVE_GIT_
  */
 export function planTransferRelay(request, env = process.env, now = Date.now()) {
  let url; try { url = new URL(request.url); } catch { return refuse(404, 'Not found.'); }
- const m = /^\/v1\/transfer\/(d|u)\/(w|p|h\.[a-f0-9]{32}|b\.[a-z0-9.-]{1,200})\/([A-Za-z0-9_-]{32})\/([A-Za-z0-9_-]{1,2048}\.[A-Za-z0-9_-]{1,200})(\/info\/refs|\/git-upload-pack|\/git-receive-pack|\/chunk|\/status|\/finish)?$/.exec(url.pathname);
+ const m = /^\/v1\/transfer\/(d|u)\/(w|p|h\.[a-f0-9]{32})\/([A-Za-z0-9_-]{32})\/([A-Za-z0-9_-]{1,2048}\.[A-Za-z0-9_-]{1,200})(\/info\/refs|\/git-upload-pack|\/git-receive-pack|\/chunk|\/status|\/finish)?$/.exec(url.pathname);
  if (!m) return refuse(404, 'Not found.');
  const [, kind, route, tag, capability, suffix = ''] = m, spec = KIND[kind], step = kind === 'u' ? CHUNK_STEPS[suffix] : undefined;
  if (suffix && suffix !== '/info/refs' && suffix !== spec.pack && !step) return refuse(404, 'Not found.');
@@ -109,7 +97,7 @@ export function planTransferRelay(request, env = process.env, now = Date.now()) 
  let expected; try { expected = mac(env, kind, destination, capability); } catch { return refuse(503, 'Transfers are not configured on this service.'); }
  if (!timingSafeEqual(Buffer.from(tag), Buffer.from(expected))) return refuse(403, 'This transfer address is not valid. Ask for a new one.');
  try {
-  const key = capabilityKey(env, route);
+  const key = capabilityKey(env);
   if (kind === 'd') verifyDownloadCapability(capability, key, now, { graceMs: DOWNLOAD_SESSION_MS }); else verifyUploadCapability(capability, key, now, { graceMs: step ? UPLOAD_CHUNK_GRACE_MS : 0 });
  } catch (error) { return refuse(403, /expired/.test(error?.message) ? 'This transfer address has expired. Ask for a new one.' : 'This transfer address is not valid. Ask for a new one.'); }
  const source = request.headers instanceof Headers ? request.headers : new Headers(request.headers ?? {});

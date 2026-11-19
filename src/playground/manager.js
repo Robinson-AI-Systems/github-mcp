@@ -13,12 +13,12 @@ export const sweepKey=env=>hash(signNativeWorkerBody(JSON.stringify({purpose:'ro
 // DOKPLOY-RETIRE-1 (2026-11-17): the project manager service and the warm runtimes ran on the retired
 // Dokploy pool and are gone. The sweep stays: it is called by a rack timer (or any scheduler) and advances or
 // cleans up every allocation, on a person's own computer or (closing them) left from the retired pool.
-export async function sweepAllocations({root,load=allocationScope,authorityOf=allocationAuthority,env=process.env,budgetMs=20000,now=Date.now}={}){
- const start=now(),cursor=await root.getSetting('playground_sweep_cursor'),rows=await root.listPlaygroundIndexes({after:cursor?.after??'',limit:50});let inspected=0,disposed=0,pending=0,skipped=0,after=cursor?.after??'';
+// SWEEP-CLEANUP-1 (2026-11-19): the sweep runs every minute, so it never blocks on a computer that is offline: it checks a
+// removal order's answer briefly (deviceWaitMs) and looks again next minute. It used to wait the full 20 s on one offline
+// computer every run. Closed records are cleared after RETAIN_CLOSED_MS once their workspace is gone (clearClosedAllocations).
+export async function sweepAllocations({root,load=allocationScope,authorityOf=allocationAuthority,env=process.env,budgetMs=20000,deviceWaitMs=1500,now=Date.now}={}){
+ const start=now(),cursor=await root.getSetting('playground_sweep_cursor'),rows=await root.listPlaygroundIndexes({after:cursor?.after??'',limit:50});let inspected=0,disposed=0,pending=0,after=cursor?.after??'';
  for(const row of rows){if(now()-start>=budgetMs)break;const indexed=row.value.allocation;after=row.setting;inspected++;
-  // SECOND-SHIFT-663 (2026-11-19): a row whose runtime and workspace are both gone has nothing left to do;
-  // skip it without loading its scope, so finished rows stop eating the sweep's time budget every minute.
-  if(indexed?.phase==='disposed'&&indexed.sourceDisposed===true){skipped++;continue;}
   try{
    const ctx=await load({binding:indexed.binding,...(indexed.scope?.tenantId?{tenant:indexed.scope.tenantId,identity:indexed.scope.identityId}:{})},{env});let s=ctx.stored;
    const authority=await authorityOf(ctx);
@@ -37,7 +37,7 @@ export async function sweepAllocations({root,load=allocationScope,authorityOf=al
    if(!authority.cleanup&&!s.cleanupRequested&&!['cleanup_requested','stopped','deleting'].includes(s.phase))continue;
    ctx.connection={client_id:s.clientId,pass_id:s.passId};ctx.publicDb=root;
    // Device allocations are cleaned up through their own machine.
-   if(s.placement==='device'){const result=await disposeAllocation(ctx,{row:{id:s.workspace,owner:s.owner,repo:s.repo},...s.native});if(!result.disposed)pending++;continue;}
+   if(s.placement==='device'){const result=await disposeAllocation(ctx,{row:{id:s.workspace,owner:s.owner,repo:s.repo},...s.native},{deviceWaitMs});if(!result.disposed)pending++;continue;}
    // A row of the retired pool has nothing left to remove from here: disposeAllocation closes it.
    const record={row:{id:s.workspace,owner:s.owner,repo:s.repo},...s.native};
    if(runtimeOnly)await releaseTransferLock(ctx,s);
@@ -59,7 +59,35 @@ export async function sweepAllocations({root,load=allocationScope,authorityOf=al
  }
  if(rows.length===0||inspected===rows.length&&rows.length<50)after='';
  await root.compareAndSetSetting('playground_sweep_cursor',cursor?.revision??0,{revision:(cursor?.revision??0)+1,after});
- return {inspected,disposed,pending,skipped,next_page:after!==''};
+ const cleared=now()-start<budgetMs?await clearClosedAllocations({root,load,budgetMs:budgetMs-(now()-start),now}):{cleared:0,kept:0};
+ return {inspected,disposed,pending,cleared:cleared.cleared,next_page:after!==''};
+}
+export const RETAIN_CLOSED_MS=7*86400000;
+// Deletes closed allocation records (the tenant's record and its index row) once they are a week old and their
+// workspace record is gone, so nothing can still refer to them. The computers clear the workspace files themselves:
+// each Git machine deletes a workspace once its idle lease expires, and a device runtime is ordered down on check-in
+// if the computer still reports it (src/fleet/host.js). A record whose scope can no longer be loaded is unreachable,
+// so only its index row is left to delete. Progress is kept in 'playground_retention'.
+export async function clearClosedAllocations({root,load=allocationScope,env=process.env,budgetMs=10000,limit=25,now=Date.now}={}){
+ const start=now(),rows=await root.listClosedPlaygroundIndexes({before:now()-RETAIN_CLOSED_MS,limit});let cleared=0,kept=0;
+ for(const row of rows){
+  if(now()-start>=budgetMs)break;
+  const indexed=row.value.allocation;
+  try{
+   let ctx=null;
+   try{ctx=await load({binding:indexed.binding,...(indexed.scope?.tenantId?{tenant:indexed.scope.tenantId,identity:indexed.scope.identityId}:{})},{env});}
+   catch(error){if(!(error instanceof TypeError))throw error;}
+   const s=ctx?.stored;
+   if(s&&s.phase!=='disposed'){kept++;continue;}
+   if(s&&!ctx.namespaceMissing){
+    if(await ctx.db.getJob?.(s.workspace,s.connection)){kept++;continue;}
+    if(typeof ctx.db.deleteSettingAt==='function'&&!await ctx.db.deleteSettingAt('playground.'+s.binding.slice(0,40),s.revision)){kept++;continue;}
+   }
+   if(await root.deleteSettingAt(row.setting,row.value.revision))cleared++;else kept++;
+  }catch{kept++;}
+ }
+ if(cleared){const t=await root.getSetting('playground_retention');await root.compareAndSetSetting('playground_retention',t?.revision??0,{revision:(t?.revision??0)+1,clearedTotal:(t?.clearedTotal??0)+cleared,lastClearedAt:now()});}
+ return {cleared,kept};
 }
 export async function sweep(req,res,{env=process.env,root,run=sweepAllocations}={}){
  res.setHeader('Cache-Control','no-store');if(req.method!=='POST')return res.status(405).json({error:'method_not_allowed'});

@@ -4363,6 +4363,24 @@
       ],
       "readiness": "READY",
       "ownerInputs": []
+    },
+    {
+      "id": "SWEEP-CLEANUP-1",
+      "title": "Automatic Playground clean-up: no blocking on offline computers, no order waited on forever, closed records cleared, unused workspaces cleared; NATIVE_GIT_WORKER_OFF; relay leftover removed; merge waits 70 s",
+      "batch": "FIN",
+      "design": "docs/pr-cards/SWEEP-CLEANUP-1.md",
+      "dependencies": [
+        "REVIEW-1119"
+      ],
+      "card": "docs/pr-cards/SWEEP-CLEANUP-1.md",
+      "status": "MERGED",
+      "migration": "none",
+      "budget": 500,
+      "units": [
+        "SWEEP-CLEANUP-1"
+      ],
+      "readiness": "READY",
+      "ownerInputs": []
     }
   ],
   "gatewayBoundary": {

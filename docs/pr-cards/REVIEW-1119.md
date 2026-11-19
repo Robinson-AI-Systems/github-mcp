@@ -14,6 +14,9 @@
   **After release the run still took ~20 s** (timer reads 11:32 and 11:34 UTC, 19.6 s and 20.1 s): the budget goes to the
   63 disposed rows whose workspace close never succeeded (plus 6 runtime-only rows), retried every minute. Follow-up open.
 
+> **Correction (SWEEP-CLEANUP-1, same day):** the sweep never lists closed rows, so the skip above could not run and
+> was removed. The 20 s was one offline computer's removal wait; see `SWEEP-CLEANUP-1.md`.
+
 ## Findings answered without a code change (evidence)
 
 - **High 1 (retired rows marked disposed).** Already labelled honestly by REVIEW-1118: the row reads `retired_pool: true`,

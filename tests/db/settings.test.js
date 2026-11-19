@@ -26,16 +26,18 @@ it('compares persisted nested scanner settings independently of PostgreSQL JSONB
  const changed=structuredClone(stored.settings);changed.suppressions[0].fileReadException=false;expect(stableScannerJson(changed)).not.toBe(stableScannerJson(settings));
 });
 
-it('FLEET-7 counts new pool allocations per pool and image variant since a time, disposed included, device runs excluded',async()=>{
+it('SWEEP-CLEANUP-1 lists closed allocation rows older than a time and deletes a setting only at its revision',async()=>{
  const put=(key,allocation)=>db.setSetting('pg_index.'+key,{kind:'playground-index',revision:1,allocation:{revision:1,binding:key.padEnd(64,'0'),...allocation}});
- await put('a1',{pool:'default',phase:'disposed',createdAt:2000,runtimeImage:{variant:'full'}});
- await put('a2',{phase:'attached',createdAt:3000,runtimeImage:{variant:'slim'}});
- await put('a3',{pool:'east',phase:'requested',createdAt:2500});
- await put('a4',{pool:'default',phase:'disposed',createdAt:999,runtimeImage:{variant:'full'}});
- await put('a5',{placement:'device',phase:'attached',createdAt:5000});
- await put('a6',{pool:'default',phase:'attached',createdAt:'not-a-number'});
- await db.setSetting('pg_unrelated',{kind:'playground-index',allocation:{createdAt:5000}});
- expect(await db.playgroundDemandSince(1000)).toEqual([{pool:'default',variant:'full',count:1},{pool:'default',variant:'slim',count:1},{pool:'east',variant:'unknown',count:1}]);
- expect(await db.playgroundDemandSince(10000)).toEqual([]);
- await expect(db.playgroundDemandSince(-1)).rejects.toThrow(/demand window/);
+ await put('a1',{phase:'disposed',disposedAt:1000});
+ await put('a2',{phase:'disposed',disposedAt:9000});
+ await put('a3',{phase:'attached'});
+ await put('a4',{phase:'disposed'});
+ expect((await db.listClosedPlaygroundIndexes({before:5000})).map(r=>r.setting)).toEqual(['pg_index.a1']);
+ // No disposedAt: the row's last update (just now) decides.
+ expect((await db.listClosedPlaygroundIndexes({before:Date.now()+3600000})).map(r=>r.setting)).toEqual(['pg_index.a1','pg_index.a2','pg_index.a4']);
+ expect((await db.listClosedPlaygroundIndexes({before:Date.now()+3600000,after:'pg_index.a1',limit:1})).map(r=>r.setting)).toEqual(['pg_index.a2']);
+ expect(await db.deleteSettingAt('pg_index.a1',2)).toBe(false);
+ expect(await db.deleteSettingAt('pg_index.a1',1)).toBe(true);
+ expect(await db.getSetting('pg_index.a1')).toBeNull();
+ await expect(db.listClosedPlaygroundIndexes({before:-1})).rejects.toThrow(/closed allocation/);
 });

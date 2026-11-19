@@ -13,7 +13,7 @@ import { nativeWorkspaceId, workerUrl, workerKey, nativeWorkerRoute, nativeBindi
 import { nativeConnection, nativeOpenRequestKey, nativeRecord, authorizeNativeRepo, callNativeWorker } from '../native-git/client.js';
 import { transferUrl, blockedNote, fitDigest } from '../native-git/relay.js';
 import { placeWorkspace, forgetHost, noteOpened } from '../native-git/pool.js';
-import { parseDeviceOrigin, transportFetch } from '../fleet/relay.js';
+import { parseDeviceOrigin } from '../fleet/relay.js';
 
 const OWNER = { type: 'string', minLength: 1, maxLength: 39, pattern: '^[A-Za-z0-9-]+$' };
 const REPO = { type: 'string', minLength: 1, maxLength: 100, pattern: '^[A-Za-z0-9_.-]+$' };
@@ -83,17 +83,12 @@ async function openWorkspace(c, t, { branch, depth, authorName, authorEmail, lea
 // SINGLE-DOMAIN-1: where the authoritative copy lives and whether it can serve a one-time transfer.
 // An attached workspace's copy is the runtime broker's (every native call already goes there).
 const ATTACHED_FALLBACK = 'Use github_repo_download with fresh: true for a Git-only copy from GitHub (push the runtime\'s work first), or move files with github_playground_execute.';
+// SWEEP-CLEANUP-1 (2026-11-19): only the retired shared pool's runtimes (DOKPLOY-RETIRE-1) could serve one-time
+// transfers, through the relay's broker route, which is removed. A runtime on a person's own computer never could.
 async function transferReady(c, job) {
  if (!job.brokerOrigin) return null;
  if (parseDeviceOrigin(job.brokerOrigin)) throw safe('This workspace runs on your own computer, which one-time transfers cannot reach. ' + ATTACHED_FALLBACK, 'native_transfer_unavailable', { status: 422 });
- let ready = false;
- try {
-  const answer = await transportFetch(c)(new URL('/v1/ingress', job.brokerOrigin).href, { method: 'GET', redirect: 'error', signal: AbortSignal.timeout(8000) });
-  const text = answer.ok ? (await answer.text()).slice(0, 4096) : '';
-  ready = JSON.parse(text || '{}'); if (ready?.transfer !== 'broker-v1') ready = false;
- } catch { ready = false; }
- if (!ready) throw safe('This workspace\'s runtime uses an older runtime image that cannot serve one-time transfers. ' + ATTACHED_FALLBACK, 'native_transfer_unavailable', { status: 422 });
- return ready;
+ throw safe('This workspace\'s runtime was on the retired shared Playground pool, which cannot serve one-time transfers. ' + ATTACHED_FALLBACK, 'native_transfer_unavailable', { status: 422 });
 }
 // One-time address: on this service's own domain when PUBLIC_BASE_URL is configured, else the worker's host.
 // A dedicated broker verifies only the Ed25519 control-plane key, never a shared worker secret.
@@ -369,12 +364,12 @@ async function beginUpload(c, t, a, requestKey, chunks = false) {
  const claim = JSON.stringify({ purpose: UPLOAD_PURPOSE, version: 1, workspace_id: t.record.worker, binding: nativeBindingHash(t.record.binding), mode: a.mode, maxBytes, expiresAt, uploadId, nonce });
  return { ...begun, ...(chunks ? { chunks: true } : {}), ...oneTimeAddress(c, t.record.job, 'u', claim, signNativeUploadClaim(claim, claimEnv(c, t.record.job))) };
 }
-// Returns whether resumable chunks work end to end: the worker (or runtime broker) and, for a runtime, its ingress.
+// Returns whether resumable chunks work end to end on the worker.
 async function uploadPreflight(c, record) {
- const ingress = await transferReady(c, record.job);
+ await transferReady(c, record.job);
  const cap = await callNativeWorker(c, { action: 'capabilities', job: record.job });
  if (cap.direct_upload !== 'quarantine-v1') throw safe('The native Git worker must be updated before direct uploads work. Use write_file (about 1 MB per call) meanwhile.', 'native_worker_update_required');
- return cap.upload_chunks === 'chunks-v1' && (ingress === null || ingress?.upload_chunks === 'v1');
+ return cap.upload_chunks === 'chunks-v1';
 }
 const upload = defineGithubWrite({
  name: 'github_git_workspace_upload', area: 'git', audience: ['B', 'O', 'Op'],

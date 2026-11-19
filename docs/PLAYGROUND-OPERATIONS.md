@@ -6,11 +6,19 @@ Values below were checked against code on 2026-11-01.
 
 > **2026-11-17 — the shared Dokploy pool is retired (DOKPLOY-RETIRE-1).** Every Dokploy-specific section below is history:
 > the provider, `PLAYGROUND_DOKPLOY_*`/`PLAYGROUND_POOLS`, warm runtimes, telemetry admission and the project manager
-> service are gone from the code, except the transfer relay's broker route (`src/native-git/relay.js`), which still reads
-> `PLAYGROUND_INGRESS_IPV4`/`PLAYGROUND_POOLS`; both settings are removed from production, so it is inert (checked 2026-11-19). Runtimes run on computers paired with `github_playground_host_pairing`
+> service are gone from the code; the transfer relay's broker route that read `PLAYGROUND_INGRESS_IPV4`/`PLAYGROUND_POOLS`
+> went too (SWEEP-CLEANUP-1, 2026-11-19). Runtimes run on computers paired with `github_playground_host_pairing`
 > (`src/fleet/device-allocations.js`). The maintenance sweep `POST /api/playground/sweep` takes `Authorization: Bearer
 > <CRON_SECRET>` (or the old derived sweep key) and is called every minute by the rack's project timer
 > `playground-sweep` on the `github` project (Rack Control `rack_schedule_set`).
+>
+> **Automatic clean-up (SWEEP-CLEANUP-1, 2026-11-19).** The sweep checks a computer's removal answer for 1.5 s and looks
+> again next minute (it used to wait 20 s every run on an offline computer). A removal order that lapses (7 days) is
+> re-sent if the computer is online; if it stayed offline, was unpaired or refused, the record closes as
+> `cleanup: unconfirmed` with the reason, and if that computer later checks in still running the runtime, its check-in
+> orders it down. Closed records are deleted a week after closing once their workspace record is gone (count in setting
+> `playground_retention`). Each Git machine deletes a workspace when its idle lease runs out, and a folder with missing or
+> damaged metadata after 14 days; one bad folder no longer stops its clean-up pass.
 
 Split of responsibilities: **Vercel** runs the MCP (the only caller of the Dokploy API), **Neon** holds all allocation
 state, **Dokploy** runs the containers. The control plane never accepts a runtime URL or provider credential from a

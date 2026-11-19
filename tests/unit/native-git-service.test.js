@@ -381,7 +381,7 @@ it('inventory, health checks and foreign or revoked access never renew an idle w
  expect((await w.db.getJob(id,nativeConnection(w.ctx))).expires_at.getTime()).toBe(first.result.expires_at);
  w.advanceClock(21000);expect(await w.db.getJob(id,nativeConnection(w.ctx))).toBeNull();
  const cleanup=new NativeGitWorker({root:join(dir,'storage'),authorize:async()=>false,now:w.ctx.now});
- expect(await cleanup.prune()).toEqual({removed:1});await expect(readFile(join(dir,'storage',backend,'workspace.json'))).rejects.toMatchObject({code:'ENOENT'});
+ expect(await cleanup.prune()).toMatchObject({removed:1});await expect(readFile(join(dir,'storage',backend,'workspace.json'))).rejects.toMatchObject({code:'ENOENT'});
 });
 it('adopts a legacy workspace without changing its original idle duration or reviving it after expiry',async()=>{
  const binding={authority:'b'.repeat(32),connection:nativeConnection(w.ctx),owner:'example-org',repo:'hello'};
@@ -504,7 +504,7 @@ it('records admission refusal after metadata creation as not applied and permits
  const args={owner:'example-org',repo:'hello',requestKey:'pressure-race'};
  const refused=parse(await invoke('github_git_workspace_open',args));expect(refused.status,JSON.stringify(refused)).toBe('not_applied');expect(refused.reason_code).toBe('no_operation_started');expect(refused.no_change_sent).toBe(true);expect(refused.retryable).toBe(true);
  expect(requests.some(r=>r.action==='open')).toBe(true);
- expect(await new NativeGitWorker({root:join(dir,'storage'),authorize:async()=>false}).prune()).toEqual({removed:0});
+ expect(await new NativeGitWorker({root:join(dir,'storage'),authorize:async()=>false}).prune()).toMatchObject({removed:0});
  vi.restoreAllMocks();pressure=null;
  const retry=parse(await invoke('github_git_workspace_open',args));expect(retry.status,JSON.stringify(retry)).toBe('applied');
 });
