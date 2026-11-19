@@ -1,0 +1,3 @@
+# 2026-11-19 — RERUN-ONE-TRY-1
+
+Owner report: re-running a failed test took three tries (one missing argument named per try) and then said "unconfirmed" although GitHub had accepted it. Now: every tool names all missing arguments at once, with any unknown one beside them (ALL-MISSING-1); `github_workflow_rerun_failed_ci` takes a PR number and finds the failed run itself (RERUN-PR-1); a re-run is read back for about 6 seconds and, if GitHub still has not queued it, answers `accepted` with what to check (SETTLE-1). Card `docs/pr-cards/RERUN-ONE-TRY-1.md`. Also MERGE-CONFLICT-WORDS-1: merge conflicts are named as such by `github_workflow_merge_when_green`.

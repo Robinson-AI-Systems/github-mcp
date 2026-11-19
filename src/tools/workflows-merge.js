@@ -35,6 +35,9 @@ const pr=(ctx,s,number)=>reliable(ctx,'github_pr_get',{...s,number},x=>typeof x.
 const repo=(ctx,s)=>reliable(ctx,'github_repo_get',s,x=>typeof x.default_branch==='string');
 const CI_NOT_GREEN='Required CI checks are not proven green at this head.';
 const MERGE_UNKNOWN='GitHub did not confirm mergeability.';
+// MERGE-CONFLICT-WORDS-1 (2026-11-19): a PR with conflicts was refused as "GitHub did not confirm mergeability" while
+// github_workflow_pr_status said plainly "Resolve merge conflicts". Say the same thing here, and why CI is missing.
+const MERGE_CONFLICT='The PR has merge conflicts with its base branch: update it (rebase on, or merge in, the base) and push. GitHub does not run its pull-request checks until then.';
 // MERGE-PENDING-1 (owner report 2026-11-14): right after a PR's branch moves, GitHub answers mergeable: null while it
 // works the answer out (a few seconds), and a clean, green PR was refused as "did not confirm mergeability". Null is
 // "not computed yet", not "no": read again a few times before judging. A real false (conflicts) is never waited on.
@@ -58,7 +61,8 @@ function blockers(p,expected,defaultBranch,{override=false}={}){
   if(p.head_sha!==expected)missing.push('Expected head does not match the latest actual head.');
   // Owner feedback 2026-11-12: a PR into a release or parent branch is a normal merge. GitHub's own rules for that base branch and the
   // guarded merge writer still apply; only the default-branch-only restriction is gone.
-  if(p.mergeable!==true)missing.push(MERGE_UNKNOWN);
+  if(p.mergeable===false&&p.mergeable_state==='dirty')missing.push(MERGE_CONFLICT);
+  else if(p.mergeable!==true)missing.push(MERGE_UNKNOWN);
   // Explicit override only skips local CI/review vetoes so the underlying
   // guarded merge can check the person, settings, reason, exact head, and
   // GitHub's actual decision. It never loosens the default merge path.
@@ -174,7 +178,9 @@ async function mergeOne(a,ctx){
     }
     return reply({status:'not_ready',done:false,number:a.number,
       expected_head:a.expectedHeadSha,actual_head:p?.head_sha??null,
-      blockers:why,...failed,next:failedFirst+'Repair the listed conditions, then re-read the exact PR.'});
+      blockers:why,...failed,next:failedFirst+(why.includes(MERGE_CONFLICT)
+        ?'Update the branch with its base (rebase or merge), push, wait for its checks, then call again with the new head.'
+        :'Repair the listed conditions, then re-read the exact PR.')});
   }
   if(stop(start,ctx))return reply({status:'pending',done:false,
     next:'Workflow budget ended without a merge attempt.'});

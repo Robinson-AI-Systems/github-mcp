@@ -231,6 +231,15 @@ describe('W-2 exact-head and one-step stack conveyor',()=>{
       expect(writes(f)).toHaveLength(0);
     }
   });
+  it('names merge conflicts plainly, with the next step (MERGE-CONFLICT-WORDS-1)',async()=>{
+    const f=fixture({prs:{4:ready(4,{mergeable:false,mergeable_state:'dirty',checks:{green:false,items:[]}})},extra:{github_pr_merge:{status:'applied'}}});
+    const x=body(await mergeWorkflows.github_workflow_merge_when_green(args,f.ctx));
+    expect(x.status).toBe('not_ready');
+    expect(x.blockers.join(' ')).toMatch(/merge conflicts with its base branch/);
+    expect(x.blockers.join(' ')).not.toMatch(/did not confirm mergeability/);
+    expect(x.next).toMatch(/rebase or merge/);
+    expect(writes(f)).toHaveLength(0);
+  });
   it('offers explicit owner bypass through the same guarded writer despite red CI/reviews, but still checks identity and exact SHA',async()=>{
     const r=registry.tools.find(t=>t.name==='github_workflow_merge_when_green');
     expect(r.inputSchema.properties.overrideRules.type).toBe('boolean');

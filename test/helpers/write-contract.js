@@ -148,7 +148,8 @@ export function runWriteContract({ label, definition, args, arrange, needsConfir
       it('5. a read-back that disagrees is reported as unconfirmed with a warning', async () => {
         const w = await world({ mode }, 'mismatch');
         const out = parse(await door.call(w, { ...args, confirm: true }));
-        expect(out).toMatchObject({ done: false, confirmed: false, status: 'unconfirmed' });
+        // SETTLE-1: a write that declares its result shows up late says "accepted" (GitHub took it, not visible yet).
+        expect(out).toMatchObject({ done: false, confirmed: false, status: definition.tool.settles ? 'accepted' : 'unconfirmed' });
         expect(out.warning).toEqual(expect.any(String));
       });
 

@@ -13,6 +13,8 @@
 
 **Capability matches GitHub (LIMITS-MATCH-GITHUB-1, owner ruling 2026-11-18):** no tool is held to a usage limit of GitHub Unleashed's own by default (calls per minute or day, changes per hour, saved-result budgets and slots, pending jobs); GitHub's own limits govern and every reply's `meta.github_rate` shows what is left. A saved result can be up to 16 MB (was 256 KB). The knobs stay settable for paid tiers later.
 
+**Re-runs in one try (2026-11-19):** missing arguments are all named in one answer, with any unknown argument beside them (ALL-MISSING-1); `github_workflow_rerun_failed_ci` takes a PR number (RERUN-PR-1); a re-run GitHub accepted but has not queued yet answers `accepted` with what to check, not `unconfirmed` (SETTLE-1). A PR with merge conflicts is refused by `github_workflow_merge_when_green` with those words and the next step, not "did not confirm mergeability" (MERGE-CONFLICT-WORDS-1).
+
 **Argument name (CALL-ARGS-1, 2026-11-18):** `github_call` and each `github_batch` call accept the tool's arguments as `args` or `arguments` (the name Rack Control's `rack_call` uses); both with different values is refused. A top-level object argument sent as JSON text (a client whose cached tool list is older than the argument does this) is read as that object (CALL-ARGS-2).
 
 **Unknown tool names (2026-11-09):** `github_call` errors for an unknown or hidden tool add "Did you mean: …" with close visible names (a guessed `github_api_request` points at `github_api_read`, the general read-only GET tool).
@@ -701,7 +703,7 @@ Card(s): P-2, P-3, W-1 … W-7. P-2 built in PR #207 as a non-read-only composed
 | `github_workflow_review_threads` | Unresolved review threads with file context; after fixes, reply and resolve each one verified at the current head | P·M | N | I | B | E | W-3 built #214 |
 | `github_workflow_merge_automation_status` | Read GitHub-native auto-merge arming, connection-scoped exact-head receipt where known, and pending CI/review constraints; do not infer arming from mergeability | — | N | I | B,Op | R | C-14 #433 |
 | `github_workflow_ci_failure_summary` | Diagnose actual head-specific CI runs: failed jobs, steps, errors, annotations and matching default-branch failures; zero/capped runs never count as a completed diagnosis | — | N | I | B,Op | R | W-4 built #214 |
-| `github_workflow_rerun_failed_ci` | Re-run only failed jobs once; refuses a second automatic re-run of the same failure (two-strikes rule) | P | N | I | B,Op | E | W-4 built #214 |
+| `github_workflow_rerun_failed_ci` | Re-run only failed jobs once; give `pr` or `runId` (`expectedHeadSha` optional, defaults to the PR's or run's head); refuses a second automatic re-run of the same failure (two-strikes rule) | P | N | I | B,Op | E | W-4 built #214 |
 | `github_workflow_repo_health` | Protection and rules, CI pass rate, open PRs and staleness, security alerts, secret scanning/push protection, Actions settings | — | F | I | O,Op | R | W-5 built #217 |
 | `github_workflow_security_review` | Open alerts across an org or account by severity, features off, push protection bypasses | — | F | I | O | R | W-5 built #217 |
 | `github_workflow_access_review` | Who can reach what: members, outside collaborators, teams, deploy keys, apps, fine-grained tokens; flags anything unusual | — | N | I | O | R | W-5 built #217 |
