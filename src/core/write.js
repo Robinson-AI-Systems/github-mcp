@@ -78,7 +78,14 @@ export function marksOf(c) {
  */
 export function defineWrite(spec) {
   const { name, description, area, audience, compact, guidance, properties = {}, required = [], declarations, target, read, classify, price, summarize, apply, readAfter, verify,
-    inverse = () => null, present = ({ after }) => after, explain = () => 'The change was not completed.', classifyError = () => 'uncertain', requestKey, refreshReplay = null, resumeReplay = false, essentials = null } = spec;
+    inverse = () => null, present = ({ after }) => after, explain = () => 'The change was not completed.', classifyError = () => 'uncertain', requestKey, refreshReplay = null, resumeReplay = false, essentials = null, settle = null } = spec;
+  // SETTLE-1 (2026-11-19, owner report: a re-run GitHub had accepted came back "unconfirmed"): some changes show up
+  // on GitHub's side only after a few seconds even though the old state reads fine (a re-run is queued a moment
+  // later). settle = { tries, pauseMs, pending } keeps reading back on a mismatch, and when it still has not shown
+  // up, `pending` names what to check later instead of the generic "did not show the expected result".
+  if (settle !== null && (typeof settle !== 'object' || !Number.isInteger(settle.tries) || settle.tries < 2 || settle.tries > 8
+      || !Number.isInteger(settle.pauseMs) || settle.pauseMs < 100 || settle.pauseMs > 3000 || typeof settle.pending !== 'function'))
+    throw new TypeError(`${name}: settle needs whole tries (2-8), pauseMs (100-3000) and a pending function.`);
   if (!NAME.test(name ?? '')) throw new TypeError('A valid tool name is required.');
   if (refreshReplay !== null && typeof refreshReplay !== 'function') throw new TypeError(`${name}: refreshReplay must be a function.`);
   if (resumeReplay !== false && (resumeReplay !== true || typeof refreshReplay !== 'function')) throw new TypeError(`${name}: resumeReplay needs a refreshReplay function.`);
@@ -330,16 +337,24 @@ export function defineWrite(spec) {
     // GitHub can lag a moment behind its own write, so read back once more after a short pause before giving up. The change itself
     // is never sent again.
     const pause = ctx.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
-    for (let attempt = 0; attempt < 2 && !confirmed; attempt += 1) {
-      if (attempt > 0) await pause(1200);
+    const tries = settle?.tries ?? 2;
+    for (let attempt = 0; attempt < tries && !confirmed; attempt += 1) {
+      if (attempt > 0) await pause(settle?.pauseMs ?? 1200);
       note = null; let unreadable = false;
       try {
         after = await readAfter({ args, ctx, target: tgt, before, response, startedAt });
         confirmed = (await verify({ args, ctx, target: tgt, before, after, response })) === true;
         if (!confirmed) note = 'GitHub accepted the request, but reading it back did not show the expected result.';
       } catch { unreadable = true; note = 'GitHub accepted the request, but the result could not be read back to confirm it.'; }
-      // Only a read-back that found nothing (or failed) looks like GitHub lagging; one that read a different state is a real mismatch.
-      if (!unreadable && after !== null && after !== undefined) break;
+      // Only a read-back that found nothing (or failed) looks like GitHub lagging; one that read a different state is a real mismatch,
+      // unless this change is known to show up late (settle).
+      if (!settle && !unreadable && after !== null && after !== undefined) break;
+    }
+    let accepted = false;
+    if (!confirmed && settle && response?.status >= 200 && response?.status < 300) {
+      let pending = null;
+      try { pending = settle.pending({ args, ctx, target: tgt, before, after, response }); } catch { pending = null; }
+      if (typeof pending === 'string' && pending) { note = pending; accepted = true; }
     }
     let inv = null;
     try { inv = confirmed ? inverse({ args, ctx, target: tgt, before, after, response }) : null; } catch { inv = null; }
@@ -347,7 +362,7 @@ export function defineWrite(spec) {
     await ctx.db.finishChange(claim.id, { summary: confirmed ? line : `UNCONFIRMED: ${line}`, after, confirmed, githubRequestId, inverse: inv, actedAs: ctx.actor?.summary?.()?.as ?? null }).catch(() => {});
     let shaped;
     try { shaped = present({ args, ctx, target: tgt, before, after, response }); } catch { shaped = null; }
-    return out({ done: confirmed, status: confirmed ? 'applied' : 'unconfirmed', confirmed, requestKey: key, logged: { id: claim.id }, summary: line, ...progressOf(essentials, shaped), ...(shaped !== null && shaped !== undefined ? { result: shaped } : {}),
+    return out({ done: confirmed, status: confirmed ? 'applied' : accepted ? 'accepted' : 'unconfirmed', confirmed, requestKey: key, logged: { id: claim.id }, summary: line, ...progressOf(essentials, shaped), ...(shaped !== null && shaped !== undefined ? { result: shaped } : {}),
       ...(note ? { warning: note } : {}) });
   }
 

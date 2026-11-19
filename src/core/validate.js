@@ -46,7 +46,16 @@ function check(spec, value, path, depth) {
       const props = spec.properties ?? {};
       if (spec.maxProperties !== undefined && Object.keys(value).length > spec.maxProperties)
         return `${label} has too many properties.`;
-      for (const key of spec.required ?? []) if (!(key in value)) return `${key} is required.`;
+      // ALL-MISSING-1 (owner report 2026-11-19: a re-run took three tries, one missing argument per try):
+      // name every missing required argument at once.
+      // A missing argument and an unknown one are named together (the likely cause: a wrong name).
+      const missing = (spec.required ?? []).filter((key) => !(key in value));
+      if (missing.length) {
+        const need = missing.length === 1 ? `${missing[0]} is required.` : `${missing.slice(0, -1).join(', ')} and ${missing.at(-1)} are required.`;
+        const unknown = spec.additionalProperties === true || (spec.additionalProperties && typeof spec.additionalProperties === 'object') ? []
+          : Object.keys(value).filter((k) => !Object.hasOwn(props, k) && /^[A-Za-z0-9_]{1,40}$/.test(k)).slice(0, 5);
+        return unknown.length ? `${need} Not arguments of this tool: ${unknown.join(', ')}.` : need;
+      }
       for (const [key, item] of Object.entries(value)) {
         if (!Object.hasOwn(props, key)) {
           if (spec.additionalProperties === true) continue;

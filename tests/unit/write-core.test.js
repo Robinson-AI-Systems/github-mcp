@@ -176,6 +176,24 @@ describe('failures and retries', () => {
     expect(calls).toBe(2);
   });
 
+  it('a change that shows up late keeps reading back, then says it was accepted (SETTLE-1)', async () => {
+    let reads = 0, showsAfter = 3;
+    const spec = (settle) => defineWrite({ name: 'github_x_settling', description: 'd', declarations: { production: 'never' },
+      target: () => ({ owner: 'example-org', scope: 'org' }), read: async () => ({ attempt: 1 }), classify: () => ({}), summarize: () => 's',
+      apply: async () => ({ status: 201 }), readAfter: async () => { reads += 1; return { attempt: reads >= showsAfter ? 2 : 1 }; },
+      verify: ({ after }) => after.attempt === 2, requestKey: () => `rmcp_settling_${Math.random()}`, ...(settle ? { settle } : {}) });
+    const w = await makeWorld({ gates: [] }); w.ctx.sleep = async () => {};
+    const settle = { tries: 5, pauseMs: 100, pending: () => 'Accepted; not visible yet. Check later.' };
+    expect(parse(await spec(settle).handler({}, w.ctx))).toMatchObject({ status: 'applied', confirmed: true });
+    expect(reads).toBe(3);
+    reads = 0; showsAfter = 99;
+    expect(parse(await spec(settle).handler({}, w.ctx))).toMatchObject({ status: 'accepted', confirmed: false, warning: 'Accepted; not visible yet. Check later.' });
+    expect(reads).toBe(5);
+    reads = 0;
+    expect(parse(await spec(null).handler({}, w.ctx))).toMatchObject({ status: 'unconfirmed' });
+    expect(reads).toBe(1); // a different state read back is a real mismatch without settle
+    expect(() => spec({ tries: 1, pauseMs: 100, pending: () => '' })).toThrow(/settle/);
+  });
   it('a replay can report the current state of the same target without sending anything again', async () => {
     let applies = 0, state = 'running';
     const spec = (refresh) => defineWrite({ name: 'github_x_refreshing', description: 'd', declarations: { production: 'never' },

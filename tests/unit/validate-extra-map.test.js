@@ -27,3 +27,11 @@ it('does not reflect a truncated credential prefix from an unknown long property
   expect(message).toContain('Unknown argument');
   expect(message).not.toContain(key.slice(0,40));
 });
+it('names every missing argument at once, and any unknown one beside them (ALL-MISSING-1)',()=>{
+    const s2={type:'object',properties:{repo:{type:'string'},runId:{type:'integer'},expectedHeadSha:{type:'string'}},
+      required:['repo','runId','expectedHeadSha'],additionalProperties:false};
+    expect(validateArgs(s2,{repo:'x'})).toBe('runId and expectedHeadSha are required.');
+    expect(validateArgs(s2,{})).toBe('repo, runId and expectedHeadSha are required.');
+    expect(validateArgs(s2,{repo:'x',pr:5})).toBe('runId and expectedHeadSha are required. Not arguments of this tool: pr.');
+    expect(validateArgs(s2,{repo:'x',runId:1})).toBe('expectedHeadSha is required.');
+});

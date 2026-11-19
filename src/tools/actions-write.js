@@ -138,6 +138,10 @@ const rerun = defineGithubWrite({
   },
   readAfter: ({ args, ctx, target }) => getRun(ctx, target, args.runId),
   verify: ({ before, after }) => after !== null && (after.status !== 'completed' || after.run_attempt > before.run.run_attempt),
+  // SETTLE-1: GitHub queues the new attempt a few seconds after it accepts a re-run.
+  settle: { tries: 5, pauseMs: 1500, pending: ({ args, response }) =>
+    `GitHub accepted the re-run (HTTP ${response.status}); its new attempt had not shown up yet when read back about 6 seconds later. ` +
+    `Do not send it again: read run ${args.runId} with github_actions_get_run in a minute (run_attempt goes up), or wait for its checks.` },
   inverse: ({ args, target }) => ({ tool: 'github_actions_cancel_run', args: { owner: target.owner, repo: target.repo, runId: args.runId } }),
   present: ({ before, after }) => ({ run_id: after?.id, attempt: after?.run_attempt, previous_attempt: before.run.run_attempt, status: after?.status })
 });

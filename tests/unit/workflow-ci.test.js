@@ -123,6 +123,22 @@ describe('W-4 durable failed-job retry composition',()=>{
       expect(f.calls.some(c=>c.name==='github_actions_rerun')).toBe(false);
     }
   });
+  it('takes a PR number or a run id alone, in one try (RERUN-PR-1)',async()=>{
+    const f=fixture();
+    expect(body(await rerunFailedCi({repo:'app',pr:7,dryRun:true},f.ctx)).status).toBe('preview');
+    expect(f.calls.filter(c=>c.name==='github_actions_rerun').at(-1).args).toMatchObject({runId:1,expectedHeadSha:A,expectedWorkflowId:20,mode:'failed'});
+    expect(body(await rerunFailedCi({repo:'app',runId:1,dryRun:true},f.ctx)).status).toBe('preview');
+    expect(f.calls.filter(c=>c.name==='github_actions_rerun').at(-1).args.expectedHeadSha).toBe(A);
+    expect(body(await rerunFailedCi({repo:'app'},f.ctx))).toMatchObject({status:'refused',reason:expect.stringContaining('pr')});
+    expect(body(await rerunFailedCi({repo:'app',pr:7,runId:1},f.ctx)).status).toBe('refused');
+    expect(body(await rerunFailedCi({repo:'app',pr:7,expectedHeadSha:B},f.ctx)).reason).toContain('not the expectedHeadSha');
+    f.runs[1].conclusion='success';
+    expect(body(await rerunFailedCi({repo:'app',pr:7},f.ctx)).status).toBe('nothing_to_rerun');
+  });
+  it('says plainly when GitHub accepted the retry but the new attempt is not visible yet (SETTLE-1)',async()=>{
+    const f=fixture();f.setGuard('accepted');
+    expect(body(await rerunFailedCi({...arg,confirm:true},f.ctx)).next_action).toContain('GitHub accepted the retry');
+  });
   it('keeps delegated production/confirmation refusals intact',async()=>{
     const f=fixture();f.setGuard('refused_by_guard');
     expect(body(await rerunFailedCi({...arg,confirm:true},f.ctx))).toMatchObject({done:false,status:'refused_by_guard'});

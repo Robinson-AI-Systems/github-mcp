@@ -66,10 +66,16 @@ flowchart TD
   `github_workflow_release`. They add judgement and sequencing, never a
   second path around the dispatcher's guards.
 - **Dispatch.** `src/tools/dispatch.js` validates arguments against the
-  tool's own schema (`src/core/validate.js`), runs read tools directly,
+  tool's own schema (`src/core/validate.js`; every missing argument is
+  named at once, with any unknown one beside it, ALL-MISSING-1), runs read
+  tools directly,
   and write tools through the ordered gates (`src/tools/gates.js`:
   profile, account scope, production/spend/protection guards, change
-  log). Results pass through `shapeResult` (`src/tools/util.js`):
+  log). A write whose result shows up late on GitHub's side declares
+  `settle` in `src/core/write.js`: the read-back is repeated, and if it
+  still has not shown up the answer is `accepted` with what to check,
+  not `unconfirmed` (SETTLE-1; used by `github_actions_rerun`).
+  Results pass through `shapeResult` (`src/tools/util.js`):
   credential-shaped fields become `[hidden]`, times gain a `_local`
   twin in the person's saved time zone, whole cents gain `_display`,
   content from non-trusted authors is marked `untrusted: true`, and a

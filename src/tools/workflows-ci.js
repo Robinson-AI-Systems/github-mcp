@@ -101,10 +101,30 @@ export async function ciFailureSummary(a,ctx){
       next_action:'Use observed errors to reproduce/fix locally. A guarded automatic failed-job rerun is allowed only once for a workflow/head.'};
   }catch(e){return {done:false,status:'unreadable',reason:e instanceof TypeError?e.message:'CI evidence could not be read.'};}
 }
-export async function rerunFailedCi(a,ctx){
+export async function rerunFailedCi(input,ctx){
   const start=ctx.now();
   if(!['everyday','full'].includes(ctx.connection.profile))return response({done:false,status:'refused',reason:'A writable connection profile is required.'},true);
+  // RERUN-PR-1 (owner report 2026-11-19: a re-run took three tries): give a pr, or a runId. With a pr the failed run
+  // at the PR's current head is found, and expectedHeadSha defaults to that head (the guard still holds: the run must
+  // be at the head the PR has now). With a runId alone, expectedHeadSha defaults to the run's own head.
+  let a=input;
+  if((a.pr===undefined)===(a.runId===undefined))
+    return response({done:false,status:'refused',reason:'Give exactly one of pr (the pull request number) or runId (the failed run).'},true);
+  if(a.pr!==undefined){
+    let runs;
+    try{runs=await select({...scope(a),pr:a.pr},ctx);}
+    catch(e){return response({done:false,status:'refused',reason:e instanceof TypeError?e.message:'The PR\'s runs could not be read.'},true);}
+    const failedRuns=runs.filter(r=>r.status==='completed'&&r.conclusion==='failure');
+    if(failedRuns.length===0)return response({done:false,status:'nothing_to_rerun',runs:runs.map(r=>({id:r.id,status:r.status,conclusion:r.conclusion})),
+      next_action:'No failed run at this PR\'s current head (the latest run of each workflow passed or is still running).'});
+    if(failedRuns.length>1)return response({done:false,status:'choose_run',runs:failedRuns.map(r=>({id:r.id,workflow_id:r.workflow_id})),
+      next_action:'More than one workflow failed at this head; call again with the runId to retry.'});
+    if(a.expectedHeadSha!==undefined&&a.expectedHeadSha!==failedRuns[0].head_sha)
+      return response({done:false,status:'refused',reason:'The PR head is not the expectedHeadSha given.'},true);
+    a={...a,runId:failedRuns[0].id,expectedHeadSha:failedRuns[0].head_sha};
+  }
   const run=await getRun(a,ctx,a.runId);
+  if(a.expectedHeadSha===undefined&&!bad(run))a={...a,expectedHeadSha:run.head_sha};
   if(bad(run)||!Number.isInteger(run.workflow_id)||run.head_sha!==a.expectedHeadSha)
     return response({done:false,status:'refused',reason:'The expected run head/workflow cannot be verified.'},true);
   if(run.status!=='completed')return response({done:false,status:'pending',run_id:run.id,
@@ -121,6 +141,7 @@ export async function rerunFailedCi(a,ctx){
     next_action:'This workflow/head already used its automatic retry, or its outcome is uncertain. Reproduce locally; do not automatically rerun it again.'});
   return response({...r,done:false,guarded_tool:'github_actions_rerun',
     next_action:r.status==='applied'?'Retry submitted once. Inspect its new attempt later without rerunning again.':
+      r.status==='accepted'?'GitHub accepted the retry; its new attempt was not visible yet. Do not rerun again: wait for the checks (github_check_wait) or read the run in a minute.':
       'Review the guarded preview/refusal; production and independent owner confirmation remain required.'});
 }
 const summary=defineRead({name:'github_workflow_ci_failure_summary',area:'workflow',audience:['B','Op'],
@@ -128,10 +149,11 @@ const summary=defineRead({name:'github_workflow_ci_failure_summary',area:'workfl
   properties:{owner:OWNER,repo:REPO,pr:ID,runId:ID,ref:{type:'string',minLength:1,maxLength:250},
     firstFailureOnly:{type:'boolean',description:'Return only the first failed job at the selected exact head; skip baseline comparison.'}},required:['repo'],handler:ciFailureSummary});
 const retry={name:'github_workflow_rerun_failed_ci',area:'workflow',audience:['B','Op'],
-  description:'Retry failed jobs once for an exact workflow/head; preserve production guards and stop after a durable prior retry claim.',
+  description:'Retry failed jobs once for an exact workflow/head: give pr or runId (expectedHeadSha optional); production guards kept; one retry per head.',
   usesRegistry:true,passthrough:true,boundsResult:true,profiles:['everyday','full'],delegatedWrites:['github_actions_rerun'],
-  inputSchema:{type:'object',properties:{owner:OWNER,repo:REPO,runId:ID,expectedHeadSha:SHA,confirm:{type:'boolean'},dryRun:{type:'boolean'}},
-    required:['repo','runId','expectedHeadSha'],additionalProperties:false},
+  inputSchema:{type:'object',properties:{owner:OWNER,repo:REPO,pr:{...ID,description:'Pull request number: retries the failed run at its current head'},
+    runId:{...ID,description:'Or the failed run id'},expectedHeadSha:{...SHA,description:'Optional guard: the commit the run must be at'},confirm:{type:'boolean'},dryRun:{type:'boolean'}},
+    required:['repo'],additionalProperties:false},
   annotations:{readOnlyHint:false,destructiveHint:true,idempotentHint:false,openWorldHint:true}};
 export const tools=[{...summary.tool,usesRegistry:true},retry];
 export const handlers={[summary.tool.name]:summary.handler,[retry.name]:rerunFailedCi};

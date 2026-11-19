@@ -4342,6 +4342,26 @@
       ],
       "readiness": "READY",
       "ownerInputs": []
+    },
+    {
+      "id": "RERUN-ONE-TRY-1",
+      "title": "Re-running failed CI takes one call: all missing arguments named, PR number accepted, accepted vs unconfirmed",
+      "batch": "FIN",
+      "design": "docs/pr-cards/RERUN-ONE-TRY-1.md",
+      "dependencies": [
+        "LIMITS-MATCH-GITHUB-1"
+      ],
+      "card": "docs/pr-cards/RERUN-ONE-TRY-1.md",
+      "status": "MERGED",
+      "migration": "none",
+      "budget": 150,
+      "units": [
+        "ALL-MISSING-1",
+        "RERUN-PR-1",
+        "SETTLE-1"
+      ],
+      "readiness": "READY",
+      "ownerInputs": []
     }
   ],
   "gatewayBoundary": {
