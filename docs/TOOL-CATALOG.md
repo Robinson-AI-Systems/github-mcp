@@ -13,7 +13,7 @@
 
 **Capability matches GitHub (LIMITS-MATCH-GITHUB-1, owner ruling 2026-11-18):** no tool is held to a usage limit of GitHub Unleashed's own by default (calls per minute or day, changes per hour, saved-result budgets and slots, pending jobs); GitHub's own limits govern and every reply's `meta.github_rate` shows what is left. A saved result can be up to 16 MB (was 256 KB). The knobs stay settable for paid tiers later.
 
-**Re-runs in one try (2026-11-19):** missing arguments are all named in one answer, with any unknown argument beside them (ALL-MISSING-1); `github_workflow_rerun_failed_ci` takes a PR number (RERUN-PR-1); a re-run GitHub accepted but has not queued yet answers `accepted` with what to check, not `unconfirmed` (SETTLE-1).
+**Re-runs in one try (2026-11-19):** missing arguments are all named in one answer, with any unknown argument beside them (ALL-MISSING-1); `github_workflow_rerun_failed_ci` takes a PR number (RERUN-PR-1); a re-run GitHub accepted but has not queued yet answers `accepted` with what to check, not `unconfirmed` (SETTLE-1). A PR with merge conflicts is refused by `github_workflow_merge_when_green` with those words and the next step, not "did not confirm mergeability" (MERGE-CONFLICT-WORDS-1).
 
 **Argument name (CALL-ARGS-1, 2026-11-18):** `github_call` and each `github_batch` call accept the tool's arguments as `args` or `arguments` (the name Rack Control's `rack_call` uses); both with different values is refused. A top-level object argument sent as JSON text (a client whose cached tool list is older than the argument does this) is read as that object (CALL-ARGS-2).
 
