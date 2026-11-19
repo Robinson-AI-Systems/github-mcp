@@ -147,7 +147,7 @@ Card(s): D-1.
 | `github_repo_set_custom_properties` | Set custom property values on a repository | P | N | I | O | F | D-1 built #29 |
 | `github_repo_star` | Star or unstar a repository as Chris (uses your master token when added) | P | C | U | Op | E | D-1 built #29 |
 
-## Robinson Playground commands (`github_playground_*`) — 7
+## Robinson Playground commands (`github_playground_*`) — 9
 
 Agent-facing runtime operations through the existing search/describe/call contract. Clone queues an allocation automatically (unless `runtime: none`); `github_playground_workspace` provisions, attaches, resumes, previews or disposes it. Commands need an attached allocation; absence is reported as a Git-only fallback, never a shell in the shared Git worker. Guide: [CODING-WORKSPACES](CODING-WORKSPACES.md).
 
@@ -160,6 +160,8 @@ Agent-facing runtime operations through the existing search/describe/call contra
 | `github_playground_run` | One command at a branch/tag/SHA in a fresh right-sized runtime: open, provision, run, return exit code and log tail, dispose; resumable by requestKey | P·Prod* | N | I | B,O,Op | F | FLEET-2 |
 | `github_playground_hosts` | List this connection's enrolled Playground hosts and pairings, with status and approval provenance | — | N | I | B,O,Op | R | HOST-DELEGATION-1 |
 | `github_playground_host_pairing` | Begin, approve or revoke a Playground host pairing for this connection; approval is recorded on the host record as owner-delegated (the device itself can never approve) | P | N | I | B,O,Op | F | HOST-DELEGATION-1 |
+| `github_machines` | Every machine this service uses: Git machines (configured or added here) and Playground computers from all of the owner's connections, with on/off, state and last check-in; owner only | — | N | I | O,Op | R | MACHINES-1 |
+| `github_machine_change` | Add a Git machine (address checked first; stored in a server-signed list), remove one, switch one off or on; pair a new computer or remove one (`gone: true` closes it at once); owner only | P | N | I | O,Op | F | MACHINES-1 |
 
 ## Files, commits and git data (`github_content_*, github_commit_*, github_git_*`) — 28
 
@@ -975,7 +977,7 @@ Metered actions with no published per-use price (larger runners, Copilot agent a
 
 ## Totals
 
-**Totals:** 517 tools: 511 hand-built + 6 universal (`github_api_*`, `github_graphql_*`), plus guided settings for every
+**Totals:** 519 tools: 513 hand-built + 6 universal (`github_api_*`, `github_graphql_*`), plus guided settings for every
 dashboard-only owner setting. By profile (lowest profile that has the tool): read_only 162, everyday adds 85
 (everyday lists 247), full adds 118 (full lists 407; `github_tenant_remove` only on the owner's own direct connection, so everyone else sees 403). In compact mode (`docs/designs/BATCH-C.md`) an agent
 loads only about 25 tools up front (meta-tools, whoami, universal search, workflows) and reaches the rest through
@@ -1026,9 +1028,9 @@ loads only about 25 tools up front (meta-tools, whoami, universal search, workfl
 | GitHub Enterprise | 16 |
 | Master-token families: Copilot Spaces, Classroom, Marketplace and more | 17 |
 | Code quality and GitHub help | 4 |
-| Robinson Playground commands | 5 |
+| Robinson Playground commands | 7 |
 | CAP-6 gated families: merge queue, Copilot coding agent, feature check | 5 |
-| **Total** | **517** |
+| **Total** | **519** |
 
 <!-- #108: experimental RTC HTTPS reader bridges only server/meta read tools using existing guarded dispatch; RTC 1 certification is not claimed. -->
 

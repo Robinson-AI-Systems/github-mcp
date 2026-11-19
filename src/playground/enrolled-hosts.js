@@ -22,6 +22,7 @@ export const deviceFingerprint = value => sha(Buffer.from(value.slice(8),'base64
 export const pairingIndexKey = code => rootKey(sha(code));
 // FLEET-3: opaque routing from a device ID to its tenant scope (no authority in it).
 export const deviceRouteKey = deviceId => 'fleet_route.' + deviceId;
+export const REVOCATION_WAIT_MS = 7 * 86400000;
 export const pairingMessage = ({deviceId,code,origin}) =>
   JSON.stringify({purpose:'robinson-playground-device-pair/v1',deviceId,code,origin});
 const originOf = text => {
@@ -46,13 +47,16 @@ export function createEnrolledHostStore({db,root,tenantId,identityId,clientId,no
   if(!db?.getSetting||!db?.compareAndSetSetting||!root?.getSetting||!root?.setSetting||
      typeof tenantId!=='string'||typeof identityId!=='string'||typeof clientId!=='string'||!clientId)throw safe('Verified enrollment scope is required.');
   const current=()=>now();
-  const list=async()=>{
+  const list=async({allClients=false}={})=>{
     const idx=await db.getSetting(indexKey),ids=idx?.ids??[];
     // 32 is the steady-state bound kept by begin(); older indexes that grew past it
     // (before pruning existed) are still readable up to a hard read bound so they self-heal.
     if(!Array.isArray(ids)||ids.length>256||!ids.every(validId))throw safe('Invalid enrolled host index.');
-    const found=await Promise.all(ids.map(id=>db.getSetting(keyFor(id))));
-    return found.filter(h=>h?.tenantId===tenantId&&h.identityId===identityId&&h.clientId===clientId).map(h=>({
+    let found=await Promise.all(ids.map(id=>db.getSetting(keyFor(id))));
+    found=await Promise.all(found.map(h=>staleRevocation(h)?finalizeRevocation(h.deviceId,'computer_offline_7_days').then(x=>x??h):h));
+    return found.filter(h=>h?.tenantId===tenantId&&h.identityId===identityId&&(allClients||h.clientId===clientId)).map(h=>({
+      ...(allClients?{clientId:h.clientId,thisConnection:h.clientId===clientId}:{}),
+      ...(h.cleanupEvidence==='device_unconfirmed'?{cleanup:'unconfirmed',unconfirmedReason:h.unconfirmedReason??null}:{}),
       deviceId:h.deviceId,status:h.status,fingerprint:h.fingerprint??null,origin:h.origin??null,
       generation:h.generation,pairedAt:h.pairedAt??null,transportVerifiedAt:h.transportVerifiedAt??null,localCanaryAt:h.localCanaryAt??null,
       localCanaryImage:h.localCanaryImage??null,localCanaryBinding:h.localCanaryBinding??null,
@@ -155,16 +159,28 @@ export function createEnrolledHostStore({db,root,tenantId,identityId,clientId,no
     return {deviceId,status:'pending_canary',localCanaryAt:next.localCanaryAt,
       localCanaryImage:next.localCanaryImage,executionReady:false};
   }
-  async function revoke(deviceId){
+  // MACHINES-1 (2026-11-19): a revocation is never pending forever. A computer that has not checked in for
+  // REVOCATION_WAIT_MS after it was unpaired (or that the owner says is gone) is closed as revoked with the honest
+  // label cleanup "unconfirmed": nothing on it was confirmed removed, because it is no longer reachable.
+  const staleRevocation=h=>h?.status==='revocation_pending'&&current()-Math.max(h.lastLeaseAt??0,h.revokedAt??0)>REVOCATION_WAIT_MS;
+  async function finalizeRevocation(deviceId,reason){
+    return cas(db,keyFor(deviceId),h=>h?.status!=='revocation_pending'?null:
+      {...h,status:'revoked',cleanupEvidence:'device_unconfirmed',unconfirmedReason:reason,cleanupClosedAt:current()});
+  }
+  // allClients: the same person may unpair their own computer from any of their connections (a computer paired by
+  // one app, e.g. a Muse assistant, used to be removable only from that app). gone: the machine no longer exists.
+  async function revoke(deviceId,{allClients=false,gone=false}={}){
     if(!validId(deviceId))throw safe('Unknown device.');
-    const saved=await cas(db,keyFor(deviceId),h=>{
-      if(h?.tenantId!==tenantId||h.identityId!==identityId||h.clientId!==clientId)return null;
+    let saved=await cas(db,keyFor(deviceId),h=>{
+      if(h?.tenantId!==tenantId||h.identityId!==identityId||(!allClients&&h.clientId!==clientId))return null;
       if(['revoked','revocation_pending'].includes(h.status))return {...h};
       return {...h,status:h.status==='ready'||h.status==='constrained'?'revocation_pending':'revoked',
         codeHash:null,revokedAt:current(),generation:h.generation+1};
     });
-    if(!saved)throw safe('Device is not enrolled under this connection.');
-    return {deviceId,status:saved.status,cleanupConfirmed:saved.status==='revoked'};
+    if(!saved)throw safe(allClients?'That computer is not one of your enrolled computers.':'Device is not enrolled under this connection.');
+    if(saved.status==='revocation_pending'&&(gone||staleRevocation(saved)))saved=await finalizeRevocation(deviceId,gone?'machine_gone':'computer_offline_7_days')??saved;
+    return {deviceId,status:saved.status,cleanupConfirmed:saved.status==='revoked'&&saved.cleanupEvidence!=='device_unconfirmed',
+      ...(saved.cleanupEvidence==='device_unconfirmed'?{cleanup:'unconfirmed',unconfirmedReason:saved.unconfirmedReason??null}:{})};
   }
   return {begin,claim,approve,probe,canary,revoke,list};
 }

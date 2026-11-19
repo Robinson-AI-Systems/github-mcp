@@ -99,6 +99,7 @@ import marketplaceResource from './api/marketplace/resource.js';
 import marketplaceSweep from './api/marketplace/sweep.js';
 import marketplaceWebhook, { config as marketplaceWebhookConfig } from './api/marketplace/webhook.js';
 import mcp, { config as mcpConfig } from './api/mcp.js';
+import { refreshMachines } from './src/native-git/machines.js';
 import nativeGitKey from './api/native-git-key.js';
 import oauthAuthorize from './api/oauth/authorize.js';
 import oauthRegister from './api/oauth/register.js';
@@ -366,6 +367,8 @@ async function runMiddleware(req, res, url) {
 export function createRackServer() {
   return createServer(async (req, res) => {
     presentResponse(res);
+    // MACHINES-1: keep the owner's signed machine list fresh (at most one read every 15 s; never blocks a request).
+    refreshMachines(process.env).catch(() => {});
     try {
       const host = req.headers.host || 'rack.internal';
       const url = new URL(req.url || '/', `http://${host}`);
@@ -417,6 +420,8 @@ const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPat
 if (isMain) {
   const port = Number(process.env.PORT || 3000);
   const host = process.env.HOST || '0.0.0.0';
+  // MACHINES-1: load the owner's machine list before taking requests (a failure keeps the configured machines).
+  await refreshMachines(process.env, { force: true }).catch(() => {});
   createRackServer().listen(port, host, () => {
     console.log(`GitHub Unleashed by Robinson AI Systems rack entrypoint listening on ${host}:${port} (release ${pinnedCommit ?? 'unpinned'})`);
   });

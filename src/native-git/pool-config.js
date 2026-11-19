@@ -3,9 +3,9 @@
 // The native Git worker pool: every execution site (Chris's PC, the Dokploy worker, later the Workshop machine or
 // another enrolled computer) is one host running its own workers/native-git behind the same control plane.
 //
-// Which hosts exist comes ONLY from protected server configuration (the environment), never from the database
-// or a request: a worker host receives signed leases and short-lived GitHub credentials, so adding one is a
-// protected-configuration change, exactly like NATIVE_GIT_WORKER_URL today. The stored owner setting
+// Which hosts exist comes ONLY from protected server configuration (the environment), or from the owner's machine
+// list (MACHINES-1, src/native-git/machines.js), which is signed with a key derived from the environment, so a
+// database write alone can never add one: a worker host receives signed leases and short-lived GitHub credentials. The stored owner setting
 // (`native_git.worker_pool`, src/native-git/pool.js) can only switch a configured host off for new work or change its
 // priority or workspace limit; it can never add an address.
 //
@@ -46,6 +46,12 @@ export function workerOriginOf(raw) {
  return url.origin;
 }
 const intIn = (value, min, max) => Number.isSafeInteger(value) && value >= min && value <= max;
+
+// MACHINES-1: the owner's verified machine list ({name: {origin?, removed?, enabled?, priority?, maxWorkspaces?,
+// audience?}}), set only by src/native-git/machines.js after its signature checked out. null = none.
+let machineOverlay = null;
+export const setMachineOverlay = hosts => { machineOverlay = hosts && typeof hosts === 'object' ? Object.freeze({ ...hosts }) : null; };
+export const machineOverlayOf = () => machineOverlay;
 
 /** The pool list from NATIVE_GIT_WORKER_POOL: valid entries and whether anything in it was invalid. */
 function poolList(env) {
@@ -91,6 +97,23 @@ export function configuredHosts(env) {
   if (entry.enabled !== undefined) host.enabled = entry.enabled;
   if (entry.audience !== undefined) host.audience = entry.audience;
  }
+ // MACHINES-1: the owner's machine list adds machines (role "pool", owner-only unless it says shared), changes
+ // a machine's priority, limit, audience or on/off, or removes one. The primary is never removed or switched off.
+ const removed = new Set();
+ for (const [name, e] of Object.entries(machineOverlay ?? {})) {
+  if (e.removed) { removed.add(name); continue; }
+  let host = hosts.find(h => h.name === name);
+  if (!host && e.origin) {
+   if (hosts.length >= MAX_POOL_HOSTS || hosts.some(h => h.origin === e.origin)) continue;
+   add(e.origin, 'pool', name); host = hosts.at(-1); host.audience = e.audience ?? 'owner'; host.added = true;
+  }
+  if (!host) continue;
+  if (intIn(e.priority, 0, PRIORITY_MAX)) host.priority = e.priority;
+  if (e.maxWorkspaces === null || intIn(e.maxWorkspaces, 1, LIMIT_MAX)) host.maxWorkspaces = e.maxWorkspaces;
+  if (typeof e.enabled === 'boolean' && host.role !== 'primary') host.enabled = e.enabled;
+  if (AUDIENCES.includes(e.audience)) host.audience = e.audience;
+ }
+ for (let i = hosts.length - 1; i >= 0; i--) if (removed.has(hosts[i].name) && hosts[i].role !== 'primary') hosts.splice(i, 1);
  // SWEEP-CLEANUP-1 (2026-11-19): NATIVE_GIT_WORKER_OFF ("workshop" or "workshop,potato") switches named hosts off
  // without rewriting NATIVE_GIT_WORKER_POOL: no new workspace goes there and status reads "disabled" without
  // calling it. Workspaces already pinned there keep their route. Unknown names are ignored.
