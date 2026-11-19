@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated": "2026-11-18",
+  "updated": "2026-11-19",
   "order": [
     "A",
     "B",
@@ -4320,6 +4320,25 @@
       "budget": 150,
       "units": [
         "LIMITS-MATCH-GITHUB-1"
+      ],
+      "readiness": "READY",
+      "ownerInputs": []
+    },
+    {
+      "id": "REVIEW-1119",
+      "title": "Second Shift review 2026-11-19: Playground capabilities crash fixed, no-undef lint, sweep skips finished rows, evidence for PR #663 findings",
+      "batch": "FIN",
+      "design": "docs/pr-cards/REVIEW-1119.md",
+      "dependencies": [
+        "DOKPLOY-RETIRE-1",
+        "REVIEW-1118"
+      ],
+      "card": "docs/pr-cards/REVIEW-1119.md",
+      "status": "MERGED",
+      "migration": "none",
+      "budget": 200,
+      "units": [
+        "REVIEW-1119"
       ],
       "readiness": "READY",
       "ownerInputs": []

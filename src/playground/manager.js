@@ -14,8 +14,11 @@ export const sweepKey=env=>hash(signNativeWorkerBody(JSON.stringify({purpose:'ro
 // Dokploy pool and are gone. The sweep stays: it is called by a rack timer (or any scheduler) and advances or
 // cleans up every allocation, on a person's own computer or (closing them) left from the retired pool.
 export async function sweepAllocations({root,load=allocationScope,authorityOf=allocationAuthority,env=process.env,budgetMs=20000,now=Date.now}={}){
- const start=now(),cursor=await root.getSetting('playground_sweep_cursor'),rows=await root.listPlaygroundIndexes({after:cursor?.after??'',limit:50});let inspected=0,disposed=0,pending=0,after=cursor?.after??'';
+ const start=now(),cursor=await root.getSetting('playground_sweep_cursor'),rows=await root.listPlaygroundIndexes({after:cursor?.after??'',limit:50});let inspected=0,disposed=0,pending=0,skipped=0,after=cursor?.after??'';
  for(const row of rows){if(now()-start>=budgetMs)break;const indexed=row.value.allocation;after=row.setting;inspected++;
+  // SECOND-SHIFT-663 (2026-11-19): a row whose runtime and workspace are both gone has nothing left to do;
+  // skip it without loading its scope, so finished rows stop eating the sweep's time budget every minute.
+  if(indexed?.phase==='disposed'&&indexed.sourceDisposed===true){skipped++;continue;}
   try{
    const ctx=await load({binding:indexed.binding,...(indexed.scope?.tenantId?{tenant:indexed.scope.tenantId,identity:indexed.scope.identityId}:{})},{env});let s=ctx.stored;
    const authority=await authorityOf(ctx);
@@ -56,7 +59,7 @@ export async function sweepAllocations({root,load=allocationScope,authorityOf=al
  }
  if(rows.length===0||inspected===rows.length&&rows.length<50)after='';
  await root.compareAndSetSetting('playground_sweep_cursor',cursor?.revision??0,{revision:(cursor?.revision??0)+1,after});
- return {inspected,disposed,pending,next_page:after!==''};
+ return {inspected,disposed,pending,skipped,next_page:after!==''};
 }
 export async function sweep(req,res,{env=process.env,root,run=sweepAllocations}={}){
  res.setHeader('Cache-Control','no-store');if(req.method!=='POST')return res.status(405).json({error:'method_not_allowed'});
