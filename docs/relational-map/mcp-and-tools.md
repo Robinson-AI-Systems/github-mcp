@@ -67,7 +67,7 @@ flowchart TD
   second path around the dispatcher's guards.
 - **Dispatch.** `src/tools/dispatch.js` validates arguments against the
   tool's own schema (`src/core/validate.js`; every missing argument is
-  named at once, with any unknown one beside it, ALL-MISSING-1), runs read
+  named at once, with any unknown one beside it, ALL-MISSING-1; required arguments that also have an alias are checked with the rest by `validateToolArgs`, ALL-MISSING-2), runs read
   tools directly,
   and write tools through the ordered gates (`src/tools/gates.js`:
   profile, account scope, production/spend/protection guards, change

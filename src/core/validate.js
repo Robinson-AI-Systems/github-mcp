@@ -81,6 +81,23 @@ function check(spec, value, path, depth) {
   }
 }
 
+// ALL-MISSING-2 (2026-11-19): a required argument that also has an accepted alias (runId / run_id) is not in the
+// schema's own required list, so it was reported later, one at a time, and after any unknown argument. Given the
+// tool's canonicalRequired and aliases, they are checked here with the rest, in the same one message.
+export function missingCanonical(tool, args) {
+  const req = Array.isArray(tool?.canonicalRequired) ? tool.canonicalRequired : [];
+  const aliases = tool?.aliases ?? {};
+  const value = args && typeof args === 'object' && !Array.isArray(args) ? args : {};
+  return req.filter((key) => Object.hasOwn(aliases, key) && !(key in value) && !(aliases[key] ?? []).some((a) => a in value));
+}
+export function validateToolArgs(tool, args) {
+  const extra = missingCanonical(tool, args);
+  if (!extra.length) return validateArgs(tool.inputSchema, args);
+  const schema = tool.inputSchema ?? {};
+  // Re-check with those names required (their aliases are listed so the message names both spellings).
+  const problem = validateArgs({ ...schema, required: [...(schema.required ?? []), ...extra] }, args);
+  return problem ?? `${extra.join(' and ')} ${extra.length > 1 ? 'are' : 'is'} required.`;
+}
 export function validateArgs(schema, args) {
   const value = args === undefined || args === null ? {} : args;
   return check({ ...schema, type: schema?.type ?? 'object' }, value, '', 0);

@@ -8,7 +8,7 @@ import {withProtectionContext,withRepositoryProtection} from '../github/content-
 //    refuses a profile that may not change anything, an account outside the connection, and a missing change log or gate list.
 // Anything else answers "unknown tool", and so does a write tool the connection's profile does not include (B-6: hidden by name, not just unlisted).
 import { randomBytes } from 'node:crypto';
-import { validateArgs } from '../core/validate.js';
+import { validateArgs, validateToolArgs } from '../core/validate.js';
 import {RetainedResultNotFound} from '../core/result-errors.js';
 import { capText, describeBody, fitToBudget, projectFields, listKeyOf as listKeyOfBody } from '../core/result-rules.js';
 import { TENANT_RUNTIME_LIMITS } from '../tenancy/runtime-limits.js';
@@ -267,7 +267,7 @@ export function createDispatch({ env = process.env, now = Date.now, fetch = glob
     // A runner (github_call) hands another tool's call back to this same function, so that tool's own checks run; it is neither read nor write itself.
     const isRunner = tool?.passthrough === true && tool.usesRegistry === true && tool.writes !== true;
     if (!handler || (!isWrite && !isRead && !isRunner) || !isToolVisible(tool, connection?.profile, connection)) return fail(`Unknown or unavailable tool: ${redact(String(name)).slice(0, 80)}`);
-    const problem = validateArgs(tool.inputSchema, args);
+    const problem = validateToolArgs(tool, args);
     if (problem) return fail(problem);
     // A service pass is narrower than its profile. This is the one place every call passes, so a workflow's nested calls are held to it too.
     const outside = passRefusal({ tool, args: args ?? {}, connection });
