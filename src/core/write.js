@@ -107,7 +107,7 @@ export function defineWrite(spec) {
 
   const tool = Object.freeze({
     name, description, ...(area ? { area } : {}), ...(audience ? { audience: Object.freeze([...audience]) } : {}), ...(compact ? { compact: true } : {}), ...(guidance ? { guidance } : {}),
-    writes: true, writeContract: 'defineWrite-v1', priced: typeof price === 'function', declarations: decl, profiles: decl.profiles,
+    writes: true, writeContract: 'defineWrite-v1', priced: typeof price === 'function', ...(settle ? { settles: true } : {}), declarations: decl, profiles: decl.profiles,
     inputSchema: {
       type: 'object',
       properties: { ...properties, dryRun: { type: 'boolean', description: 'Preview; no write.' }, confirm: { type: 'boolean', description: 'Confirm preview.' },
