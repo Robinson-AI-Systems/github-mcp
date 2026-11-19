@@ -13,6 +13,7 @@
 // never reused: those answers are fast, so a host the owner resumes takes work again at once.
 import { callNativeWorker } from './client.js';
 import { configuredHosts, applyPoolSetting } from './pool-config.js';
+import { refreshMachines } from './machines.js';
 import { hostAllowed, ownerCaller, noSharedHost } from './pool-audience.js';
 import { rootAllocationDb } from '../playground/index.js';
 
@@ -30,6 +31,7 @@ const reasonText = value => typeof value === 'string' ? value.replace(/[^a-z_]/g
 
 /** The configured hosts with the owner's stored adjustments applied (a missing or unreadable setting changes nothing). */
 export async function poolHosts(ctx) {
+ try { await refreshMachines(ctx.env, { db: rootAllocationDb(ctx) }); } catch { /* routing keeps the last good list */ }
  const hosts = configuredHosts(ctx.env);
  let stored = null;
  try { const db = rootAllocationDb(ctx); stored = typeof db?.getSetting === 'function' ? await db.getSetting(POOL_SETTING) : null; } catch { stored = null; }

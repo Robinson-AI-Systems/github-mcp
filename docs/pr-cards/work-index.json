@@ -4382,6 +4382,24 @@
       ],
       "readiness": "READY",
       "ownerInputs": []
+    },
+    {
+      "id": "MACHINES-1",
+      "title": "Built-in machine management: github_machines lists every Git machine and Playground computer; github_machine_change adds, removes, switches off/on Git machines (server-signed list) and pairs or removes computers; a revocation never stays pending forever",
+      "batch": "FIN",
+      "design": "docs/pr-cards/MACHINES-1.md",
+      "dependencies": [
+        "SWEEP-CLEANUP-1"
+      ],
+      "card": "docs/pr-cards/MACHINES-1.md",
+      "status": "MERGED",
+      "migration": "none",
+      "budget": 500,
+      "units": [
+        "MACHINES-1"
+      ],
+      "readiness": "READY",
+      "ownerInputs": []
     }
   ],
   "gatewayBoundary": {
