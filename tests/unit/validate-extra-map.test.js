@@ -1,5 +1,5 @@
 import {describe,it,expect} from 'vitest';
-import {validateArgs} from '../../src/core/validate.js';
+import {validateArgs,validateToolArgs} from '../../src/core/validate.js';
 
 describe('mapped object input validation',()=>{
   const nested={type:'object',maxProperties:2,additionalProperties:{
@@ -34,4 +34,12 @@ it('names every missing argument at once, and any unknown one beside them (ALL-M
     expect(validateArgs(s2,{})).toBe('repo, runId and expectedHeadSha are required.');
     expect(validateArgs(s2,{repo:'x',pr:5})).toBe('runId and expectedHeadSha are required. Not arguments of this tool: pr.');
     expect(validateArgs(s2,{repo:'x',runId:1})).toBe('expectedHeadSha is required.');
+});
+it('names a required argument that has an alias in the same message as an unknown one (ALL-MISSING-2)',()=>{
+  const tool={inputSchema:{type:'object',properties:{repo:{type:'string'},runId:{type:'integer'},run_id:{type:'integer'}},required:['repo'],additionalProperties:false},
+    canonicalRequired:['repo','runId'],aliases:{runId:['run_id']}};
+  expect(validateToolArgs(tool,{repo:'x',pr:5})).toBe('runId is required. Not arguments of this tool: pr.');
+  expect(validateToolArgs(tool,{repo:'x',run_id:5})).toBeNull();
+  expect(validateToolArgs(tool,{repo:'x',runId:5})).toBeNull();
+  expect(validateToolArgs(tool,{pr:5})).toBe('repo and runId are required. Not arguments of this tool: pr.');
 });
