@@ -1,21 +1,117 @@
 {
   "about": "MAP-COUNTS-1: every number the map states about the code, checked in CI by scripts/check-map-counts.mjs.",
   "counts": [
-    { "name": "catalogue tools", "value": 519, "files": ["README.md", "../../README.md"],
-      "how": { "command": "python3 scripts/count-catalog.py", "match": "(\\d+) tools" } },
-    { "name": "hand-built tools", "value": 513, "files": ["README.md"],
-      "how": { "command": "python3 scripts/count-catalog.py", "match": "(\\d+) hand-built" } },
-    { "name": "catalogue sections", "value": 45, "files": ["README.md"],
-      "how": { "command": "python3 scripts/count-catalog.py", "match": "in (\\d+) sections" } },
-    { "name": "Read-only profile tools", "value": 215, "files": ["README.md", "../../README.md"],
-      "how": { "command": "node scripts/profile-counts.mjs", "match": "read_only=(\\d+)" } },
-    { "name": "Everyday profile tools", "value": 306, "files": ["README.md", "../../README.md"],
-      "how": { "command": "node scripts/profile-counts.mjs", "match": "everyday=(\\d+)" } },
-    { "name": "Full profile tools", "value": 518, "files": ["README.md", "../../README.md"],
-      "how": { "command": "node scripts/profile-counts.mjs", "match": "full=(\\d+)" } },
-    { "name": "tool modules", "value": 174, "files": ["mcp-and-tools.md"],
-      "how": { "files": "src/tools/*.js" } },
-    { "name": "database tables", "value": 32, "files": ["README.md", "auth-tenancy-and-storage.md"],
-      "how": { "matches": "CREATE TABLE IF NOT EXISTS \\w+", "in": "src/db.js" } }
+    {
+      "name": "catalogue tools",
+      "value": 519,
+      "files": [
+        "README.md",
+        "../../README.md"
+      ],
+      "how": {
+        "command": "python3 scripts/count-catalog.py",
+        "match": "(\\d+) tools"
+      },
+      "label": "tools"
+    },
+    {
+      "name": "hand-built tools",
+      "value": 513,
+      "files": [
+        "README.md"
+      ],
+      "how": {
+        "command": "python3 scripts/count-catalog.py",
+        "match": "(\\d+) hand-built"
+      },
+      "label": "tools"
+    },
+    {
+      "name": "universal tools",
+      "value": 6,
+      "label": "universal tools",
+      "files": [
+        "README.md"
+      ],
+      "how": {
+        "command": "python3 scripts/count-catalog.py",
+        "match": "\\+ (\\d+) universal"
+      }
+    },
+    {
+      "name": "catalogue sections",
+      "value": 45,
+      "files": [
+        "README.md"
+      ],
+      "how": {
+        "command": "python3 scripts/count-catalog.py",
+        "match": "in (\\d+) sections"
+      },
+      "label": "sections"
+    },
+    {
+      "name": "Read-only profile tools",
+      "value": 215,
+      "files": [
+        "README.md",
+        "../../README.md"
+      ],
+      "how": {
+        "command": "node scripts/profile-counts.mjs",
+        "match": "read_only=(\\d+)"
+      },
+      "label": "Read-only profile tools"
+    },
+    {
+      "name": "Everyday profile tools",
+      "value": 306,
+      "files": [
+        "README.md",
+        "../../README.md"
+      ],
+      "how": {
+        "command": "node scripts/profile-counts.mjs",
+        "match": "everyday=(\\d+)"
+      },
+      "label": "Everyday profile tools"
+    },
+    {
+      "name": "Full profile tools",
+      "value": 518,
+      "files": [
+        "README.md",
+        "../../README.md"
+      ],
+      "how": {
+        "command": "node scripts/profile-counts.mjs",
+        "match": "full=(\\d+)"
+      },
+      "label": "Full profile tools"
+    },
+    {
+      "name": "tool modules",
+      "value": 174,
+      "files": [
+        "mcp-and-tools.md"
+      ],
+      "how": {
+        "files": "src/tools/*.js"
+      },
+      "label": "modules"
+    },
+    {
+      "name": "database tables",
+      "value": 32,
+      "files": [
+        "README.md",
+        "auth-tenancy-and-storage.md"
+      ],
+      "how": {
+        "matches": "CREATE TABLE IF NOT EXISTS \\w+",
+        "in": "src/db.js"
+      },
+      "label": "tables"
+    }
   ]
 }

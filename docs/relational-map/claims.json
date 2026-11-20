@@ -1,0 +1,52 @@
+{
+  "claims": [
+    {
+      "file": "README.md",
+      "states": "Last surveyed: 2026-11-18, from `main`",
+      "source": {
+        "in": "docs/status/2026-11-18-map-counts.md",
+        "matches": "2026-11-18"
+      }
+    },
+    {
+      "file": "hosting-and-release.md",
+      "states": "Rack production (since 2026-11-08)",
+      "source": {
+        "in": "docs/STATUS.md",
+        "matches": "^- \\*\\*Hosting \\(2026-11-08\\): production now serves from the Robinson AI Systems Development Rack\\*\\*"
+      }
+    },
+    {
+      "file": "hosting-and-release.md",
+      "states": "pre-2026-11-08 hosting",
+      "source": {
+        "in": "docs/STATUS.md",
+        "matches": "^- \\*\\*Hosting \\(2026-11-08\\): production now serves from the Robinson AI Systems Development Rack\\*\\*"
+      }
+    },
+    {
+      "file": "hosting-and-release.md",
+      "states": "production has run on the rack since 2026-11-08",
+      "source": {
+        "in": "docs/STATUS.md",
+        "matches": "^- \\*\\*Hosting \\(2026-11-08\\): production now serves from the Robinson AI Systems Development Rack\\*\\*"
+      }
+    },
+    {
+      "file": "hosting-and-release.md",
+      "states": "20:07 America/Denver",
+      "source": {
+        "in": ".github/workflows/daily-live.yml",
+        "matches": "cron: '7 20 \\* \\* \\*'\\n\\s+timezone: America/Denver"
+      }
+    },
+    {
+      "file": "auth-tenancy-and-storage.md",
+      "states": "lockout: 5 failed passphrase attempts per client IP per 15 minutes",
+      "source": {
+        "in": "src/core/oauth.js",
+        "matches": "^export const MAX_FAILED_LOGINS = 5;\\nexport const LOCKOUT_WINDOW_MINUTES = 15;"
+      }
+    }
+  ]
+}

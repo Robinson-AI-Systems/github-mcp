@@ -9,8 +9,9 @@ disagree, the code wins and the map is fixed in the same change (see
 Last surveyed: 2026-11-18, from `main` (clone of the public repo).
 Catalogue count (checked in CI against the code by `scripts/check-map-counts.mjs`,
 see `counts.json`): `scripts/count-catalog.py` reports 519 tools
-(513 hand-built + 6 universal) in 45 sections; the home page / README
-profile counts are Read-only 215, Everyday 306, Full 518 visible tools —
+(513 hand-built tools + 6 universal tools) in 45 sections; the home page /
+README profile counts are 215 Read-only profile tools, 306 Everyday profile
+tools and 518 Full profile tools —
 visibility is narrower than the catalogue because profiles hide tools.
 
 ## The system in one picture
