@@ -171,20 +171,29 @@ async function listConnections(args, ctx) {
   return { count: entries.length, note: 'Logins and service passes both appear here. A login renews itself while it is used; switching either off ends it at once.', connections: pick(entries, args.fields, 'connection_id') };
 }
 
+export const INTERRUPTED_AFTER_MS = 10 * 60 * 1000;
 async function recentChanges(args, ctx) {
   const mine = lower(ctx.connection.accounts);
   if (args.account && !mine.includes(String(args.account).toLowerCase())) throw new TypeError(`"${args.account}" is not one of the GitHub accounts this connection may use (${ctx.connection.accounts.join(', ')}).`);
   if (args.since !== undefined && Number.isNaN(Date.parse(args.since))) throw new TypeError('since must be a date such as 2026-10-01 or 2026-10-01T12:00:00Z.');
   const rows = await ctx.db.listChanges({ repo: args.repo ?? null, tool: args.tool ?? null, account: args.account ?? null, accounts: ctx.connection.accounts, since: args.since ?? null,
     includePreviews: args.includePreviews === true, limit: args.limit ?? 20 });
-  const changes = rows.map((r) => ({
-    id: r.id, at: r.at, tool: r.tool, account: r.account, repo: r.repo, summary: r.summary, mode: String(r.mode ?? '').toUpperCase() || null,
+  // CHANGES-LOG-2 (2026-11-20, owner report): every entry's time came out as {} (a Date object does not survive the
+  // reply's shaping), and an entry a server restart cut off stayed "PENDING" for good, reading as half-confirmed.
+  const now = ctx.now?.() ?? Date.now();
+  const changes = rows.map((r) => {
+    const atMs = r.at ? new Date(r.at).getTime() : NaN;
+    const interrupted = typeof r.summary === 'string' && r.summary.startsWith('PENDING: ') && r.confirmed == null && Number.isFinite(atMs) && now - atMs > INTERRUPTED_AFTER_MS;
+    return {
+    id: r.id, at: Number.isFinite(atMs) ? new Date(atMs).toISOString() : null, at_local: Number.isFinite(atMs) ? when(new Date(atMs)) : null,
+    tool: r.tool, account: r.account, repo: r.repo, summary: interrupted ? r.summary.replace(/^PENDING: /, 'INTERRUPTED: ') : r.summary, mode: String(r.mode ?? '').toUpperCase() || null,
     confirmed: r.confirmed, production: !!r.production, accessWidening: !!r.accessWidening, notifies: r.notifies ?? [],
     ...(r.actedAs ? { acted_as: r.actedAs } : {}),
     cost: r.spendCents ? dollars(r.spendCents) : null,
     ...(r.dryRun ? { preview: true } : {}),
+    ...(interrupted ? { interrupted: true, note: 'The server stopped (for example a restart) after this change was sent and before its result was recorded, so it may or may not have happened. Read the target to check; calling the same tool again with the same requestKey is safe.' } : {}),
     ...(args.detail === 'full' ? { request_key: r.requestKey ?? null, github_request_id: r.githubRequestId ?? null, can_undo: !!r.inverse } : {})
-  }));
+  }; });
   return { count: changes.length, note: args.includePreviews === true ? 'Previews and refusals are included.' : 'Previews and refusals are left out (set includePreviews to see them).', changes: pick(changes, args.fields, 'id') };
 }
 

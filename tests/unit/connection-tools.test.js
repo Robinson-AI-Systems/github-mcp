@@ -150,6 +150,22 @@ describe('github_recent_changes', () => {
   });
 });
 
+describe('github_recent_changes times and interrupted changes (CHANGES-LOG-2)', () => {
+  const base = { mode: 'production', connection: 'client-1', tool: 'github_branch_delete', account: 'example-org', repo: 'example-org/a', dryRun: false };
+  it('gives every entry a real time, and labels a change a restart cut off as interrupted after 10 minutes', async () => {
+    const w = await world();
+    await w.db.recordChange({ ...base, summary: 'PENDING: Delete branch x', confirmed: null });
+    await w.db.recordChange({ ...base, summary: 'Delete branch y', confirmed: true });
+    let out = await call('github_recent_changes', w, {});
+    for (const c of out.changes) { expect(c.at).toMatch(/^\d{4}-\d{2}-\d{2}T/); expect(typeof c.at_local).toBe('string'); }
+    expect(out.changes.find((c) => c.summary.endsWith('branch x'))).toMatchObject({ summary: 'PENDING: Delete branch x' });
+    w.ctx.now = () => Date.now() + 11 * 60 * 1000;
+    out = await call('github_recent_changes', w, {});
+    expect(out.changes.find((c) => c.summary.endsWith('branch x'))).toMatchObject({ summary: 'INTERRUPTED: Delete branch x', interrupted: true, note: expect.stringMatching(/may or may not have happened/) });
+    expect(out.changes.find((c) => c.summary.endsWith('branch y')).interrupted).toBeUndefined();
+  });
+});
+
 describe('the tool descriptions', () => {
   it('keep the listing short and the new tools are registered', () => {
     for (const t of tools) expect(t.description.length, t.name).toBeLessThanOrEqual(160);

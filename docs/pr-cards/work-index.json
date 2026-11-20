@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated": "2026-11-19",
+  "updated": "2026-11-20",
   "order": [
     "A",
     "B",
@@ -4397,6 +4397,22 @@
       "budget": 500,
       "units": [
         "MACHINES-1"
+      ],
+      "readiness": "READY",
+      "ownerInputs": []
+    },
+    {
+      "id": "CHANGES-LOG-2",
+      "title": "github_recent_changes: real times (were {}), interrupted changes labelled after a server stop",
+      "batch": "FIN",
+      "design": "docs/pr-cards/CHANGES-LOG-2.md",
+      "dependencies": [],
+      "card": "docs/pr-cards/CHANGES-LOG-2.md",
+      "status": "MERGED",
+      "migration": "none",
+      "budget": 100,
+      "units": [
+        "CHANGES-LOG-2"
       ],
       "readiness": "READY",
       "ownerInputs": []
