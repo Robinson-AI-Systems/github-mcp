@@ -6,7 +6,7 @@ A hosted MCP server that lets Chris Robinson's AI agents work in GitHub for ever
 
 **Live address:** `https://github.robinsonaisystems.com`. Connect address for an AI app: `https://github.robinsonaisystems.com/api/mcp`.
 
-**Tools:** 519 in the catalogue today; a connection sees 215 on the Read-only profile, 306 on Everyday and 518 on Full. Source: `src/tools/index.js`, counted by `python3 scripts/count-catalog.py` (catalogue) and `node scripts/profile-counts.mjs` (profiles), both checked in CI by `scripts/check-map-counts.mjs`. The live home page shows the same counts.
+**Tools:** 519 tools in the catalogue today; a connection sees 215 Read-only profile tools, 306 Everyday profile tools and 518 Full profile tools. Source: `src/tools/index.js`, counted by `python3 scripts/count-catalog.py` (catalogue) and `node scripts/profile-counts.mjs` (profiles), both checked in CI by `scripts/check-map-counts.mjs`. The live home page shows the same counts.
 
 ## Where to start
 

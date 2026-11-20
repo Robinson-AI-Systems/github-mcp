@@ -4416,6 +4416,24 @@
       ],
       "readiness": "READY",
       "ownerInputs": []
+    },
+    {
+      "id": "MAP-CLAIMS-1",
+      "title": "Every count, date and policy claim in the relational map is tied to its source",
+      "batch": "FIN",
+      "design": "docs/pr-cards/MAP-CLAIMS-1.md",
+      "dependencies": [
+        "MAP-COUNTS-1"
+      ],
+      "card": "docs/pr-cards/MAP-CLAIMS-1.md",
+      "status": "MERGED",
+      "migration": "none",
+      "budget": 100,
+      "units": [
+        "MAP-CLAIMS-1"
+      ],
+      "readiness": "READY",
+      "ownerInputs": []
     }
   ],
   "gatewayBoundary": {
